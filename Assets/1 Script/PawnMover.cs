@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -5,75 +6,157 @@ public class PawnMover : MonoBehaviour
 {
     [Header("Move")]
     public float moveSpeed = 4f;
-    public float stopDistance = 0.05f;
+    public float stopDistance = 0.12f;
 
     [Header("Ground")]
     public float gravity = -20f;
     public float groundStickForce = -2f;
 
-    private CharacterController cc;
-    private Vector3 target;
-    private bool hasTarget;
+    CharacterController _cc;
+    float _verticalVel;
+    List<Vector3> _path;
+    int _pathIndex;
+    Vector3 _currentTarget;
+    bool _hasTarget;
+    float _baseMoveSpeed;
+    UnitStats _stats;
+    Inventory _inventory;
 
-    private float verticalVel;
+    [Header("Athletics ì„±ì¥")]
+    [SerializeField] float athleticsGrowthRate = 0.005f;
 
-    private void Awake()
+    void Awake()
     {
-        cc = GetComponent<CharacterController>();
-        target = transform.position;
-        hasTarget = false;
+        _cc = GetComponent<CharacterController>();
+        _currentTarget = transform.position;
+        _baseMoveSpeed = moveSpeed;
+    }
+
+    public void Init(UnitData data)
+    {
+        moveSpeed      = data.MoveSpeed;
+        _baseMoveSpeed = data.MoveSpeed;
+    }
+
+    public void SetStats(UnitStats stats, Inventory inventory)
+    {
+        _stats     = stats;
+        _inventory = inventory;
     }
 
     public void SetMoveTarget(Vector3 worldPoint)
     {
-        // Áö¸éÀÌ Æò¸éÀÌ°Å³ª, hit.pointÀÇ y¸¦ ±×´ë·Î ¾²°í ½ÍÀ¸¸é ¾Æ·¡ ÁÙÀ» Áö¿ì¼Åµµ µË´Ï´Ù.
         worldPoint.y = transform.position.y;
 
-        target = worldPoint;
-        hasTarget = true;
-    }
-
-    private void Update()
-    {
-        // Áß·Â
-        if (cc.isGrounded)
+        var path = Pathfinder.FindPath(transform.position, worldPoint);
+        if (path != null && path.Count > 0)
         {
-            verticalVel = groundStickForce; // ¹Ù´Ú¿¡ ºÙµµ·Ï »ìÂ¦ ´­·¯ÁÜ
+            _path = path;
+            // ì‹œì‘ íƒ€ì¼(index 0)ì€ í˜„ì¬ ìœ„ì¹˜ì´ë¯€ë¡œ ê±´ë„ˆëœ€
+            _pathIndex    = path.Count > 1 ? 1 : 0;
+            _currentTarget = WithY(_path[_pathIndex]);
         }
         else
         {
-            verticalVel += gravity * Time.deltaTime;
+            // ê²½ë¡œ ì—†ìœ¼ë©´ ì§ì„  ì´ë™ (ì¥ì• ë¬¼ ì—†ëŠ” ì „íˆ¬ ì¶”ì  ë“±)
+            _path         = null;
+            _pathIndex    = 0;
+            _currentTarget = worldPoint;
         }
+        _hasTarget = true;
+    }
 
-        Vector3 move = new Vector3(0f, verticalVel, 0f);
+    public void StopMovement()
+    {
+        _hasTarget = false;
+        _path      = null;
+    }
 
-        // ¼öÆò ÀÌµ¿
-        if (hasTarget)
+    void Update()
+    {
+        if (_cc.isGrounded)
+            _verticalVel = groundStickForce;
+        else
+            _verticalVel += gravity * Time.deltaTime;
+
+        Vector3 move = new Vector3(0f, _verticalVel, 0f);
+
+        if (_hasTarget)
         {
-            Vector3 to = target - transform.position;
+            Vector3 to = _currentTarget - transform.position;
             to.y = 0f;
-
             float dist = to.magnitude;
+
             if (dist <= stopDistance)
             {
-                hasTarget = false;
+                if (_path != null && _pathIndex + 1 < _path.Count)
+                {
+                    _pathIndex++;
+                    _currentTarget = WithY(_path[_pathIndex]);
+                }
+                else
+                {
+                    _hasTarget = false;
+                    _path      = null;
+                }
             }
             else
             {
-                Vector3 dir = to / dist; // normalize
+                float weightCorrection = CalcWeightCorrection();
+                float effectiveSpeed = _stats != null
+                    ? _baseMoveSpeed * (1f + _stats.Athletics / 100f) * weightCorrection
+                    : moveSpeed;
 
-                // ³ªÁß¿¡ ¡°±×¸®µå °¡ÁßÄ¡/¾Ë°í¸®Áò¡± ºÙÀÏ °÷Àº ¿©±â(dir °è»ê)ÀÔ´Ï´Ù.
-                // Vector3 dir = SteeringAlgorithm.GetDirection(transform.position, target);
+                move += (to / dist) * effectiveSpeed;
 
-                move += dir * moveSpeed;
-                // ¹Ù¶óº¸°Ô ÇÏ°í ½ÍÀ¸¸é(¼±ÅÃ)
-                // transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 12f * Time.deltaTime);
+                // ì´ë™ ì¤‘ ìœ¡ìƒ ìŠ¤í‚¬ ì„±ì¥
+                if (_stats != null)
+                    _stats.Athletics = Mathf.Min(100f, _stats.Athletics + athleticsGrowthRate * Time.deltaTime);
             }
         }
 
-        cc.Move(move * Time.deltaTime);
+        _cc.Move(move * Time.deltaTime);
     }
 
-    public bool HasTarget() => hasTarget;
-    public Vector3 Target() => target;
+    public void SetLimping(bool limping)
+    {
+        moveSpeed = limping ? _baseMoveSpeed * 0.5f : _baseMoveSpeed;
+        // ï¿½ï¿½ï¿½ß¿ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ì´ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½ï¿½ï¿½ï¿½
+    }
+
+    public void SetCrawling(bool crawling)
+    {
+        moveSpeed = crawling ? _baseMoveSpeed * 0.2f : _baseMoveSpeed;
+        // ï¿½ï¿½ï¿½ß¿ï¿½ ï¿½ï¿½î°¡ï¿½ï¿½ ï¿½Ö´Ï¸ï¿½ï¿½Ì¼ï¿½ ï¿½ï¿½ï¿½ï¿½
+    }
+
+    float CalcWeightCorrection()
+    {
+        if (_stats == null || _inventory == null) return 1f;
+        float maxWeight     = _stats.Strength * 5f;
+        float currentWeight = _inventory.GetTotalWeight();
+        if (maxWeight <= 0f || currentWeight <= maxWeight) return 1f;
+        return maxWeight / currentWeight;
+    }
+
+    public bool HasTarget() => _hasTarget;
+    public Vector3 Target() => _currentTarget;
+
+    Vector3 WithY(Vector3 v) => new Vector3(v.x, transform.position.y, v.z);
+
+#if UNITY_EDITOR
+    void OnDrawGizmosSelected()
+    {
+        if (_path == null || _path.Count == 0) return;
+        Gizmos.color = Color.cyan;
+        Vector3 prev = transform.position;
+        for (int i = _pathIndex; i < _path.Count; i++)
+        {
+            var cur = WithY(_path[i]);
+            Gizmos.DrawLine(prev, cur);
+            Gizmos.DrawSphere(cur, 0.1f);
+            prev = cur;
+        }
+    }
+#endif
 }

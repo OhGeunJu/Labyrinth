@@ -1,14 +1,15 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 public class SelectionManager : MonoBehaviour
 {
-    [Header("∑π¿ÃæÓ")]
+    [Header("Î†àÏù¥Ïñ¥")]
     [SerializeField] LayerMask unitMask;
-    [SerializeField] LayerMask groundMask = ~0;
 
-    [Header("µÂ∑°±◊ √÷º“ ∞≈∏Æ (px)")]
+    [Header("ÎìúÎûòÍ∑∏ ÏµúÏÜå Í±∞Î¶¨ (px)")]
     [SerializeField] float dragThreshold = 5f;
 
     Camera _cam;
@@ -18,22 +19,33 @@ public class SelectionManager : MonoBehaviour
     readonly List<PawnMover> _selected = new();
     public IReadOnlyList<PawnMover> Selected => _selected;
 
-    // º±≈√ «•Ω√ ø¨∞· ∆˜¿Œ∆Æ (≥™¡ﬂø° ±∏«ˆ)
-    public System.Action<PawnMover, bool> OnSelectionChanged;
+    public Action<PawnMover, bool> OnSelectionChanged;
+    public static event Action<ResourceNode> OnNodeSelected;
 
-    void Awake() => _cam = Camera.main;
+    void Awake()
+    {
+        _cam = Camera.main;
+        OnSelectionChanged += (pawn, selected) =>
+        {
+            var indicator = pawn.GetComponent<SelectionIndicator>();
+            if (indicator != null) indicator.SetSelected(selected);
+        };
+    }
 
     void Update()
     {
         HandleSelection();
-        HandleMove();
     }
 
-    // ¶°¶° º±≈√ ¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°
     void HandleSelection()
     {
+        if (BuildModeManager.IsActive) return;
+
         if (Mouse.current.leftButton.wasPressedThisFrame)
         {
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                return;
+
             _dragStart = Mouse.current.position.ReadValue();
             _isDragging = false;
         }
@@ -47,6 +59,12 @@ public class SelectionManager : MonoBehaviour
 
         if (Mouse.current.leftButton.wasReleasedThisFrame)
         {
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                _isDragging = false;
+                return;
+            }
+
             if (_isDragging)
                 SelectByRect();
             else
@@ -59,13 +77,42 @@ public class SelectionManager : MonoBehaviour
     void SelectSingle()
     {
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        ClearSelection();
 
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f, unitMask))
+        if (Physics.Raycast(ray, out RaycastHit hit, 500f))
         {
+            var core = hit.collider.GetComponent<DungeonCore>();
+            if (core != null)
+            {
+                ClearSelection();
+                OnNodeSelected?.Invoke(null);
+                core.Select();
+                return;
+            }
+
+            var node = hit.collider.GetComponent<ResourceNode>();
+            if (node != null)
+            {
+                ClearSelection();
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(node);
+                return;
+            }
+
             var pawn = hit.collider.GetComponent<PawnMover>();
-            if (pawn != null) AddToSelection(pawn);
+            var faction = hit.collider.GetComponent<Faction>();
+            if (pawn != null && faction != null && faction.Type == FactionType.Player)
+            {
+                ClearSelection();
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(null);
+                AddToSelection(pawn);
+                return;
+            }
         }
+
+        ClearSelection();
+        DungeonCore.Instance?.Deselect();
+        OnNodeSelected?.Invoke(null);
     }
 
     void SelectByRect()
@@ -76,51 +123,25 @@ public class SelectionManager : MonoBehaviour
 
         foreach (var pawn in FindObjectsByType<PawnMover>(FindObjectsSortMode.None))
         {
+            var faction = pawn.GetComponent<Faction>();
+            if (faction == null || faction.Type != FactionType.Player) continue;
+
             Vector2 screenPos = _cam.WorldToScreenPoint(pawn.transform.position);
             if (screenRect.Contains(screenPos, true))
                 AddToSelection(pawn);
         }
     }
 
-    // ¶°¶° ¿Ãµø ∏Ì∑… ¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°
-    void HandleMove()
-    {
-        if (_selected.Count == 0) return;
-        if (!Mouse.current.rightButton.wasPressedThisFrame) return;
-
-        Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
-        {
-            // ø©∑Ø ¿Ø¥÷¿Ã∏È ¥Î«¸ ∞£∞› ¿˚øÎ
-            Vector3[] positions = CalcFormation(hit.point, _selected.Count);
-            for (int i = 0; i < _selected.Count; i++)
-                _selected[i].SetMoveTarget(positions[i]);
-        }
-    }
-
-    // ¶°¶° ¥Î«¸ ∞ËªÍ (∞£¥‹ ∞›¿⁄) ¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°
-    static Vector3[] CalcFormation(Vector3 center, int count)
-    {
-        var positions = new Vector3[count];
-        int cols = Mathf.CeilToInt(Mathf.Sqrt(count));
-        float spacing = 1.2f;
-
-        for (int i = 0; i < count; i++)
-        {
-            int row = i / cols;
-            int col = i % cols;
-            float ox = (col - (cols - 1) * 0.5f) * spacing;
-            float oz = (row - (Mathf.CeilToInt((float)count / cols) - 1) * 0.5f) * spacing;
-            positions[i] = center + new Vector3(ox, 0f, oz);
-        }
-        return positions;
-    }
-
-    // ¶°¶° ¿Ø∆ø ¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°¶°
     void AddToSelection(PawnMover pawn)
     {
         _selected.Add(pawn);
         OnSelectionChanged?.Invoke(pawn, true);
+    }
+
+    public void SelectPawn(PawnMover pawn)
+    {
+        ClearSelection();
+        AddToSelection(pawn);
     }
 
     void ClearSelection()

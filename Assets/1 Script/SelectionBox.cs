@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 public class SelectionBox : MonoBehaviour
 {
     [SerializeField] SelectionManager selectionManager;
-    [SerializeField] Texture2D boxTexture;   // Èò 1¡¿1 ÅØ½ºÃ³ or null
+    [SerializeField] Texture2D boxTexture;   // í° 1Ã—1 í…ìŠ¤ì²˜ or null
 
     Vector2 _start;
     bool _drawing;
@@ -33,7 +33,7 @@ public class SelectionBox : MonoBehaviour
         if (!_drawing) return;
 
         Vector2 cur = Mouse.current.position.ReadValue();
-        // GUI´Â YÃà ¹İÀü
+        // GUIëŠ” Yì¶• ë°˜ì „
         Vector2 s = new(_start.x, Screen.height - _start.y);
         Vector2 e = new(cur.x, Screen.height - cur.y);
 
