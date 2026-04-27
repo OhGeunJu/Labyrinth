@@ -1,18 +1,25 @@
+using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-// 인벤토리 슬롯 드래그 드롭.
-// UI 안에서 손 놓으면 취소, UI 밖(게임 월드)에서 손 놓으면 해당 위치에 드롭.
-public class InventorySlotUI : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+// 슬롯 간 드래그 → 인벤토리 이동
+// UI 밖으로 드래그 → 월드 드롭
+public class InventorySlotUI : MonoBehaviour,
+    IBeginDragHandler, IDragHandler, IEndDragHandler,
+    IDropHandler, IPointerClickHandler
 {
     public ItemData Item   { get; private set; }
     public int      Amount { get; private set; }
 
-    Inventory _inventory;
-    Transform _unitTransform;
-    Canvas    _rootCanvas;
+    Inventory  _inventory;
+    Transform  _unitTransform;
+    Canvas     _rootCanvas;
     GameObject _dragGhost;
+    Action     _onClicked;
+
+    // OnDrop → OnEndDrag 순으로 실행되므로 플래그로 전달
+    bool _dropHandled;
 
     public void Init(ItemData item, int amount, Inventory inventory, Transform unitTransform)
     {
@@ -25,6 +32,10 @@ public class InventorySlotUI : MonoBehaviour, IBeginDragHandler, IDragHandler, I
         _rootCanvas = canvas != null ? canvas.rootCanvas : null;
     }
 
+    public void SetClickHandler(Action onClicked) => _onClicked = onClicked;
+
+    public void OnPointerClick(PointerEventData eventData) => _onClicked?.Invoke();
+
     // ── 드래그 시작 ───────────────────────────────────────────────────
     public void OnBeginDrag(PointerEventData eventData)
     {
@@ -36,7 +47,7 @@ public class InventorySlotUI : MonoBehaviour, IBeginDragHandler, IDragHandler, I
 
         var img = _dragGhost.AddComponent<Image>();
         img.sprite        = Item.Icon;
-        img.raycastTarget = false;  // 고스트가 레이캐스트 막지 않도록
+        img.raycastTarget = false;
 
         var rect = _dragGhost.GetComponent<RectTransform>();
         rect.sizeDelta = new Vector2(50f, 50f);
@@ -51,6 +62,22 @@ public class InventorySlotUI : MonoBehaviour, IBeginDragHandler, IDragHandler, I
         MoveGhostTo(eventData);
     }
 
+    // ── 다른 슬롯 위에 드롭 → 인벤토리 이동 ─────────────────────────
+    public void OnDrop(PointerEventData eventData)
+    {
+        var source = eventData.pointerDrag?.GetComponent<InventorySlotUI>();
+        if (source == null || source == this) return;
+        if (source._inventory == null || _inventory == null) return;
+        if (source._inventory == _inventory) return;
+
+        // Consume 먼저 (성공 시에만 Add) → 아이템 손실 방지
+        if (source._inventory.Consume(source.Item, source.Amount))
+        {
+            _inventory.Add(source.Item, source.Amount);
+            source._dropHandled = true;
+        }
+    }
+
     // ── 드래그 끝 ─────────────────────────────────────────────────────
     public void OnEndDrag(PointerEventData eventData)
     {
@@ -59,6 +86,9 @@ public class InventorySlotUI : MonoBehaviour, IBeginDragHandler, IDragHandler, I
             Destroy(_dragGhost);
             _dragGhost = null;
         }
+
+        // OnDrop에서 이미 처리됨
+        if (_dropHandled) { _dropHandled = false; return; }
 
         // UI 위에서 손 놓으면 취소
         if (eventData.pointerCurrentRaycast.gameObject != null) return;
@@ -83,7 +113,6 @@ public class InventorySlotUI : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     {
         if (_inventory == null || Item == null) return;
 
-        // 스크린 좌표 → 지면 좌표 변환
         Vector3 dropPos = _unitTransform.position + _unitTransform.forward * 0.8f;
         if (Camera.main != null)
         {

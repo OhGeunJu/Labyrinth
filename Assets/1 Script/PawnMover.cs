@@ -21,6 +21,7 @@ public class PawnMover : MonoBehaviour
     float _baseMoveSpeed;
     UnitStats _stats;
     Inventory _inventory;
+    StatusEffectSystem _sfx;
 
     [Header("Athletics 성장")]
     [SerializeField] float athleticsGrowthRate = 0.005f;
@@ -42,6 +43,7 @@ public class PawnMover : MonoBehaviour
     {
         _stats     = stats;
         _inventory = inventory;
+        _sfx       = GetComponent<StatusEffectSystem>();
     }
 
     public void SetMoveTarget(Vector3 worldPoint)
@@ -103,8 +105,9 @@ public class PawnMover : MonoBehaviour
             else
             {
                 float weightCorrection = CalcWeightCorrection();
+                float sfxMult = _sfx != null ? _sfx.MoveSpeedMult : 1f;
                 float effectiveSpeed = _stats != null
-                    ? _baseMoveSpeed * (1f + _stats.Athletics / 100f) * weightCorrection
+                    ? _baseMoveSpeed * (1f + _stats.Athletics / 100f) * weightCorrection * sfxMult
                     : moveSpeed;
 
                 move += (to / dist) * effectiveSpeed;

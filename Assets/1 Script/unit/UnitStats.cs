@@ -12,6 +12,7 @@ public class UnitStats
     [Header("전투 기술 (0-100)")]
     public float MeleeAttack       = 1f;  // 근접무기: 공격 빈도, 블록 관통
     public float MeleeDefense      = 1f;  // 근접무기: 블록 확률
+    public float RangedDefense     = 1f;  // 원거리/투사체: 블록 확률
     public float PrecisionShooting = 1f;  // 원거리/마법: 동료 피격 회피율
 
     [Header("근접 무기 (0-100)")]
@@ -29,9 +30,23 @@ public class UnitStats
     public float Javelin   = 1f;
 
     [Header("마법 (0-100)")]
-    public float ElementalMagic = 1f;
-    public float DarkMagic      = 1f;
-    public float HolyMagic      = 1f;
+    public float ElementalMagic = 1f;  // 원소 마법 전반 (공격 빈도, 정확도)
+    public float DarkMagic      = 1f;  // 암흑 마법 전반
+    public float HolyMagic      = 1f;  // 신성 마법 전반
+
+    [Header("마법 원소 (0-100)")]
+    public float ElementalFire      = 1f;
+    public float ElementalIce       = 1f;
+    public float ElementalLightning = 1f;
+    public float ElementalPoison    = 1f;
+    public float DarkFire           = 1f;
+    public float DarkIce            = 1f;
+    public float DarkLightning      = 1f;
+    public float DarkPoison         = 1f;
+    public float HolyFire           = 1f;
+    public float HolyIce            = 1f;
+    public float HolyLightning      = 1f;
+    public float HolyPoison         = 1f;
 
     [Header("신체 기술 (0-100)")]
     public float MartialArts = 1f;
@@ -56,23 +71,44 @@ public class UnitStats
     public float GetAttackCombatSkill(bool unarmed)  => unarmed ? MartialArts : MeleeAttack;
     public float GetDefenseCombatSkill(bool unarmed) => unarmed ? MartialArts : MeleeDefense;
 
-    // 무기 타입에 따른 숙련도 반환
+    // 무기 타입에 따른 원소 숙련도 반환
     public float GetSkillForWeapon(WeaponType type) => type switch
     {
-        WeaponType.OneHandSword   => OneHandSword,
-        WeaponType.OneHandAxe     => OneHandAxe,
-        WeaponType.OneHandMace    => OneHandMace,
-        WeaponType.TwoHandSword   => TwoHandSword,
-        WeaponType.TwoHandAxe     => TwoHandAxe,
-        WeaponType.TwoHandMace    => TwoHandMace,
-        WeaponType.Polearm        => Polearm,
-        WeaponType.Bow            => Bow,
-        WeaponType.Crossbow       => Crossbow,
-        WeaponType.Javelin        => Javelin,
-        WeaponType.ElementalMagic => ElementalMagic,
-        WeaponType.DarkMagic      => DarkMagic,
-        WeaponType.HolyMagic      => HolyMagic,
-        _                         => MartialArts,   // Unarmed
+        WeaponType.OneHandSword      => OneHandSword,
+        WeaponType.OneHandAxe        => OneHandAxe,
+        WeaponType.OneHandMace       => OneHandMace,
+        WeaponType.TwoHandSword      => TwoHandSword,
+        WeaponType.TwoHandAxe        => TwoHandAxe,
+        WeaponType.TwoHandMace       => TwoHandMace,
+        WeaponType.Polearm           => Polearm,
+        WeaponType.Bow               => Bow,
+        WeaponType.Crossbow          => Crossbow,
+        WeaponType.Javelin           => Javelin,
+        WeaponType.ElementalFire     => ElementalFire,
+        WeaponType.ElementalIce      => ElementalIce,
+        WeaponType.ElementalLightning=> ElementalLightning,
+        WeaponType.ElementalPoison   => ElementalPoison,
+        WeaponType.DarkFire          => DarkFire,
+        WeaponType.DarkIce           => DarkIce,
+        WeaponType.DarkLightning     => DarkLightning,
+        WeaponType.DarkPoison        => DarkPoison,
+        WeaponType.HolyFire          => HolyFire,
+        WeaponType.HolyIce           => HolyIce,
+        WeaponType.HolyLightning     => HolyLightning,
+        WeaponType.HolyPoison        => HolyPoison,
+        _                            => MartialArts,  // Unarmed
+    };
+
+    // 마법 카테고리 스킬 반환 (정확도·빈도 계산용, MeleeAttack 역할)
+    public float GetMagicCategorySkill(WeaponType type) => type switch
+    {
+        WeaponType.ElementalFire or WeaponType.ElementalIce
+        or WeaponType.ElementalLightning or WeaponType.ElementalPoison => ElementalMagic,
+        WeaponType.DarkFire or WeaponType.DarkIce
+        or WeaponType.DarkLightning or WeaponType.DarkPoison           => DarkMagic,
+        WeaponType.HolyFire or WeaponType.HolyIce
+        or WeaponType.HolyLightning or WeaponType.HolyPoison           => HolyMagic,
+        _ => 0f,
     };
 
     // 무기 타입에 따른 숙련도 성장
@@ -80,20 +116,29 @@ public class UnitStats
     {
         switch (type)
         {
-            case WeaponType.OneHandSword:   OneHandSword   = Mathf.Min(100f, OneHandSword   + amount); break;
-            case WeaponType.OneHandAxe:     OneHandAxe     = Mathf.Min(100f, OneHandAxe     + amount); break;
-            case WeaponType.OneHandMace:    OneHandMace    = Mathf.Min(100f, OneHandMace    + amount); break;
-            case WeaponType.TwoHandSword:   TwoHandSword   = Mathf.Min(100f, TwoHandSword   + amount); break;
-            case WeaponType.TwoHandAxe:     TwoHandAxe     = Mathf.Min(100f, TwoHandAxe     + amount); break;
-            case WeaponType.TwoHandMace:    TwoHandMace    = Mathf.Min(100f, TwoHandMace    + amount); break;
-            case WeaponType.Polearm:        Polearm        = Mathf.Min(100f, Polearm        + amount); break;
-            case WeaponType.Bow:            Bow            = Mathf.Min(100f, Bow            + amount); break;
-            case WeaponType.Crossbow:       Crossbow       = Mathf.Min(100f, Crossbow       + amount); break;
-            case WeaponType.Javelin:        Javelin        = Mathf.Min(100f, Javelin        + amount); break;
-            case WeaponType.ElementalMagic: ElementalMagic = Mathf.Min(100f, ElementalMagic + amount); break;
-            case WeaponType.DarkMagic:      DarkMagic      = Mathf.Min(100f, DarkMagic      + amount); break;
-            case WeaponType.HolyMagic:      HolyMagic      = Mathf.Min(100f, HolyMagic      + amount); break;
-            default:                        MartialArts    = Mathf.Min(100f, MartialArts    + amount); break;
+            case WeaponType.OneHandSword:       OneHandSword       = Mathf.Min(100f, OneHandSword       + amount); break;
+            case WeaponType.OneHandAxe:         OneHandAxe         = Mathf.Min(100f, OneHandAxe         + amount); break;
+            case WeaponType.OneHandMace:        OneHandMace        = Mathf.Min(100f, OneHandMace        + amount); break;
+            case WeaponType.TwoHandSword:       TwoHandSword       = Mathf.Min(100f, TwoHandSword       + amount); break;
+            case WeaponType.TwoHandAxe:         TwoHandAxe         = Mathf.Min(100f, TwoHandAxe         + amount); break;
+            case WeaponType.TwoHandMace:        TwoHandMace        = Mathf.Min(100f, TwoHandMace        + amount); break;
+            case WeaponType.Polearm:            Polearm            = Mathf.Min(100f, Polearm            + amount); break;
+            case WeaponType.Bow:                Bow                = Mathf.Min(100f, Bow                + amount); break;
+            case WeaponType.Crossbow:           Crossbow           = Mathf.Min(100f, Crossbow           + amount); break;
+            case WeaponType.Javelin:            Javelin            = Mathf.Min(100f, Javelin            + amount); break;
+            case WeaponType.ElementalFire:      ElementalFire      = Mathf.Min(100f, ElementalFire      + amount); break;
+            case WeaponType.ElementalIce:       ElementalIce       = Mathf.Min(100f, ElementalIce       + amount); break;
+            case WeaponType.ElementalLightning: ElementalLightning = Mathf.Min(100f, ElementalLightning + amount); break;
+            case WeaponType.ElementalPoison:    ElementalPoison    = Mathf.Min(100f, ElementalPoison    + amount); break;
+            case WeaponType.DarkFire:           DarkFire           = Mathf.Min(100f, DarkFire           + amount); break;
+            case WeaponType.DarkIce:            DarkIce            = Mathf.Min(100f, DarkIce            + amount); break;
+            case WeaponType.DarkLightning:      DarkLightning      = Mathf.Min(100f, DarkLightning      + amount); break;
+            case WeaponType.DarkPoison:         DarkPoison         = Mathf.Min(100f, DarkPoison         + amount); break;
+            case WeaponType.HolyFire:           HolyFire           = Mathf.Min(100f, HolyFire           + amount); break;
+            case WeaponType.HolyIce:            HolyIce            = Mathf.Min(100f, HolyIce            + amount); break;
+            case WeaponType.HolyLightning:      HolyLightning      = Mathf.Min(100f, HolyLightning      + amount); break;
+            case WeaponType.HolyPoison:         HolyPoison         = Mathf.Min(100f, HolyPoison         + amount); break;
+            default:                            MartialArts        = Mathf.Min(100f, MartialArts        + amount); break;
         }
     }
 
@@ -110,6 +155,7 @@ public class UnitStats
 
             MeleeAttack       = Random.Range(data.MeleeAttackRange.x,       data.MeleeAttackRange.y),
             MeleeDefense      = Random.Range(data.MeleeDefenseRange.x,      data.MeleeDefenseRange.y),
+            RangedDefense     = Random.Range(data.RangedDefenseRange.x,     data.RangedDefenseRange.y),
             PrecisionShooting = Random.Range(data.PrecisionShootingRange.x, data.PrecisionShootingRange.y),
 
             OneHandSword = Random.Range(data.OneHandSwordRange.x, data.OneHandSwordRange.y),
@@ -127,6 +173,19 @@ public class UnitStats
             ElementalMagic = Random.Range(data.ElementalMagicRange.x, data.ElementalMagicRange.y),
             DarkMagic      = Random.Range(data.DarkMagicRange.x,      data.DarkMagicRange.y),
             HolyMagic      = Random.Range(data.HolyMagicRange.x,      data.HolyMagicRange.y),
+
+            ElementalFire      = Random.Range(data.ElementalFireRange.x,      data.ElementalFireRange.y),
+            ElementalIce       = Random.Range(data.ElementalIceRange.x,       data.ElementalIceRange.y),
+            ElementalLightning = Random.Range(data.ElementalLightningRange.x, data.ElementalLightningRange.y),
+            ElementalPoison    = Random.Range(data.ElementalPoisonRange.x,    data.ElementalPoisonRange.y),
+            DarkFire           = Random.Range(data.DarkFireRange.x,           data.DarkFireRange.y),
+            DarkIce            = Random.Range(data.DarkIceRange.x,            data.DarkIceRange.y),
+            DarkLightning      = Random.Range(data.DarkLightningRange.x,      data.DarkLightningRange.y),
+            DarkPoison         = Random.Range(data.DarkPoisonRange.x,         data.DarkPoisonRange.y),
+            HolyFire           = Random.Range(data.HolyFireRange.x,           data.HolyFireRange.y),
+            HolyIce            = Random.Range(data.HolyIceRange.x,            data.HolyIceRange.y),
+            HolyLightning      = Random.Range(data.HolyLightningRange.x,      data.HolyLightningRange.y),
+            HolyPoison         = Random.Range(data.HolyPoisonRange.x,         data.HolyPoisonRange.y),
 
             MartialArts = Random.Range(data.MartialArtsRange.x, data.MartialArtsRange.y),
             Evasion     = Random.Range(data.EvasionRange.x,     data.EvasionRange.y),

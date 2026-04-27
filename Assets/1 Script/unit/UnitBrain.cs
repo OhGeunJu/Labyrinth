@@ -17,6 +17,7 @@ public class UnitBrain : MonoBehaviour
     UnitBlackboard _bb;
     BTNode _root;
     float _tickTimer;
+    bool _isDead;
 
     // BodyPartSystem 없는 유닛을 위한 폴백 HP
     float _hp;
@@ -27,12 +28,14 @@ public class UnitBrain : MonoBehaviour
     public UnitStats Stats { get; private set; }
     public Inventory Inventory { get; private set; }
     public Equipment Equipment { get; private set; }
+    public UnitPriorities Priorities { get; private set; }
 
     void Awake()
     {
         _mover    = GetComponent<PawnMover>();
         Inventory = gameObject.AddComponent<Inventory>();
         Equipment = gameObject.AddComponent<Equipment>();
+        gameObject.AddComponent<StatusEffectSystem>();
 
         Stats = UnitStats.FromData(unitData);
 
@@ -61,7 +64,7 @@ public class UnitBrain : MonoBehaviour
         bool isEnemy  = faction != null && faction.Type == FactionType.Enemy;
         bool isMinion = unitData is MinionData;
         if (!isEnemy && !isMinion)
-            gameObject.AddComponent<UnitPriorities>();
+            Priorities = gameObject.AddComponent<UnitPriorities>();
     }
 
 
@@ -82,6 +85,8 @@ public class UnitBrain : MonoBehaviour
     }
 
     // BodyPartSystem 없는 유닛용 폴백
+    public void TakeDamage(DamageInfo info) => TakeDamage(info.Amount);
+
     public void TakeDamage(float damage)
     {
         _hp = Mathf.Max(0f, _hp - damage);
@@ -91,8 +96,31 @@ public class UnitBrain : MonoBehaviour
 
     public void Die()
     {
+        if (_isDead) return;
+        _isDead = true;
+
         OnUnitDied?.Invoke(this);
+
+        var faction = GetComponent<Faction>();
+        if (faction != null && faction.Type == FactionType.Enemy)
+        {
+            BecomeCorpse();
+            return;
+        }
+
         Destroy(gameObject);
+    }
+
+    void BecomeCorpse()
+    {
+        var corpse = gameObject.AddComponent<Corpse>();
+        corpse.Init(unitData != null ? unitData.RaceName : name, Inventory);
+
+        enabled = false;
+        if (_mover != null) _mover.enabled = false;
+
+        var combat = GetComponent<CombatHandler>();
+        if (combat != null) combat.enabled = false;
     }
 
     public void Draft()

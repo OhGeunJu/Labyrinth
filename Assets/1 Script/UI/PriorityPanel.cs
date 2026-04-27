@@ -26,7 +26,7 @@ public class PriorityPanel : MonoBehaviour
     void Start()
     {
         panel.SetActive(false);
-        selectionManager.OnSelectionChanged += OnSelectionChanged;
+selectionManager.OnSelectionChanged += OnSelectionChanged;
     }
 
     void OnDestroy()

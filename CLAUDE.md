@@ -60,27 +60,81 @@ All stats are 0–100. `UnitData` holds a `Vector2` range for each stat used to 
 | Category | Fields |
 |---|---|
 | **속성** | Strength, Toughness, Dexterity, Cognition |
-| **전투 기술** | MeleeAttack, MeleeDefense, PrecisionShooting |
+| **전투 기술** | MeleeAttack, MeleeDefense, RangedDefense, PrecisionShooting |
 | **근접 무기** | OneHandSword, OneHandAxe, OneHandMace, TwoHandSword, TwoHandAxe, TwoHandMace, Polearm |
 | **원거리 무기** | Bow, Crossbow, Javelin |
-| **마법** | ElementalMagic, DarkMagic, HolyMagic |
+| **마법 (카테고리)** | ElementalMagic, DarkMagic, HolyMagic |
+| **마법 원소** | ElementalFire/Ice/Lightning/Poison, DarkFire/Ice/Lightning/Poison, HolyFire/Ice/Lightning/Poison |
 | **신체 기술** | MartialArts, Evasion, Athletics, Swimming |
 | **노동** | Labor, Mining, Growing, Cutting, Taming, Cooking, Medicine, Research, WeaponCrafting, ArmorCrafting, Alchemy |
 
 Key helpers on `UnitStats`:
-- `GetSkillForWeapon(WeaponType)` — returns the matching skill float
+- `GetSkillForWeapon(WeaponType)` — 원소별 무기 숙련도 반환
 - `GrowSkillForWeapon(WeaponType, amount)` — grows the matching skill (capped at 100)
+- `GetMagicCategorySkill(WeaponType)` — 마법 카테고리 스킬 반환 (정확도/빈도용, MeleeAttack 역할)
 - `GetAttackCombatSkill(bool unarmed)` — MartialArts if unarmed, else MeleeAttack
 - `GetDefenseCombatSkill(bool unarmed)` — MartialArts if unarmed, else MeleeDefense
+
+### Damage Type System (`DamageInfo.cs`, `DamageCategory.cs`, `PhysicalType.cs`, `DamageElement.cs`)
+
+모든 피해는 `DamageInfo` struct로 전달됨.
+
+```
+DamageCategory: Physical, Elemental, Dark, Holy
+PhysicalType:   Slash, Pierce, Blunt          (Category == Physical)
+DamageElement:  None, Fire, Ice, Lightning, Poison  (Category != Physical)
+```
+
+**물리 피해 효과:**
+- `Slash` — 추가 출혈 (actualDamage × 0.5 혈액 추가 감소)
+- `Pierce` — 갑옷 관통
+- `Blunt` — 데미지 × 1.3
+
+**마법 피해 효과 (EffectChance 확률로 발동):**
+
+| Category | Element | 효과 |
+|---|---|---|
+| Elemental | Fire | Burning DoT (5초, 5 DPS) |
+| Elemental | Ice | 갑옷 관통 |
+| Elemental | Lightning | 데미지 × 1.2 |
+| Elemental | Poison | AoE — TODO |
+| Dark | Fire | HealReduction 10초 |
+| Dark | Ice | Slowed 8초 (공격속도/이동속도 감소) |
+| Dark | Lightning | Weakened 8초 (공격/방어 확률 감소) |
+| Dark | Poison | CorruptionGauge +amount×0.3 |
+
+`WeaponData`에 `DamageCategory`, `PhysicalType`, `DamageElement`, `EffectChance` 필드 추가.  
+마법 무기(`WeaponType`이 마법 계열)는 `EffectiveDamageCategory/Element`로 자동 추론됨.
+
+### Status Effect System (`StatusEffectSystem.cs`)
+
+`UnitBrain.Awake`에서 자동 추가. 활성 효과 관리 및 보정값 제공.
+
+| 효과 | 영향 |
+|---|---|
+| `Burning` | `BodyPartSystem.TakeDamage` DoT 매 프레임 |
+| `HealReduction` | `HealMult < 1` |
+| `Slowed` | `AttackIntervalMult > 1`, `MoveSpeedMult < 1` |
+| `Weakened` | `AttackChanceMod < 1`, `DefenseChanceMod < 1` |
+| `CorruptionGauge` | 회복 불가 2차 피통 (Dark Poison 누적) |
+
+- `ApplyEffect(type, duration, strength)` — 동일 타입이면 duration/strength 갱신
+- `AddCorruption(amount)` — 부패 게이지 누적
 
 ### Combat System (`CombatHandler.cs`)
 
 `Equipment.MainHand` drives weapon type. `CombatHandler.Update()` branches on `weapon.IsRanged` to call `TryFireRanged` vs `TryAttack`.
 
 **Melee attack flow:**
-1. Block chance = `defenderMeleeDefense / (attackerMeleeAttack + defenderMeleeDefense)` (unarmed: MartialArts)
-2. Dodge chance = `defenderEvasion / (attackerMeleeAttack + defenderEvasion)`
-3. On hit → `BodyPartSystem.TakeDamage` or `UnitBrain.TakeDamage`
+1. Weakened 디버프: attackSkill × AttackChanceMod
+2. Block chance = `(defenderMeleeDefense + shield.BlockBonus) / (attackerMeleeAttack + effective)` × DefenseChanceMod
+3. Dodge chance = `defenderEvasion / (attackerMeleeAttack + evasion)` × DefenseChanceMod
+4. On hit → `BodyPartSystem.TakeDamage(DamageInfo)` or `UnitBrain.TakeDamage(DamageInfo)`
+
+**Ranged attack flow:**
+1. `TryFireRanged` — Cognition × (1 − distancePenalty) accuracy roll
+2. `TryBlockRanged` — `(RangedDefense + shield.RangedBlockBonus) / (attackerSkill + effective)` × DefenseChanceMod
+3. `FireRanged` — PrecisionShooting split: 60–100% hit target, 0–40% friendly fire
 
 **Damage formula:**
 ```
@@ -99,6 +153,7 @@ interval = weapon.BaseAttackInterval
          / [1 + Strength/100 × 0.5]  // IsLargeWeapon only
          / statusCorrection
          / weightCorrection
+         × AttackIntervalMult        // StatusEffectSystem (Slowed 등)
 ```
 
 **Weight correction:** `maxCarryWeight = Strength × 5`. If overloaded: `weightCorrection = maxWeight / currentWeight`.
@@ -106,10 +161,6 @@ interval = weapon.BaseAttackInterval
 **Status correction** (limb disability):
 - RightArm × 0.5 + LeftArm × 0.3 + RightLeg × 0.1 + LeftLeg × 0.1
 - Both arms OR both legs disabled → 0
-
-**Ranged / magic flow:**
-1. `TryFireRanged` — Cognition × (1 − distancePenalty) accuracy roll; fail = miss
-2. `FireRanged` — PrecisionShooting split: 60–100% hit target, 0–40% friendly fire
 
 ### Body-Part System (`BodyPartSystem.cs`)
 
@@ -122,22 +173,35 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 - `TryKnockOut`: `resistChance = Toughness / 100`. Fail → `IsKnockedOut = true`
 - `TryStagger`: triggered when Blood < 30%. Duration = `base × (1 − Toughness/100)`, min 0.2s
-- `actualDamage = damage / (1 + Toughness / 100)`
+- `TakeDamage(DamageInfo)` 처리 순서:
+  1. 타입 배율 (Blunt ×1.3, Lightning ×1.2)
+  2. 갑옷 감소 (Pierce/Elemental Ice는 관통)
+  3. Toughness 저항 `/ (1 + Toughness/100)`
+  4. 베기 추가 출혈
+  5. 상태이상 발동 (EffectChance 확률)
 
-### Equipment System (`Equipment.cs`, `WeaponData.cs`, `WeaponType.cs`)
+**부위 → 갑옷 슬롯 매핑:** Head→Head, Chest/Abdomen→Chest, Arms→Hands, Legs→Legs
 
-`Equipment` auto-added by `UnitBrain.Awake`. Manages `MainHand` slot.
+### Equipment System (`Equipment.cs`, `WeaponData.cs`, `ArmorData.cs`)
 
-- `Equip(WeaponData)` — consumes from `Inventory`; syncs `Blackboard.IsUnarmed`, `AttackDamage`, `AttackRange`
-- `Unequip()` — returns to `Inventory`
-- `OffHandLocked` — true when `IsLargeWeapon`
+`Equipment` auto-added by `UnitBrain.Awake`.
 
-`WeaponData : ItemData` fields: `WeaponType`, `BaseDamage`, `BaseAttackInterval`, `AttackRange`, `IsLargeWeapon`, `IsBladed`, `IsRanged`.
+**슬롯:**
+- `MainHand` — 무기 (`Equip` / `Unequip`)
+- `OffHand` — 방패 또는 보조 무기 (`EquipOffHand` / `UnequipOffHand`); `OffHandLocked` when IsLargeWeapon
+- `Head / Chest / Hands / Legs` — 갑옷 (`EquipArmor(ArmorData)` / `UnequipArmor(ArmorSlot)`)
+
+`WeaponData : ItemData` fields: `WeaponType`, `BaseDamage`, `BaseAttackInterval`, `AttackRange`, `IsLargeWeapon`, `IsBladed`, `IsRanged`, `BlockBonus`, `RangedBlockBonus`, `DamageCategory`, `PhysicalType`, `DamageElement`, `EffectChance`.
+
+`ArmorData : ItemData` fields: `ArmorSlot`, `DamageReduction`.
+
+`WeaponType` enum: Unarmed, Shield, OneHand/TwoHand 근접, Bow/Crossbow/Javelin, ElementalFire/Ice/Lightning/Poison, DarkFire/Ice/Lightning/Poison, HolyFire/Ice/Lightning/Poison.
 
 ### Movement (`PawnMover.cs`)
 
 - `SetStats(UnitStats, Inventory)` — enables Athletics speed and weight correction
-- Effective speed: `baseMoveSpeed × (1 + Athletics/100) × weightCorrection`
+- Effective speed: `baseMoveSpeed × (1 + Athletics/100) × weightCorrection × MoveSpeedMult`
+- `MoveSpeedMult` — `StatusEffectSystem`에서 제공 (Slowed 디버프 반영)
 - `Athletics` grows per second while moving
 
 ### Job System (`Assets/1 Script/Job/`)
@@ -166,7 +230,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - `Get(category)` / `Set(category, value)` / `Increase` / `Decrease`
 - `IsEnabled(category)` — returns false if 0
 
-`PriorityPanel` — code-generated UI on Canvas. P key to toggle. `-/+` buttons per category.
+`PriorityPanel` — Inspector 기반 UI. P key to toggle.
 
 `JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard.
 
@@ -186,7 +250,8 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 ### Item System (`Assets/1 Script/Item/`)
 
 - `ItemData` — `ItemName`, `Description`, `ResourceType`, `Icon`, `MaxStack`, `Weight`
-- `WeaponData : ItemData` — combat fields
+- `WeaponData : ItemData` — combat + damage type fields
+- `ArmorData : ItemData` — `ArmorSlot`, `DamageReduction`
 - `MinionData : UnitData` — summon cost, AllowedJobs
 - `Inventory` — `Add / Consume / GetQuantity / GetTotalWeight / GetTotalByType / ConsumeByType`
 - `DroppedItem` — spawned via `DroppedItem.Spawn(item, amount, position)`; auto-registers `GroundHaulJob`
@@ -205,10 +270,17 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 | `SelectionManager` | Left click (pawn/minion) / drag | Select Player-faction units |
 | `MoveController` | Right click (ground) | Move **Wanderers** only |
 | `MoveController` | Right click (enemy) | Set Target on **Wanderers** only |
-| `PawnInventoryPanel` | I key | Open inventory of selected unit |
+| `PawnInventoryPanel` | I key | Open inventory / equipment of selected unit |
 | `InventorySlotUI` | Drag outside UI | Drop item at cursor world position |
 | `PriorityPanel` | P key | Toggle priority panel |
 | `CameraController` | WASD / middle-drag / scroll | Pan / rotate / zoom |
+
+### UI System (`Assets/1 Script/UI/`)
+
+- `UnitInfoUI` — 선택 유닛 상세 정보 표시 (혈액바, 신체부위, 장착, 스탯, 상태이상, 노동)
+- `PawnInventoryPanel` — I키로 인벤토리 열기; 아이템 클릭 시 장착, 장착 슬롯 클릭 시 해제; 시체 루팅 지원
+- `EquipmentSlotUI` — 장비 슬롯 표시 컴포넌트 (슬롯명 + 아이콘 + 클릭 해제)
+- `DraggablePanel` — 헤더 오브젝트에 붙이고 `Target`에 이동할 패널 RectTransform 연결; 드래그로 패널 이동
 
 ### Pathfinding
 
@@ -220,7 +292,8 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 |---|---|---|
 | `UnitData` | `DungeonColony/UnitData` | RaceName, MaxHP, MoveSpeed, AttackDamage, AttackRange, DetectRange + stat ranges |
 | `MinionData` | `DungeonColony/MinionData` | (UnitData fields) + SummonCostType, SummonCostAmount, AllowedJobs |
-| `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged |
+| `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged, BlockBonus, RangedBlockBonus, DamageCategory, PhysicalType, DamageElement, EffectChance |
+| `ArmorData` | `DungeonColony/ArmorData` | ArmorSlot, DamageReduction |
 | `WallData` | `DungeonColony/WallData` | Hardness, DropAmount |
 | `DungeonCoreData` | `DungeonColony/DungeonCoreData` | CoreType, BaseRadius, MaxGrade, per-frame modifiers |
 | `ResourceNodeData` | `DungeonColony/ResourceNodeData` | ResourceType, GaugeRequired, DropMin, DropMax, DropItem |
@@ -230,7 +303,8 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 - `CombatHandler` — Cognition moving-target penalty not implemented (distance only)
 - `CombatHandler` — Dexterity reload/fire-rate for ranged not implemented
-- `UnitInfoUI` — shows basic stats only; weapon skill details not shown
+- `StatusEffectSystem` — Elemental Poison AoE 미구현
+- `StatusEffectSystem` — Holy 계열 힐/버프 미구현 (아군 전용)
 
 ## Upcoming Systems
 

@@ -21,6 +21,7 @@ public class SelectionManager : MonoBehaviour
 
     public Action<PawnMover, bool> OnSelectionChanged;
     public static event Action<ResourceNode> OnNodeSelected;
+    public static event Action<Corpse> OnCorpseSelected;
 
     void Awake()
     {
@@ -95,6 +96,13 @@ public class SelectionManager : MonoBehaviour
                 ClearSelection();
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(node);
+                return;
+            }
+
+            var corpse = hit.collider.GetComponent<Corpse>();
+            if (corpse != null)
+            {
+                OnCorpseSelected?.Invoke(corpse);
                 return;
             }
 

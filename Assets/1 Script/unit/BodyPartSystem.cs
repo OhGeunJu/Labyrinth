@@ -21,6 +21,8 @@ public class BodyPartSystem : MonoBehaviour
 
     PawnMover _mover;
     UnitBrain _brain;
+    Equipment _equipment;
+    Equipment Equip => _equipment ??= GetComponent<Equipment>();
     bool _bloodStaggerTriggered;  // 30% 임계값 중복 방지
 
     void Awake()
@@ -49,12 +51,45 @@ public class BodyPartSystem : MonoBehaviour
     }
 
     // ── 피해 처리 ────────────────────────────────────────────────────
-    public void TakeDamage(float damage)
+    public void TakeDamage(float damage) =>
+        TakeDamage(new DamageInfo { Amount = damage, Category = DamageCategory.Physical, PhysicalType = PhysicalType.Blunt });
+
+    public void TakeDamage(DamageInfo info)
     {
-        // 강인함 피해 저항: 강인함 0→100%, 50→67%, 100→50%
-        float actualDamage = damage / (1f + _brain.Stats.Toughness / 100f);
+        float damage = info.Amount;
+        var sfx = GetComponent<StatusEffectSystem>();
+
+        // 타입 배율
+        if (info.Category == DamageCategory.Physical && info.PhysicalType == PhysicalType.Blunt)
+            damage *= 1.3f;
+        if (info.Category == DamageCategory.Elemental && info.Element == DamageElement.Lightning)
+            damage *= 1.2f;
+
+        // 보호막 흡수 (타입 배율 이후, 갑옷 이전)
+        if (sfx != null && sfx.ShieldPool > 0f)
+        {
+            damage = sfx.AbsorbShield(damage);
+            if (damage <= 0f) return;
+        }
 
         var partType = GetRandomBodyPart();
+
+        // 갑옷 감소 (관통 계열 제외)
+        bool isPiercing = (info.Category == DamageCategory.Physical  && info.PhysicalType == PhysicalType.Pierce)
+                       || (info.Category == DamageCategory.Elemental && info.Element      == DamageElement.Ice);
+        if (!isPiercing)
+        {
+            var armor = Equip?.GetArmor(BodyPartToArmorSlot(partType));
+            if (armor != null)
+                damage = Mathf.Max(0f, damage - armor.DamageReduction);
+        }
+
+        // Shielded 버프: 피해 감소 (%)
+        if (sfx != null && sfx.DamageReductionBonus > 0f)
+            damage = Mathf.Max(0f, damage * (1f - sfx.DamageReductionBonus));
+
+        // 강인함 저항
+        float actualDamage = damage / (1f + _brain.Stats.Toughness / 100f);
         var part     = _parts[partType];
 
         bool wasDisabled  = part.IsDisabled;
@@ -64,6 +99,48 @@ public class BodyPartSystem : MonoBehaviour
 
         if (!wasDisabled  && part.IsDisabled)  OnPartDisabledInternal(partType);
         if (!wasDestroyed && part.IsDestroyed) OnPartDestroyedInternal(partType);
+
+        // 베기: 추가 출혈
+        if (info.Category == DamageCategory.Physical && info.PhysicalType == PhysicalType.Slash)
+        {
+            Blood = Mathf.Max(0f, Blood - actualDamage * 0.5f);
+            if (Blood <= 0f) { Die(); return; }
+        }
+
+        // 상태이상 발동 (Shielded 저항 반영)
+        if (info.EffectChance > 0f)
+        {
+            float resist = sfx != null ? sfx.StatusResistBonus : 0f;
+            if (UnityEngine.Random.value < info.EffectChance * (1f - resist))
+                TryApplyStatusEffect(info, sfx);
+        }
+    }
+
+    void TryApplyStatusEffect(DamageInfo info, StatusEffectSystem sfx = null)
+    {
+        sfx ??= GetComponent<StatusEffectSystem>();
+        if (sfx == null) return;
+
+        switch (info.Category)
+        {
+            case DamageCategory.Elemental:
+                if (info.Element == DamageElement.Fire)
+                    sfx.ApplyEffect(StatusEffectType.Burning, 5f, 5f);
+                // Ice: 방어구 관통 (갑옷 시스템에서 처리)
+                if (info.Element == DamageElement.Poison)
+                    ApplyPoisonAoE(info.Amount);
+                break;
+
+            case DamageCategory.Dark:
+                switch (info.Element)
+                {
+                    case DamageElement.Fire:      sfx.ApplyEffect(StatusEffectType.HealReduction, 10f, 0.5f); break;
+                    case DamageElement.Ice:       sfx.ApplyEffect(StatusEffectType.Slowed,         8f, 0.5f); break;
+                    case DamageElement.Lightning: sfx.ApplyEffect(StatusEffectType.Weakened,       8f, 0.5f); break;
+                    case DamageElement.Poison:    sfx.AddCorruption(info.Amount * 0.3f);                      break;
+                }
+                break;
+        }
     }
 
     // ── 기능 상실 (0) ────────────────────────────────────────────────
@@ -236,4 +313,60 @@ public class BodyPartSystem : MonoBehaviour
     }
 
     public BodyPart GetPart(BodyPartType type) => _parts[type];
+
+    public void HealBlood(float amount)
+    {
+        Blood = Mathf.Min(maxBlood, Blood + amount);
+    }
+
+    public void HealBodyParts(float amount)
+    {
+        foreach (var part in _parts.Values)
+        {
+            if (part.IsDestroyed) continue;
+            bool wasDisabled = part.IsDisabled;
+            part.Heal(amount);
+            // 기능 상실 → 회복 시 상태 재갱신
+            if (wasDisabled && !part.IsDisabled)
+            {
+                if (part.Type == BodyPartType.LeftLeg || part.Type == BodyPartType.RightLeg)
+                    UpdateMoveAbility();
+                else if (part.Type == BodyPartType.LeftArm || part.Type == BodyPartType.RightArm)
+                    UpdateAttackAbility();
+            }
+        }
+    }
+
+    // 혈액 + 신체 부위 동시 회복 (힐 계열 공통)
+    public void Heal(float bloodAmount, float partsAmount)
+    {
+        HealBlood(bloodAmount);
+        HealBodyParts(partsAmount);
+    }
+
+    void ApplyPoisonAoE(float originalDamage)
+    {
+        float aoeDamage = originalDamage * 0.5f;
+        foreach (var col in Physics.OverlapSphere(transform.position, 3f))
+        {
+            if (col.gameObject == gameObject) continue;
+            col.GetComponent<BodyPartSystem>()?.TakeDamage(new DamageInfo
+            {
+                Amount       = aoeDamage,
+                Category     = DamageCategory.Elemental,
+                Element      = DamageElement.Poison,
+                EffectChance = 0f,  // AoE 연쇄 없음
+            });
+        }
+        Debug.Log($"[Poison] {gameObject.name} 주변 독 AoE {aoeDamage:F1} 피해");
+    }
+
+    static ArmorSlot BodyPartToArmorSlot(BodyPartType type) => type switch
+    {
+        BodyPartType.Head                                  => ArmorSlot.Head,
+        BodyPartType.Chest or BodyPartType.Abdomen         => ArmorSlot.Chest,
+        BodyPartType.LeftArm or BodyPartType.RightArm      => ArmorSlot.Hands,
+        BodyPartType.LeftLeg or BodyPartType.RightLeg      => ArmorSlot.Legs,
+        _                                                   => ArmorSlot.Chest,
+    };
 }

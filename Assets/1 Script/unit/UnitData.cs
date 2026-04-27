@@ -22,6 +22,7 @@ public class UnitData : ScriptableObject
     [Header("전투 기술 범위")]
     public Vector2 MeleeAttackRange       = new Vector2(1f, 10f);
     public Vector2 MeleeDefenseRange      = new Vector2(1f, 10f);
+    public Vector2 RangedDefenseRange     = new Vector2(1f, 10f);
     public Vector2 PrecisionShootingRange = new Vector2(1f, 10f);
 
     [Header("근접 무기 범위")]
@@ -42,6 +43,20 @@ public class UnitData : ScriptableObject
     public Vector2 ElementalMagicRange = new Vector2(1f, 10f);
     public Vector2 DarkMagicRange      = new Vector2(1f, 10f);
     public Vector2 HolyMagicRange      = new Vector2(1f, 10f);
+
+    [Header("마법 원소 범위")]
+    public Vector2 ElementalFireRange      = new Vector2(1f, 10f);
+    public Vector2 ElementalIceRange       = new Vector2(1f, 10f);
+    public Vector2 ElementalLightningRange = new Vector2(1f, 10f);
+    public Vector2 ElementalPoisonRange    = new Vector2(1f, 10f);
+    public Vector2 DarkFireRange           = new Vector2(1f, 10f);
+    public Vector2 DarkIceRange            = new Vector2(1f, 10f);
+    public Vector2 DarkLightningRange      = new Vector2(1f, 10f);
+    public Vector2 DarkPoisonRange         = new Vector2(1f, 10f);
+    public Vector2 HolyFireRange           = new Vector2(1f, 10f);
+    public Vector2 HolyIceRange            = new Vector2(1f, 10f);
+    public Vector2 HolyLightningRange      = new Vector2(1f, 10f);
+    public Vector2 HolyPoisonRange         = new Vector2(1f, 10f);
 
     [Header("신체 기술 범위")]
     public Vector2 MartialArtsRange = new Vector2(1f, 10f);

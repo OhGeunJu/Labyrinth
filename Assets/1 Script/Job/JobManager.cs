@@ -9,7 +9,7 @@ public class JobManager : MonoBehaviour
         get
         {
             if (_instance == null)
-                Debug.LogError("[JobManager] �ν��Ͻ��� �����ϴ�.");
+                Debug.LogError("[JobManager] 인스턴스가 없습니다.");
             return _instance;
         }
     }
@@ -27,7 +27,7 @@ public class JobManager : MonoBehaviour
         _instance = this;
     }
 
-    // ���� ���/���� ������������������������������������������������������������������������
+    // ── 작업 등록/제거 ───────────────────────────────────────────────
     public void RegisterJob(JobBase job)
     {
         _jobs.Add(job);
@@ -48,16 +48,13 @@ public class JobManager : MonoBehaviour
 
     // 작업 요청 — 방랑자용 (유닛 개인 우선순위 사용)
     public JobBase RequestJob(UnitBrain unit)
-    {
-        var unitPriorities = unit.GetComponent<UnitPriorities>();
-        return RequestJobInternal(unit, null, unitPriorities);
-    }
+        => RequestJobInternal(unit, null, unit.Priorities);
 
     // 작업 요청 — 하수인용 (카테고리 필터 + 글로벌 우선순위)
-    public JobBase RequestJobFiltered(UnitBrain unit, System.Collections.Generic.List<JobCategory> allowed)
+    public JobBase RequestJobFiltered(UnitBrain unit, List<JobCategory> allowed)
         => RequestJobInternal(unit, allowed, null);
 
-    JobBase RequestJobInternal(UnitBrain unit, System.Collections.Generic.List<JobCategory> allowed, UnitPriorities unitPriorities)
+    JobBase RequestJobInternal(UnitBrain unit, List<JobCategory> allowed, UnitPriorities unitPriorities)
     {
         JobBase best      = null;
         int     bestScore = -1;
@@ -82,7 +79,7 @@ public class JobManager : MonoBehaviour
         return null;
     }
 
-    // ���� �Ϸ� ó�� ������������������������������������������������������������������������
+    // ── 작업 완료 처리 ───────────────────────────────────────────────
     public void CompleteJob(JobBase job)
     {
         _jobs.Remove(job);
