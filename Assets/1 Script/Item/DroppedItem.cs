@@ -33,7 +33,7 @@ public class DroppedItem : MonoBehaviour
 
     public void PickUp(Inventory inventory)
     {
-        inventory.Add(Item, Amount);
+        inventory.TryAdd(Item, Amount);
         Destroy(gameObject);
     }
 }

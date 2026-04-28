@@ -35,9 +35,6 @@ public class ResourceNode : MonoBehaviour
             if (brain != null && brain.Blackboard.AssignedNode == this)
                 brain.Blackboard.AssignedNode = null;
         _assigned.Clear();
-
-        if (MapManager.Instance != null)
-            MapManager.Instance.SetTile(TileCoord, TileData.MakePassable());
     }
 
     // 월드 위치에서 타일 좌표 자동 파생
@@ -49,8 +46,9 @@ public class ResourceNode : MonoBehaviour
 
     void Awake()
     {
-        Inventory = gameObject.AddComponent<Inventory>();
-        if (MapManager.Instance != null)
+        Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
+        // 빌드존 안일 때만 타일 막힘 표시 (시각화용). 실제 이동 차단은 콜라이더+NavMesh 담당.
+        if (MapManager.Instance != null && MapManager.Instance.IsInBuildZone(TileCoord))
             MapManager.Instance.SetTile(TileCoord, TileData.MakeImpassable());
     }
 
@@ -83,8 +81,8 @@ public class ResourceNode : MonoBehaviour
         _totalYielded++;
 
         // 노드 인벤토리에 쌓아둠
-        Inventory.Add(data.DropItem, amount);
-        Debug.Log($"[ResourceNode] {data.DropItem.ItemName} ×{amount} 적재 (누적: {Inventory.GetQuantity(data.DropItem)})");
+        Inventory.TryAdd(data.DropItem, amount);
+        Debug.Log($"[ResourceNode] {data.DropItem.ItemName} ×{amount} 적재 (누적: {Inventory.GetTotalQuantity(data.DropItem)})");
 
         // 운반 가능한 창고가 있으면 HaulJob 등록
         var storage = StorageBuilding.FindNearest(transform.position, data.DropItem);

@@ -14,7 +14,7 @@ public class StorageBuilding : MonoBehaviour
 
     void Awake()
     {
-        Inventory = gameObject.AddComponent<Inventory>();
+        Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
         Inventory.OnChanged += () => OnChanged?.Invoke();
         All.Add(this);
     }
@@ -25,15 +25,15 @@ public class StorageBuilding : MonoBehaviour
     public bool CanAccept(ItemData item)
     {
         if (allowedTypes.Count == 0) return true;
-        return allowedTypes.Contains(item.ResourceType);
+        // 자원 아이템만 ResourceType으로 필터링. 무기/방어구는 필터가 비어있을 때만 허용.
+        return item is ResourceItemData r && allowedTypes.Contains(r.ResourceType);
     }
 
     // 필터 통과 시에만 입고. 성공 여부 반환.
     public bool TryAdd(ItemData item, int amount)
     {
         if (!CanAccept(item)) return false;
-        Inventory.Add(item, amount);
-        return true;
+        return Inventory.TryAdd(item, amount) > 0;
     }
 
     // ── 정적 집계 (ResourceType 기반) ────────────────────────────────
@@ -51,7 +51,7 @@ public class StorageBuilding : MonoBehaviour
         foreach (var sb in All)
         {
             if (remaining <= 0) break;
-            remaining -= sb.Inventory.ConsumeByType(type, remaining);
+            remaining -= sb.Inventory.RemoveByType(type, remaining);
         }
         return remaining <= 0;
     }

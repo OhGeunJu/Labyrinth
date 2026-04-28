@@ -16,14 +16,28 @@ public class GridRenderer : MonoBehaviour
     readonly Dictionary<Vector2Int, GameObject> _blockOverlays   = new();
     readonly Dictionary<Vector2Int, GameObject> _previewOverlays = new();
 
-    void Start()  => MapManager.OnTileChanged += OnTileChanged;
+    void Start()
+    {
+        MapManager.OnTileChanged   += OnTileChanged;
+        MapManager.OnZoneRecentered += ClearBlockOverlays;
+    }
+
     void OnDestroy()
     {
-        MapManager.OnTileChanged -= OnTileChanged;
+        MapManager.OnTileChanged   -= OnTileChanged;
+        MapManager.OnZoneRecentered -= ClearBlockOverlays;
         HidePreview();
+        ClearBlockOverlays();
     }
 
     void OnTileChanged(Vector2Int pos) => RefreshBlockOverlay(pos);
+
+    void ClearBlockOverlays()
+    {
+        foreach (var obj in _blockOverlays.Values)
+            if (obj != null) Destroy(obj);
+        _blockOverlays.Clear();
+    }
 
     void RefreshBlockOverlay(Vector2Int pos)
     {

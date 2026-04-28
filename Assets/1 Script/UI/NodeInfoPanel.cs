@@ -1,171 +1,189 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
+// 자원 노드 선택 시 정보 패널 표시.
+// 노드는 한 종류 자원만 쌓이므로 그리드 인벤토리 대신 단일 아이콘 + 수량으로 표시.
 public class NodeInfoPanel : MonoBehaviour
 {
+    [Header("씬 참조")]
+    [Tooltip("노드 선택 시 활성화될 패널 루트")]
     [SerializeField] GameObject panel;
-    [SerializeField] TextMeshProUGUI titleText;
+
+    [Tooltip("(선택) 노드 이름 표시 텍스트")]
+    [SerializeField] TextMeshProUGUI nameText;
+
+    [Tooltip("(선택) 게이지 진행도 텍스트")]
     [SerializeField] TextMeshProUGUI gaugeText;
+
+    [Header("재고 표시")]
+    [Tooltip("드롭 아이템 아이콘이 표시될 Image")]
+    [SerializeField] Image stockIcon;
+
+    [Tooltip("재고 수량 텍스트 (예: x12)")]
+    [SerializeField] TextMeshProUGUI stockCount;
+
+    [Tooltip("아이콘 크기 산정용 셀 크기. ItemData의 Width/Height에 곱해짐.")]
+    [SerializeField] float cellSize = 64f;
+
+    [Tooltip("재고가 0일 때 아이콘을 흐리게 표시")]
+    [SerializeField] Color emptyIconTint = new Color(1f, 1f, 1f, 0.25f);
+
+    [Header("배정")]
+    [Tooltip("선택된 폰들을 이 노드에 배정하는 버튼")]
     [SerializeField] Button assignButton;
-    [SerializeField] Transform assignedList;
-    [SerializeField] GameObject pawnEntryPrefab;
-    [SerializeField] Button closeButton;
-    [SerializeField] SelectionManager selectionManager;
-    [SerializeField] Transform slotContainer;
-    [SerializeField] GameObject slotPrefab;
+
+    [Tooltip("배정된 폰 목록 부모 (VerticalLayoutGroup이 있는 Transform)")]
+    [SerializeField] Transform assignedListRoot;
+
+    [Tooltip("폰 엔트리 프리팹 (PawnEntryUI 컴포넌트 포함)")]
+    [SerializeField] PawnEntryUI pawnEntryPrefab;
+
+    [Header("이송")]
+    [Tooltip("노드 → 선택된 폰으로 재고를 이송하는 버튼")]
     [SerializeField] Button transferButton;
 
     ResourceNode _current;
-    readonly List<GameObject> _entries = new();
-    readonly List<GameObject> _slots   = new();
+    SelectionManager _selection;
 
-    string _lastTitle;
-    float  _lastGauge = -1f;
+    void Awake()
+    {
+        if (panel != null) panel.SetActive(false);
+        if (assignButton != null)   assignButton.onClick.AddListener(AssignSelected);
+        if (transferButton != null) transferButton.onClick.AddListener(TransferToSelected);
+    }
 
     void Start()
     {
-        SelectionManager.OnNodeSelected += OnNodeSelected;
-        panel.SetActive(false);
-        assignButton.onClick.AddListener(AssignSelected);
-        if (closeButton != null)
-            closeButton.onClick.AddListener(Close);
-        if (transferButton != null)
-            transferButton.onClick.AddListener(TransferToSelected);
+        _selection = FindFirstObjectByType<SelectionManager>();
     }
 
-    void OnDestroy()
+    void OnEnable()  => SelectionManager.OnNodeSelected += OnNodeSelected;
+    void OnDisable()
     {
         SelectionManager.OnNodeSelected -= OnNodeSelected;
-        UnsubscribeInventory();
-    }
-
-    void Close()
-    {
-        UnsubscribeInventory();
-        _current = null;
-        panel.SetActive(false);
-    }
-
-    void OnNodeSelected(ResourceNode node)
-    {
-        UnsubscribeInventory();
-        _current = node;
-
-        if (_current != null)
-            _current.Inventory.OnChanged += RefreshSlots;
-
-        // 새 노드 선택 → 캐시 초기화
-        _lastTitle = null;
-        _lastGauge = -1f;
-
-        panel.SetActive(node != null);
-        RefreshList();
-        RefreshSlots();
+        Unsubscribe();
     }
 
     void Update()
     {
-        if (_current == null) { panel.SetActive(false); return; }
-
-        if (titleText != null)
-        {
-            string newTitle = _current.Data != null
-                ? _current.Data.ResourceType.ToString()
-                : "자원 노드";
-            if (newTitle != _lastTitle)
-            {
-                titleText.text = newTitle;
-                _lastTitle = newTitle;
-            }
-        }
-
-        if (gaugeText != null)
-        {
-            float gauge = Mathf.Floor(_current.GaugeProgress * 100f);
-            if (!Mathf.Approximately(gauge, _lastGauge))
-            {
-                gaugeText.text = $"진행도: {gauge:F0}%";
-                _lastGauge = gauge;
-            }
-        }
+        if (_current != null && gaugeText != null)
+            gaugeText.text = $"{_current.GaugeProgress * 100f:F0}%";
     }
 
-    void RefreshSlots()
+    void OnNodeSelected(ResourceNode node)
     {
-        foreach (var s in _slots) Destroy(s);
-        _slots.Clear();
+        Unsubscribe();
+        _current = node;
 
-        if (_current == null || slotContainer == null || slotPrefab == null) return;
+        if (panel == null) return;
 
-        foreach (var stack in _current.Inventory.Slots)
+        if (node == null)
         {
-            var go = Instantiate(slotPrefab, slotContainer);
-            _slots.Add(go);
-
-            var icon = go.GetComponentInChildren<Image>();
-            var qty  = icon != null ? icon.transform.GetComponentInChildren<TextMeshProUGUI>() : null;
-
-            if (icon != null && stack.Item.Icon != null)
-                icon.sprite = stack.Item.Icon;
-            if (qty != null)
-                qty.text = $"x{stack.Quantity}";
-
-            var slotUI = go.GetComponent<InventorySlotUI>() ?? go.AddComponent<InventorySlotUI>();
-            slotUI.Init(stack.Item, stack.Quantity, _current.Inventory, _current.transform);
+            panel.SetActive(false);
+            return;
         }
-    }
 
-    void TransferToSelected()
-    {
-        if (_current == null || selectionManager == null) return;
-        if (selectionManager.Selected.Count == 0) return;
+        panel.SetActive(true);
 
-        var brain = selectionManager.Selected[0].GetComponent<UnitBrain>();
-        if (brain == null) return;
+        if (nameText != null && node.Data != null)
+            nameText.text = node.Data.ResourceType.ToString();
 
-        var nodeInv = _current.Inventory;
-        var pawnInv = brain.Inventory;
-
-        foreach (var slot in nodeInv.Slots)
-            pawnInv.Add(slot.Item, slot.Quantity);
-
-        nodeInv.Clear();
+        if (node.Inventory != null)
+            node.Inventory.OnChanged += RefreshStock;
+        RefreshStock();
+        RefreshAssigned();
     }
 
     void AssignSelected()
     {
-        if (_current == null || selectionManager == null) return;
-
-        foreach (var pawn in selectionManager.Selected)
+        if (_current == null || _selection == null) return;
+        int count = 0;
+        foreach (var pawn in _selection.Selected)
         {
             var brain = pawn.GetComponent<UnitBrain>();
-            if (brain != null)
-                _current.Assign(brain);
+            if (brain == null) continue;
+            _current.Assign(brain);
+            count++;
         }
-        RefreshList();
+        if (count > 0) RefreshAssigned();
     }
 
-    void RefreshList()
+    void TransferToSelected()
     {
-        foreach (var e in _entries) Destroy(e);
-        _entries.Clear();
+        if (_current == null || _current.Data == null || _current.Inventory == null) return;
+        if (_selection == null || _selection.Selected.Count == 0) return;
 
+        var pawn = _selection.Selected[0];
+        var pawnInv = pawn.GetComponent<Inventory>();
+        if (pawnInv == null) return;
+
+        var dropItem = _current.Data.DropItem;
+        if (dropItem == null) return;
+
+        int available = _current.Inventory.GetTotalQuantity(dropItem);
+        if (available <= 0) return;
+
+        // 폰이 받을 수 있는 만큼만 이송
+        int taken = pawnInv.TryAdd(dropItem, available);
+        if (taken > 0)
+            _current.Inventory.Remove(dropItem, taken);
+    }
+
+    void RefreshAssigned()
+    {
         if (_current == null) return;
+        if (assignedListRoot == null || pawnEntryPrefab == null) return;
 
+        // 기존 엔트리 제거
+        for (int i = assignedListRoot.childCount - 1; i >= 0; i--)
+            Destroy(assignedListRoot.GetChild(i).gameObject);
+
+        // 배정된 폰들 엔트리 생성
         foreach (var brain in _current.AssignedPawns)
         {
-            var entry = Instantiate(pawnEntryPrefab, assignedList);
-            var entryUI = entry.GetComponent<PawnEntryUI>();
-            entryUI.Setup(brain, _current, RefreshList);
-            _entries.Add(entry);
+            if (brain == null) continue;
+            var entry = Instantiate(pawnEntryPrefab, assignedListRoot);
+            entry.Setup(brain, _current, RefreshAssigned);
         }
     }
 
-    void UnsubscribeInventory()
+    void Unsubscribe()
     {
-        if (_current != null)
-            _current.Inventory.OnChanged -= RefreshSlots;
+        if (_current != null && _current.Inventory != null)
+            _current.Inventory.OnChanged -= RefreshStock;
+    }
+
+    void RefreshStock()
+    {
+        if (_current == null || _current.Data == null) return;
+        var dropItem = _current.Data.DropItem;
+
+        int qty = (dropItem != null && _current.Inventory != null)
+            ? _current.Inventory.GetTotalQuantity(dropItem)
+            : 0;
+
+        if (stockIcon != null)
+        {
+            if (dropItem != null && dropItem.Icon != null)
+            {
+                stockIcon.sprite = dropItem.Icon;
+                stockIcon.preserveAspect = true;
+                stockIcon.color = qty > 0 ? Color.white : emptyIconTint;
+            }
+            else
+            {
+                stockIcon.sprite = null;
+                stockIcon.color = emptyIconTint;
+            }
+
+            // 아이템 W/H에 비례한 크기로 표시
+            if (dropItem != null)
+                stockIcon.rectTransform.sizeDelta =
+                    new Vector2(dropItem.Width * cellSize, dropItem.Height * cellSize);
+        }
+
+        if (stockCount != null)
+            stockCount.text = qty > 0 ? $"×{qty}" : "";
     }
 }

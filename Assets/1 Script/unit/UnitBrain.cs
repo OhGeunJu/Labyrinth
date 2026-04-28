@@ -33,8 +33,8 @@ public class UnitBrain : MonoBehaviour
     void Awake()
     {
         _mover    = GetComponent<PawnMover>();
-        Inventory = gameObject.AddComponent<Inventory>();
-        Equipment = gameObject.AddComponent<Equipment>();
+        Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
+        Equipment = GetComponent<Equipment>() ?? gameObject.AddComponent<Equipment>();
         gameObject.AddComponent<StatusEffectSystem>();
 
         Stats = UnitStats.FromData(unitData);

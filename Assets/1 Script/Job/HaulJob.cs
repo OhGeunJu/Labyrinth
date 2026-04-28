@@ -27,7 +27,7 @@ public class HaulJob : JobBase
         if (_phase == Phase.GoToSource)
         {
             // 노드 인벤토리에서 아이템 꺼내기
-            int available = _source != null ? _source.Inventory.GetQuantity(_itemData) : 0;
+            int available = _source != null ? _source.Inventory.GetTotalQuantity(_itemData) : 0;
             int toTake    = Mathf.Min(_amount, available);
 
             if (toTake <= 0)
@@ -37,8 +37,8 @@ public class HaulJob : JobBase
                 return;
             }
 
-            _source.Inventory.Consume(_itemData, toTake);
-            unit.Inventory.Add(_itemData, toTake);
+            _source.Inventory.Remove(_itemData, toTake);
+            unit.Inventory.TryAdd(_itemData, toTake);
             _amount = toTake;
 
             _phase    = Phase.GoToStorage;
@@ -47,7 +47,7 @@ public class HaulJob : JobBase
         else
         {
             // 창고에 입금 (필터 재확인)
-            if (unit.Inventory.Consume(_itemData, _amount))
+            if (unit.Inventory.Remove(_itemData, _amount) == _amount)
             {
                 if (!_storage.TryAdd(_itemData, _amount))
                 {
@@ -55,7 +55,7 @@ public class HaulJob : JobBase
                     if (fallback != null)
                         fallback.TryAdd(_itemData, _amount);
                     else
-                        unit.Inventory.Add(_itemData, _amount);  // 갈 곳 없으면 반환
+                        unit.Inventory.TryAdd(_itemData, _amount);  // 갈 곳 없으면 반환
                 }
             }
             Status = JobStatus.Done;

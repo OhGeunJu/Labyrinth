@@ -32,11 +32,11 @@ public class Equipment : MonoBehaviour
     public bool Equip(WeaponData weapon)
     {
         if (weapon == null) return false;
-        if (!_inventory.Consume(weapon, 1)) return false;
+        if (_inventory.Remove(weapon, 1) != 1) return false;
 
         // 기존 장착 무기를 인벤토리로 반환
         if (MainHand != null)
-            _inventory.Add(MainHand, 1);
+            _inventory.TryAdd(MainHand, 1);
 
         MainHand = weapon;
         SyncBlackboard();
@@ -50,7 +50,7 @@ public class Equipment : MonoBehaviour
     {
         if (MainHand == null) return;
 
-        _inventory.Add(MainHand, 1);
+        _inventory.TryAdd(MainHand, 1);
         Debug.Log($"[Equipment] {gameObject.name} 해제: {MainHand.ItemName}");
         MainHand = null;
         SyncBlackboard();
@@ -61,10 +61,10 @@ public class Equipment : MonoBehaviour
     {
         if (item == null) return false;
         if (OffHandLocked) return false;
-        if (!_inventory.Consume(item, 1)) return false;
+        if (_inventory.Remove(item, 1) != 1) return false;
 
         if (OffHand != null)
-            _inventory.Add(OffHand, 1);
+            _inventory.TryAdd(OffHand, 1);
 
         OffHand = item;
         OnEquipChanged?.Invoke(this);
@@ -76,7 +76,7 @@ public class Equipment : MonoBehaviour
     {
         if (OffHand == null) return;
 
-        _inventory.Add(OffHand, 1);
+        _inventory.TryAdd(OffHand, 1);
         Debug.Log($"[Equipment] {gameObject.name} 오프핸드 해제: {OffHand.ItemName}");
         OffHand = null;
         OnEquipChanged?.Invoke(this);
@@ -85,10 +85,10 @@ public class Equipment : MonoBehaviour
     public bool EquipArmor(ArmorData armor)
     {
         if (armor == null) return false;
-        if (!_inventory.Consume(armor, 1)) return false;
+        if (_inventory.Remove(armor, 1) != 1) return false;
 
         if (_armor.TryGetValue(armor.Slot, out var prev))
-            _inventory.Add(prev, 1);
+            _inventory.TryAdd(prev, 1);
 
         _armor[armor.Slot] = armor;
         OnEquipChanged?.Invoke(this);
@@ -100,7 +100,7 @@ public class Equipment : MonoBehaviour
     {
         if (!_armor.TryGetValue(slot, out var armor)) return;
 
-        _inventory.Add(armor, 1);
+        _inventory.TryAdd(armor, 1);
         _armor.Remove(slot);
         OnEquipChanged?.Invoke(this);
         Debug.Log($"[Equipment] {gameObject.name} 갑옷 해제: {armor.ItemName} ({slot})");

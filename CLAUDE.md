@@ -284,7 +284,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 ### Pathfinding
 
-`Pathfinder` — **Theta*** (8-directional, Euclidean heuristic). Line-of-sight uses Bresenham supercover; corner-cutting blocked.
+`Pathfinder` — **NavMesh 기반** (Unity AI Navigation). `NavMesh.SamplePosition` + `NavMesh.CalculatePath`. 이동/네비게이션은 타일 그리드와 무관 — 오픈월드 전체에서 동작. 씬에 `NavMeshSurface` 베이크 필요 (Unity 6의 AI Navigation 패키지).
 
 ## ScriptableObject Assets (`Assets/5 Data/`)
 
@@ -306,9 +306,70 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - `StatusEffectSystem` — Elemental Poison AoE 미구현
 - `StatusEffectSystem` — Holy 계열 힐/버프 미구현 (아군 전용)
 
+## 최근 변경 (2026-04-28)
+
+오픈월드 전환 + 타르코프식 인벤토리 작업.
+
+### 1. 이동 시스템 — NavMesh 전환
+- `Pathfinder.cs` 타일 기반 Theta* → **NavMesh 기반**으로 교체. 같은 시그니처(`List<Vector3> FindPath(from, to)`) 유지하여 `PawnMover`는 무수정.
+- 오픈월드 어디서든 이동 가능. 타일 그리드는 더 이상 이동에 관여하지 않음.
+- Unity 6: `NavMeshSurface` 컴포넌트로 베이크.
+
+### 2. MapManager — 빌드존 한정으로 축소
+- 월드 전체 30×30 그리드 → **미궁핵 주변 50×50 빌드존**.
+- 1 tile = 1 world unit, 절대 월드 타일 좌표 (`tile.x = floor(world.x)`).
+- `RecenterAt(worldCenter)` — 핵 이동 시 빌드존 재정렬, 타일 데이터 초기화, `OnZoneRecentered` 이벤트 발행.
+- 빌드존 밖 타일은 항상 Passable 기본값 반환 — Job/BT 시스템이 빌드존 밖에서도 동작.
+- `ResourceNode.Awake/OnDestroy`의 `SetTile` 호출 제거. NavMesh가 콜라이더로 자동 처리.
+- `DungeonCore.GridPos`/`SnapToGrid` 제거. 핵 위치 = 빌드존 중심.
+- `GridRenderer` `OnZoneRecentered` 구독해 오버레이 정리.
+
+### 3. BuildModeManager — 그리드/자유 토글 + 고스트 미리보기
+- `Tab` 키로 **그리드 ↔ 자유 모드** 전환 (둘 다 같은 건축물 사용 가능).
+- 그리드: 타일 중심 스냅, `Q/E` 90° 회전.
+- 자유: 마우스 위치 그대로, `Q/E` 15° 회전, `Physics.OverlapBox`로 `ResourceNode`/`DungeonCore` 충돌 체크.
+- **고스트**: 선택된 프리팹을 미리 인스턴스화 (콜라이더/스크립트 비활성)해서 위치/회전 시각 피드백.
+
+### 4. Item 시스템 분리
+- `ItemData`에서 `ResourceType`, `MaxStack` 제거. `Width`, `Height` 추가 (그리드 셀 크기).
+- `ItemData.MaxStack` 가상 프로퍼티 (기본 1).
+- `ResourceItemData : ItemData` 신규 — `ResourceType`, `Stack` 필드, `MaxStack` 오버라이드.
+- 무기/방어구는 `ItemData` 직접 상속이라 자동으로 `MaxStack=1` (1칸 1개).
+- 자원 에셋(`Stone_item` 등) 재생성 필요 (ResourceItemData로).
+
+### 5. Inventory — 그리드 기반 (타르코프식)
+- `Dictionary<ItemData, int>` → **W×H 셀 배열 + ItemInstance**.
+- 기본 8 wide × 10 tall. 컴포넌트 인스펙터에서 조절.
+- 같은 ItemData는 `MaxStack` 한도까지 한 인스턴스에 누적, 넘으면 새 인스턴스.
+- 아이템 회전 지원 (1×3 ↔ 3×1).
+- API: `TryAdd(data, amount) → int`, `TryAddAt(data, amount, x, y, rotated) → bool`, `MoveItem(inst, x, y, rotated)`, `Remove(data, amount) → int`, `RemoveByType(type, amount)`, `GetTotalQuantity`, `GetTotalByType`, `GetTotalWeight`, `GetAt(x, y)`, `RemoveInstance(inst)`.
+- 호출부 마이그레이션: `Add` → `TryAdd`, `Consume` → `Remove`, `GetQuantity` → `GetTotalQuantity`, `ConsumeByType` → `RemoveByType` (`ResourceNode`, `StorageBuilding`, `HaulJob`, `GroundHaulJob`, `DroppedItem`, `Equipment`).
+- `ItemStack` 구조체 삭제 (사용처 없음).
+- `ItemInstance` (런타임 객체) — `Data`, `Quantity`, `GridX`, `GridY`, `Rotated`, `EffectiveWidth/Height`.
+
+### 6. UI — 그리드 인벤토리 / 노드 정보 패널 재작성
+- **`InventoryGridUI`** (신규) — `Inventory` 1개를 그리드 시각화. 셀은 에디터에서 미리 배치, 아이템 아이콘만 동적 생성. 자식 `_Items` 컨테이너에 아이콘이 들어감 (LayoutGroup 영향 안 받게 `LayoutElement.ignoreLayout`). API: `Bind(inv)`, `RefreshItems()`, `ScreenToGrid(screenPos)`, `CellSize`.
+- **`PawnInventoryPanel`** 재작성 — 인스펙터에서 패널 GameObject + GridContainer 받음. I 키로 토글, 선택된 폰의 Inventory를 GridUI에 바인딩.
+- **`NodeInfoPanel`** 재작성 — 노드는 한 종류 자원만 쌓이므로 단일 아이콘 + 수량 텍스트 표시 (그리드 사용 X). Assign/Transfer 버튼, 배정된 폰 리스트(`PawnEntryUI` 프리팹) 지원.
+- **`DraggableItem`** (신규) — 아이콘에 자동 추가. 드래그/드롭/회전 처리. `R` 키로 드래그 중 회전. 클릭 셀 오프셋 보존 (Tarkov식).
+- **`InventorySlotUI`** 빈 스텁으로 폐기 (씬 참조 보존용).
+
+### 7. Equipment / Pawn 컴포넌트 안전 패턴
+- `ResourceNode`, `UnitBrain`, `StorageBuilding`, `Equipment` Awake에서 `GetComponent<X>() ?? AddComponent<X>()` — 프리팹/씬에 이미 컴포넌트가 있어도 중복 생성 방지.
+
+---
+
+## 알려진 이슈
+
+- **인벤토리 클릭 시 첫 자리에 아이콘 잔재** — 다른 위치로 옮긴 후에도 원래 자리에 아이콘이 남아 보이는 버그. `DraggableItem.OnEndDrag`에서 `MoveItem` 성공 시 새 위치에 새 아이콘이 그려지지만 옛 위치도 같이 보이는 현상. 해결 필요.
+- **단계 5 미완**: 다중 컨테이너 드래그 / 월드 드롭 / 색 피드백(초록·빨강) / 스프라이트 진짜 회전 미구현.
+- **한글 폰트 경고**: 코드로 `AddComponent<TextMeshProUGUI>` 시 기본 폰트(LiberationSans SDF)가 한글 미지원 → `Project Settings → TextMesh Pro → Default Font Asset`에 한글 폰트 지정 권장.
+- **핵 이동 시 빌드존 리셋**: 핵 따라 그리드 데이터 초기화. 미리 지어둔 건물의 시각은 사라짐 (실제 GameObject는 그대로 남음). 의도된 동작이지만 향후 정책 결정 필요.
+
 ## Upcoming Systems
 
-- **DungeonCore area effects** — unit buffs/debuffs based on proximity and core environment type
-- **Enemy spawn / event system**
-- **Crafting / processing system**
-- **Enemy loot drops** — `DroppedItem.Spawn()` on enemy death
+- **단계 6 인벤토리** — 다중 컨테이너 드래그(시체↔폰, 폰↔창고), 월드 드롭, 드롭 위치 색 피드백, 진짜 스프라이트 회전.
+- **DungeonCore area effects** — unit buffs/debuffs based on proximity and core environment type.
+- **Enemy spawn / event system**.
+- **Crafting / processing system**.
+- **Enemy loot drops** — `DroppedItem.Spawn()` on enemy death.

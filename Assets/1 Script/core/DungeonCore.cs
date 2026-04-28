@@ -11,7 +11,6 @@ public class DungeonCore : MonoBehaviour
     [SerializeField] int rangeSegments = 64;
 
     public DungeonCoreData Data => data;
-    public Vector2Int GridPos { get; private set; }
     public bool IsSelected { get; private set; }
 
     [SerializeField] Color selectedColor = new Color(1f, 0.9f, 0.2f, 0.8f);
@@ -37,10 +36,9 @@ public class DungeonCore : MonoBehaviour
 
     void Start()
     {
-        var map = MapManager.Instance;
-        GridPos = new Vector2Int(map.Width / 2, map.Height / 2);
-        map.SetTile(GridPos, TileData.MakeImpassable());
-        SnapToGrid();
+        // 핵의 현재 위치에 빌드존을 정렬
+        if (MapManager.Instance != null)
+            MapManager.Instance.RecenterAt(transform.position);
     }
 
     public void Select()   { IsSelected = true; }
@@ -56,19 +54,14 @@ public class DungeonCore : MonoBehaviour
     void TryMoveToMouse()
     {
         var ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
-        var plane = new Plane(Vector3.up, Vector3.zero);
+        // 핵의 현재 y 높이를 지나는 수평면 (점 인자형 생성자 사용)
+        var plane = new Plane(Vector3.up, transform.position);
         if (!plane.Raycast(ray, out float dist)) return;
 
-        var map     = MapManager.Instance;
-        var tilePos = map.WorldToTile(ray.GetPoint(dist));
-
-        if (!map.IsInBounds(tilePos)) return;
-        if (!map.GetTile(tilePos).IsPassable) return;
-
-        map.SetTile(GridPos, TileData.MakePassable());
-        GridPos = tilePos;
-        map.SetTile(GridPos, TileData.MakeImpassable());
-        SnapToGrid();
+        var newPos = ray.GetPoint(dist);
+        transform.position = newPos;
+        if (MapManager.Instance != null)
+            MapManager.Instance.RecenterAt(newPos);
         Deselect();
     }
 
@@ -115,12 +108,6 @@ public class DungeonCore : MonoBehaviour
         var dx = wp.x - transform.position.x;
         var dz = wp.z - transform.position.z;
         return dx * dx + dz * dz <= data.BaseRadius * data.BaseRadius;
-    }
-
-    void SnapToGrid()
-    {
-        var wp = MapManager.Instance.TileToWorld(GridPos);
-        transform.position = new Vector3(wp.x, wp.y + 0.6f, wp.z);
     }
 
     void OnEndCameraRendering(ScriptableRenderContext ctx, Camera cam)

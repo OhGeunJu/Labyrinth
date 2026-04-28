@@ -35,7 +35,7 @@ public class GroundHaulJob : JobBase
         }
         else
         {
-            if (unit.Inventory.Consume(_itemData, _amount))
+            if (unit.Inventory.Remove(_itemData, _amount) == _amount)
             {
                 if (!_storage.TryAdd(_itemData, _amount))
                 {
@@ -43,7 +43,7 @@ public class GroundHaulJob : JobBase
                     if (fallback != null)
                         fallback.TryAdd(_itemData, _amount);
                     else
-                        unit.Inventory.Add(_itemData, _amount);
+                        unit.Inventory.TryAdd(_itemData, _amount);
                 }
             }
             Status = JobStatus.Done;
