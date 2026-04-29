@@ -56,6 +56,27 @@ public class StorageBuilding : MonoBehaviour
         return remaining <= 0;
     }
 
+    // ── ItemData 기반 집계 (제작 재료용) ──────────────────────────────
+    public static int GetTotalByItem(ItemData item)
+    {
+        int total = 0;
+        foreach (var sb in All)
+            total += sb.Inventory.GetTotalQuantity(item);
+        return total;
+    }
+
+    public static bool ConsumeByItem(ItemData item, int amount)
+    {
+        if (GetTotalByItem(item) < amount) return false;
+        int remaining = amount;
+        foreach (var sb in All)
+        {
+            if (remaining <= 0) break;
+            remaining -= sb.Inventory.Remove(item, remaining);
+        }
+        return remaining <= 0;
+    }
+
     // ── 위치 유틸 ─────────────────────────────────────────────────────
     // item을 받을 수 있는 창고 중 가장 가까운 것 반환
     public static StorageBuilding FindNearest(Vector3 position, ItemData item = null)

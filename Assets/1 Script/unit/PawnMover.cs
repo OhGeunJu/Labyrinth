@@ -22,6 +22,7 @@ public class PawnMover : MonoBehaviour
     UnitStats _stats;
     Inventory _inventory;
     StatusEffectSystem _sfx;
+    bool _isMinion;
 
     [Header("Athletics 성장")]
     [SerializeField] float athleticsGrowthRate = 0.005f;
@@ -44,6 +45,7 @@ public class PawnMover : MonoBehaviour
         _stats     = stats;
         _inventory = inventory;
         _sfx       = GetComponent<StatusEffectSystem>();
+        _isMinion  = GetComponent<UnitBrain>()?.Data is MinionData;
     }
 
     public void SetMoveTarget(Vector3 worldPoint)
@@ -114,7 +116,8 @@ public class PawnMover : MonoBehaviour
 
                 // 이동 중 육상 스킬 성장
                 if (_stats != null)
-                    _stats.Athletics = Mathf.Min(100f, _stats.Athletics + athleticsGrowthRate * Time.deltaTime);
+                    if (!_isMinion)
+                        _stats.Athletics = Mathf.Min(100f, _stats.Athletics + athleticsGrowthRate * Time.deltaTime);
             }
         }
 

@@ -18,6 +18,8 @@ public class CombatHandler : MonoBehaviour
 
     public bool IsInCombat { get; private set; }
 
+    bool IsMinion => _brain?.Data is MinionData;
+
     void Start()
     {
         _brain     = GetComponent<UnitBrain>();
@@ -79,7 +81,8 @@ public class CombatHandler : MonoBehaviour
 
         if (targetCombat != null && TryDodge(targetCombat, attackSkill))
         {
-            targetCombat._stats.Evasion = Mathf.Min(100f, targetCombat._stats.Evasion + growthRate);
+            if (!targetCombat.IsMinion)
+                targetCombat._stats.Evasion = Mathf.Min(100f, targetCombat._stats.Evasion + growthRate);
             Debug.Log($"[Combat] {target.name} 회피 성공");
             return;
         }
@@ -98,10 +101,13 @@ public class CombatHandler : MonoBehaviour
             && weapon.EffectChance > 0f && UnityEngine.Random.value < weapon.EffectChance)
             ApplyHolyEffect(weapon, target);
 
-        // 무기 숙련도 + 근접공격 스킬 동시 성장
-        _stats.GrowSkillForWeapon(weaponType, growthRate);
-        if (!unarmed)
-            _stats.MeleeAttack = Mathf.Min(100f, _stats.MeleeAttack + growthRate * 0.5f);
+        // 무기 숙련도 + 근접공격 스킬 동시 성장 (하수인 제외)
+        if (!IsMinion)
+        {
+            _stats.GrowSkillForWeapon(weaponType, growthRate);
+            if (!unarmed)
+                _stats.MeleeAttack = Mathf.Min(100f, _stats.MeleeAttack + growthRate * 0.5f);
+        }
 
         OnDamageDealt?.Invoke(this, damage);
         Debug.Log($"[Combat] {gameObject.name} → {target.name} {damage:F1} 데미지 ({weaponType})");
@@ -159,6 +165,7 @@ public class CombatHandler : MonoBehaviour
 
     void GrowDefenseStat(CombatHandler defender)
     {
+        if (defender.IsMinion) return;
         bool defUnarmed = defender.GetWeaponType() == WeaponType.Unarmed;
         if (defUnarmed)
             defender._stats.MartialArts  = Mathf.Min(100f, defender._stats.MartialArts  + growthRate);
@@ -223,7 +230,8 @@ public class CombatHandler : MonoBehaviour
 
         if (targetCombat != null && TryBlockRanged(targetCombat, attackSkill))
         {
-            targetCombat._stats.RangedDefense = Mathf.Min(100f, targetCombat._stats.RangedDefense + growthRate);
+            if (!targetCombat.IsMinion)
+                targetCombat._stats.RangedDefense = Mathf.Min(100f, targetCombat._stats.RangedDefense + growthRate);
             Debug.Log($"[Combat] {target.name} 원거리 방어 성공");
             return;
         }
@@ -239,7 +247,7 @@ public class CombatHandler : MonoBehaviour
         if (bodySystem != null) bodySystem.TakeDamage(dmgInfo);
         else if (brain != null) brain.TakeDamage(dmgInfo);
 
-        _stats.GrowSkillForWeapon(weaponType, growthRate);
+        if (!IsMinion) _stats.GrowSkillForWeapon(weaponType, growthRate);
         OnDamageDealt?.Invoke(this, damage);
         Debug.Log($"[Combat] {gameObject.name} 원거리 → {target.name} {damage:F1}{(friendly ? " (동료!)" : "")}");
     }

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -14,12 +13,11 @@ public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
     Image            _img;
     Canvas           _canvas;
 
-    Transform _origParent;
-    bool      _dragRotated;
+    Transform        _origParent;
+    bool             _dragRotated;
+    InventoryGridUI  _previewGrid; // 현재 프리뷰가 표시된 그리드
 
-    // 클릭 시점에 아이콘 좌상단 대비 어느 셀을 잡았는지 (셀 단위)
     Vector2Int _clickCellOffset;
-    // 캔버스 로컬 공간에서 커서 ↔ 아이콘 좌상단의 픽셀 오프셋
     Vector2    _clickPixelOffset;
 
     public void Init(ItemInstance instance, InventoryGridUI sourceGrid)
@@ -38,94 +36,140 @@ public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
         _origParent  = transform.parent;
         _dragRotated = _instance.Rotated;
 
-        // 클릭 셀 오프셋 저장 (그리드 셀 단위)
         var clickGrid = _sourceGrid.ScreenToGrid(e.position);
-        _clickCellOffset = new Vector2Int(clickGrid.x - _instance.GridX,
-                                          clickGrid.y - _instance.GridY);
+        _clickCellOffset = clickGrid.x != int.MinValue
+            ? new Vector2Int(clickGrid.x - _instance.GridX, clickGrid.y - _instance.GridY)
+            : Vector2Int.zero;
 
-        // 캔버스 좌표로 변환 (재부모 전, 픽셀 오프셋 기록)
         Camera cam = _canvas.renderMode != RenderMode.ScreenSpaceOverlay ? _canvas.worldCamera : null;
-        Vector2 cursorCanvas;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            (RectTransform)_canvas.transform, e.position, cam, out cursorCanvas);
+            (RectTransform)_canvas.transform, e.position, cam, out var cursorCanvas);
 
-        // 캔버스 최상단으로 옮김 (월드 위치 유지)
         transform.SetParent(_canvas.transform, true);
         transform.SetAsLastSibling();
 
-        // 재부모 후 아이콘의 현재 anchoredPosition을 좌상단 캔버스 위치로 사용
         _clickPixelOffset = cursorCanvas - _rt.anchoredPosition;
 
-        // 시각 변경
         var c = _img.color; c.a = 0.7f; _img.color = c;
-        _img.raycastTarget = false; // 자기가 드롭 레이캐스트를 막지 않도록
+        _img.raycastTarget = false;
     }
 
     public void OnDrag(PointerEventData e)
     {
         if (_canvas == null) return;
 
-        // R 키로 회전
         if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
         {
             _dragRotated = !_dragRotated;
-            UpdateDragSize();
+            UpdateDragVisual();
         }
 
         Camera cam = _canvas.renderMode != RenderMode.ScreenSpaceOverlay ? _canvas.worldCamera : null;
         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 (RectTransform)_canvas.transform, e.position, cam, out var local))
         {
-            // 클릭 시 잡았던 픽셀 오프셋을 보존해서 따라오게
             _rt.anchoredPosition = local - _clickPixelOffset;
         }
+
+        UpdatePreview(e.position, cam);
     }
 
-    void UpdateDragSize()
+    void UpdatePreview(Vector2 screenPos, Camera uiCam)
+    {
+        var hoverGrid = InventoryGridUI.FindUnderCursor(screenPos, uiCam);
+
+        // 그리드가 바뀌면 이전 프리뷰 제거
+        if (_previewGrid != null && _previewGrid != hoverGrid)
+        {
+            _previewGrid.ClearPreview();
+            _previewGrid = null;
+        }
+
+        if (hoverGrid == null) return;
+
+        var cursorCell = hoverGrid.ScreenToGrid(screenPos);
+        if (cursorCell.x == int.MinValue) return;
+
+        int nx = cursorCell.x - _clickCellOffset.x;
+        int ny = cursorCell.y - _clickCellOffset.y;
+        bool isExternal = hoverGrid != _sourceGrid;
+        hoverGrid.ShowPreview(_instance, nx, ny, _dragRotated, isExternal);
+        _previewGrid = hoverGrid;
+    }
+
+    void UpdateDragVisual()
     {
         if (_sourceGrid == null) return;
         float cs = _sourceGrid.CellSize;
         int w = _dragRotated ? _instance.Data.Height : _instance.Data.Width;
         int h = _dragRotated ? _instance.Data.Width  : _instance.Data.Height;
-        _rt.sizeDelta = new Vector2(w * cs - 4, h * cs - 4);
+        _rt.sizeDelta     = new Vector2(w * cs - 4, h * cs - 4);
+        _rt.localRotation = _dragRotated
+            ? Quaternion.Euler(0f, 0f, -90f)
+            : Quaternion.identity;
     }
 
     public void OnEndDrag(PointerEventData e)
     {
+        _previewGrid?.ClearPreview();
+        _previewGrid = null;
+
         bool placed = TryPlace(e);
+        if (!placed) placed = TryWorldDrop(e);
 
         var c = _img.color; c.a = 1f; _img.color = c;
         _img.raycastTarget = true;
+        _rt.localRotation = Quaternion.identity;
 
         var grid = _sourceGrid;
         Destroy(gameObject);
         if (grid != null && !placed) grid.RefreshItems();
     }
 
+    // ── 그리드 배치 ───────────────────────────────────────────────────────────
+
     bool TryPlace(PointerEventData e)
     {
-        var targetGrid = FindGridUnderCursor(e);
+        Camera uiCam = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? _canvas.worldCamera : null;
+        var targetGrid = InventoryGridUI.FindUnderCursor(e.position, uiCam);
         if (targetGrid == null) return false;
-        if (targetGrid != _sourceGrid) return false; // 다중 컨테이너는 단계 6
 
-        // 커서가 가리키는 셀 - 클릭 오프셋 = 아이템 좌상단이 들어갈 셀
-        var cursorGrid = targetGrid.ScreenToGrid(e.position);
-        int newX = cursorGrid.x - _clickCellOffset.x;
-        int newY = cursorGrid.y - _clickCellOffset.y;
+        var cursorCell = targetGrid.ScreenToGrid(e.position);
+        if (cursorCell.x == int.MinValue) return false;
 
-        return targetGrid.Inventory != null
-            && targetGrid.Inventory.MoveItem(_instance, newX, newY, _dragRotated);
+        int newX = cursorCell.x - _clickCellOffset.x;
+        int newY = cursorCell.y - _clickCellOffset.y;
+
+        // 같은 그리드 — 위치 이동
+        if (targetGrid == _sourceGrid)
+            return _sourceGrid.Inventory != null
+                && _sourceGrid.Inventory.MoveItem(_instance, newX, newY, _dragRotated);
+
+        // 다른 그리드 — 컨테이너 간 이동
+        var srcInv = _sourceGrid?.Inventory;
+        var dstInv = targetGrid.Inventory;
+        if (srcInv == null || dstInv == null) return false;
+        if (!dstInv.TryAddAt(_instance.Data, _instance.Quantity, newX, newY, _dragRotated)) return false;
+        srcInv.RemoveInstance(_instance);
+        return true;
     }
 
-    static InventoryGridUI FindGridUnderCursor(PointerEventData e)
+    // ── 월드 드롭 ─────────────────────────────────────────────────────────────
+
+    bool TryWorldDrop(PointerEventData e)
     {
-        var results = new List<RaycastResult>();
-        EventSystem.current.RaycastAll(e, results);
-        foreach (var r in results)
-        {
-            var grid = r.gameObject.GetComponentInParent<InventoryGridUI>();
-            if (grid != null) return grid;
-        }
-        return null;
+        // 어떤 그리드 위에서 실패한 경우는 월드 드롭 안 함
+        Camera uiCam = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? _canvas.worldCamera : null;
+        if (InventoryGridUI.FindUnderCursor(e.position, uiCam) != null) return false;
+
+        var inv = _sourceGrid?.Inventory;
+        if (inv == null) return false;
+
+        var dropPos = inv.transform.position + Vector3.up * 0.15f;
+        inv.RemoveInstance(_instance);
+        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos);
+        return true;
     }
 }

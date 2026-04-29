@@ -19,6 +19,13 @@ public class DroppedItem : MonoBehaviour
         col.radius    = 0.3f;
         col.isTrigger = true;
 
+        // 작은 큐브로 시각 표현
+        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        cube.transform.SetParent(go.transform);
+        cube.transform.localScale   = Vector3.one * 0.25f;
+        cube.transform.localPosition = Vector3.zero;
+        Object.Destroy(cube.GetComponent<BoxCollider>());
+
         var dropped = go.AddComponent<DroppedItem>();
         dropped.Item   = item;
         dropped.Amount = amount;

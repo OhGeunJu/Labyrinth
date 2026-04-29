@@ -7,4 +7,5 @@ public enum JobCategory
     Logging,
     Construction,
     Guard,
+    Crafting,
 }

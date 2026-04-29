@@ -14,6 +14,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 There are no CLI build commands; all building and testing is done through the Unity Editor. Play Mode is the primary way to test gameplay.
 
+## 폴더 구조 (`Assets/1 Script/`)
+
+```
+1 Script/
+├── BuildModeManager.cs      ← 루트: 빌드 모드 토글
+├── Combat/                   ← 데미지 타입 정의 (DamageInfo, DamageCategory, DamageElement, PhysicalType)
+├── Input/                    ← 입력/카메라 (CameraController, MoveController, SelectionManager, SelectionBox, SelectionIndicator)
+├── Item/                     ← 아이템 데이터 + 인벤토리
+├── Job/                      ← 작업 시스템 + 우선순위 + 창고
+├── Map/                      ← 맵, 그리드, 패스파인딩, 자원 노드
+├── UI/                       ← 모든 UI 패널/컴포넌트
+├── core/                     ← 던전 코어
+└── unit/                     ← 유닛 시스템 (BT, 전투, 신체, 상태이상, 장비, 이동)
+```
+
 ## Architecture
 
 ### Map System (`Assets/1 Script/Map/`)
@@ -214,6 +229,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - `MineJob` — Category: Mining. Calls `ResourceNode.Work` each tick
 - `HaulJob` — Category: Hauling. ResourceNode → StorageBuilding (2-phase)
 - `GroundHaulJob` — Category: Hauling. DroppedItem → StorageBuilding (2-phase)
+- `CraftJob` — Category: Crafting. CraftingTable에서 RecipeData 기준 제작
 
 **HaulJob phases:**
 1. GoToSource: move to ResourceNode, consume items into unit inventory
@@ -222,6 +238,11 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 **GroundHaulJob phases:**
 1. GoToItem: move to DroppedItem, call `PickUp()`
 2. GoToStorage: move to StorageBuilding, deposit
+
+**CraftJob 흐름:**
+1. `OnStart`: 재료를 모든 `StorageBuilding`에서 즉시 소비 (예약 개념)
+2. `Execute`: 유닛이 테이블 도착 → `Time.time` 기준 `CraftTime` 카운트다운
+3. 완료 시 `DroppedItem.Spawn`으로 테이블 위에 결과물 드롭 → HaulJob이 자동 등록되어 창고로 운반
 
 ### Priority System (`PriorityManager.cs`, `PriorityPanel.cs`)
 
@@ -232,7 +253,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 `PriorityPanel` — Inspector 기반 UI. P key to toggle.
 
-`JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard.
+`JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard, Crafting.
 
 ### Resource & Storage System
 
@@ -241,21 +262,41 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 **StorageBuilding** — per-building `Inventory` with item type filter.
 - `allowedTypes: List<ResourceType>` — empty = accept all
 - `TryAdd(item, amount)` — respects filter
-- `static GetTotal(ResourceType)` — sum across all buildings
-- `static Consume(ResourceType, amount)` — consume from all buildings
+- `static GetTotal(ResourceType)` / `Consume(ResourceType, amount)` — ResourceType 기반
+- `static GetTotalByItem(ItemData)` / `ConsumeByItem(ItemData, amount)` — ItemData 기반 (제작 재료용)
 - `static FindNearest(position, item)` — nearest that accepts the item
 
 `ResourceStorage` — **removed**. Use `StorageBuilding.GetTotal` / `StorageBuilding.Consume` instead.
 
+### Crafting System (`Job/CraftingTable.cs`, `Job/CraftJob.cs`, `Item/RecipeData.cs`, `UI/CraftingTableUI.cs`, `UI/RecipeEntryUI.cs`)
+
+**RecipeData** (ScriptableObject):
+- `RecipeName`, `Ingredients: List<{ItemData, int}>`, `Result: ItemData`, `ResultAmount`, `CraftTime`, `Category`
+
+**CraftingTable** (씬 오브젝트):
+- `availableRecipes: List<RecipeData>` — 이 테이블에서 만들 수 있는 것
+- 좌클릭 시 `OnSelected` 정적 이벤트 발행 → `CraftingTableUI`가 구독
+- `QueueOrder(recipe)` → `JobManager.RegisterJob(new CraftJob(...))`
+- `CanCraft(recipe)` — 재료 충분 여부 확인 (`StorageBuilding.GetTotalByItem`)
+
+**CraftingTableUI** — 마스터-디테일 레이아웃:
+- 왼쪽: ScrollView에 `RecipeEntryUI` 프리팹 인스턴스 목록
+- 오른쪽: 선택된 레시피의 디테일 (아이콘, 이름, 설명, 재료, 시간, 제작 버튼)
+- ESC로 닫기
+
+**RecipeEntryUI** — 프리팹. `[RequireComponent(typeof(LayoutElement))]`로 VLG 안에서 안전한 높이 보장. 재료 부족 시 텍스트 빨간색.
+
 ### Item System (`Assets/1 Script/Item/`)
 
-- `ItemData` — `ItemName`, `Description`, `ResourceType`, `Icon`, `MaxStack`, `Weight`
+- `ItemData` — `ItemName`, `Description`, `Icon`, `Weight`, `Width`, `Height`. `MaxStack` 가상 (기본 1)
+- `ResourceItemData : ItemData` — `ResourceType`, `Stack` (`MaxStack` 오버라이드)
 - `WeaponData : ItemData` — combat + damage type fields
 - `ArmorData : ItemData` — `ArmorSlot`, `DamageReduction`
 - `MinionData : UnitData` — summon cost, AllowedJobs
-- `Inventory` — `Add / Consume / GetQuantity / GetTotalWeight / GetTotalByType / ConsumeByType`
-- `DroppedItem` — spawned via `DroppedItem.Spawn(item, amount, position)`; auto-registers `GroundHaulJob`
-- `InventorySlotUI` — drag-and-drop slot; dragging outside UI calls `DroppedItem.Spawn()` at cursor world position
+- `RecipeData : ScriptableObject` — 제작 레시피 정의
+- `Inventory` — 그리드 기반. `TryAdd` / `TryAddAt` / `MoveItem` / `Remove` / `RemoveByType` / `RemoveInstance` / `CanPlaceItem` / `CanPlaceExtern` / `GetTotalQuantity` / `GetTotalByType` / `GetTotalWeight` / `GetAt`
+- `ItemInstance` — 런타임 객체: `Data`, `Quantity`, `GridX`, `GridY`, `Rotated`, `EffectiveWidth/Height`
+- `DroppedItem` — `DroppedItem.Spawn(item, amount, position)` 정적 팩토리. 작은 큐브 시각 + SphereCollider, 자동으로 `GroundHaulJob` 등록
 
 ### Dungeon Core (`Assets/1 Script/core/`)
 
@@ -281,6 +322,10 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - `PawnInventoryPanel` — I키로 인벤토리 열기; 아이템 클릭 시 장착, 장착 슬롯 클릭 시 해제; 시체 루팅 지원
 - `EquipmentSlotUI` — 장비 슬롯 표시 컴포넌트 (슬롯명 + 아이콘 + 클릭 해제)
 - `DraggablePanel` — 헤더 오브젝트에 붙이고 `Target`에 이동할 패널 RectTransform 연결; 드래그로 패널 이동
+- `InventoryGridUI` — 그리드 시각화. `_activeGrids` 정적 목록으로 다중 컨테이너 드래그 지원. `FindUnderCursor(screenPos, cam)` / `ShowPreview(inst, x, y, rotated, isExternal)` / `ClearPreview` / `ScreenToGrid` 제공
+- `DraggableItem` — 아이콘 자동 추가. 드래그/드롭/회전. 다중 컨테이너 이동, 그리드 밖 드롭 시 인벤토리 위치에 `DroppedItem.Spawn`. 색 피드백: 초록(가능)/빨강(불가). R 키로 90° 회전 (스프라이트 실제 회전 + 셀 점유 변경)
+- `CraftingTableUI` — 마스터-디테일 레이아웃. 왼쪽 ScrollView, 오른쪽 디테일 패널
+- `RecipeEntryUI` — 레시피 목록 항목. Button + TextMeshProUGUI
 
 ### Pathfinding
 
@@ -297,79 +342,47 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 | `WallData` | `DungeonColony/WallData` | Hardness, DropAmount |
 | `DungeonCoreData` | `DungeonColony/DungeonCoreData` | CoreType, BaseRadius, MaxGrade, per-frame modifiers |
 | `ResourceNodeData` | `DungeonColony/ResourceNodeData` | ResourceType, GaugeRequired, DropMin, DropMax, DropItem |
-| `ItemData` | `DungeonColony/ItemData` | ItemName, Description, ResourceType, Icon, MaxStack, Weight |
+| `ItemData` | `DungeonColony/ItemData` | ItemName, Description, Icon, Width, Height, Weight |
+| `ResourceItemData` | `DungeonColony/ResourceItemData` | (ItemData) + ResourceType, Stack |
+| `RecipeData` | `DungeonColony/RecipeData` | RecipeName, Ingredients, Result, ResultAmount, CraftTime, Category |
 
 ## TODOs in Code
 
-- `CombatHandler` — Cognition moving-target penalty not implemented (distance only)
-- `CombatHandler` — Dexterity reload/fire-rate for ranged not implemented
-- `StatusEffectSystem` — Elemental Poison AoE 미구현
-- `StatusEffectSystem` — Holy 계열 힐/버프 미구현 (아군 전용)
+- 현재 미구현 항목 없음 (코드 내 TODO 정리 완료)
 
-## 최근 변경 (2026-04-28)
+## 최근 변경 (2026-04-29)
 
-오픈월드 전환 + 타르코프식 인벤토리 작업.
+### 1. 인벤토리 단계 5·6 완료
+- **드롭 위치 색 피드백** — `InventoryGridUI.ShowPreview` 가 대상 셀에 초록/빨강 오버레이
+- **스프라이트 회전** — R 키 시 `_rt.localRotation = Euler(0,0,-90°)` 로 실제 회전 + 셀 점유 변경
+- **월드 드롭** — UI 밖 드롭 시 `_sourceGrid.Inventory.transform.position` 에 `DroppedItem.Spawn` (큐브 0.25 스케일 시각 추가)
+- **다중 컨테이너 드래그** — `InventoryGridUI._activeGrids` 정적 목록 + `FindUnderCursor(screenPos, cam)`. `TryPlace` 가 같은 그리드면 `MoveItem`, 다른 그리드면 `TryAddAt` + `RemoveInstance`
+- **드래그 좌표계 버그 수정** — `ScreenToGrid` 가 `_itemsRoot` (pivot 0,1) 기준으로 변환하도록 변경. 기존 `(RectTransform)transform` 기준은 InventoryGridUI 피벗에 따라 항상 (0,0) 반환했음
+- **`Inventory.CanPlaceExtern(ItemData, x, y, rotated)`** — 다른 인벤 출신 아이템도 색 피드백 가능
 
-### 1. 이동 시스템 — NavMesh 전환
-- `Pathfinder.cs` 타일 기반 Theta* → **NavMesh 기반**으로 교체. 같은 시그니처(`List<Vector3> FindPath(from, to)`) 유지하여 `PawnMover`는 무수정.
-- 오픈월드 어디서든 이동 가능. 타일 그리드는 더 이상 이동에 관여하지 않음.
-- Unity 6: `NavMeshSurface` 컴포넌트로 베이크.
+### 2. 제작 시스템 (Crafting)
+- `RecipeData` (ScriptableObject) + `CraftingTable` (씬 오브젝트) + `CraftJob` (작업) + `CraftingTableUI` (마스터-디테일 UI)
+- `JobCategory.Crafting` 추가
+- `StorageBuilding.GetTotalByItem` / `ConsumeByItem` 추가 (ItemData 기반 집계/소비)
+- 결과물은 항상 테이블 위에 `DroppedItem.Spawn` → HaulJob이 자동으로 창고로 운반
 
-### 2. MapManager — 빌드존 한정으로 축소
-- 월드 전체 30×30 그리드 → **미궁핵 주변 50×50 빌드존**.
-- 1 tile = 1 world unit, 절대 월드 타일 좌표 (`tile.x = floor(world.x)`).
-- `RecenterAt(worldCenter)` — 핵 이동 시 빌드존 재정렬, 타일 데이터 초기화, `OnZoneRecentered` 이벤트 발행.
-- 빌드존 밖 타일은 항상 Passable 기본값 반환 — Job/BT 시스템이 빌드존 밖에서도 동작.
-- `ResourceNode.Awake/OnDestroy`의 `SetTile` 호출 제거. NavMesh가 콜라이더로 자동 처리.
-- `DungeonCore.GridPos`/`SnapToGrid` 제거. 핵 위치 = 빌드존 중심.
-- `GridRenderer` `OnZoneRecentered` 구독해 오버레이 정리.
-
-### 3. BuildModeManager — 그리드/자유 토글 + 고스트 미리보기
-- `Tab` 키로 **그리드 ↔ 자유 모드** 전환 (둘 다 같은 건축물 사용 가능).
-- 그리드: 타일 중심 스냅, `Q/E` 90° 회전.
-- 자유: 마우스 위치 그대로, `Q/E` 15° 회전, `Physics.OverlapBox`로 `ResourceNode`/`DungeonCore` 충돌 체크.
-- **고스트**: 선택된 프리팹을 미리 인스턴스화 (콜라이더/스크립트 비활성)해서 위치/회전 시각 피드백.
-
-### 4. Item 시스템 분리
-- `ItemData`에서 `ResourceType`, `MaxStack` 제거. `Width`, `Height` 추가 (그리드 셀 크기).
-- `ItemData.MaxStack` 가상 프로퍼티 (기본 1).
-- `ResourceItemData : ItemData` 신규 — `ResourceType`, `Stack` 필드, `MaxStack` 오버라이드.
-- 무기/방어구는 `ItemData` 직접 상속이라 자동으로 `MaxStack=1` (1칸 1개).
-- 자원 에셋(`Stone_item` 등) 재생성 필요 (ResourceItemData로).
-
-### 5. Inventory — 그리드 기반 (타르코프식)
-- `Dictionary<ItemData, int>` → **W×H 셀 배열 + ItemInstance**.
-- 기본 8 wide × 10 tall. 컴포넌트 인스펙터에서 조절.
-- 같은 ItemData는 `MaxStack` 한도까지 한 인스턴스에 누적, 넘으면 새 인스턴스.
-- 아이템 회전 지원 (1×3 ↔ 3×1).
-- API: `TryAdd(data, amount) → int`, `TryAddAt(data, amount, x, y, rotated) → bool`, `MoveItem(inst, x, y, rotated)`, `Remove(data, amount) → int`, `RemoveByType(type, amount)`, `GetTotalQuantity`, `GetTotalByType`, `GetTotalWeight`, `GetAt(x, y)`, `RemoveInstance(inst)`.
-- 호출부 마이그레이션: `Add` → `TryAdd`, `Consume` → `Remove`, `GetQuantity` → `GetTotalQuantity`, `ConsumeByType` → `RemoveByType` (`ResourceNode`, `StorageBuilding`, `HaulJob`, `GroundHaulJob`, `DroppedItem`, `Equipment`).
-- `ItemStack` 구조체 삭제 (사용처 없음).
-- `ItemInstance` (런타임 객체) — `Data`, `Quantity`, `GridX`, `GridY`, `Rotated`, `EffectiveWidth/Height`.
-
-### 6. UI — 그리드 인벤토리 / 노드 정보 패널 재작성
-- **`InventoryGridUI`** (신규) — `Inventory` 1개를 그리드 시각화. 셀은 에디터에서 미리 배치, 아이템 아이콘만 동적 생성. 자식 `_Items` 컨테이너에 아이콘이 들어감 (LayoutGroup 영향 안 받게 `LayoutElement.ignoreLayout`). API: `Bind(inv)`, `RefreshItems()`, `ScreenToGrid(screenPos)`, `CellSize`.
-- **`PawnInventoryPanel`** 재작성 — 인스펙터에서 패널 GameObject + GridContainer 받음. I 키로 토글, 선택된 폰의 Inventory를 GridUI에 바인딩.
-- **`NodeInfoPanel`** 재작성 — 노드는 한 종류 자원만 쌓이므로 단일 아이콘 + 수량 텍스트 표시 (그리드 사용 X). Assign/Transfer 버튼, 배정된 폰 리스트(`PawnEntryUI` 프리팹) 지원.
-- **`DraggableItem`** (신규) — 아이콘에 자동 추가. 드래그/드롭/회전 처리. `R` 키로 드래그 중 회전. 클릭 셀 오프셋 보존 (Tarkov식).
-- **`InventorySlotUI`** 빈 스텁으로 폐기 (씬 참조 보존용).
-
-### 7. Equipment / Pawn 컴포넌트 안전 패턴
-- `ResourceNode`, `UnitBrain`, `StorageBuilding`, `Equipment` Awake에서 `GetComponent<X>() ?? AddComponent<X>()` — 프리팹/씬에 이미 컴포넌트가 있어도 중복 생성 방지.
+### 3. 폴더 정리
+- `Combat/`, `Input/` 신설
+- 데미지 타입 → `Combat/`, 카메라/선택/이동 → `Input/`
+- 잡다한 루트 파일들을 의미별 폴더로 이동 (ArmorSlot, ResourceType → Item; JobCategory, PriorityManager, StorageBuilding, UnitPriorities → Job; Pathfinder, ResourceNodeData → Map; Equipment, PawnMover → unit)
 
 ---
 
 ## 알려진 이슈
 
-- **인벤토리 클릭 시 첫 자리에 아이콘 잔재** — 다른 위치로 옮긴 후에도 원래 자리에 아이콘이 남아 보이는 버그. `DraggableItem.OnEndDrag`에서 `MoveItem` 성공 시 새 위치에 새 아이콘이 그려지지만 옛 위치도 같이 보이는 현상. 해결 필요.
-- **단계 5 미완**: 다중 컨테이너 드래그 / 월드 드롭 / 색 피드백(초록·빨강) / 스프라이트 진짜 회전 미구현.
 - **한글 폰트 경고**: 코드로 `AddComponent<TextMeshProUGUI>` 시 기본 폰트(LiberationSans SDF)가 한글 미지원 → `Project Settings → TextMesh Pro → Default Font Asset`에 한글 폰트 지정 권장.
 - **핵 이동 시 빌드존 리셋**: 핵 따라 그리드 데이터 초기화. 미리 지어둔 건물의 시각은 사라짐 (실제 GameObject는 그대로 남음). 의도된 동작이지만 향후 정책 결정 필요.
+- **CraftJob 재료 손실**: `OnStart`에서 재료를 즉시 소비하므로 유닛이 도중에 죽으면 결과물 없이 재료 손실. 의도된 단순 동작.
 
 ## Upcoming Systems
 
-- **단계 6 인벤토리** — 다중 컨테이너 드래그(시체↔폰, 폰↔창고), 월드 드롭, 드롭 위치 색 피드백, 진짜 스프라이트 회전.
 - **DungeonCore area effects** — unit buffs/debuffs based on proximity and core environment type.
 - **Enemy spawn / event system**.
-- **Crafting / processing system**.
 - **Enemy loot drops** — `DroppedItem.Spawn()` on enemy death.
+- **Research / Tech system** — 제작 레시피 해금 등.
+- **Crafting 확장** — 레시피별 요구 스킬, 스킬 성장, 결과 품질 차등.

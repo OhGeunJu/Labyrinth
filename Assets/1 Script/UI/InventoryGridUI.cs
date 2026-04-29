@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -20,13 +21,31 @@ public class InventoryGridUI : MonoBehaviour
 
     Inventory _inventory;
     RectTransform _itemsRoot;
+    RectTransform _previewRoot;
 
     public float CellSize => cellSize;
     public Inventory Inventory => _inventory;
 
+    // 활성 그리드 목록 — 커서 아래 그리드 탐색용
+    static readonly List<InventoryGridUI> _activeGrids = new();
+
+    public static InventoryGridUI FindUnderCursor(Vector2 screenPos, Camera uiCam)
+    {
+        foreach (var grid in _activeGrids)
+        {
+            if (grid == null || !grid.isActiveAndEnabled) continue;
+            if (RectTransformUtility.RectangleContainsScreenPoint(
+                    (RectTransform)grid.transform, screenPos, uiCam))
+                return grid;
+        }
+        return null;
+    }
+
     void Awake() => EnsureItemsRoot();
 
-    void OnDestroy() => Unbind();
+    void OnEnable()  { if (!_activeGrids.Contains(this)) _activeGrids.Add(this); }
+    void OnDisable() => _activeGrids.Remove(this);
+    void OnDestroy() { _activeGrids.Remove(this); Unbind(); }
 
     public void Bind(Inventory inv)
     {
@@ -71,6 +90,22 @@ public class InventoryGridUI : MonoBehaviour
         EnsureIgnoreLayout(go);
     }
 
+    void EnsurePreviewRoot()
+    {
+        if (_previewRoot != null) return;
+        var go = new GameObject("_Preview", typeof(RectTransform));
+        go.transform.SetParent(transform, false);
+        _previewRoot = (RectTransform)go.transform;
+        _previewRoot.anchorMin = new Vector2(0, 1);
+        _previewRoot.anchorMax = new Vector2(0, 1);
+        _previewRoot.pivot     = new Vector2(0, 1);
+        _previewRoot.anchoredPosition = Vector2.zero;
+        _previewRoot.sizeDelta = Vector2.zero;
+        EnsureIgnoreLayout(go);
+        // 아이템 아이콘 위에 렌더링되도록
+        _previewRoot.SetSiblingIndex(_itemsRoot != null ? _itemsRoot.GetSiblingIndex() + 1 : 0);
+    }
+
     // 부모에 GridLayoutGroup/HorizontalLayoutGroup 같은 게 있어도 _Items가 무시되도록.
     static void EnsureIgnoreLayout(GameObject go)
     {
@@ -80,19 +115,59 @@ public class InventoryGridUI : MonoBehaviour
     }
 
     // 화면 좌표 → 그리드 셀 좌표 (그리드 영역 밖이면 음수/초과 가능)
+    // _itemsRoot 기준으로 변환: 아이콘 배치와 동일한 좌표계 사용
     public Vector2Int ScreenToGrid(Vector2 screenPos)
     {
-        var rt = (RectTransform)transform;
+        EnsureItemsRoot();
         var canvas = GetComponentInParent<Canvas>();
         Camera cam = (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
             ? canvas.worldCamera : null;
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rt, screenPos, cam, out var local))
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_itemsRoot, screenPos, cam, out var local))
             return new Vector2Int(int.MinValue, int.MinValue);
 
-        // pivot (0, 1) 가정: local.x 0 = 좌측, local.y 0 = 상단(아래로 가면 음수)
+        // _itemsRoot는 pivot(0,1) 고정: local(0,0) = 좌상단 = 그리드 (0,0) 시작점
         int x = Mathf.FloorToInt(local.x / cellSize);
         int y = Mathf.FloorToInt(-local.y / cellSize);
         return new Vector2Int(x, y);
+    }
+
+    // isExternal: 다른 인벤토리 출신 아이템 → CanPlaceItem 대신 CanPlaceExtern 사용
+    public void ShowPreview(ItemInstance inst, int newX, int newY, bool rotated, bool isExternal = false)
+    {
+        ClearPreview();
+        EnsurePreviewRoot();
+        bool valid = _inventory != null && (isExternal
+            ? _inventory.CanPlaceExtern(inst.Data, newX, newY, rotated)
+            : _inventory.CanPlaceItem(inst, newX, newY, rotated));
+        var color  = valid ? new Color(0f, 1f, 0f, 0.4f) : new Color(1f, 0f, 0f, 0.4f);
+
+        int w = rotated ? inst.Data.Height : inst.Data.Width;
+        int h = rotated ? inst.Data.Width  : inst.Data.Height;
+        for (int dx = 0; dx < w; dx++)
+        for (int dy = 0; dy < h; dy++)
+        {
+            var cell = new GameObject("Preview", typeof(RectTransform), typeof(Image));
+            cell.transform.SetParent(_previewRoot, false);
+            var img = cell.GetComponent<Image>();
+            img.color         = color;
+            img.raycastTarget = false;
+            var rt = (RectTransform)cell.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0, 1);
+            rt.pivot         = new Vector2(0, 1);
+            rt.sizeDelta     = new Vector2(cellSize - 2, cellSize - 2);
+            rt.anchoredPosition = new Vector2((newX + dx) * cellSize + 1, -(newY + dy) * cellSize - 1);
+        }
+    }
+
+    public void ClearPreview()
+    {
+        if (_previewRoot == null) return;
+        for (int i = _previewRoot.childCount - 1; i >= 0; i--)
+        {
+            var child = _previewRoot.GetChild(i);
+            child.SetParent(null);
+            Destroy(child.gameObject);
+        }
     }
 
     public void RefreshItems() => Refresh();
@@ -109,7 +184,11 @@ public class InventoryGridUI : MonoBehaviour
     {
         if (_itemsRoot == null) return;
         for (int i = _itemsRoot.childCount - 1; i >= 0; i--)
-            Destroy(_itemsRoot.GetChild(i).gameObject);
+        {
+            var child = _itemsRoot.GetChild(i);
+            child.SetParent(null); // 즉시 부모에서 제거해 새 아이콘과 겹치지 않도록
+            Destroy(child.gameObject);
+        }
     }
 
     void CreateItemIcon(ItemInstance inst)

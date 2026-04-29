@@ -1,5 +1,5 @@
+using System;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 
 public class DungeonCore : MonoBehaviour
@@ -12,6 +12,8 @@ public class DungeonCore : MonoBehaviour
 
     public DungeonCoreData Data => data;
     public bool IsSelected { get; private set; }
+
+    public static event Action<DungeonCore> OnSelected;
 
     [SerializeField] Color selectedColor = new Color(1f, 0.9f, 0.2f, 0.8f);
 
@@ -41,32 +43,16 @@ public class DungeonCore : MonoBehaviour
             MapManager.Instance.RecenterAt(transform.position);
     }
 
-    public void Select()   { IsSelected = true; }
+    public void Select()
+    {
+        IsSelected = true;
+        OnSelected?.Invoke(this);
+    }
+
     public void Deselect() { IsSelected = false; }
 
-    void Update()
-    {
-        if (!IsSelected) return;
-        if (Mouse.current.leftButton.wasPressedThisFrame)
-            TryMoveToMouse();
-    }
-
-    void TryMoveToMouse()
-    {
-        var ray = Camera.main.ScreenPointToRay(Mouse.current.position.ReadValue());
-        // 핵의 현재 y 높이를 지나는 수평면 (점 인자형 생성자 사용)
-        var plane = new Plane(Vector3.up, transform.position);
-        if (!plane.Raycast(ray, out float dist)) return;
-
-        var newPos = ray.GetPoint(dist);
-        transform.position = newPos;
-        if (MapManager.Instance != null)
-            MapManager.Instance.RecenterAt(newPos);
-        Deselect();
-    }
-
     [System.Serializable]
-    struct MinionEntry
+    public struct MinionEntry
     {
         public MinionData Data;
         public GameObject Prefab;
@@ -74,6 +60,8 @@ public class DungeonCore : MonoBehaviour
 
     [Header("소환 가능한 하수인 목록")]
     [SerializeField] MinionEntry[] minionEntries;
+
+    public MinionEntry[] MinionEntries => minionEntries;
 
     // 하수인 소환 — 자원 소비 후 프리팹 스폰
     public bool Summon(MinionData minionData, Vector3 spawnPosition)
@@ -99,6 +87,14 @@ public class DungeonCore : MonoBehaviour
         Instantiate(prefab, spawnPosition, Quaternion.identity);
         Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 완료");
         return true;
+    }
+
+    // 코어 주변 랜덤 위치 반환
+    public Vector3 GetSpawnPosition()
+    {
+        float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+        float dist  = 2f;
+        return transform.position + new Vector3(Mathf.Cos(angle) * dist, 0f, Mathf.Sin(angle) * dist);
     }
 
     public bool IsWithinRange(Vector2Int tile)

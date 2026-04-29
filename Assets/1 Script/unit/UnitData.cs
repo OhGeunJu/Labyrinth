@@ -5,6 +5,7 @@ public class UnitData : ScriptableObject
 {
     [Header("기본 정보")]
     public string RaceName;
+    public Sprite Icon;
     public float MaxHP      = 100f;
     public float MoveSpeed  = 4f;
 
