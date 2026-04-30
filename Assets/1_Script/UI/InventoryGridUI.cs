@@ -26,6 +26,12 @@ public class InventoryGridUI : MonoBehaviour
     public float CellSize => cellSize;
     public Inventory Inventory => _inventory;
 
+    // 외부에서 설정하는 아이템 수신 필터 (null이면 모두 허용)
+    public System.Func<ItemData, bool> ReceiveFilter;
+
+    public bool CanReceiveItem(ItemData item) =>
+        ReceiveFilter == null || ReceiveFilter(item);
+
     // 활성 그리드 목록 — 커서 아래 그리드 탐색용
     static readonly List<InventoryGridUI> _activeGrids = new();
 
@@ -136,9 +142,11 @@ public class InventoryGridUI : MonoBehaviour
     {
         ClearPreview();
         EnsurePreviewRoot();
-        bool valid = _inventory != null && (isExternal
-            ? _inventory.CanPlaceExtern(inst.Data, newX, newY, rotated)
-            : _inventory.CanPlaceItem(inst, newX, newY, rotated));
+        bool valid = _inventory != null
+            && CanReceiveItem(inst.Data)
+            && (isExternal
+                ? _inventory.CanPlaceExtern(inst.Data, newX, newY, rotated)
+                : _inventory.CanPlaceItem(inst, newX, newY, rotated));
         var color  = valid ? new Color(0f, 1f, 0f, 0.4f) : new Color(1f, 0f, 0f, 0.4f);
 
         int w = rotated ? inst.Data.Height : inst.Data.Width;

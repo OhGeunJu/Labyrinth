@@ -1,25 +1,53 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
-public class StorageBuilding : MonoBehaviour
+public class Storage : MonoBehaviour
 {
-    public static readonly List<StorageBuilding> All = new();
+    public static readonly List<Storage> All = new();
     public static event Action OnChanged;
+    public static event Action<Storage> OnSelected;
+
+    [Header("이름")]
+    public string BuildingName = "창고";
 
     [Header("허용 아이템 (비어있으면 모두 허용)")]
     [SerializeField] List<ResourceType> allowedTypes = new();
 
     public Inventory Inventory { get; private set; }
+    public IReadOnlyList<ResourceType> AllowedTypes => allowedTypes;
+
+    Camera _cam;
 
     void Awake()
     {
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
         Inventory.OnChanged += () => OnChanged?.Invoke();
         All.Add(this);
+        _cam = Camera.main;
     }
 
     void OnDestroy() => All.Remove(this);
+
+    void Update()
+    {
+        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
+        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
+        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
+            OnSelected?.Invoke(this);
+    }
+
+    public void Init(StorageBuildingData data)
+    {
+        if (data != null) BuildingName = data.BuildingName;
+    }
+
+    // 필터 설정
+    public void SetAllowAll()               => allowedTypes.Clear();
+    public void AddFilter(ResourceType t)   { if (!allowedTypes.Contains(t)) allowedTypes.Add(t); }
+    public void RemoveFilter(ResourceType t) => allowedTypes.Remove(t);
+    public bool HasFilter(ResourceType t)   => allowedTypes.Contains(t);
 
     // ── 입고 필터 ─────────────────────────────────────────────────────
     public bool CanAccept(ItemData item)
@@ -79,7 +107,7 @@ public class StorageBuilding : MonoBehaviour
 
     // ── 위치/탐색 유틸 ───────────────────────────────────────────────
     // ResourceType 기반으로 재료가 있는 창고와 해당 ItemData를 반환
-    public static (StorageBuilding building, ItemData itemData) FindStorageWithType(ResourceType type)
+    public static (Storage building, ItemData itemData) FindStorageWithType(ResourceType type)
     {
         foreach (var sb in All)
             foreach (var inst in sb.Inventory.Items)
@@ -89,9 +117,9 @@ public class StorageBuilding : MonoBehaviour
     }
 
     // item을 받을 수 있는 창고 중 가장 가까운 것 반환
-    public static StorageBuilding FindNearest(Vector3 position, ItemData item = null)
+    public static Storage FindNearest(Vector3 position, ItemData item = null)
     {
-        StorageBuilding nearest = null;
+        Storage nearest = null;
         float minDist = float.MaxValue;
         foreach (var sb in All)
         {

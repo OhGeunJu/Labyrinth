@@ -137,6 +137,6 @@ public class BuildModeUI : MonoBehaviour
         if (idx < mgr.NodeBuildingCount) return true;
         var sc = mgr.GetSubCore(idx - mgr.NodeBuildingCount);
         if (sc == null || sc.CostAmount <= 0) return true;
-        return StorageBuilding.GetTotal(sc.CostType) >= sc.CostAmount;
+        return Storage.GetTotal(sc.CostType) >= sc.CostAmount;
     }
 }

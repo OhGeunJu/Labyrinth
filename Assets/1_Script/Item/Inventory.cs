@@ -27,7 +27,7 @@ public class Inventory : MonoBehaviour
     // ── 배치 ──────────────────────────────────────────────────────────────────
 
     // 빈 자리를 자동 탐색하여 추가. 일부만 들어가면 그만큼만. 반환: 실제 추가 수량.
-    public int TryAdd(ItemData data, int amount, ItemQuality quality = ItemQuality.Normal)
+    public int TryAdd(ItemData data, int amount, ItemQuality quality = ItemQuality.Common)
     {
         if (data == null || amount <= 0) return 0;
         int remaining = amount;

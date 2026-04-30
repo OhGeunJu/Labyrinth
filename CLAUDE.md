@@ -253,20 +253,36 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 `PriorityPanel` — Inspector 기반 UI. P key to toggle.
 
-`JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard, Crafting.
+`JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard, Crafting, Research.
 
 ### Resource & Storage System
 
-**ResourceNode** — `DropYield()` adds items to own `Inventory`, then registers `HaulJob` to nearest compatible `StorageBuilding`.
+**ResourceNode** — `DropYield()` adds items to own `Inventory`, then registers `HaulJob` to nearest compatible `Storage`.
 
-**StorageBuilding** — per-building `Inventory` with item type filter.
+**Storage** (이전 이름: `StorageBuilding`) — per-building `Inventory` with item type filter. 클릭 가능한 씬 오브젝트.
+- `BuildingName` — 표시명 (`StorageBuildingData.Init()`로 설정)
 - `allowedTypes: List<ResourceType>` — empty = accept all
-- `TryAdd(item, amount)` — respects filter
+- `AllowedTypes` — 읽기 전용 노출
+- `SetAllowAll()` / `AddFilter(type)` / `RemoveFilter(type)` / `HasFilter(type)` — 필터 조작
+- `CanAccept(ItemData)` — 필터 통과 여부
+- `TryAdd(item, amount)` — 필터 통과 시에만 입고
+- `Init(StorageBuildingData)` — 빌드 모드 배치 시 초기화
 - `static GetTotal(ResourceType)` / `Consume(ResourceType, amount)` — ResourceType 기반
 - `static GetTotalByItem(ItemData)` / `ConsumeByItem(ItemData, amount)` — ItemData 기반 (제작 재료용)
 - `static FindNearest(position, item)` — nearest that accepts the item
+- `static OnSelected` — 좌클릭 시 이벤트 → `StorageBuildingUI`가 구독
 
-`ResourceStorage` — **removed**. Use `StorageBuilding.GetTotal` / `StorageBuilding.Consume` instead.
+**StorageBuildingData** (ScriptableObject, `DungeonColony/StorageBuildingData`):
+- `BuildingName`, `Category`, `CostType`, `CostAmount`, `Prefab`
+- 빌드 모드에서 창고 배치 시 사용. 프리팹에 `Storage`(+`Inventory`+Collider) 컴포넌트 미리 부착 필요.
+
+**StorageBuildingUI** — 창고 좌클릭 시 열리는 패널.
+- 타이틀바 (가로 전체 50px) + 닫기 버튼
+- 본문: `InventoryGridUI`로 창고 인벤토리 그리드 시각화 (PawnInventoryPanel과 동일 방식)
+- 다른 인벤토리에서 드래그-드롭으로 옮길 수 있음 (`InventoryGridUI._activeGrids` 정적 목록)
+- `Storage.CanAccept` 필터가 드롭 시에도 적용됨 (`InventoryGridUI.ReceiveFilter` 델리게이트)
+
+**BuildModeManager** — `placeableStorages: StorageBuildingData[]` 추가. 창고 선택 시 직접 배치 (Blueprint 없음), 자원 소비 후 `Storage.Init()` 호출. 프리팹에 `Storage` 컴포넌트가 없으면 경고 후 취소.
 
 ### Crafting System (`Job/CraftingTable.cs`, `Job/CraftJob.cs`, `Item/RecipeData.cs`, `UI/CraftingTableUI.cs`, `UI/RecipeEntryUI.cs`)
 
@@ -274,10 +290,11 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - `RecipeName`, `Ingredients: List<{ItemData, int}>`, `Result: ItemData`, `ResultAmount`, `CraftTime`, `Category`
 
 **CraftingTable** (씬 오브젝트):
-- `availableRecipes: List<RecipeData>` — 이 테이블에서 만들 수 있는 것
+- `tableType: CraftSkill` — 테이블 종류 (WeaponCrafting/ArmorCrafting/Cooking/Alchemy/Research 등)
+- `Recipes` — `DataManager.GetRecipesBySkill(tableType)`로 자동 필터된 레시피 목록
 - 좌클릭 시 `OnSelected` 정적 이벤트 발행 → `CraftingTableUI`가 구독
 - `QueueOrder(recipe)` → `JobManager.RegisterJob(new CraftJob(...))`
-- `CanCraft(recipe)` — 재료 충분 여부 확인 (`StorageBuilding.GetTotalByItem`)
+- `CanCraft(recipe)` — 재료 충분 여부 확인 (`Storage.GetTotalByItem`)
 
 **CraftingTableUI** — 마스터-디테일 레이아웃:
 - 왼쪽: ScrollView에 `RecipeEntryUI` 프리팹 인스턴스 목록
@@ -302,7 +319,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 **메인 코어 (`DungeonCore`)** — singleton. 빌드존 기준점. 왼쪽 클릭으로 이동.
 
-- `Summon(MinionData, position)` — 캡 확인 → `StorageBuilding.Consume` → `minionEntries` 프리팹 스폰
+- `Summon(MinionData, position)` — 캡 확인 → `Storage.Consume` → `minionEntries` 프리팹 스폰
 - `CurrentMinionCount` / `TotalMinionCap` — 살아있는 하수인 수 / 전체 한도 (BaseMinionCap + 서브 코어 합산)
 - `IsWithinAnyRange(Vector2Int)` / `IsWithinAnyRangeWorld(Vector3)` — 메인 코어 OR 서브 코어 범위 내 여부
 - `RegisterSubCore` / `UnregisterSubCore` — 서브 코어 등록/해제
@@ -343,14 +360,18 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 ### UI System (`Assets/1 Script/UI/`)
 
-- `UnitInfoUI` — 선택 유닛 상세 정보 표시 (혈액바, 신체부위, 장착, 스탯, 상태이상, 노동)
+- `UnitHPUI` — 선택 유닛의 HP/혈액/신체부위/장착/상태이상 표시 (왼쪽 하단, 항상 표시)
+- `UnitStatsUI` — 선택 유닛의 속성/전투/마법/노동 스킬 표시 (C키 토글)
 - `PawnInventoryPanel` — I키로 인벤토리 열기; 아이템 클릭 시 장착, 장착 슬롯 클릭 시 해제; 시체 루팅 지원
 - `EquipmentSlotUI` — 장비 슬롯 표시 컴포넌트 (슬롯명 + 아이콘 + 클릭 해제)
 - `DraggablePanel` — 헤더 오브젝트에 붙이고 `Target`에 이동할 패널 RectTransform 연결; 드래그로 패널 이동
-- `InventoryGridUI` — 그리드 시각화. `_activeGrids` 정적 목록으로 다중 컨테이너 드래그 지원. `FindUnderCursor(screenPos, cam)` / `ShowPreview(inst, x, y, rotated, isExternal)` / `ClearPreview` / `ScreenToGrid` 제공
-- `DraggableItem` — 아이콘 자동 추가. 드래그/드롭/회전. 다중 컨테이너 이동, 그리드 밖 드롭 시 인벤토리 위치에 `DroppedItem.Spawn`. 색 피드백: 초록(가능)/빨강(불가). R 키로 90° 회전 (스프라이트 실제 회전 + 셀 점유 변경)
-- `CraftingTableUI` — 마스터-디테일 레이아웃. 왼쪽 ScrollView, 오른쪽 디테일 패널
+- `InventoryGridUI` — 그리드 시각화. `_activeGrids` 정적 목록으로 다중 컨테이너 드래그 지원. `ReceiveFilter: Func<ItemData, bool>` 델리게이트로 외부 필터 주입 (창고 등). `FindUnderCursor(screenPos, cam)` / `ShowPreview(inst, x, y, rotated, isExternal)` / `ClearPreview` / `ScreenToGrid` 제공
+- `DraggableItem` — 아이콘 자동 추가. 드래그/드롭/회전. 다중 컨테이너 이동, 그리드 밖 드롭 시 인벤토리 위치에 `DroppedItem.Spawn`. 색 피드백: 초록(가능)/빨강(불가). R 키로 90° 회전 (스프라이트 실제 회전 + 셀 점유 변경). 드롭 시 `targetGrid.CanReceiveItem` 체크로 필터 적용
+- `CraftingTableUI` — 마스터-디테일 레이아웃. 왼쪽 ScrollView, 오른쪽 디테일 패널. 테이블 타입 이름을 헤더로 표시
 - `RecipeEntryUI` — 레시피 목록 항목. Button + TextMeshProUGUI
+- `StorageBuildingUI` — 창고 클릭 시 열리는 패널. 타이틀바 + `InventoryGridUI` 그리드. `Storage.CanAccept`를 `ReceiveFilter`에 연결해 드래그-드롭 필터 적용
+- `ResearchTableUI` — 연구 테이블 클릭 시 열림. 마스터-디테일 (목록 + 상세). 선행 연구/재료/시간 표시
+- `ResearchEntryUI` — 연구 목록 항목. 완료(초록) / 잠김(회색) / 재료부족(빨강) 색상 구분
 
 ### Pathfinding
 
@@ -389,7 +410,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 ### 2. 제작 시스템 (Crafting)
 - `RecipeData` (ScriptableObject) + `CraftingTable` (씬 오브젝트) + `CraftJob` (작업) + `CraftingTableUI` (마스터-디테일 UI)
 - `JobCategory.Crafting` 추가
-- `StorageBuilding.GetTotalByItem` / `ConsumeByItem` 추가 (ItemData 기반 집계/소비)
+- `Storage.GetTotalByItem` / `ConsumeByItem` 추가 (ItemData 기반 집계/소비)
 - 제작 완료 시 결과물이 작업 유닛 인벤토리로 입고 (자리 없으면 드롭 fallback)
 - 제작 시작/완료 로그 추가
 
@@ -409,7 +430,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - B키로 건설 모드 진입 → 위치 클릭 시 즉시 건설이 아닌 **예비 설계(Blueprint)** 배치
 - `BuildingBlueprint` — SubCoreData.Prefab 고스트 시각(반투명 파란색). 자재 납품 완료 시 실제 건물 스폰 후 자폭
 - `ConstructionJob` (Category: Construction) — 창고에서 자재 수거 → 설계도에 납품 2-phase
-- `StorageBuilding.OnChanged` 구독으로 창고에 자재 들어올 때 자동으로 건설 작업 등록
+- `Storage.OnChanged` 구독으로 창고에 자재 들어올 때 자동으로 건설 작업 등록
 - `BuildingBlueprint.All` 정적 목록으로 중복 배치 방지
 
 ### 6. 건설 UI (`BuildModeUI`, `BuildingItemUI`)
@@ -435,18 +456,145 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 ### 9. 제작 시스템 확장
 - **`CraftSkill`** — Labor / WeaponCrafting / ArmorCrafting / Cooking / Alchemy / Research
-- **`ItemQuality`** — Normal / Good / Excellent / Masterwork. `StatMultiplier()` (1.0 / 1.2 / 1.5 / 2.0) 제공 (전투 연동은 추후)
-- **등급 확률** (스킬 100 기준): 명품 10% / 우수 30% / 양질 40% / 일반 20%. 스킬 미달 시 일반 고정
+- **`ItemQuality`** — Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에픽) / Legendary(전설). `StatMultiplier()` (1.0 / 1.2 / 1.5 / 2.0 / 2.5 / 3.0) 제공 (전투 연동은 추후)
+- **등급 확률** (스킬 100 기준): 전설 2% / 에픽 5% / 유니크 10% / 희귀 20% / 고급 35% / 일반 28%. 스킬 미달 시 일반 고정
 - **장비 vs 소모품 분기**: WeaponData/ArmorData → 등급 판정·수량 고정. 나머지 → 등급 없음·수량 배율(스킬 100 = ×1.5)
 - **스킬 성장**: `RecipeData.SkillGrowthAmount` 만큼 제작 완료마다 성장
 - **`Inventory.TryAdd`** — `ItemQuality` 파라미터 추가. 같은 등급끼리만 스택
-- **`ItemInstance.DisplayName`** — 등급 접두사 포함 표시명 (`[양질] 철검` 등)
+- **`ItemInstance.DisplayName`** — 등급 접두사 포함 표시명 (`[희귀] 철검` 등)
 - **`ResearchData`** (ScriptableObject) — 선행 연구 / 재료 / 시간 / 해금 레시피 목록
 - **`ResearchManager`** — 완료 연구 추적. `IsUnlocked(recipe)` / `CanResearch(data)` / `Complete(data)`
 - **`RecipeData.RequiredResearch`** — null이면 기본 개방, 지정 시 연구 완료 후 해금
 - **`RecipeEntryUI`** — 잠긴 레시피는 `[잠김]` 접두사 + 회색 표시, 버튼 비활성
 
+## 최근 변경 (2026-05-01)
+
+### 1. ItemQuality 등급 체계 변경
+- 기존 4등급 (Normal/Good/Excellent/Masterwork) → 6등급 (Common/Uncommon/Rare/Unique/Epic/Legendary)
+- 한글 표시명: 일반/고급/희귀/유니크/에픽/전설
+- `StatMultiplier()`: 1.0 / 1.2 / 1.5 / 2.0 / 2.5 / 3.0
+- 등급 확률 (스킬 100): 전설 2% / 에픽 5% / 유니크 10% / 희귀 20% / 고급 35% / 일반 28% (고차 다항식: `t^n`)
+
+### 2. ItemQuality → 전투 스탯 연동
+- `Equipment` — `ItemInstance` 추적 추가. 무기/오프핸드/갑옷별 `_mainHandInst`, `_offHandInst`, `_armorInst` 딕셔너리
+- `SyncBlackboard()`: `AttackDamage = BaseDamage × Quality.StatMultiplier()`
+- `Equipment.GetArmorQualityMult(slot)` — 갑옷 슬롯별 등급 배율 노출
+- `BodyPartSystem.TakeDamage()`: `armor.DamageReduction × qualityMult` 적용
+- 장착/해제 시 `ItemInstance` 인벤토리 왕복하면서 등급 보존 (`Inventory.TryAdd(item, amount, quality)`)
+
+### 3. CraftingTable 타입 분리
+- `CraftingTable.tableType: CraftSkill` 필드 추가 (`WeaponCrafting` 기본값)
+- `Recipes` 프로퍼티 → `DataManager.GetRecipesBySkill(tableType)` 자동 조회 (수동 등록 불필요)
+- `availableRecipes` 필드 완전 제거
+- `CraftSkillExt.DisplayName()` 추가 — "무기 제작대" / "방어구 제작대" 등
+- `CraftingTableUI`에 `tableTitleText` 필드 추가 — 테이블 타입 이름 헤더 표시
+
+### 4. Data / 모딩 시스템 (`Assets/1 Script/Data/`)
+- `DataManager` (static class, `RuntimeInitializeOnLoadMethod` 자동 초기화) — 게임 데이터 중앙 레지스트리
+- 로딩 순서: `Resources/Data/{Items,Recipes,Research}` (SO) → `StreamingAssets/Data/{items,recipes}` (JSON) → `StreamingAssets/Mods/[ModName]/...` (모드)
+- `DataSchemas.cs` — JSON 역직렬화 스키마 (ItemSchema/WeaponSchema/ArmorSchema/ResourceItemSchema/RecipeSchema/IngredientSchema)
+- 기존 SO 에셋(`Assets/5_Data/`)은 `Assets/Resources/Data/`로 이동됨 (Stone/Ore/Crystal items, stick weapon, stick recipe, research)
+- 향후 모드 추가는 `StreamingAssets/Mods/[modname]/` 폴더에 JSON 추가만으로 가능
+
+### 5. ResearchJob 시스템
+- `JobCategory.Research` 추가
+- `ResearchTable` (씬 오브젝트) — 좌클릭 이벤트 + `availableResearch: List<ResearchData>` + `QueueResearch()` / `CanResearch()`
+- `ResearchJob` — `OnStart`에서 재료 즉시 소비, `Execute`에서 `ResearchTime` 카운트다운 후 `ResearchManager.Complete()` 호출 + `Stats.Research` 성장
+- `ResearchTableUI` — 마스터-디테일 (목록 + 상세). 선행연구/재료/시간 표시
+- `ResearchEntryUI` — 완료(초록)/잠김(회색)/재료부족(빨강) 색상 구분
+
+### 6. UnitInfoUI 분리
+- 기존 단일 패널 → 두 개로 분리:
+  - `UnitHPUI` — HP/혈액/신체부위/장착/상태이상 (왼쪽 하단, 선택 시 항상 표시)
+  - `UnitStatsUI` — 속성/전투/마법/노동 스킬 (C키 토글)
+
+### 7. Storage 시스템 개편
+- **`StorageBuilding` → `Storage`** 클래스 이름 변경 (파일명도 `Storage.cs`로). `StorageBuildingData`, `StorageBuildingUI`는 그대로
+- `Storage` 클래스 신규 기능:
+  - `BuildingName` 표시명 필드
+  - 좌클릭 시 `OnSelected` 정적 이벤트 발행
+  - 필터 조작 API: `SetAllowAll()` / `AddFilter()` / `RemoveFilter()` / `HasFilter()`
+  - `Init(StorageBuildingData)` — 빌드 모드 배치 시 호출
+- `StorageBuildingData` (ScriptableObject) — 빌드 모드용. `BuildingName`, `Category`, `CostType`, `CostAmount`, `Prefab`
+- `BuildModeManager.placeableStorages` 추가 — 빌드 모드에서 창고 배치 가능. 자원 소비 후 `Storage.Init()` 호출. 프리팹에 `Storage` 컴포넌트가 없으면 경고 후 취소
+- `StorageBuildingUI` — 창고 좌클릭 시 열리는 패널. 타이틀바 + `InventoryGridUI`로 그리드 시각화 (PawnInventoryPanel과 동일 방식). 다른 인벤토리에서 드래그-드롭으로 옮기기 가능
+- **`InventoryGridUI.ReceiveFilter`** — `Func<ItemData, bool>` 델리게이트. 외부에서 수신 필터 주입. `StorageBuildingUI`가 `Storage.CanAccept`을 연결해 드래그-드롭 시 필터 적용. 프리뷰 색상도 필터 반영
+
 ---
+
+## Data / Modding System (`Assets/1 Script/Data/`)
+
+게임 데이터는 두 경로로 로드됨. 나중에 오는 데이터가 앞선 것을 덮어씀.
+
+```
+1. Assets/Resources/Data/Items|Recipes|Research   ← 기존 ScriptableObject 에셋
+2. StreamingAssets/Data/items|recipes             ← 기본 JSON 콘텐츠
+3. StreamingAssets/Mods/[ModName]/items|recipes   ← 모드 JSON
+```
+
+**`DataManager`** (static class, `RuntimeInitializeOnLoadMethod` 자동 초기화):
+- `GetItem(name)` / `GetRecipe(name)` / `GetResearch(name)` — ID(이름)로 단건 조회
+- `GetRecipesBySkill(CraftSkill)` — 제작대 타입별 레시피 목록
+- `AllItems` / `AllRecipes` — 전체 조회
+
+**JSON 파일 형식** (`StreamingAssets/Data/`):
+
+아이템 — `type` 필드로 종류 구분:
+```json
+// items/iron_sword.json
+{
+  "type": "weapon",
+  "itemName": "철검",
+  "iconPath": "Icons/iron_sword",
+  "weight": 2.0,
+  "weaponType": "OneHandSword",
+  "isBladed": true,
+  "baseDamage": 15,
+  "baseAttackInterval": 1.8,
+  "attackRange": 1.5,
+  "damageCategory": "Physical",
+  "physicalType": "Slash",
+  "damageElement": "None",
+  "effectChance": 0.15
+}
+// type 값: "weapon" | "armor" | "resource" | 없으면 기본 아이템
+```
+
+레시피:
+```json
+// recipes/iron_sword.json
+{
+  "recipeName": "철검 제작",
+  "ingredients": [
+    { "itemName": "철 주괴", "amount": 2 },
+    { "itemName": "나무 막대", "amount": 1 }
+  ],
+  "resultItemName": "철검",
+  "resultAmount": 1,
+  "craftTime": 10.0,
+  "requiredSkillType": "WeaponCrafting",
+  "requiredSkillLevel": 0,
+  "skillGrowthAmount": 0.5
+}
+```
+
+열거형은 문자열 (대소문자 무시):
+- `weaponType`: `OneHandSword`, `TwoHandAxe`, `Bow`, `ElementalFire`, ...
+- `damageCategory`: `Physical`, `Elemental`, `Dark`, `Holy`
+- `physicalType`: `Slash`, `Pierce`, `Blunt`
+- `damageElement`: `None`, `Fire`, `Ice`, `Lightning`, `Poison`
+- `armorSlot`: `Head`, `Chest`, `Hands`, `Legs`
+- `resourceType`: `Stone`, `Wood`, `Iron`, ...
+- `requiredSkillType`: `Labor`, `WeaponCrafting`, `ArmorCrafting`, `Cooking`, `Alchemy`, `Research`
+
+**아이콘 스프라이트**: `iconPath`는 `Resources/` 기준 경로 (확장자 제외). 스프라이트를 `Assets/Resources/Icons/` 폴더에 위치시켜야 함.
+
+**기존 SO 에셋**: `Assets/Resources/Data/Items|Recipes|Research` 폴더로 이동하면 DataManager가 자동 수집. 이동하지 않으면 JSON으로 대체하거나 `CraftingTable` 인스펙터에서 직접 참조 불가.
+
+**미구현 JSON 타입** (향후 추가 예정):
+- `UnitData` / `MinionData` — 유닛 스탯
+- `SubCoreData` — 서브 코어 (프리팹 참조 문제 해결 필요)
+- `ResearchData` — 연구 데이터
 
 ## 알려진 이슈
 
@@ -454,11 +602,9 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - **핵 이동 시 빌드존 리셋**: 핵 따라 그리드 데이터 초기화. 미리 지어둔 건물의 시각은 사라짐 (실제 GameObject는 그대로 남음). 의도된 동작이지만 향후 정책 결정 필요.
 - **CraftJob 재료 손실**: `OnStart`에서 재료를 즉시 소비하므로 유닛이 도중에 죽으면 결과물 없이 재료 손실. 의도된 단순 동작.
 - **Blueprint 반투명 머티리얼**: URP 프로젝트 설정에 따라 코드로 생성한 투명 머티리얼이 불투명으로 렌더될 수 있음. 에디터에서 반투명 머티리얼을 직접 제작 후 `SubCoreData`에 별도 필드로 연결 권장.
-- **ItemQuality 전투 미연동**: `StatMultiplier()` 는 정의됐으나 `CombatHandler` / `BodyPartSystem` 에 아직 반영 안 됨.
+- **DataManager SO 미수집**: 기존 RecipeData 에셋이 `Assets/Resources/Data/Recipes/`에 없으면 DataManager가 인식 못함. 에셋을 해당 폴더로 이동하거나 JSON으로 전환 필요.
 
 ## Upcoming Systems
 
 - **Enemy spawn / event system** — 적 웨이브/이벤트 시스템.
-- **ResearchJob** — 연구 테이블에서 유닛이 `ResearchData` 작업 수행 → `ResearchManager.Complete()` 호출. 테이블 오브젝트 + UI 필요.
-- **ItemQuality → 전투 스탯 반영** — `Equipment`에서 장착 아이템의 `ItemInstance.Quality.StatMultiplier()` 를 데미지/방어력에 곱하는 연동.
-- **CraftingTable 타입 분리** — 무기/방어구/요리/연금술 테이블 별도 분리. `CraftingTable`에 `CraftSkill TableType` 필드 추가 후 레시피 자동 필터.
+- ~~**ResearchJob**~~ — 완료. `ResearchTable` + `ResearchJob` + `ResearchTableUI` + `ResearchEntryUI` 구현. `JobCategory.Research` 추가.

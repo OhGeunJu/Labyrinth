@@ -2,18 +2,20 @@ using UnityEngine;
 
 public class CraftJob : JobBase
 {
-    // 스킬 수치에 따른 등급 확률 (skill 100 기준: 명품 10% / 우수 30% / 양질 40% / 일반 20%)
+    // 스킬 100 기준 확률: 전설 2% / 에픽 5% / 유니크 10% / 희귀 20% / 고급 35% / 일반 28%
     static ItemQuality RollQuality(float skill, bool skilled)
     {
-        if (!skilled) return ItemQuality.Normal;   // 스킬 미달은 무조건 일반
+        if (!skilled) return ItemQuality.Common;
 
         float t    = Mathf.Clamp01(skill / 100f);
         float roll = UnityEngine.Random.value;
 
-        if (roll < t * t * t * 0.10f) return ItemQuality.Masterwork;
-        if (roll < t * t       * 0.30f) return ItemQuality.Excellent;
-        if (roll < t           * 0.40f) return ItemQuality.Good;
-        return ItemQuality.Normal;
+        if (roll < t * t * t * t * t * 0.02f) return ItemQuality.Legendary;
+        if (roll < t * t * t * t       * 0.05f) return ItemQuality.Epic;
+        if (roll < t * t * t           * 0.10f) return ItemQuality.Unique;
+        if (roll < t * t               * 0.20f) return ItemQuality.Rare;
+        if (roll < t                   * 0.35f) return ItemQuality.Uncommon;
+        return ItemQuality.Common;
     }
 
     readonly CraftingTable _table;
@@ -39,7 +41,7 @@ public class CraftJob : JobBase
         // 재료 확인 후 즉시 소비 (예약 개념)
         foreach (var ing in _recipe.Ingredients)
         {
-            if (StorageBuilding.GetTotalByItem(ing.Item) < ing.Amount)
+            if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
             {
                 Debug.Log($"[CraftJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요");
                 Status = JobStatus.Done;
@@ -47,7 +49,7 @@ public class CraftJob : JobBase
             }
         }
         foreach (var ing in _recipe.Ingredients)
-            StorageBuilding.ConsumeByItem(ing.Item, ing.Amount);
+            Storage.ConsumeByItem(ing.Item, ing.Amount);
 
         Debug.Log($"[CraftJob] 제작 시작 — {_recipe.RecipeName} ({_recipe.CraftTime}초)");
         _craftEndTime = Time.time + _recipe.CraftTime;
@@ -76,7 +78,7 @@ public class CraftJob : JobBase
         }
         else
         {
-            quality     = ItemQuality.Normal;
+            quality     = ItemQuality.Common;
             float ratio = Mathf.Clamp01(skill / 100f);
             float mult  = skilled ? 1f + ratio * 0.5f : 0.5f;
             finalAmount = Mathf.Max(1, Mathf.RoundToInt(_recipe.ResultAmount * mult));

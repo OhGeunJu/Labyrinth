@@ -8,3 +8,16 @@ public enum CraftSkill
     Alchemy,        // 연금술
     Research,       // 연구
 }
+
+public static class CraftSkillExt
+{
+    public static string DisplayName(this CraftSkill skill) => skill switch
+    {
+        CraftSkill.WeaponCrafting => "무기 제작대",
+        CraftSkill.ArmorCrafting  => "방어구 제작대",
+        CraftSkill.Cooking        => "요리대",
+        CraftSkill.Alchemy        => "연금술대",
+        CraftSkill.Research       => "연구대",
+        _                         => "제작대",
+    };
+}

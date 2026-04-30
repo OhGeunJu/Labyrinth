@@ -9,10 +9,10 @@ public class GroundHaulJob : JobBase
     DroppedItem     _droppedItem;
     ItemData        _itemData;
     int             _amount;
-    StorageBuilding _storage;
+    Storage _storage;
     Phase           _phase = Phase.GoToItem;
 
-    public GroundHaulJob(DroppedItem droppedItem, StorageBuilding storage)
+    public GroundHaulJob(DroppedItem droppedItem, Storage storage)
     {
         _droppedItem = droppedItem;
         _itemData    = droppedItem.Item;
@@ -39,7 +39,7 @@ public class GroundHaulJob : JobBase
             {
                 if (!_storage.TryAdd(_itemData, _amount))
                 {
-                    var fallback = StorageBuilding.FindNearest(unit.transform.position, _itemData);
+                    var fallback = Storage.FindNearest(unit.transform.position, _itemData);
                     if (fallback != null)
                         fallback.TryAdd(_itemData, _amount);
                     else

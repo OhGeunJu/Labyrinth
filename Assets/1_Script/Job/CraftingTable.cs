@@ -5,9 +5,13 @@ using UnityEngine.InputSystem;
 
 public class CraftingTable : MonoBehaviour
 {
-    [SerializeField] List<RecipeData> availableRecipes = new();
+    [SerializeField] CraftSkill tableType = CraftSkill.WeaponCrafting;
 
-    public IReadOnlyList<RecipeData> Recipes => availableRecipes;
+    public CraftSkill TableType => tableType;
+
+    // DataManager에서 tableType에 맞는 레시피만 반환 (수동 등록 불필요)
+    public IReadOnlyList<RecipeData> Recipes =>
+        new List<RecipeData>(DataManager.GetRecipesBySkill(tableType));
 
     public static event Action<CraftingTable> OnSelected;
 
@@ -33,7 +37,7 @@ public class CraftingTable : MonoBehaviour
     {
         if (recipe == null) return false;
         foreach (var ing in recipe.Ingredients)
-            if (StorageBuilding.GetTotalByItem(ing.Item) < ing.Amount)
+            if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
                 return false;
         return true;
     }

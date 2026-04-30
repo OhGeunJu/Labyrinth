@@ -74,14 +74,18 @@ public class BodyPartSystem : MonoBehaviour
 
         var partType = GetRandomBodyPart();
 
-        // 갑옷 감소 (관통 계열 제외)
+        // 갑옷 감소 (관통 계열 제외, 등급 배율 반영)
         bool isPiercing = (info.Category == DamageCategory.Physical  && info.PhysicalType == PhysicalType.Pierce)
                        || (info.Category == DamageCategory.Elemental && info.Element      == DamageElement.Ice);
         if (!isPiercing)
         {
-            var armor = Equip?.GetArmor(BodyPartToArmorSlot(partType));
+            var armorSlot = BodyPartToArmorSlot(partType);
+            var armor     = Equip?.GetArmor(armorSlot);
             if (armor != null)
-                damage = Mathf.Max(0f, damage - armor.DamageReduction);
+            {
+                float qualMult = Equip?.GetArmorQualityMult(armorSlot) ?? 1f;
+                damage = Mathf.Max(0f, damage - armor.DamageReduction * qualMult);
+            }
         }
 
         // Shielded 버프: 피해 감소 (%)

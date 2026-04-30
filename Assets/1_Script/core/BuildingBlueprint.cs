@@ -74,14 +74,14 @@ public class BuildingBlueprint : MonoBehaviour
     {
         All.Add(this);
         if (_costRequired <= 0) { Complete(); return; }
-        StorageBuilding.OnChanged += OnStorageChanged;
+        Storage.OnChanged += OnStorageChanged;
         TryRegisterJob();
     }
 
     void OnDestroy()
     {
         All.Remove(this);
-        StorageBuilding.OnChanged -= OnStorageChanged;
+        Storage.OnChanged -= OnStorageChanged;
         if (_ghostMat != null) Destroy(_ghostMat);
     }
 
@@ -90,7 +90,7 @@ public class BuildingBlueprint : MonoBehaviour
     void TryRegisterJob()
     {
         if (_jobPending || IsComplete || JobManager.Instance == null) return;
-        int available = StorageBuilding.GetTotal(_costType);
+        int available = Storage.GetTotal(_costType);
         if (available <= 0) return;
 
         _jobPending = true;

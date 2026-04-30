@@ -13,17 +13,10 @@ public class ItemInstance
     public int EffectiveHeight => Rotated ? Data.Width  : Data.Height;
 
     // 인벤토리 표시용 이름 (등급 접두사 포함)
-    public string DisplayName
-    {
-        get
-        {
-            string prefix = Quality.DisplayName();
-            return string.IsNullOrEmpty(prefix) ? Data.ItemName : $"[{prefix}] {Data.ItemName}";
-        }
-    }
+    public string DisplayName => $"[{Quality.DisplayName()}] {Data.ItemName}";
 
     public ItemInstance(ItemData data, int quantity, int x, int y,
-                        bool rotated = false, ItemQuality quality = ItemQuality.Normal)
+                        bool rotated = false, ItemQuality quality = ItemQuality.Common)
     {
         Data     = data;
         Quantity = quantity;

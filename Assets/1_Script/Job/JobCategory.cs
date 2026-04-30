@@ -8,4 +8,5 @@ public enum JobCategory
     Construction,
     Guard,
     Crafting,
+    Research,
 }

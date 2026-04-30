@@ -10,6 +10,7 @@ public class CraftingTableUI : MonoBehaviour
     [SerializeField] GameObject    panel;
     [SerializeField] Transform     recipeContainer;  // ScrollView의 Content
     [SerializeField] RecipeEntryUI recipeEntryPrefab;
+    [SerializeField] TextMeshProUGUI tableTitleText;
 
     [Header("디테일 패널")]
     [SerializeField] GameObject      detailPanel;
@@ -52,6 +53,7 @@ public class CraftingTableUI : MonoBehaviour
         _selectedRecipe = null;
         if (panel != null) panel.SetActive(true);
         if (detailPanel != null) detailPanel.SetActive(false);
+        if (tableTitleText != null) tableTitleText.text = table.TableType.DisplayName();
         RebuildList();
     }
 
@@ -116,7 +118,7 @@ public class CraftingTableUI : MonoBehaviour
         var sb = new StringBuilder();
         foreach (var ing in recipe.Ingredients)
         {
-            int have   = StorageBuilding.GetTotalByItem(ing.Item);
+            int have   = Storage.GetTotalByItem(ing.Item);
             string col = have >= ing.Amount ? "#88FF88" : "#FF6666";
             sb.AppendLine($"<color={col}>{ing.Item?.ItemName}  {have} / {ing.Amount}</color>");
         }

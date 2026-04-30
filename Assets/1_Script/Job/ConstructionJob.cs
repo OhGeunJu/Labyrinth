@@ -10,7 +10,7 @@ public class ConstructionJob : JobBase
     readonly BuildingBlueprint _blueprint;
     readonly ResourceType      _materialType;
     int             _amount;
-    StorageBuilding _sourceStorage;
+    Storage _sourceStorage;
     ItemData        _carriedItem;
     int             _carriedAmount;
     Phase           _phase = Phase.GoToStorage;
@@ -30,7 +30,7 @@ public class ConstructionJob : JobBase
     {
         if (_blueprint == null) { Fail(); return; }
 
-        (_sourceStorage, _carriedItem) = StorageBuilding.FindStorageWithType(_materialType);
+        (_sourceStorage, _carriedItem) = Storage.FindStorageWithType(_materialType);
         if (_sourceStorage == null || _carriedItem == null)
         {
             Debug.Log($"[ConstructionJob] 창고에 {_materialType} 없음 — 대기");

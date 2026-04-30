@@ -31,7 +31,7 @@ public class DroppedItem : MonoBehaviour
         dropped.Amount = amount;
 
         // 수용 가능한 창고가 있으면 운반 작업 자동 등록
-        var storage = StorageBuilding.FindNearest(position, item);
+        var storage = Storage.FindNearest(position, item);
         if (storage != null && JobManager.Instance != null)
             JobManager.Instance.RegisterJob(new GroundHaulJob(dropped, storage));
 

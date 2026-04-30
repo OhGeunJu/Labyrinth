@@ -85,7 +85,7 @@ public class ResourceNode : MonoBehaviour
         Debug.Log($"[ResourceNode] {data.DropItem.ItemName} ×{amount} 적재 (누적: {Inventory.GetTotalQuantity(data.DropItem)})");
 
         // 운반 가능한 창고가 있으면 HaulJob 등록
-        var storage = StorageBuilding.FindNearest(transform.position, data.DropItem);
+        var storage = Storage.FindNearest(transform.position, data.DropItem);
         if (storage != null && JobManager.Instance != null)
             JobManager.Instance.RegisterJob(new HaulJob(this, data.DropItem, amount, storage));
     }

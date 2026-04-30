@@ -150,6 +150,7 @@ public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
         var srcInv = _sourceGrid?.Inventory;
         var dstInv = targetGrid.Inventory;
         if (srcInv == null || dstInv == null) return false;
+        if (!targetGrid.CanReceiveItem(_instance.Data)) return false;
         if (!dstInv.TryAddAt(_instance.Data, _instance.Quantity, newX, newY, _dragRotated)) return false;
         srcInv.RemoveInstance(_instance);
         return true;

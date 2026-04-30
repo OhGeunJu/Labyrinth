@@ -9,10 +9,10 @@ public class HaulJob : JobBase
     ResourceNode    _source;
     ItemData        _itemData;
     int             _amount;
-    StorageBuilding _storage;
+    Storage _storage;
     Phase           _phase = Phase.GoToSource;
 
-    public HaulJob(ResourceNode source, ItemData itemData, int amount, StorageBuilding storage)
+    public HaulJob(ResourceNode source, ItemData itemData, int amount, Storage storage)
     {
         _source   = source;
         _itemData = itemData;
@@ -51,7 +51,7 @@ public class HaulJob : JobBase
             {
                 if (!_storage.TryAdd(_itemData, _amount))
                 {
-                    var fallback = StorageBuilding.FindNearest(unit.transform.position, _itemData);
+                    var fallback = Storage.FindNearest(unit.transform.position, _itemData);
                     if (fallback != null)
                         fallback.TryAdd(_itemData, _amount);
                     else

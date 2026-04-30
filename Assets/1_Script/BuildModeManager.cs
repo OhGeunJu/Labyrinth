@@ -18,8 +18,9 @@ public class BuildModeManager : MonoBehaviour
 
     [Header("배치")]
     [SerializeField] GameObject fallbackPrefab;
-    [SerializeField] ResourceNodeData[] placeableNodes;
-    [SerializeField] SubCoreData[] placeableSubCores;
+    [SerializeField] ResourceNodeData[]    placeableNodes;
+    [SerializeField] SubCoreData[]         placeableSubCores;
+    [SerializeField] StorageBuildingData[] placeableStorages;
     [SerializeField] LayerMask groundMask = ~0;
 
     [Header("회전")]
@@ -42,9 +43,10 @@ public class BuildModeManager : MonoBehaviour
     GameObject _ghost;
     GameObject _ghostSourcePrefab;
 
-    int NodeCount    => placeableNodes     != null ? placeableNodes.Length     : 0;
-    int SubCoreCount => placeableSubCores  != null ? placeableSubCores.Length  : 0;
-    int TotalCount   => NodeCount + SubCoreCount;
+    int NodeCount    => placeableNodes    != null ? placeableNodes.Length    : 0;
+    int SubCoreCount => placeableSubCores != null ? placeableSubCores.Length : 0;
+    int StorageCount => placeableStorages != null ? placeableStorages.Length : 0;
+    int TotalCount   => NodeCount + SubCoreCount + StorageCount;
 
     // ── UI용 공개 API ─────────────────────────────────────────────────────────
     public int TotalBuildingCount => TotalCount;
@@ -58,17 +60,22 @@ public class BuildModeManager : MonoBehaviour
         _previewShown  = false;
     }
 
-    bool IsSubCoreSelected => _selectedIndex >= NodeCount;
+    bool IsSubCoreSelected => _selectedIndex >= NodeCount && _selectedIndex < NodeCount + SubCoreCount;
+    bool IsStorageSelected => _selectedIndex >= NodeCount + SubCoreCount;
 
     ResourceNodeData SelectedNode =>
-        !IsSubCoreSelected && NodeCount > 0 ? placeableNodes[_selectedIndex] : null;
+        _selectedIndex < NodeCount && NodeCount > 0 ? placeableNodes[_selectedIndex] : null;
 
     SubCoreData SelectedSubCore =>
         IsSubCoreSelected && SubCoreCount > 0 ? placeableSubCores[_selectedIndex - NodeCount] : null;
 
+    StorageBuildingData SelectedStorage =>
+        IsStorageSelected && StorageCount > 0 ? placeableStorages[_selectedIndex - NodeCount - SubCoreCount] : null;
+
     string SelectedDisplayName =>
-        IsSubCoreSelected ? (SelectedSubCore != null ? SelectedSubCore.CoreName : "?")
-                          : (SelectedNode    != null ? SelectedNode.ResourceType.ToString() : "없음");
+        IsStorageSelected ? (SelectedStorage != null ? SelectedStorage.BuildingName : "?")
+        : IsSubCoreSelected ? (SelectedSubCore != null ? SelectedSubCore.CoreName : "?")
+                            : (SelectedNode    != null ? SelectedNode.ResourceType.ToString() : "없음");
 
     void Awake()
     {
@@ -274,7 +281,8 @@ public class BuildModeManager : MonoBehaviour
         var worldPos = MapManager.Instance.TileToWorld(tile);
         var rot      = Quaternion.Euler(0, _gridYaw, 0);
 
-        if (IsSubCoreSelected) PlaceBlueprint(worldPos, rot);
+        if (IsStorageSelected)  PlaceStorage(worldPos, rot);
+        else if (IsSubCoreSelected) PlaceBlueprint(worldPos, rot);
         else                   PlaceNode(worldPos, rot);
 
         _previewShown = false;
@@ -284,7 +292,8 @@ public class BuildModeManager : MonoBehaviour
     {
         var rot = Quaternion.Euler(0, yaw, 0);
 
-        if (IsSubCoreSelected) PlaceBlueprint(worldPoint, rot);
+        if (IsStorageSelected)  PlaceStorage(worldPoint, rot);
+        else if (IsSubCoreSelected) PlaceBlueprint(worldPoint, rot);
         else                   PlaceNode(worldPoint, rot);
 
         _previewShown = false;
@@ -311,8 +320,40 @@ public class BuildModeManager : MonoBehaviour
         if (node != null && SelectedNode != null) node.Init(SelectedNode);
     }
 
+    void PlaceStorage(Vector3 worldPos, Quaternion rot)
+    {
+        var data = SelectedStorage;
+        if (data == null) return;
+
+        // 자원 소비
+        if (data.CostAmount > 0 && !Storage.Consume(data.CostType, data.CostAmount))
+        {
+            Debug.Log($"[Build] 창고 건설 자원 부족 — {data.CostType} ×{data.CostAmount}");
+            return;
+        }
+
+        var prefab = data.Prefab != null ? data.Prefab : fallbackPrefab;
+        if (prefab == null) return;
+
+        var go      = Instantiate(prefab, worldPos, rot);
+        var storage = go.GetComponent<Storage>();
+        if (storage == null)
+        {
+            Debug.LogWarning($"[Build] 창고 프리팹 '{prefab.name}'에 Storage 컴포넌트가 없습니다.");
+            Destroy(go);
+            return;
+        }
+        storage.Init(data);
+        Debug.Log($"[Build] 창고 배치 — {data.BuildingName}");
+    }
+
     GameObject ResolvePrefab()
     {
+        if (IsStorageSelected)
+        {
+            var sd = SelectedStorage;
+            return (sd != null && sd.Prefab != null) ? sd.Prefab : fallbackPrefab;
+        }
         if (IsSubCoreSelected)
         {
             var sc = SelectedSubCore;

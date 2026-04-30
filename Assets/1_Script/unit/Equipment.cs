@@ -11,10 +11,17 @@ public class Equipment : MonoBehaviour
 
     public bool OffHandLocked => MainHand != null && MainHand.IsLargeWeapon;
 
-    readonly Dictionary<ArmorSlot, ArmorData> _armor = new();
+    readonly Dictionary<ArmorSlot, ArmorData>     _armor    = new();
+    readonly Dictionary<ArmorSlot, ItemInstance>  _armorInst = new();
+    ItemInstance _mainHandInst;
+    ItemInstance _offHandInst;
 
     public ArmorData GetArmor(ArmorSlot slot) =>
         _armor.TryGetValue(slot, out var a) ? a : null;
+
+    // 장착 아이템의 등급 배율 (갑옷 방어력에 곱함)
+    public float GetArmorQualityMult(ArmorSlot slot) =>
+        _armorInst.TryGetValue(slot, out var inst) ? inst.Quality.StatMultiplier() : 1f;
 
     Inventory _inventory;
     UnitBlackboard _bb;
@@ -32,16 +39,17 @@ public class Equipment : MonoBehaviour
     public bool Equip(WeaponData weapon)
     {
         if (weapon == null) return false;
-        if (_inventory.Remove(weapon, 1) != 1) return false;
+        var inst = FindInInventory(weapon);
+        if (inst == null || _inventory.Remove(weapon, 1) != 1) return false;
 
-        // 기존 장착 무기를 인벤토리로 반환
         if (MainHand != null)
-            _inventory.TryAdd(MainHand, 1);
+            _inventory.TryAdd(MainHand, 1, _mainHandInst?.Quality ?? ItemQuality.Common);
 
-        MainHand = weapon;
+        MainHand      = weapon;
+        _mainHandInst = inst;
         SyncBlackboard();
         OnEquipChanged?.Invoke(this);
-        Debug.Log($"[Equipment] {gameObject.name} 장착: {weapon.ItemName}");
+        Debug.Log($"[Equipment] {gameObject.name} 장착: {weapon.ItemName} [{inst.Quality.DisplayName()}]");
         return true;
     }
 
@@ -50,9 +58,10 @@ public class Equipment : MonoBehaviour
     {
         if (MainHand == null) return;
 
-        _inventory.TryAdd(MainHand, 1);
+        _inventory.TryAdd(MainHand, 1, _mainHandInst?.Quality ?? ItemQuality.Common);
         Debug.Log($"[Equipment] {gameObject.name} 해제: {MainHand.ItemName}");
-        MainHand = null;
+        MainHand      = null;
+        _mainHandInst = null;
         SyncBlackboard();
         OnEquipChanged?.Invoke(this);
     }
@@ -61,14 +70,16 @@ public class Equipment : MonoBehaviour
     {
         if (item == null) return false;
         if (OffHandLocked) return false;
-        if (_inventory.Remove(item, 1) != 1) return false;
+        var inst = FindInInventory(item);
+        if (inst == null || _inventory.Remove(item, 1) != 1) return false;
 
         if (OffHand != null)
-            _inventory.TryAdd(OffHand, 1);
+            _inventory.TryAdd(OffHand, 1, _offHandInst?.Quality ?? ItemQuality.Common);
 
-        OffHand = item;
+        OffHand      = item;
+        _offHandInst = inst;
         OnEquipChanged?.Invoke(this);
-        Debug.Log($"[Equipment] {gameObject.name} 오프핸드 장착: {item.ItemName}");
+        Debug.Log($"[Equipment] {gameObject.name} 오프핸드 장착: {item.ItemName} [{inst.Quality.DisplayName()}]");
         return true;
     }
 
@@ -76,23 +87,26 @@ public class Equipment : MonoBehaviour
     {
         if (OffHand == null) return;
 
-        _inventory.TryAdd(OffHand, 1);
+        _inventory.TryAdd(OffHand, 1, _offHandInst?.Quality ?? ItemQuality.Common);
         Debug.Log($"[Equipment] {gameObject.name} 오프핸드 해제: {OffHand.ItemName}");
-        OffHand = null;
+        OffHand      = null;
+        _offHandInst = null;
         OnEquipChanged?.Invoke(this);
     }
 
     public bool EquipArmor(ArmorData armor)
     {
         if (armor == null) return false;
-        if (_inventory.Remove(armor, 1) != 1) return false;
+        var inst = FindInInventory(armor);
+        if (inst == null || _inventory.Remove(armor, 1) != 1) return false;
 
         if (_armor.TryGetValue(armor.Slot, out var prev))
-            _inventory.TryAdd(prev, 1);
+            _inventory.TryAdd(prev, 1, _armorInst.TryGetValue(armor.Slot, out var pi) ? pi.Quality : ItemQuality.Common);
 
-        _armor[armor.Slot] = armor;
+        _armor[armor.Slot]    = armor;
+        _armorInst[armor.Slot] = inst;
         OnEquipChanged?.Invoke(this);
-        Debug.Log($"[Equipment] {gameObject.name} 갑옷 장착: {armor.ItemName} ({armor.Slot})");
+        Debug.Log($"[Equipment] {gameObject.name} 갑옷 장착: {armor.ItemName} ({armor.Slot}) [{inst.Quality.DisplayName()}]");
         return true;
     }
 
@@ -100,21 +114,31 @@ public class Equipment : MonoBehaviour
     {
         if (!_armor.TryGetValue(slot, out var armor)) return;
 
-        _inventory.TryAdd(armor, 1);
+        _armorInst.TryGetValue(slot, out var inst);
+        _inventory.TryAdd(armor, 1, inst?.Quality ?? ItemQuality.Common);
         _armor.Remove(slot);
+        _armorInst.Remove(slot);
         OnEquipChanged?.Invoke(this);
         Debug.Log($"[Equipment] {gameObject.name} 갑옷 해제: {armor.ItemName} ({slot})");
     }
 
-    // Blackboard 상태를 장착 상태에 맞게 갱신
+    // Blackboard 상태를 장착 상태에 맞게 갱신 (무기 등급 배율 반영)
     void SyncBlackboard()
     {
-        _bb.IsUnarmed    = MainHand == null;
+        _bb.IsUnarmed = MainHand == null;
+        float qualMult = _mainHandInst?.Quality.StatMultiplier() ?? 1f;
         _bb.AttackDamage = MainHand != null
-            ? MainHand.BaseDamage
+            ? MainHand.BaseDamage * qualMult
             : (_unitData != null ? _unitData.AttackDamage : 10f);
-        _bb.AttackRange  = MainHand != null
+        _bb.AttackRange = MainHand != null
             ? MainHand.AttackRange
             : (_unitData != null ? _unitData.AttackRange : 1.5f);
+    }
+
+    ItemInstance FindInInventory(ItemData data)
+    {
+        foreach (var inst in _inventory.Items)
+            if (inst.Data == data) return inst;
+        return null;
     }
 }

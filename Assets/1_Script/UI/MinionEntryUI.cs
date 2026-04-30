@@ -39,7 +39,7 @@ public class MinionEntryUI : MonoBehaviour
     public void Refresh()
     {
         if (_data == null) return;
-        int have    = StorageBuilding.GetTotal(_data.SummonCostType);
+        int have    = Storage.GetTotal(_data.SummonCostType);
         bool canAfford = have >= _data.SummonCostAmount;
 
         if (costText != null)
