@@ -2,20 +2,33 @@ using UnityEngine;
 
 public class CraftJob : JobBase
 {
-    // 스킬 100 기준 확률: 전설 2% / 에픽 5% / 유니크 10% / 희귀 20% / 고급 35% / 일반 28%
+    // 스킬에 따라 중심 등급이 이동하는 슬라이딩 윈도우.
+    // 스킬 0→일반 중심, 스킬 100→전설 중심. spread 범위 밖 등급은 확률 0.
     static ItemQuality RollQuality(float skill, bool skilled)
     {
         if (!skilled) return ItemQuality.Common;
 
-        float t    = Mathf.Clamp01(skill / 100f);
-        float roll = UnityEngine.Random.value;
+        const int   COUNT  = 6;
+        const float SPREAD = 1.5f;
 
-        if (roll < t * t * t * t * t * 0.02f) return ItemQuality.Legendary;
-        if (roll < t * t * t * t       * 0.05f) return ItemQuality.Epic;
-        if (roll < t * t * t           * 0.10f) return ItemQuality.Unique;
-        if (roll < t * t               * 0.20f) return ItemQuality.Rare;
-        if (roll < t                   * 0.35f) return ItemQuality.Uncommon;
-        return ItemQuality.Common;
+        float center = skill / 100f * (COUNT - 1);   // 0.0(일반) ~ 5.0(전설)
+
+        float[] w     = new float[COUNT];
+        float   total = 0f;
+        for (int i = 0; i < COUNT; i++)
+        {
+            w[i]   = Mathf.Max(0f, 1f - Mathf.Abs(i - center) / SPREAD);
+            total += w[i];
+        }
+
+        float roll = UnityEngine.Random.value * total;
+        float cum  = 0f;
+        for (int i = 0; i < COUNT; i++)
+        {
+            cum += w[i];
+            if (roll <= cum) return (ItemQuality)i;
+        }
+        return ItemQuality.Legendary;
     }
 
     readonly CraftingTable _table;

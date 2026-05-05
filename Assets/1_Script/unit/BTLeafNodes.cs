@@ -189,7 +189,128 @@ public class WorkNode : BTNode
     }
 }
 
-// ���
+// 순찰: 배정된 PatrolZone이 있으면 웨이포인트 또는 구역 내 랜덤 이동
+public class PatrolNode : BTNode
+{
+    int   _waypointIndex;
+    float _waitTimer;
+    const float WaitTime    = 2f;
+    const float ArrivalDist = 1.5f;
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        var zone = bb.AssignedPatrolZone;
+        if (zone == null) return BTStatus.Failure;
+
+        // 대기 중
+        if (_waitTimer > 0f)
+        {
+            bb.Mover.StopMovement();
+            _waitTimer -= Time.deltaTime;
+            return BTStatus.Running;
+        }
+
+        switch (zone.Mode)
+        {
+            case PatrolMode.Waypoint:
+            {
+                if (zone.WaypointCount == 0) return BTStatus.Failure;
+                var target = zone.GetWaypoint(_waypointIndex);
+                float dist = Vector3.Distance(bb.Self.transform.position, target);
+                if (dist > ArrivalDist)
+                    bb.Mover.SetMoveTarget(target);
+                else
+                {
+                    _waypointIndex = (_waypointIndex + 1) % zone.WaypointCount;
+                    _waitTimer = WaitTime;
+                }
+                break;
+            }
+            case PatrolMode.Area:
+            {
+                if (!bb.Mover.HasTarget())
+                {
+                    bb.Mover.SetMoveTarget(zone.GetRandomAreaPoint());
+                    _waitTimer = WaitTime;
+                }
+                break;
+            }
+            case PatrolMode.Idle:
+            {
+                var center = zone.transform.position;
+                float dist = Vector3.Distance(bb.Self.transform.position, center);
+                if (dist > ArrivalDist)
+                    bb.Mover.SetMoveTarget(center);
+                else
+                    bb.Mover.StopMovement();
+                break;
+            }
+        }
+
+        return BTStatus.Running;
+    }
+}
+
+// 침대 휴식: 혈액 < 60% 이거나 BloodCap이 덜 회복됐으면 가장 가까운 빈 침대로
+public class RestNode : BTNode
+{
+    const float RestThreshold  = 0.6f;  // 혈액 60% 이하 시 휴식 필요
+    const float CapThreshold   = 0.95f; // 캡 95% 이상이면 충분히 회복됨
+    const float BloodHealRate  = 2f;    // 초당 혈액 회복
+    const float CapRestoreRate = 1f;    // 초당 캡 회복
+    const float ArrivalDist    = 1.5f;
+
+    Bed _bed;
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        var body = bb.Self.GetComponent<BodyPartSystem>();
+        if (body == null) return BTStatus.Failure;
+
+        bool needsRest = body.Blood    < body.MaxBlood * RestThreshold
+                      || body.BloodCap < body.MaxBlood * CapThreshold;
+
+        if (!needsRest) { LeaveBed(bb); return BTStatus.Failure; }
+
+        // 배정된 침대만 사용
+        if (_bed == null)
+        {
+            var brain = bb.Self.GetComponent<UnitBrain>();
+            _bed = Bed.FindAssigned(brain);
+            if (_bed == null) return BTStatus.Failure;
+
+            if (!_bed.TryOccupy(brain)) { _bed = null; return BTStatus.Failure; }
+
+            bb.Mover.SetMoveTarget(_bed.transform.position);
+        }
+
+        // 이동 중
+        float dist = Vector3.Distance(bb.Self.transform.position, _bed.transform.position);
+        if (dist > ArrivalDist) return BTStatus.Running;
+
+        // 침대에서 회복 (캡 감소 없이)
+        bb.Mover.StopMovement();
+        body.HealBlood(BloodHealRate * Time.deltaTime, degradeCap: false);
+        body.RestoreBloodCap(CapRestoreRate * Time.deltaTime);
+
+        if (body.Blood >= body.BloodCap && body.BloodCap >= body.MaxBlood * CapThreshold)
+        {
+            LeaveBed(bb);
+            return BTStatus.Success;
+        }
+
+        return BTStatus.Running;
+    }
+
+    void LeaveBed(UnitBlackboard bb)
+    {
+        if (_bed == null) return;
+        _bed.Vacate(bb.Self.GetComponent<UnitBrain>());
+        _bed = null;
+    }
+}
+
+// 대기
 public class IdleNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)

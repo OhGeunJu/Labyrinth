@@ -2,14 +2,19 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-// 빌드존 한정 타일 그리드.
+// 정착지 단위 타일 그리드. 씬에 여러 개 공존 가능 (플레이어 던전 + NPC 도시 등).
 // - 1 tile = 1 world unit, 절대 월드 좌표 기준 (tile.x = floor(world.x), tile.y = floor(world.z))
-// - 빌드존(기본 50×50)은 미궁핵 위치를 따라 이동 (RecenterAt)
-// - 빌드존 밖 타일은 항상 Passable 기본값 반환 — 이동/항해는 NavMesh가 담당
+// - Instance = 플레이어 던전존 (DungeonCore가 RecenterAt 호출)
+// - GetForPosition(worldPos) = 해당 좌표를 포함하는 존 반환 → 미래 다중 정착지 길찾기 진입점
 [DefaultExecutionOrder(-50)]
 public class MapManager : MonoBehaviour
 {
+    // 플레이어 던전존. DungeonCore 전용 API(RecenterAt 등)에 사용.
     public static MapManager Instance { get; private set; }
+
+    // 모든 활성 존 레지스트리 (플레이어 + NPC 정착지)
+    static readonly List<MapManager> _allZones = new();
+
     public static event Action<Vector2Int> OnTileChanged;
     public static event Action OnZoneRecentered;
 
@@ -30,11 +35,28 @@ public class MapManager : MonoBehaviour
 
     void Awake()
     {
-        if (Instance != null) { Destroy(gameObject); return; }
-        Instance = this;
         _tiles = new TileData[buildZoneSize, buildZoneSize];
         ClearTiles();
+        _allZones.Add(this);
+        if (Instance == null) Instance = this;
     }
+
+    void OnDestroy()
+    {
+        _allZones.Remove(this);
+        if (Instance == this) Instance = null;
+    }
+
+    // 월드 좌표를 포함하는 존 반환. 어느 존에도 없으면 Instance 폴백.
+    public static MapManager GetForPosition(Vector3 worldPos)
+    {
+        foreach (var zone in _allZones)
+            if (zone.IsInBuildZone(worldPos)) return zone;
+        return Instance;
+    }
+
+    // DungeonCore가 호출 — 이 존을 플레이어 던전존으로 지정.
+    public void SetAsPlayerZone() => Instance = this;
 
     // 미궁핵 이동 시 호출. 빌드존을 새 중심으로 옮기고 타일 데이터 초기화.
     public void RecenterAt(Vector3 worldCenter)

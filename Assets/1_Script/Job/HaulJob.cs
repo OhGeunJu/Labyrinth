@@ -52,10 +52,13 @@ public class HaulJob : JobBase
                 if (!_storage.TryAdd(_itemData, _amount))
                 {
                     var fallback = Storage.FindNearest(unit.transform.position, _itemData);
-                    if (fallback != null)
-                        fallback.TryAdd(_itemData, _amount);
-                    else
-                        unit.Inventory.TryAdd(_itemData, _amount);  // 갈 곳 없으면 반환
+                    bool stored  = fallback != null && fallback.TryAdd(_itemData, _amount);
+                    if (!stored)
+                    {
+                        int returned = unit.Inventory.TryAdd(_itemData, _amount);
+                        if (returned < _amount)
+                            DroppedItem.Spawn(_itemData, _amount - returned, unit.transform.position);
+                    }
                 }
             }
             Status = JobStatus.Done;

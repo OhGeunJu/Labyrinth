@@ -14,8 +14,11 @@ public class BodyPartSystem : MonoBehaviour
     [SerializeField] float maxBlood = 100f;
     [SerializeField] float staggerBloodThreshold = 0.3f;  // 혈액 30% 이하 시 비틀거림 판정
     [SerializeField] float baseStaggerDuration = 3f;
+    [SerializeField] float healCapDegradationRate = 0.5f; // 힐 1당 캡 감소량 (침대 치료로만 복구)
 
-    public float Blood { get; private set; }
+    public float Blood    { get; private set; }
+    public float BloodCap { get; private set; }  // 자연회복 상한 (침대에서 복구)
+    public float MaxBlood => maxBlood;
 
     readonly Dictionary<BodyPartType, BodyPart> _parts = new();
 
@@ -29,7 +32,8 @@ public class BodyPartSystem : MonoBehaviour
     {
         _mover = GetComponent<PawnMover>();
         _brain = GetComponent<UnitBrain>();
-        Blood  = maxBlood;
+        Blood    = maxBlood;
+        BloodCap = maxBlood;
         InitBodyParts();
     }
 
@@ -318,9 +322,22 @@ public class BodyPartSystem : MonoBehaviour
 
     public BodyPart GetPart(BodyPartType type) => _parts[type];
 
-    public void HealBlood(float amount)
+    // degradeCap: 포션/마법 힐은 true, 침대 치료는 false
+    public void HealBlood(float amount, bool degradeCap = true)
     {
-        Blood = Mathf.Min(maxBlood, Blood + amount);
+        var sfx    = GetComponent<StatusEffectSystem>();
+        float mult = sfx != null ? sfx.HealMult : 1f;
+        float actual = Mathf.Min(amount * mult, BloodCap - Blood);
+        if (actual <= 0f) return;
+
+        Blood += actual;
+        if (degradeCap)
+            BloodCap = Mathf.Max(0f, BloodCap - actual * healCapDegradationRate);
+    }
+
+    public void RestoreBloodCap(float amount)
+    {
+        BloodCap = Mathf.Min(maxBlood, BloodCap + amount);
     }
 
     public void HealBodyParts(float amount)

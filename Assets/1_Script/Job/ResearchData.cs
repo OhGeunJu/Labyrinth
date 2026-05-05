@@ -18,8 +18,9 @@ public class ResearchData : ScriptableObject
     public string           Description;
 
     [Header("연구 비용")]
-    public List<Ingredient> Ingredients  = new();
-    public float            ResearchTime = 30f;   // 초
+    public List<Ingredient> Ingredients       = new();
+    public float            ResearchTime      = 30f;   // 초
+    public float            SkillGrowthAmount = 1f;    // Research 스킬 성장량
 
     [Header("선행 연구")]
     public ResearchData     Prerequisite;          // null이면 기본 개방

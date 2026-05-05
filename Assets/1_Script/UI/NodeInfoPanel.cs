@@ -90,7 +90,7 @@ public class NodeInfoPanel : MonoBehaviour
         panel.SetActive(true);
 
         if (nameText != null && node.Data != null)
-            nameText.text = node.Data.ResourceType.ToString();
+            nameText.text = node.Data.ResourceType.DisplayName();
 
         if (node.Inventory != null)
             node.Inventory.OnChanged += RefreshStock;

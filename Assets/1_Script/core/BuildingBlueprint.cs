@@ -6,7 +6,7 @@ public class BuildingBlueprint : MonoBehaviour
 {
     public static readonly List<BuildingBlueprint> All = new();
 
-    SubCoreData  _data;
+    BuildingData _data;
     ResourceType _costType;
     int          _costRequired;
     int          _costDelivered;
@@ -18,13 +18,13 @@ public class BuildingBlueprint : MonoBehaviour
     public int          Remaining  => Mathf.Max(0, _costRequired - _costDelivered);
     public ResourceType CostType   => _costType;
 
-    public void Init(SubCoreData data)
+    public void Init(BuildingData data)
     {
         _data         = data;
         _costType     = data.CostType;
         _costRequired = data.CostAmount;
         BuildGhostVisual();
-        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.CoreName} ({_costType} ×{_costRequired} 필요)");
+        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.BuildingName} ({_costType} ×{_costRequired} 필요)");
     }
 
     void BuildGhostVisual()
@@ -114,13 +114,12 @@ public class BuildingBlueprint : MonoBehaviour
 
     void Complete()
     {
-        Debug.Log($"[Blueprint] 건설 완료 — {(_data != null ? _data.CoreName : name)}");
+        Debug.Log($"[Blueprint] 건설 완료 — {(_data != null ? _data.BuildingName : name)}");
 
         if (_data?.Prefab != null)
         {
             var go = Instantiate(_data.Prefab, transform.position, transform.rotation);
-            var sc = go.GetComponent<SubCore>();
-            if (sc != null) sc.Init(_data);
+            // SubCore는 프리팹에 설정된 값 사용, 추가 Init 불필요
         }
 
         Destroy(gameObject);

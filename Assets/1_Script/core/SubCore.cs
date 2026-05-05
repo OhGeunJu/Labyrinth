@@ -5,16 +5,21 @@ public class SubCore : MonoBehaviour
 {
     const float EffectInterval = 0.3f;
 
-    SubCoreData _data;
-    Material    _mat;
-    float       _effectTimer;
+    [Header("범위")]
+    [SerializeField] float radius = 8f;
+    [Header("하수인 캡 증가")]
+    [SerializeField] int minionCapBonus = 3;
+    [Header("범위 내 유닛 효과")]
+    [SerializeField] float moveSpeedModifier = 0f;
+    [SerializeField] float damagePerSecond   = 0f;
 
-    public SubCoreData Data => _data;
+    Material _mat;
+    float    _effectTimer;
 
-    public void Init(SubCoreData data)
-    {
-        _data = data;
-    }
+    public float Radius             => radius;
+    public int   MinionCapBonus     => minionCapBonus;
+    public float MoveSpeedModifier  => moveSpeedModifier;
+    public float DamagePerSecond    => damagePerSecond;
 
     void Awake()
     {
@@ -49,14 +54,13 @@ public class SubCore : MonoBehaviour
 
     void ApplyAreaEffects()
     {
-        if (_data == null) return;
-        bool hasMove = _data.MoveSpeedModifier != 0f;
-        bool hasDmg  = _data.DamagePerSecond   >  0f;
+        bool hasMove = moveSpeedModifier != 0f;
+        bool hasDmg  = damagePerSecond   >  0f;
         if (!hasMove && !hasDmg) return;
 
-        float effectiveDuration = EffectInterval + 0.1f; // 다음 틱까지 유지될 여유
+        float effectiveDuration = EffectInterval + 0.1f;
 
-        var cols = Physics.OverlapSphere(transform.position, _data.Radius);
+        var cols = Physics.OverlapSphere(transform.position, radius);
         foreach (var col in cols)
         {
             var brain = col.GetComponent<UnitBrain>();
@@ -69,15 +73,13 @@ public class SubCore : MonoBehaviour
             {
                 var sfx = col.GetComponent<StatusEffectSystem>();
                 if (sfx == null) continue;
-                float strength = Mathf.Abs(_data.MoveSpeedModifier);
-                var type = _data.MoveSpeedModifier > 0f
-                    ? StatusEffectType.Hasted
-                    : StatusEffectType.Slowed;
+                float strength = Mathf.Abs(moveSpeedModifier);
+                var type = moveSpeedModifier > 0f ? StatusEffectType.Hasted : StatusEffectType.Slowed;
                 sfx.ApplyEffect(type, effectiveDuration, strength);
             }
 
             if (isEnemy && hasDmg)
-                brain.TakeDamage(_data.DamagePerSecond * EffectInterval);
+                brain.TakeDamage(damagePerSecond * EffectInterval);
         }
     }
 
@@ -86,42 +88,36 @@ public class SubCore : MonoBehaviour
 
     public bool IsWithinRange(Vector2Int tile)
     {
-        if (_data == null) return false;
         var wp = MapManager.Instance.TileToWorld(tile);
         return IsWithinRangeWorld(wp);
     }
 
     public bool IsWithinRangeWorld(Vector3 worldPos)
     {
-        if (_data == null) return false;
         float dx = worldPos.x - transform.position.x;
         float dz = worldPos.z - transform.position.z;
-        return dx * dx + dz * dz <= _data.Radius * _data.Radius;
+        return dx * dx + dz * dz <= radius * radius;
     }
 
     void OnEndCameraRendering(ScriptableRenderContext ctx, Camera cam)
     {
-        if (cam != Camera.main || _data == null) return;
-        DrawRange();
+        if (cam == Camera.main) DrawRange();
     }
 
     void OnRenderObject()
     {
-        if (GraphicsSettings.currentRenderPipeline != null || _data == null) return;
-        DrawRange();
+        if (GraphicsSettings.currentRenderPipeline == null) DrawRange();
     }
 
     void DrawRange()
     {
         const int segments = 48;
-        float radius = _data.Radius;
         Vector3 center = new Vector3(transform.position.x, 0.02f, transform.position.z);
 
         _mat.SetPass(0);
         GL.PushMatrix();
         GL.Begin(GL.LINE_STRIP);
         GL.Color(new Color(0.6f, 0.4f, 1f, 0.6f));
-
         for (int i = 0; i <= segments; i++)
         {
             float angle = i * Mathf.PI * 2f / segments;
@@ -129,7 +125,6 @@ public class SubCore : MonoBehaviour
                        center.y,
                        center.z + Mathf.Sin(angle) * radius);
         }
-
         GL.End();
         GL.PopMatrix();
     }

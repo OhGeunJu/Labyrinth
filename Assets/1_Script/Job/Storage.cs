@@ -38,7 +38,7 @@ public class Storage : MonoBehaviour
             OnSelected?.Invoke(this);
     }
 
-    public void Init(StorageBuildingData data)
+    public void Init(BuildingData data)
     {
         if (data != null) BuildingName = data.BuildingName;
     }

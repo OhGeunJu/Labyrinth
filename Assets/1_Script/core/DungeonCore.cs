@@ -27,7 +27,7 @@ public class DungeonCore : MonoBehaviour
     int GetSubCoreMinionBonus()
     {
         int bonus = 0;
-        foreach (var sc in _subCores) if (sc != null && sc.Data != null) bonus += sc.Data.MinionCapBonus;
+        foreach (var sc in _subCores) if (sc != null) bonus += sc.MinionCapBonus;
         return bonus;
     }
 
@@ -145,6 +145,7 @@ public class DungeonCore : MonoBehaviour
 
     public bool IsWithinAnyRangeWorld(Vector3 worldPos)
     {
+        if (MapManager.Instance == null) return false;
         var tile = MapManager.Instance.WorldToTile(worldPos);
         if (IsWithinRange(tile)) return true;
         foreach (var sc in _subCores)
@@ -163,6 +164,7 @@ public class DungeonCore : MonoBehaviour
     public bool IsWithinRange(Vector2Int tile)
     {
         if (data == null) return true;
+        if (MapManager.Instance == null) return false;
         var wp = MapManager.Instance.TileToWorld(tile);
         var dx = wp.x - transform.position.x;
         var dz = wp.z - transform.position.z;

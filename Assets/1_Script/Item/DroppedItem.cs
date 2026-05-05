@@ -40,7 +40,10 @@ public class DroppedItem : MonoBehaviour
 
     public void PickUp(Inventory inventory)
     {
-        inventory.TryAdd(Item, Amount);
+        int added    = inventory.TryAdd(Item, Amount);
+        int leftover = Amount - added;
+        if (leftover > 0)
+            DroppedItem.Spawn(Item, leftover, transform.position);
         Destroy(gameObject);
     }
 }

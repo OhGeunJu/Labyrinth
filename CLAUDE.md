@@ -382,7 +382,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 | Type | Menu path | Key fields |
 |---|---|---|
 | `UnitData` | `DungeonColony/UnitData` | RaceName, MaxHP, MoveSpeed, AttackDamage, AttackRange, DetectRange + stat ranges |
-| `MinionData` | `DungeonColony/MinionData` | (UnitData fields) + SummonCostType, SummonCostAmount, AllowedJobs |
+| `MinionData` | `DungeonColony/MinionData` | (UnitData fields) + SummonCostType, SummonCostAmount, AllowedJobs, **CanProvideWater** |
 | `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged, BlockBonus, RangedBlockBonus, DamageCategory, PhysicalType, DamageElement, EffectChance |
 | `ArmorData` | `DungeonColony/ArmorData` | ArmorSlot, DamageReduction |
 | `WallData` | `DungeonColony/WallData` | Hardness, DropAmount |
@@ -391,6 +391,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 | `ResourceNodeData` | `DungeonColony/ResourceNodeData` | ResourceType, GaugeRequired, DropMin, DropMax, DropItem |
 | `ItemData` | `DungeonColony/ItemData` | ItemName, Description, Icon, Width, Height, Weight |
 | `ResourceItemData` | `DungeonColony/ResourceItemData` | (ItemData) + ResourceType, Stack |
+| `SeedData` | `DungeonColony/SeedData` | (ItemData) + HarvestItem, HarvestAmount, GrowthTime, MoistureDecay, WaterFillAmount |
 | `RecipeData` | `DungeonColony/RecipeData` | RecipeName, Ingredients, Result, ResultAmount, CraftTime, Category |
 
 ## TODOs in Code
@@ -440,7 +441,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - 자원 부족 시 빨간색, 선택 중 파란색. NanumGothic 폰트 지원
 - 건설 모드 진입/해제 시 `BuildModeManager.OnActiveChanged` 이벤트로 다른 UI 자동 연동
 - 휠 선택 제거 — UI 클릭으로만 건물 선택
-- `BuildModeManager` 공개 API: `SelectBuilding`, `SelectedIndex`, `GetNode`, `GetSubCore`, `TotalBuildingCount`, `NodeBuildingCount`
+- `BuildModeManager` 공개 API: `SelectBuilding`, `SelectedIndex`, `GetBuilding(i)`, `TotalBuildingCount`
 
 ### 7. SubCore 범위 효과
 - `SubCore.Update()` — 0.3초 간격으로 `Physics.OverlapSphere` 로 범위 내 유닛 탐색
@@ -584,7 +585,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - `physicalType`: `Slash`, `Pierce`, `Blunt`
 - `damageElement`: `None`, `Fire`, `Ice`, `Lightning`, `Poison`
 - `armorSlot`: `Head`, `Chest`, `Hands`, `Legs`
-- `resourceType`: `Stone`, `Wood`, `Iron`, ...
+- `resourceType`: `Stone`, `IronOre`, `CopperOre`, `TinOre`, `Coal`, `SilverOre`, `GoldOre`, `MagicStone`, `Ruby`, `Sapphire`, `Topaz`, `Emerald`, `Diamond`, `Amethyst`, `Bronze`, `Steel`, `SilverIngot`, `GoldIngot`, `Wood`
 - `requiredSkillType`: `Labor`, `WeaponCrafting`, `ArmorCrafting`, `Cooking`, `Alchemy`, `Research`
 
 **아이콘 스프라이트**: `iconPath`는 `Resources/` 기준 경로 (확장자 제외). 스프라이트를 `Assets/Resources/Icons/` 폴더에 위치시켜야 함.
@@ -604,7 +605,105 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - **Blueprint 반투명 머티리얼**: URP 프로젝트 설정에 따라 코드로 생성한 투명 머티리얼이 불투명으로 렌더될 수 있음. 에디터에서 반투명 머티리얼을 직접 제작 후 `SubCoreData`에 별도 필드로 연결 권장.
 - **DataManager SO 미수집**: 기존 RecipeData 에셋이 `Assets/Resources/Data/Recipes/`에 없으면 DataManager가 인식 못함. 에셋을 해당 폴더로 이동하거나 JSON으로 전환 필요.
 
+## 최근 변경 (2026-05-02)
+
+### 1. MapManager 다중 존 구조 준비
+- 싱글톤 강제(`Destroy`) 제거 → 씬에 여러 `MapManager` 공존 가능
+- `static List<MapManager> _allZones` 레지스트리 추가 (Awake 등록 / OnDestroy 해제)
+- `static GetForPosition(Vector3)` — 해당 좌표를 포함하는 존 반환, 없으면 Instance 폴백
+- `SetAsPlayerZone()` — DungeonCore가 플레이어 던전존 명시 지정용
+- 기존 `Instance` 호출 코드 변경 없음. 미래 다중 정착지 길찾기 확장 진입점
+
+### 2. BloodCap 시스템 (부상 회복 제한)
+- `BodyPartSystem`에 `BloodCap` 추가 — 자연회복 상한선
+- `HealBlood(amount, degradeCap)` — 포션/마법 힐은 `BloodCap`을 회복량 × 0.5 감소
+- `RestoreBloodCap(amount)` — 침대 치료 시 호출, 캡 복구
+- 침대 없이는 최대 절반까지만 자연회복 가능
+
+### 3. 침대 시스템
+- `Bed.cs` — 점유(`TryOccupy`/`Vacate`) + 배정(`Assign`/`Unassign`) 관리. 클릭 시 `OnSelected` 이벤트
+- `BedUI.cs` — 침대 클릭 시 열리는 패널. 선택 유닛 배정 / 배정 해제 버튼
+- `BedUICreator.cs` (에디터) — DungeonColony → Create Bed UI 메뉴로 자동 생성
+- 프리팹에 Collider + `Bed` 컴포넌트 필요
+- `RestNode` (BT) — 혈액 60% 이하 또는 BloodCap 미복구 시 배정된 침대로 이동해 회복
+- 방랑자·하수인 BT에 `RestNode` 추가 (Fight → **Rest** → Work)
+
+### 4. BuildingData 통합 (건물 데이터 단순화)
+- `SubCoreData`, `StorageBuildingData`, `BedData` → **`BuildingData`** 하나로 통합
+- `BuildingData` 필드: `BuildingName`, `Category`, `CostType`, `CostAmount`, `Prefab`, `UsesBlueprint`
+- `SubCore` 전용 필드(`Radius`, `MinionCapBonus`, `MoveSpeedModifier`, `DamagePerSecond`)는 컴포넌트 `[SerializeField]`로 이동 — 프리팹 인스펙터에서 직접 설정
+- `BuildModeManager` — `placeableSubCores` + `placeableStorages` + `placeableBeds` → `placeableBuildings: BuildingData[]` 단일 배열
+- 배치 로직: `UsesBlueprint=true` → Blueprint 2단계, `false` → 즉시 스폰 후 `Storage.Init` / `Bed.Init` 자동 호출
+- `BuildModeUI` — 건물 타입별 분기 제거, 단순 루프로 통일
+- 기존 `SubCoreData`/`StorageBuildingData`/`BedData` .cs 파일 삭제 → 에셋 재생성 필요
+
+### 5. 순찰 시스템
+- `PatrolMode` enum: `Waypoint` (지정 포인트 순환) / `Area` (구역 내 무작위) / `Idle` (중심점 대기)
+- `PatrolZone.cs` — 씬 오브젝트. 모드별 순찰 위치 계산. 여러 하수인 배정 가능. 기즈모 시각화
+- `UnitBlackboard.AssignedPatrolZone` 추가
+- `PatrolNode` (BT) — 배정된 구역 없으면 Failure(작업으로 폴백), 있으면 모드별 이동
+- 하수인 BT에 `PatrolNode` 추가 (Fight → Rest → **Patrol** → Work)
+- `PatrolZoneUI.cs` — 클릭 시 열림. 모드 전환 버튼 3개 + 배정 유닛 목록 + 해제 버튼
+- `PatrolZoneUICreator.cs` (에디터) — DungeonColony → Create PatrolZone UI 메뉴로 자동 생성
+
+## 최근 변경 (2026-05-06)
+
+### 1. 농사 시스템 (Farming)
+
+**새 파일:**
+- `SeedData : ItemData` (ScriptableObject) — 씨앗 아이템. `HarvestItem`, `HarvestAmount`, `GrowthTime`, `MoistureDecay`, `WaterFillAmount`. `MaxStack = 99`
+- `FarmPlot` (씬 오브젝트, `Job/`) — 농장 토지. 상태: `Empty → Planted → ReadyToHarvest`. 수분 게이지(`Moisture`) 시간 지나면 감소, 0이면 성장 멈춤. 2초 간격으로 Job 자동 등록. 클릭 시 `OnSelected` 이벤트
+- `WaterSource` (씬 오브젝트, `Job/`) — 우물. 물 무한 공급처. `FindNearest(position)` 정적 유틸
+- `SeedJob` — Category: Farming. 창고에서 씨앗 소비 → 밭 심기 2-phase
+- `WaterJob` — Category: Farming. `MinionData.CanProvideWater = true`면 우물 페이즈 스킵, 아니면 우물 → 밭 2-phase
+- `FarmHarvestJob` — Category: Farming. 밭 수확 → 창고 운반 2-phase
+- `FarmPlotUI` — 농장 클릭 시 열림. 씨앗 선택 버튼 + 상태/성장/수분 표시. ESC로 닫기
+
+**기존 파일 수정:**
+- `MinionData` — `CanProvideWater: bool` 플래그 추가 (우물 없이 직접 물 공급)
+- `BuildModeManager.Place()` — `FarmPlot.Init(data)` / `WaterSource.Init(data)` 호출 추가
+
+**에디터 스크립트** (`Assets/Editor/FarmingCreator.cs`):
+- `DungeonColony → Create FarmPlot Prefab` — 갈색 납작 큐브 + FarmPlot 컴포넌트
+- `DungeonColony → Create WaterSource Prefab` — 원통 우물 외형 + WaterSource 컴포넌트
+- `DungeonColony → Create FarmPlot UI` — Canvas에 FarmPlotUI 패널 자동 생성 및 연결
+
+### 2. BuildModeManager 통합 (ResourceNode + Building 완전 통합)
+
+- `placeableNodes: ResourceNodeData[]` 제거 → `placeableBuildings: BuildingData[]` 단일 배열로 통합
+- `PlaceNode()` 메서드 제거 → `Place()` 하나로 통합
+- 제거된 API: `GetNode()`, `NodeBuildingCount`, `IsNodeSelected`, `SelectedNode`
+- `BuildModeUI` — `nodeEnd` 오프셋 계산 로직 완전 제거, 단순 루프로 통일
+- ResourceNode 프리팹은 컴포넌트에 `ResourceNodeData`를 직접 보유 (배치 시 Init 불필요)
+
+> **설계 원칙:** `BuildingData`는 "배치 방법"만 담당. 각 컴포넌트(`ResourceNode`, `Storage`, `SubCore`, `FarmPlot` 등)는 자기 동작 데이터를 프리팹에서 직접 보유.
+
+### 3. ResourceType 세분화
+
+기존 `Stone / Ore / Crystal` → 20종으로 세분화. `Ore` 제거.
+
+| 분류 | 타입 |
+|---|---|
+| 석재 | `Stone` |
+| 원석 | `CopperOre`, `TinOre`, `IronOre`, `Coal`, `SilverOre`, `GoldOre`, `MagicStone` |
+| 보석 | `Ruby`(화염), `Sapphire`(냉기), `Topaz`(번개), `Emerald`(독), `Diamond`(신성), `Amethyst`(암흑) |
+| 주괴 | `Bronze`, `Steel`, `SilverIngot`, `GoldIngot` |
+| 목재 | `Wood` |
+
+- `ResourceTypeExt.DisplayName()` 확장 메서드 추가 — 한글 표시명 반환
+- `NodeInfoPanel` — `ResourceType.ToString()` → `DisplayName()` 으로 교체
+- 보석 6종은 기존 마법 원소(Fire/Ice/Lightning/Poison/Holy/Dark)와 1:1 대응
+
+### 4. 아이템 계층 구조 명확화
+
+모든 아이템은 `ItemData`를 상속해야 함:
+- `ResourceItemData : ItemData` — 자원 (스택 가능)
+- `WeaponData : ItemData` — 무기
+- `ArmorData : ItemData` — 방어구
+- `SeedData : ItemData` — 씨앗 (신규, MaxStack=99)
+
 ## Upcoming Systems
 
-- **Enemy spawn / event system** — 적 웨이브/이벤트 시스템.
-- ~~**ResearchJob**~~ — 완료. `ResearchTable` + `ResearchJob` + `ResearchTableUI` + `ResearchEntryUI` 구현. `JobCategory.Research` 추가.
+- **제련 시스템** — 구리+주석→청동, 철+석탄→강철. 용광로 CraftingTable 타입 추가 예정
+- **벌목 시스템** — JobCategory.Logging 구현 예정 (Wood 자원 노드)
+- **Enemy spawn / event system** — 적 웨이브/이벤트 시스템

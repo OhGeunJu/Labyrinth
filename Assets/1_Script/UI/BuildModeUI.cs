@@ -11,8 +11,8 @@ public class BuildModeUI : MonoBehaviour
     [SerializeField] Transform categoryContainer;
 
     [Header("건물 목록 (ScrollRect Content)")]
-    [SerializeField] Transform       buildingContainer;
-    [SerializeField] BuildingItemUI  buildingItemPrefab;
+    [SerializeField] Transform      buildingContainer;
+    [SerializeField] BuildingItemUI buildingItemPrefab;
 
     [Header("색상")]
     [SerializeField] Color colCatNormal    = new(0.22f, 0.22f, 0.22f, 1f);
@@ -29,7 +29,7 @@ public class BuildModeUI : MonoBehaviour
         BuildCategory.Misc,
     };
 
-    readonly List<(Image bg, BuildCategory cat)> _catBtns  = new();
+    readonly List<(Image bg, BuildCategory cat)>  _catBtns  = new();
     readonly List<(BuildingItemUI item, int idx)> _itemBtns = new();
     BuildCategory _selectedCat = BuildCategory.Building;
 
@@ -56,8 +56,6 @@ public class BuildModeUI : MonoBehaviour
         RefreshItemColors();
     }
 
-    // ── 카테고리 버튼 이벤트 연결 ─────────────────────────────────────────────
-
     void WireCategories()
     {
         if (categoryContainer == null) return;
@@ -71,8 +69,6 @@ public class BuildModeUI : MonoBehaviour
         }
     }
 
-    // ── 건물 버튼 생성 ────────────────────────────────────────────────────────
-
     void ShowCategory(BuildCategory cat)
     {
         _selectedCat = cat;
@@ -84,34 +80,17 @@ public class BuildModeUI : MonoBehaviour
 
         for (int i = 0; i < mgr.TotalBuildingCount; i++)
         {
-            BuildCategory itemCat;
-            string name, cost;
+            var bd = mgr.GetBuilding(i);
+            if (bd == null || bd.Category != cat) continue;
 
-            if (i < mgr.NodeBuildingCount)
-            {
-                itemCat = BuildCategory.Resource;
-                var nd  = mgr.GetNode(i);
-                name    = nd != null ? nd.ResourceType.ToString() : "?";
-                cost    = "";
-            }
-            else
-            {
-                var sc  = mgr.GetSubCore(i - mgr.NodeBuildingCount);
-                itemCat = sc?.Category ?? BuildCategory.Building;
-                name    = sc?.CoreName ?? "?";
-                cost    = (sc != null && sc.CostAmount > 0) ? $"{sc.CostType} ×{sc.CostAmount}" : "";
-            }
-
-            if (itemCat != cat) continue;
+            string costLabel = bd.CostAmount > 0 ? $"{bd.CostType} ×{bd.CostAmount}" : "";
 
             int captured = i;
             var item = Instantiate(buildingItemPrefab, buildingContainer);
-            item.Setup(name, cost, () => mgr.SelectBuilding(captured));
+            item.Setup(bd.BuildingName, costLabel, () => mgr.SelectBuilding(captured));
             _itemBtns.Add((item, i));
         }
     }
-
-    // ── 색 갱신 ───────────────────────────────────────────────────────────────
 
     void RefreshCatColors()
     {
@@ -134,9 +113,7 @@ public class BuildModeUI : MonoBehaviour
 
     bool CanAfford(BuildModeManager mgr, int idx)
     {
-        if (idx < mgr.NodeBuildingCount) return true;
-        var sc = mgr.GetSubCore(idx - mgr.NodeBuildingCount);
-        if (sc == null || sc.CostAmount <= 0) return true;
-        return Storage.GetTotal(sc.CostType) >= sc.CostAmount;
+        var bd = mgr.GetBuilding(idx);
+        return bd == null || bd.CostAmount <= 0 || Storage.GetTotal(bd.CostType) >= bd.CostAmount;
     }
 }

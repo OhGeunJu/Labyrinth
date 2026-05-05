@@ -22,6 +22,9 @@ public class UnitBlackboard
     public bool IsStaggered;
     public float StaggerTimer;
 
+    // 순찰
+    public PatrolZone AssignedPatrolZone;
+
     // 무드
     public float Mood;
 }

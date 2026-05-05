@@ -146,7 +146,7 @@ public class UnitBrain : MonoBehaviour
             return BuildWandererTree();
     }
 
-    // 방랑자: 소집 → 전투 → 작업 → 대기
+    // 방랑자: 소집 → 전투 → 휴식 → 작업 → 대기
     BTNode BuildWandererTree()
     {
         return new BTSelector()
@@ -156,17 +156,20 @@ public class UnitBrain : MonoBehaviour
             .Add(new BTSequence()
                 .Add(new ConditionNode(bb => bb.Target != null))
                 .Add(new FightNode()))
+            .Add(new RestNode())
             .Add(new WorkNode())
             .Add(new IdleNode());
     }
 
-    // 하수인: 자동 감지 반격 → 작업 (허용 카테고리만) → 대기
+    // 하수인: 자동 감지 반격 → 휴식 → 순찰 (배정된 경우) → 작업 → 대기
     BTNode BuildMinionTree()
     {
         return new BTSelector()
             .Add(new BTSequence()
                 .Add(new DetectNode())
                 .Add(new FightNode()))
+            .Add(new RestNode())
+            .Add(new PatrolNode())
             .Add(new WorkNode())
             .Add(new IdleNode());
     }
