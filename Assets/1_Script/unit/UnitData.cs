@@ -14,6 +14,7 @@ public class UnitData : ScriptableObject
     public float AttackRange   = 1.5f;
     public float DetectRange   = 10f;
 
+
     [Header("속성 범위")]
     public Vector2 StrengthRange  = new Vector2(5f, 20f);
     public Vector2 ToughnessRange = new Vector2(5f, 20f);

@@ -66,6 +66,10 @@ public class UnitStats
     public float WeaponCrafting = 1f;
     public float ArmorCrafting  = 1f;
     public float Alchemy        = 1f;
+    public float Smelting       = 1f;
+    public float Stonecutting   = 1f;
+    public float Woodworking    = 1f;
+    public float Gemcutting     = 1f;
 
     // 무장 여부에 따라 전투 기술 반환
     public float GetAttackCombatSkill(bool unarmed)  => unarmed ? MartialArts : MeleeAttack;
@@ -150,6 +154,10 @@ public class UnitStats
         CraftSkill.Cooking        => Cooking,
         CraftSkill.Alchemy        => Alchemy,
         CraftSkill.Research       => Research,
+        CraftSkill.Smelting       => Smelting,
+        CraftSkill.Stonecutting   => Stonecutting,
+        CraftSkill.Woodworking    => Woodworking,
+        CraftSkill.Gemcutting     => Gemcutting,
         _                         => Labor,
     };
 
@@ -163,6 +171,10 @@ public class UnitStats
             case CraftSkill.Cooking:        Cooking        = Mathf.Min(100f, Cooking        + amount); break;
             case CraftSkill.Alchemy:        Alchemy        = Mathf.Min(100f, Alchemy        + amount); break;
             case CraftSkill.Research:       Research       = Mathf.Min(100f, Research       + amount); break;
+            case CraftSkill.Smelting:       Smelting       = Mathf.Min(100f, Smelting       + amount); break;
+            case CraftSkill.Stonecutting:   Stonecutting   = Mathf.Min(100f, Stonecutting   + amount); break;
+            case CraftSkill.Woodworking:    Woodworking    = Mathf.Min(100f, Woodworking    + amount); break;
+            case CraftSkill.Gemcutting:     Gemcutting     = Mathf.Min(100f, Gemcutting     + amount); break;
             default:                        Labor          = Mathf.Min(100f, Labor          + amount); break;
         }
     }

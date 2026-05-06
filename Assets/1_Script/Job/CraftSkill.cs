@@ -7,6 +7,10 @@ public enum CraftSkill
     Cooking,        // 요리
     Alchemy,        // 연금술
     Research,       // 연구
+    Smelting,       // 제련 (용광로)
+    Stonecutting,   // 석재 가공 (석재 가공대)
+    Woodworking,    // 목공 (제재소)
+    Gemcutting,     // 보석 가공 (보석 연마대)
 }
 
 public static class CraftSkillExt
@@ -18,6 +22,10 @@ public static class CraftSkillExt
         CraftSkill.Cooking        => "요리대",
         CraftSkill.Alchemy        => "연금술대",
         CraftSkill.Research       => "연구대",
+        CraftSkill.Smelting       => "용광로",
+        CraftSkill.Stonecutting   => "석재 가공대",
+        CraftSkill.Woodworking    => "제재소",
+        CraftSkill.Gemcutting     => "보석 연마대",
         _                         => "제작대",
     };
 }

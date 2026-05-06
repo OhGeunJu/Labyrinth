@@ -101,6 +101,7 @@ public static class DataManager
                     "weapon"   => BuildWeapon(  JsonUtility.FromJson<WeaponSchema>(json)),
                     "armor"    => BuildArmor(   JsonUtility.FromJson<ArmorSchema>(json)),
                     "resource" => BuildResource(JsonUtility.FromJson<ResourceItemSchema>(json)),
+                    "food"     => BuildFood(    JsonUtility.FromJson<FoodSchema>(json)),
                     _          => BuildItem(    JsonUtility.FromJson<ItemSchema>(json)),
                 };
                 if (item != null && !string.IsNullOrEmpty(item.ItemName))
@@ -230,5 +231,14 @@ public static class DataManager
         if (Enum.TryParse<ResourceType>(s.resourceType, ignoreCase: true, out var rt)) r.ResourceType = rt;
         r.Stack = s.maxStack;
         return r;
+    }
+
+    static FoodData BuildFood(FoodSchema s)
+    {
+        var f = ScriptableObject.CreateInstance<FoodData>();
+        ApplyBase(f, s);
+        f.NutritionValue = s.nutritionValue;
+        f.EatTime        = s.eatTime;
+        return f;
     }
 }

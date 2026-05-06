@@ -56,6 +56,11 @@ public class UnitHPUI : MonoBehaviour
                 sb.AppendLine($"부패  {BarColored(sfx.CorruptionGauge, StatusEffectSystem.MaxCorruption, "#A020F0", "#6010A0")}  {sfx.CorruptionGauge:F0}/{StatusEffectSystem.MaxCorruption:F0}");
         }
 
+        // 허기
+        float hunger = brain.Blackboard.Hunger;
+        string hungerColor = hunger > 60f ? "#8BC34A" : hunger > 30f ? "#FF9800" : "#F44336";
+        sb.AppendLine($"허기  {BarColored(hunger, 100f, hungerColor, hungerColor)}  <color={hungerColor}>{hunger:F0}/100</color>");
+
         // 활성 상태이상
         if (sfx != null) AppendStatusEffects(sb, sfx);
         sb.AppendLine();

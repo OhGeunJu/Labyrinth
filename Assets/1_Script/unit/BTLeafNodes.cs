@@ -310,6 +310,100 @@ public class RestNode : BTNode
     }
 }
 
+// 허기: 허기가 낮으면 음식을 찾아 먹는다
+public class EatNode : BTNode
+{
+    const float HungerThreshold = 60f;  // 이 이하이면 먹으러 감
+    const float ArrivalDist     = 1.5f;
+
+    FoodData _food;
+    Storage  _sourceStorage;
+    float    _eatTimer;
+    bool     _hasFood; // true = 인벤에 음식 있음, 먹는 단계
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        if (bb.Hunger >= HungerThreshold) { Reset(); return BTStatus.Failure; }
+
+        var brain = bb.Self.GetComponent<UnitBrain>();
+
+        if (!_hasFood)
+        {
+            // 1) 인벤토리에 음식 있으면 바로 먹기
+            var invFood = FindFoodIn(brain.Inventory);
+            if (invFood != null)
+            {
+                _food    = invFood;
+                _hasFood = true;
+                bb.Mover.StopMovement();
+            }
+            else
+            {
+                // 2) 창고에서 음식 찾기
+                if (_sourceStorage == null)
+                {
+                    (_sourceStorage, _food) = FindFoodInStorage(bb.Self.transform.position);
+                    if (_sourceStorage == null) return BTStatus.Failure;
+                    bb.Mover.SetMoveTarget(_sourceStorage.transform.position);
+                }
+
+                float dist = Vector3.Distance(bb.Self.transform.position,
+                                              _sourceStorage.transform.position);
+                if (dist > ArrivalDist) return BTStatus.Running;
+
+                // 창고 도착 → 음식 꺼내기
+                int picked = _sourceStorage.Inventory.Remove(_food, 1);
+                if (picked <= 0) { Reset(); return BTStatus.Failure; }
+                brain.Inventory.TryAdd(_food, 1);
+                _hasFood = true;
+                bb.Mover.StopMovement();
+            }
+        }
+
+        // 먹는 중
+        _eatTimer += Time.deltaTime;
+        if (_eatTimer < _food.EatTime) return BTStatus.Running;
+
+        brain.Inventory.Remove(_food, 1);
+        bb.Hunger = Mathf.Min(100f, bb.Hunger + _food.NutritionValue);
+        Debug.Log($"[EatNode] {bb.Self.name} 섭취 완료 — {_food.ItemName} (허기 {bb.Hunger:F0}/100)");
+        Reset();
+        return BTStatus.Success;
+    }
+
+    FoodData FindFoodIn(Inventory inv)
+    {
+        foreach (var inst in inv.Items)
+            if (inst.Data is FoodData f && inst.Quantity > 0) return f;
+        return null;
+    }
+
+    (Storage storage, FoodData food) FindFoodInStorage(Vector3 pos)
+    {
+        Storage  nearest = null;
+        FoodData food    = null;
+        float    minDist = float.MaxValue;
+        foreach (var sb in Storage.All)
+        {
+            foreach (var inst in sb.Inventory.Items)
+            {
+                if (inst.Data is FoodData f && inst.Quantity > 0)
+                {
+                    float d = Vector3.Distance(pos, sb.transform.position);
+                    if (d < minDist) { minDist = d; nearest = sb; food = f; }
+                    break;
+                }
+            }
+        }
+        return (nearest, food);
+    }
+
+    void Reset()
+    {
+        _food = null; _sourceStorage = null; _eatTimer = 0f; _hasFood = false;
+    }
+}
+
 // 대기
 public class IdleNode : BTNode
 {

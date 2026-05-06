@@ -26,6 +26,7 @@ public class RecipeData : ScriptableObject
     [Tooltip("제작 완료 시 스킬 성장량")]
     public float      SkillGrowthAmount  = 0.5f;
 
+
     [Header("연구 해금")]
     [Tooltip("null이면 처음부터 개방. 지정 시 해당 연구 완료 후 제작 가능.")]
     public ResearchData RequiredResearch;

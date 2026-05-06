@@ -49,7 +49,7 @@ public class UnitBrain : MonoBehaviour
             DetectRange  = unitData != null ? unitData.DetectRange  : 10f,
             AttackRange  = unitData != null ? unitData.AttackRange  : 1.5f,
             AttackDamage = unitData != null ? unitData.AttackDamage : 10f,
-            Mood         = 100f,
+            Hunger       = 100f,
         };
 
         if (unitData != null)
@@ -78,10 +78,33 @@ public class UnitBrain : MonoBehaviour
         if (_bb.IsKnockedOut) return;
         if (_bb.IsStaggered)  return;
 
+        UpdateHunger();
+
         _tickTimer += Time.deltaTime;
         if (_tickTimer < tickInterval) return;
         _tickTimer = 0f;
         _root.Tick(_bb);
+    }
+
+    const float BaseHungerDecayRate = 0.5f; // 초당 감소량 (100 기준 약 3.3분에 고갈)
+
+    void UpdateHunger()
+    {
+        // 플레이어 팩션(방랑자/하수인)만 허기 적용
+        var faction = GetComponent<Faction>();
+        if (faction == null || faction.Type != FactionType.Player) return;
+
+        float rate = BaseHungerDecayRate;
+
+        // DungeonCore의 HungerRateModifier 반영
+        var core = DungeonCore.Instance;
+        if (core != null && core.Data != null)
+            rate *= Mathf.Max(0f, 1f + core.Data.HungerRateModifier);
+
+        _bb.Hunger = Mathf.Max(0f, _bb.Hunger - rate * Time.deltaTime);
+
+        if (_bb.Hunger <= 0f)
+            TakeDamage(2f * Time.deltaTime);
     }
 
     // BodyPartSystem 없는 유닛용 폴백
@@ -146,7 +169,7 @@ public class UnitBrain : MonoBehaviour
             return BuildWandererTree();
     }
 
-    // 방랑자: 소집 → 전투 → 휴식 → 작업 → 대기
+    // 방랑자: 소집 → 전투 → 휴식 → 식사 → 작업 → 대기
     BTNode BuildWandererTree()
     {
         return new BTSelector()
@@ -157,11 +180,12 @@ public class UnitBrain : MonoBehaviour
                 .Add(new ConditionNode(bb => bb.Target != null))
                 .Add(new FightNode()))
             .Add(new RestNode())
+            .Add(new EatNode())
             .Add(new WorkNode())
             .Add(new IdleNode());
     }
 
-    // 하수인: 자동 감지 반격 → 휴식 → 순찰 (배정된 경우) → 작업 → 대기
+    // 하수인: 자동 감지 반격 → 휴식 → 식사 → 순찰 → 작업 → 대기
     BTNode BuildMinionTree()
     {
         return new BTSelector()
@@ -169,6 +193,7 @@ public class UnitBrain : MonoBehaviour
                 .Add(new DetectNode())
                 .Add(new FightNode()))
             .Add(new RestNode())
+            .Add(new EatNode())
             .Add(new PatrolNode())
             .Add(new WorkNode())
             .Add(new IdleNode());

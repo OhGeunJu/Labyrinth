@@ -69,9 +69,16 @@ public class RecipeSchema
     public string             requiredResearchId;
 }
 
+[Serializable]
+public class FoodSchema : ItemSchema
+{
+    public float nutritionValue = 30f;
+    public float eatTime        = 2f;
+}
+
 // JSON 파일의 "type" 필드로 아이템 종류 판별
 [Serializable]
 public class ItemTypeHint
 {
-    public string type; // "weapon" | "armor" | "resource" | (없으면 기본 아이템)
+    public string type; // "weapon" | "armor" | "resource" | "food" | (없으면 기본 아이템)
 }

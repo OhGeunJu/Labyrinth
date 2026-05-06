@@ -72,6 +72,9 @@ public class CraftJob : JobBase
     {
         if (_recipe == null || _table == null) { Status = JobStatus.Done; return; }
 
+        // 연료 없으면 대기 (FuelJob이 채워줄 때까지)
+        if (!_table.HasFuel) return;
+
         if (Time.time < _craftEndTime) return;
 
         float skill    = unit.Stats.GetCraftSkill(_recipe.RequiredSkillType);

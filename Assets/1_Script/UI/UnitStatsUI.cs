@@ -137,6 +137,10 @@ public class UnitStatsUI : MonoBehaviour
         if (s.WeaponCrafting > 1) list.Add($"무기제작 {s.WeaponCrafting:F1}");
         if (s.ArmorCrafting  > 1) list.Add($"갑옷제작 {s.ArmorCrafting:F1}");
         if (s.Alchemy        > 1) list.Add($"연금 {s.Alchemy:F1}");
+        if (s.Smelting       > 1) list.Add($"제련 {s.Smelting:F1}");
+        if (s.Stonecutting   > 1) list.Add($"석재가공 {s.Stonecutting:F1}");
+        if (s.Woodworking    > 1) list.Add($"목공 {s.Woodworking:F1}");
+        if (s.Gemcutting     > 1) list.Add($"보석가공 {s.Gemcutting:F1}");
         if (s.Labor          > 1) list.Add($"노동 {s.Labor:F1}");
         if (list.Count == 0) return;
 

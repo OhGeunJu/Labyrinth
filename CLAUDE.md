@@ -704,6 +704,93 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 ## Upcoming Systems
 
-- **제련 시스템** — 구리+주석→청동, 철+석탄→강철. 용광로 CraftingTable 타입 추가 예정
 - **벌목 시스템** — JobCategory.Logging 구현 예정 (Wood 자원 노드)
 - **Enemy spawn / event system** — 적 웨이브/이벤트 시스템
+
+## 최근 변경 (2026-05-07)
+
+### 1. 제련 + 가공 시스템
+
+**ResourceType 변경:**
+- `Diamond` → `Etherstone` (신성 계열 마법 촉매)
+- `Amethyst` → `Voidstone` (어둠 계열 마법 촉매)
+- `CutStone` 추가 (다듬은 돌 — 석재 가공대 산출물)
+- `Lumber` 추가 (목재 판자 — 제재소 산출물)
+
+**마법 결정 조합 공식 (보석 연마대):**
+- 원소 보석(Ruby/Sapphire/Topaz/Emerald) + `MagicStone` → Elemental 계열 결정
+- 원소 보석 + `Etherstone` → Holy 계열 결정
+- 원소 보석 + `Voidstone` → Dark 계열 결정
+- 총 12종 결정 아이템 (일반 `ItemData`, ResourceType 없음)
+
+**CraftSkill 추가:** `Smelting`, `Stonecutting`, `Woodworking`, `Gemcutting`
+
+**새 건물 (CraftingTable 변형):**
+- 용광로 (`Smelting`) — 연료 시스템 적용. 광석 → 주괴
+- 석재 가공대 (`Stonecutting`) — Stone → CutStone
+- 제재소 (`Woodworking`) — Wood → Lumber
+- 보석 연마대 (`Gemcutting`) — 보석+촉매석 → 마법 결정 12종
+
+**연료 시스템 (`CraftingTable`):**
+- `_requiresFuel: bool` — 인스펙터에서 용광로에만 체크
+- `_fuelBurnRate: float` — 초당 연료 소모량 (기본 2). 용광로가 켜져있는 동안 항상 소모
+- `_fuelCapacity: float` — 최대 연료량 (기본 100)
+- `_acceptedFuels: List<FuelEntry>` — `{Item, FuelValue}` 쌍. 연료 아이템과 개당 연료량
+- 연료 30% 이하 → `FuelJob` 자동 등록 (3초 간격 체크)
+- `HasFuel` — CraftJob이 연료 없으면 대기
+
+**`FuelJob` (`Job/FuelJob.cs`):**
+- Category: Crafting
+- Phase 1: 창고 이동 → 연료 아이템 수거
+- Phase 2: 용광로 이동 → `AddFuel()` 호출
+
+**`UnitStats` 추가:** `Smelting`, `Stonecutting`, `Woodworking`, `Gemcutting` 노동 스킬 (0–100)
+
+### 2. 허기 시스템
+
+**`UnitBlackboard.Hunger`** (구 `Mood`) — 0~100. 플레이어 팩션 유닛만 시간에 따라 감소.
+
+**허기 감소 (`UnitBrain.UpdateHunger`):**
+- `FactionType.Player`가 아니면 적용 안 됨 (Enemy, NPC 등 자동 제외)
+- 기본 감소율: `BaseHungerDecayRate = 0.5f` (초당, 약 3.3분에 고갈)
+- `DungeonCoreData.HungerRateModifier`로 코어가 감소율 조절 가능
+- 허기 0이면 초당 2 피해
+
+**`FoodData : ItemData`** (`Item/FoodData.cs`):
+- `NutritionValue` — 섭취 시 허기 회복량
+- `EatTime` — 먹는 데 걸리는 시간(초)
+- `MaxStack = 20`
+
+**`EatNode` (BT, `BTLeafNodes.cs`):**
+- 허기 60 이하 시 트리거
+- 인벤토리에 음식 있으면 바로 먹기, 없으면 가장 가까운 창고에서 수거 후 섭취
+- BT 순서: Fight → Rest → **Eat** → Work
+
+**DataManager `"food"` 타입 지원** — JSON으로 FoodData 로드 가능
+
+### 3. 요리 시스템
+
+**요리 재료 아이템:** 밀, 밀가루, 생고기, 채소, 허브
+
+**음식 아이템 (FoodData):**
+
+| 아이템 | 영양가 | 필요 스킬 |
+|---|---|---|
+| 허브차 | 15 | 0 |
+| 빵 | 35 | 0 |
+| 채소 수프 | 40 | 0 |
+| 구운 고기 | 50 | 0 |
+| 스튜 | 70 | 15 |
+| 진수성찬 | 100 | 40 |
+
+**요리대:** CraftingTable `tableType = Cooking` 설정으로 사용. 기존 CraftJob 재활용.
+
+### 4. 아이템 계층 구조 추가
+
+- `FoodData : ItemData` — 음식 (NutritionValue, EatTime, MaxStack=20)
+
+### 5. 게임 데이터 Excel (`Tools/GameData.xlsx`)
+
+- `Tools/make_gamedata.py` 실행으로 재생성
+- 시트: Items / Recipes / Buildings / Enums(참고)
+- 드롭다운 유효성 검사, 카테고리별 색상 구분

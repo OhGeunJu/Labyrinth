@@ -25,6 +25,6 @@ public class UnitBlackboard
     // 순찰
     public PatrolZone AssignedPatrolZone;
 
-    // 무드
-    public float Mood;
+    // 허기 (0 = 굶주림, 100 = 배부름)
+    public float Hunger = 100f;
 }

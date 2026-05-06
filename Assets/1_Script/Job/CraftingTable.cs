@@ -5,11 +5,46 @@ using UnityEngine.InputSystem;
 
 public class CraftingTable : MonoBehaviour
 {
+    [Serializable]
+    public struct FuelEntry
+    {
+        public ItemData Item;
+        [Tooltip("아이템 1개당 제공하는 연료량")]
+        public float FuelValue;
+    }
+
     [SerializeField] CraftSkill tableType = CraftSkill.WeaponCrafting;
+
+    [Header("연료 (용광로 등)")]
+    [SerializeField] bool            _requiresFuel;
+    [SerializeField] float           _fuelCapacity  = 100f;
+    [Tooltip("연료 소모 속도 (단위/초). 용광로가 켜져있는 동안 항상 소모.")]
+    [SerializeField] float           _fuelBurnRate  = 2f;
+    [SerializeField] List<FuelEntry> _acceptedFuels = new();
+
+    float _fuelAmount;
+    bool  _fuelJobPending;
+    float _fuelCheckTimer;
+
+    const float FuelCheckInterval   = 3f;
+    const float FuelRefillThreshold = 0.3f;
 
     public CraftSkill TableType => tableType;
 
-    // DataManager에서 tableType에 맞는 레시피만 반환 (수동 등록 불필요)
+    public bool  RequiresFuel  => _requiresFuel;
+    public float FuelAmount    => _fuelAmount;
+    public float FuelCapacity  => _fuelCapacity;
+    public bool  NeedsFuel     => _requiresFuel && _fuelAmount < _fuelCapacity * FuelRefillThreshold;
+    public bool  HasFuel       => !_requiresFuel || _fuelAmount > 0f;
+    public IReadOnlyList<FuelEntry> AcceptedFuels => _acceptedFuels;
+
+    public void AddFuel(float amount)
+    {
+        _fuelAmount = Mathf.Min(_fuelAmount + amount, _fuelCapacity);
+    }
+
+    public void OnFuelJobComplete() => _fuelJobPending = false;
+
     public IReadOnlyList<RecipeData> Recipes =>
         new List<RecipeData>(DataManager.GetRecipesBySkill(tableType));
 
@@ -21,10 +56,45 @@ public class CraftingTable : MonoBehaviour
 
     void Update()
     {
+        HandleClick();
+        UpdateFuel();
+    }
+
+    void HandleClick()
+    {
         if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
         var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
         if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
             OnSelected?.Invoke(this);
+    }
+
+    void UpdateFuel()
+    {
+        if (!_requiresFuel) return;
+
+        // 시간에 따라 연료 소모
+        if (_fuelAmount > 0f)
+            _fuelAmount = Mathf.Max(0f, _fuelAmount - _fuelBurnRate * Time.deltaTime);
+
+        // 주기적으로 연료 보충 작업 등록
+        _fuelCheckTimer -= Time.deltaTime;
+        if (_fuelCheckTimer > 0f) return;
+        _fuelCheckTimer = FuelCheckInterval;
+
+        if (NeedsFuel && !_fuelJobPending && JobManager.Instance != null)
+            TryRegisterFuelJob();
+    }
+
+    void TryRegisterFuelJob()
+    {
+        foreach (var entry in _acceptedFuels)
+        {
+            if (entry.Item == null) continue;
+            if (Storage.GetTotalByItem(entry.Item) <= 0) continue;
+            _fuelJobPending = true;
+            JobManager.Instance.RegisterJob(new FuelJob(this, entry));
+            return;
+        }
     }
 
     public void QueueOrder(RecipeData recipe)
