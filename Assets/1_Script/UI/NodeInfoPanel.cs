@@ -43,14 +43,22 @@ public class NodeInfoPanel : MonoBehaviour
     [Tooltip("노드 → 선택된 폰으로 재고를 이송하는 버튼")]
     [SerializeField] Button transferButton;
 
+    [Header("운반 임계값")]
+    [Tooltip("운반 임계값 표시 텍스트 (예: 운반: 10개)")]
+    [SerializeField] TextMeshProUGUI haulThresholdText;
+    [SerializeField] Button haulThresholdUpButton;
+    [SerializeField] Button haulThresholdDownButton;
+
     ResourceNode _current;
     SelectionManager _selection;
 
     void Awake()
     {
         if (panel != null) panel.SetActive(false);
-        if (assignButton != null)   assignButton.onClick.AddListener(AssignSelected);
-        if (transferButton != null) transferButton.onClick.AddListener(TransferToSelected);
+        if (assignButton != null)        assignButton.onClick.AddListener(AssignSelected);
+        if (transferButton != null)      transferButton.onClick.AddListener(TransferToSelected);
+        if (haulThresholdUpButton != null)   haulThresholdUpButton.onClick.AddListener(IncreaseThreshold);
+        if (haulThresholdDownButton != null) haulThresholdDownButton.onClick.AddListener(DecreaseThreshold);
     }
 
     void Start()
@@ -96,6 +104,27 @@ public class NodeInfoPanel : MonoBehaviour
             node.Inventory.OnChanged += RefreshStock;
         RefreshStock();
         RefreshAssigned();
+        RefreshThreshold();
+    }
+
+    void IncreaseThreshold()
+    {
+        if (_current == null) return;
+        _current.HaulThreshold += 5;
+        RefreshThreshold();
+    }
+
+    void DecreaseThreshold()
+    {
+        if (_current == null) return;
+        _current.HaulThreshold = Mathf.Max(1, _current.HaulThreshold - 5);
+        RefreshThreshold();
+    }
+
+    void RefreshThreshold()
+    {
+        if (haulThresholdText != null && _current != null)
+            haulThresholdText.text = $"운반:{_current.HaulThreshold}";
     }
 
     void AssignSelected()

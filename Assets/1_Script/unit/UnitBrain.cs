@@ -122,6 +122,13 @@ public class UnitBrain : MonoBehaviour
         if (_isDead) return;
         _isDead = true;
 
+        // 진행 중인 작업이 있으면 취소해서 pending 플래그 해제
+        if (_bb?.CurrentJob != null)
+        {
+            JobManager.Instance?.CancelJob(_bb.CurrentJob);
+            _bb.CurrentJob = null;
+        }
+
         OnUnitDied?.Invoke(this);
 
         var faction = GetComponent<Faction>();

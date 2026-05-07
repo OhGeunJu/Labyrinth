@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class HaulJob : JobBase
@@ -6,48 +7,58 @@ public class HaulJob : JobBase
 
     enum Phase { GoToSource, GoToStorage }
 
-    ResourceNode    _source;
-    ItemData        _itemData;
-    int             _amount;
-    Storage _storage;
-    Phase           _phase = Phase.GoToSource;
+    ResourceNode _source;
+    ItemData     _itemData;
+    int          _amount;
+    Storage      _storage;
+    Phase        _phase = Phase.GoToSource;
+    Action       _onDone;
 
-    public HaulJob(ResourceNode source, ItemData itemData, int amount, Storage storage)
+    public HaulJob(ResourceNode source, ItemData itemData, int amount, Storage storage, Action onDone = null)
     {
         _source   = source;
         _itemData = itemData;
         _amount   = amount;
         _storage  = storage;
+        _onDone   = onDone;
         TileCoord = source.TileCoord;
         Priority  = 5;
+    }
+
+    protected override void OnStart()
+    {
+        Debug.Log($"[HaulJob] 시작 — 운반자:{ReservedBy?.name} 소스:{_source?.name} 아이템:{_itemData?.ItemName}");
     }
 
     protected override void Execute(UnitBrain unit)
     {
         if (_phase == Phase.GoToSource)
         {
-            // 노드 인벤토리에서 아이템 꺼내기
             int available = _source != null ? _source.Inventory.GetTotalQuantity(_itemData) : 0;
-            int toTake    = Mathf.Min(_amount, available);
+            Debug.Log($"[HaulJob] GoToSource — 노드 재고:{available} 운반자:{unit.name}");
 
-            if (toTake <= 0)
+            if (available <= 0)
             {
-                // 이미 다른 폰이 가져간 경우
+                Debug.Log("[HaulJob] 노드에 아이템 없음 → 완료");
                 Status = JobStatus.Done;
+                _onDone?.Invoke();
                 return;
             }
 
-            _source.Inventory.Remove(_itemData, toTake);
-            unit.Inventory.TryAdd(_itemData, toTake);
+            int toTake = _source.Inventory.Remove(_itemData, available);
+            int added  = unit.Inventory.TryAdd(_itemData, toTake);
             _amount = toTake;
+            Debug.Log($"[HaulJob] 수거 {toTake}개 → 인벤 추가 {added}개 → 창고로 이동");
 
             _phase    = Phase.GoToStorage;
             TileCoord = MapManager.Instance.WorldToTile(_storage.transform.position);
         }
         else
         {
-            // 창고에 입금 (필터 재확인)
-            if (unit.Inventory.Remove(_itemData, _amount) == _amount)
+            int removed = unit.Inventory.Remove(_itemData, _amount);
+            Debug.Log($"[HaulJob] GoToStorage — 인벤에서 {removed}/{_amount}개 꺼냄");
+
+            if (removed == _amount)
             {
                 if (!_storage.TryAdd(_itemData, _amount))
                 {
@@ -62,6 +73,10 @@ public class HaulJob : JobBase
                 }
             }
             Status = JobStatus.Done;
+            _onDone?.Invoke();
+            Debug.Log("[HaulJob] 완료");
         }
     }
+
+    protected override void OnCancelled() => _onDone?.Invoke();
 }

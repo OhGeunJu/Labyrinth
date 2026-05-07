@@ -4,7 +4,14 @@ using UnityEngine;
 public class ResourceNode : MonoBehaviour
 {
     [SerializeField] ResourceNodeData data;
+    [SerializeField] int haulThreshold = 10;  // 이 수량 이상 쌓이면 운반 작업 등록
     public Inventory Inventory { get; private set; }
+
+    public int HaulThreshold
+    {
+        get => haulThreshold;
+        set => haulThreshold = Mathf.Max(1, value);
+    }
 
     public ResourceNodeData Data => data;
     public bool IsDesignated { get; set; }
@@ -43,6 +50,7 @@ public class ResourceNode : MonoBehaviour
 
     float _gauge;
     int _totalYielded;
+    bool _haulJobPending;
 
     void Awake()
     {
@@ -84,9 +92,18 @@ public class ResourceNode : MonoBehaviour
         Inventory.TryAdd(data.DropItem, amount);
         Debug.Log($"[ResourceNode] {data.DropItem.ItemName} ×{amount} 적재 (누적: {Inventory.GetTotalQuantity(data.DropItem)})");
 
-        // 운반 가능한 창고가 있으면 HaulJob 등록
-        var storage = Storage.FindNearest(transform.position, data.DropItem);
-        if (storage != null && JobManager.Instance != null)
-            JobManager.Instance.RegisterJob(new HaulJob(this, data.DropItem, amount, storage));
+        // 임계값 이상 쌓이고 운반 작업이 없을 때만 등록
+        int total = Inventory.GetTotalQuantity(data.DropItem);
+        Debug.Log($"[ResourceNode] 재고:{total}/{haulThreshold} pending:{_haulJobPending}");
+        if (!_haulJobPending && total >= haulThreshold)
+        {
+            var storage = Storage.FindNearest(transform.position, data.DropItem);
+            Debug.Log($"[ResourceNode] HaulJob 등록 시도 — 창고:{storage?.name ?? "없음"}");
+            if (storage != null && JobManager.Instance != null)
+            {
+                _haulJobPending = true;
+                JobManager.Instance.RegisterJob(new HaulJob(this, data.DropItem, total, storage, () => _haulJobPending = false));
+            }
+        }
     }
 }

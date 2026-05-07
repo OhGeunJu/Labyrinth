@@ -116,24 +116,26 @@ public class WorkNode : BTNode
         var currentJob = bb.CurrentJob;
         if (currentJob == null) return BTStatus.Failure;
 
-        if (!bb.Mover.HasTarget())
-        {
-            var jobCenter = MapManager.Instance.TileToWorld(currentJob.TileCoord);
-            var pos = bb.Self.transform.position;
-            float dist = Vector2.Distance(new Vector2(pos.x, pos.z),
-                                          new Vector2(jobCenter.x, jobCenter.z));
+        var jobCenter = MapManager.Instance.TileToWorld(currentJob.TileCoord);
+        var pos       = bb.Self.transform.position;
+        float dist    = Vector2.Distance(new Vector2(pos.x, pos.z),
+                                         new Vector2(jobCenter.x, jobCenter.z));
 
-            if (dist > 1.5f)
+        if (dist > 2.0f)
+        {
+            // 이동 중이 아닐 때만 목표 재설정 (이미 이동 중이면 기다림)
+            if (!bb.Mover.HasTarget())
                 bb.Mover.SetMoveTarget(TileToWorld(currentJob.TileCoord, bb));
-            else
+        }
+        else
+        {
+            bb.Mover.StopMovement();
+            currentJob.Tick(bb.Self.GetComponent<UnitBrain>());
+            if (currentJob.IsComplete())
             {
-                currentJob.Tick(bb.Self.GetComponent<UnitBrain>());
-                if (currentJob.IsComplete())
-                {
-                    JobManager.Instance.CompleteJob(currentJob);
-                    bb.CurrentJob = null;
-                    return BTStatus.Success;
-                }
+                JobManager.Instance.CompleteJob(currentJob);
+                bb.CurrentJob = null;
+                return BTStatus.Success;
             }
         }
 
@@ -155,7 +157,7 @@ public class WorkNode : BTNode
         float dist = Vector2.Distance(new Vector2(pos.x, pos.z),
                                       new Vector2(nodeCenter.x, nodeCenter.z));
 
-        if (dist > 1.5f)
+        if (dist > 2.0f)
         {
             if (!bb.Mover.HasTarget())
                 bb.Mover.SetMoveTarget(TileToWorld(node.TileCoord, bb));
@@ -163,7 +165,11 @@ public class WorkNode : BTNode
         else
         {
             bb.Mover.StopMovement();
-            node.Work(bb.Self.GetComponent<UnitBrain>().Stats.Mining);
+            var brain = bb.Self.GetComponent<UnitBrain>();
+            float skill = node.Data != null && node.Data.ResourceType == ResourceType.Wood
+                ? brain.Stats.Cutting
+                : brain.Stats.Mining;
+            node.Work(skill);
         }
 
         return BTStatus.Running;

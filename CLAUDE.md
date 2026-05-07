@@ -375,7 +375,32 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 ### Pathfinding
 
-`Pathfinder` — **NavMesh 기반** (Unity AI Navigation). `NavMesh.SamplePosition` + `NavMesh.CalculatePath`. 이동/네비게이션은 타일 그리드와 무관 — 오픈월드 전체에서 동작. 씬에 `NavMeshSurface` 베이크 필요 (Unity 6의 AI Navigation 패키지).
+**3단계 계층 A* 길찾기** (NavMesh 제거 — 건물 배치 시 재베이크 불필요).
+
+| 단계 | 클래스 | 타일 크기 | 용도 |
+|---|---|---|---|
+| L1 | `LocalGridManager` | 1×1 | 유닛 주변 정밀 이동 |
+| L2 | `PathGrid` (in `HierarchicalPathfinder`) | 100×100 | 지역 경로 |
+| L3 | `PathGrid` (in `HierarchicalPathfinder`) | 1000×1000 | 광역 라우팅 |
+
+**`PathGrid`** — 범용 A* 격자. L1·L2·L3 공용. Octile 거리 휴리스틱, 8방향 이동, 이동 비용(cost) 지원.
+
+**`HierarchicalPathfinder`** (MonoBehaviour 싱글톤, 씬에 배치 필요):
+- 게임 시작 시 `Terrain` 경사도 샘플링으로 L2·L3 자동 베이킹
+- `obstacleLayer` — Inspector에서 건물/벽 레이어 지정 (Terrain 레이어는 제외)
+- `MapManager.OnTileChanged` 구독 → 타일 변경 시 L1·L2·L3 해당 셀만 즉시 갱신
+- `FindPath(from, to)`: 단거리(L1 범위 내)는 L1 A*, 장거리는 L2 A* + 첫 구간 L1 정밀화
+
+**`LocalGridManager`** — L1 그리드 관리:
+- **공유 그리드**: DungeonCore 기준 80×80 타일. DungeonCore 이동 시 재중심.
+- **클러스터 그리드**: 공유 범위 밖 유닛들을 20타일 반경 기준으로 그룹화, 그룹 평균 위치 기준 40×40 그리드 생성. 3초 주기 갱신.
+- `Physics.CheckBox`로 장애물 감지 시 `obstacleLayer`만 검사.
+
+**`Pathfinder`** (static) — `PawnMover`에서 사용하는 진입점. `HierarchicalPathfinder.Instance.FindPath()`에 위임. Instance 없으면 직선 폴백.
+
+**맵**: Unity Terrain 기반. 개발 중 단일 Terrain 5,000×5,000, 최종 목표 10,000×10,000 (타일 분할). `Terrain.activeTerrain.terrainData.size`로 크기 자동 인식.
+
+**이동 비용**: Terrain 경사도 기반 (`GetSteepness`). 45° 이상 불가, 이하는 경사도 × `slopeCostMult` 만큼 비용 증가. 향후 텍스처 레이어별 비용(도로=0.5, 습지=3 등) 추가 예정.
 
 ## ScriptableObject Assets (`Assets/5 Data/`)
 
@@ -706,6 +731,39 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 - **벌목 시스템** — JobCategory.Logging 구현 예정 (Wood 자원 노드)
 - **Enemy spawn / event system** — 적 웨이브/이벤트 시스템
+
+## 최근 변경 (2026-05-08)
+
+### 1. 벌목 시스템 (Logging)
+
+- `JobCategory.Logging` 기존 enum에 이미 존재
+- `LoggingCreator.cs` (Editor) — `DungeonColony → Create Tree Prefab` 메뉴. 줄기+수관 나무 프리팹 생성. `ResourceNode` 컴포넌트 자동 부착.
+- 나무는 `ResourceNode`(Wood 타입)로 구현 — 기존 게이지 시스템 재활용
+- `WorkNode.TickAssigned`에서 `ResourceType.Wood`이면 `Stats.Cutting`, 그 외는 `Stats.Mining` 사용
+
+### 2. HaulJob 개선
+
+- **중복 등록 방지**: `ResourceNode._haulJobPending` 플래그 추가. 운반 작업이 완료/취소될 때만 새 HaulJob 등록.
+- **전량 수거**: HaulJob GoToSource 페이즈에서 `_amount` 고정값이 아닌 노드 현재 재고 전량 수거.
+- **완료 콜백**: `HaulJob(onDone: Action)` — 완료/취소 시 `_haulJobPending = false` 자동 해제.
+- **임계값**: `ResourceNode.haulThreshold` (기본 10) — 재고가 이 수량 이상일 때만 HaulJob 등록. `NodeInfoPanel`에서 +5/-5 버튼으로 조절 가능.
+- **폰 사망 시 job 정리**: `UnitBrain.Die()`에서 `CurrentJob` 자동 취소 → pending 플래그 고착 방지.
+
+### 3. WorkNode 개선
+
+- 거리 체크를 `HasTarget()` 조건 밖으로 분리 — 콜라이더에 끼어도 2.0f 이내면 작업 실행.
+- 작업 반경 1.5f → **2.0f** 로 확대 (TickAssigned 포함).
+
+### 4. 3단계 계층 A* 길찾기 (NavMesh 교체)
+
+- NavMesh 제거 — 건물 배치 시 재베이크 불필요
+- `PathGrid.cs` — 범용 A* 격자 (L1/L2/L3 공용)
+- `LocalGridManager.cs` — L1 공유(80×80) + 클러스터(40×40) 그리드 관리
+- `HierarchicalPathfinder.cs` — MonoBehaviour 싱글톤. Terrain 자동 베이킹. 씬에 배치 필요.
+- `Pathfinder.cs` — static 진입점 유지, HierarchicalPathfinder에 위임
+- 맵: Unity Terrain 기반. 개발용 5,000×5,000 단일 Terrain 권장.
+
+---
 
 ## 최근 변경 (2026-05-07)
 
