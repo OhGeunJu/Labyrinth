@@ -729,8 +729,7 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 
 ## Upcoming Systems
 
-- **벌목 시스템** — JobCategory.Logging 구현 예정 (Wood 자원 노드)
-- **Enemy spawn / event system** — 적 웨이브/이벤트 시스템
+- **교역 UI** — 상인 클릭 시 거래 패널
 
 ## 최근 변경 (2026-05-08)
 
@@ -852,3 +851,61 @@ Seven parts: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg.
 - `Tools/make_gamedata.py` 실행으로 재생성
 - 시트: Items / Recipes / Buildings / Enums(참고)
 - 드롭다운 유효성 검사, 카테고리별 색상 구분
+
+## 최근 변경 (2026-05-09)
+
+### 1. 시체 루팅 UI
+
+- `CorpseInventoryPanel.cs` — 시체 클릭 시 열리는 인벤토리 패널. `SelectionManager.OnCorpseSelected` 구독
+- 씬에서 Inventory_UI 복붙 후 `PawnInventoryPanel` 대신 `CorpseInventoryPanel` 컴포넌트로 교체. `panel` + `gridContainer` 연결
+- `PawnInventoryPanel`(내 인벤토리)과 동시에 열려 드래그-드롭 루팅 가능
+
+### 2. 이벤트 시스템 (`Assets/1 Script/Event/`)
+
+**새 파일:**
+- `GameEventType` — `Raid`, `Merchant`, `Reinforcement`, `Discovery`
+- `GameEventData` (ScriptableObject, `DungeonColony/GameEventData`) — 이름/설명/아이콘/가중치/MinGameTime + 타입별 필드
+- `EventManager` (MonoBehaviour 싱글톤) — 씬에 배치. `checkInterval`(기본 300초) 주기로 가중치 기반 랜덤 이벤트 발동. 우클릭 → Force Roll Event로 즉시 테스트
+- `MerchantBehaviour.cs` — 사용 안 함 (NpcBrain으로 대체됨)
+- `EventNotificationUICreator.cs` (Editor) — `DungeonColony → Create Event Notification UI`
+
+**이벤트별 동작:**
+- `Raid` — 맵 가장자리에 `EnemyPrefabs` 스폰. 스폰된 적은 UnitBrain Enemy BT로 자동 공격
+- `Merchant` — 맵 가장자리에 상인 프리팹 스폰. NpcData(EventMerchant) BT로 걸어오고 머물다 귀환 소멸
+- `Reinforcement` — 알림만 표시. 실제 동작 미구현 (뼈대)
+- `Discovery` — 던전 코어 기준 `DiscoveryMinDist`~`DiscoveryMaxDist` 범위 랜덤 위치에 자원 노드 스폰
+
+**`EventNotificationUI`** — 이벤트 발동 시 화면 상단 팝업 (5초 자동 닫힘 + 닫기 버튼)
+
+### 3. NPC 시스템
+
+**새 파일:**
+- `NpcType` — `Villager`, `Guard`, `ShopMerchant`, `EventMerchant`
+- `NpcData : UnitData` (ScriptableObject, `DungeonColony/NpcData`) — `NpcType`, `WanderRadius`, `FleeDetectRange`, `StayDuration`
+- `BTNpcNodes.cs` — NPC 전용 BT 노드: `NpcFleeNode`(적 감지 도주), `NpcWanderNode`(홈포인트 배회), `NpcEventMerchantNode`(이동→대기→귀환→소멸)
+- `UnitBrain.Npc.cs` — NPC BT 구성 partial
+
+**NpcType별 BT:**
+| NpcType | BT |
+|---|---|
+| Villager | Flee → Wander → Idle |
+| Guard | Detect+Fight → Patrol → Idle |
+| ShopMerchant | Idle (고정) |
+| EventMerchant | WalkIn → Stay(StayDuration) → WalkOut → Despawn |
+
+**`UnitBlackboard` 추가 필드:** `HomePosition`, `NpcDestination`, `NpcTimer`, `NpcPhase`
+
+### 4. UnitBrain partial class 분리
+
+- `UnitBrain.cs` — `partial` 선언. `BuildTree()` 분기만 유지
+- `UnitBrain.Wanderer.cs` — `BuildWandererTree()`
+- `UnitBrain.Minion.cs` — `BuildMinionTree()`
+- `UnitBrain.Enemy.cs` — `BuildEnemyTree()`
+- `UnitBrain.Npc.cs` — `BuildNpcTree()` + NpcType별 서브 메서드
+
+새 유닛 타입 추가 시 파일 하나만 추가하면 됨. `UnitBrain.cs` 본체는 건드리지 않음.
+
+### 5. PawnMover 추가 API
+
+- `IsMoving()` — `_hasTarget` 반환. NPC BT 노드에서 도착 여부 판단에 사용
+- `SetDestination(Vector3)` — `SetMoveTarget` 별칭

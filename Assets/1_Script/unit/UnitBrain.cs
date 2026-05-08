@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-public class UnitBrain : MonoBehaviour
+public partial class UnitBrain : MonoBehaviour
 {
     public static event Action<UnitBrain> OnUnitSpawned;
     public static event Action<UnitBrain> OnUnitDied;
@@ -170,48 +170,10 @@ public class UnitBrain : MonoBehaviour
 
         if (faction != null && faction.Type == FactionType.Enemy)
             return BuildEnemyTree();
-        else if (unitData is MinionData)
+        if (unitData is NpcData)
+            return BuildNpcTree((NpcData)unitData);
+        if (unitData is MinionData)
             return BuildMinionTree();
-        else
-            return BuildWandererTree();
-    }
-
-    // 방랑자: 소집 → 전투 → 휴식 → 식사 → 작업 → 대기
-    BTNode BuildWandererTree()
-    {
-        return new BTSelector()
-            .Add(new BTSequence()
-                .Add(new ConditionNode(bb => bb.IsDrafted))
-                .Add(new DraftedNode()))
-            .Add(new BTSequence()
-                .Add(new ConditionNode(bb => bb.Target != null))
-                .Add(new FightNode()))
-            .Add(new RestNode())
-            .Add(new EatNode())
-            .Add(new WorkNode())
-            .Add(new IdleNode());
-    }
-
-    // 하수인: 자동 감지 반격 → 휴식 → 식사 → 순찰 → 작업 → 대기
-    BTNode BuildMinionTree()
-    {
-        return new BTSelector()
-            .Add(new BTSequence()
-                .Add(new DetectNode())
-                .Add(new FightNode()))
-            .Add(new RestNode())
-            .Add(new EatNode())
-            .Add(new PatrolNode())
-            .Add(new WorkNode())
-            .Add(new IdleNode());
-    }
-
-    BTNode BuildEnemyTree()
-    {
-        return new BTSelector()
-            .Add(new BTSequence()
-                .Add(new DetectNode())
-                .Add(new FightNode()))
-            .Add(new IdleNode());
+        return BuildWandererTree();
     }
 }

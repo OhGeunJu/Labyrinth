@@ -145,8 +145,10 @@ public class PawnMover : MonoBehaviour
         return maxWeight / currentWeight;
     }
 
-    public bool HasTarget() => _hasTarget;
-    public Vector3 Target() => _currentTarget;
+    public bool HasTarget()  => _hasTarget;
+    public bool IsMoving()   => _hasTarget;
+    public void SetDestination(Vector3 pos) => SetMoveTarget(pos);
+    public Vector3 Target()  => _currentTarget;
 
     Vector3 WithY(Vector3 v) => new Vector3(v.x, transform.position.y, v.z);
 
