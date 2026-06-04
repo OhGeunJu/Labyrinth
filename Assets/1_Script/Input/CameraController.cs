@@ -8,23 +8,43 @@ public class CameraController : MonoBehaviour
 
     [Header("회전")]
     [SerializeField] float rotateSpeed = 3f;
+    [SerializeField] float minPitch = 5f;
+    [SerializeField] float maxPitch = 89f;
 
-    [Header("줌")]
-    [SerializeField] float zoomSpeed = 5f;
-    [SerializeField] float minZoom = 5f;
-    [SerializeField] float maxZoom = 50f;
+    [Header("줌 (커서 방향 이동)")]
+    [SerializeField] float zoomSpeed = 20f;
+    [SerializeField] float minHeight = 3f;
+    [SerializeField] float maxHeight = 80f;
+
+    [Header("앵글 프리셋 (PageUp/Down)")]
+    [SerializeField] float topDownPitch = 85f;
+    [SerializeField] float lowAnglePitch = 10f;
+    [SerializeField] float angleLerpSpeed = 5f;
 
     Camera _cam;
     bool _isRotating;
     Vector2 _lastMousePos;
+    bool _lerpingToPitch;
+    float _targetPitch;
+    float _yaw;
+    float _pitch;
 
     void Awake() => _cam = GetComponent<Camera>();
+
+    void Start()
+    {
+        Vector3 euler = transform.eulerAngles;
+        _yaw = euler.y;
+        _pitch = euler.x > 180f ? euler.x - 360f : euler.x;
+    }
 
     void Update()
     {
         HandleMove();
         HandleRotate();
         HandleZoom();
+        HandleAnglePreset();
+        ApplyRotation();
     }
 
     void HandleMove()
@@ -55,12 +75,14 @@ public class CameraController : MonoBehaviour
 
         if (!_isRotating) return;
 
+        _lerpingToPitch = false;
+
         Vector2 curMousePos = Mouse.current.position.ReadValue();
         Vector2 delta = curMousePos - _lastMousePos;
         _lastMousePos = curMousePos;
 
-        transform.eulerAngles += new Vector3(-delta.y * rotateSpeed * Time.deltaTime,
-                                              delta.x * rotateSpeed * Time.deltaTime, 0f);
+        _yaw += delta.x * rotateSpeed * Time.deltaTime;
+        _pitch = Mathf.Clamp(_pitch - delta.y * rotateSpeed * Time.deltaTime, minPitch, maxPitch);
     }
 
     void HandleZoom()
@@ -68,7 +90,46 @@ public class CameraController : MonoBehaviour
         float scroll = Mouse.current.scroll.ReadValue().y;
         if (scroll == 0f) return;
 
-        _cam.fieldOfView = Mathf.Clamp(_cam.fieldOfView - scroll * zoomSpeed * Time.deltaTime,
-                                        minZoom, maxZoom);
+        Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
+        Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
+
+        Vector3 zoomDir;
+        if (groundPlane.Raycast(ray, out float dist))
+            zoomDir = (ray.GetPoint(dist) - transform.position).normalized;
+        else
+            zoomDir = transform.forward;
+
+        Vector3 newPos = transform.position + zoomDir * scroll * zoomSpeed * Time.deltaTime;
+        newPos.y = Mathf.Clamp(newPos.y, minHeight, maxHeight);
+        transform.position = newPos;
+    }
+
+    void HandleAnglePreset()
+    {
+        if (Keyboard.current.pageUpKey.wasPressedThisFrame)
+        {
+            _targetPitch = topDownPitch;
+            _lerpingToPitch = true;
+        }
+        else if (Keyboard.current.pageDownKey.wasPressedThisFrame)
+        {
+            _targetPitch = lowAnglePitch;
+            _lerpingToPitch = true;
+        }
+
+        if (!_lerpingToPitch) return;
+
+        _pitch = Mathf.LerpAngle(_pitch, _targetPitch, angleLerpSpeed * Time.deltaTime);
+
+        if (Mathf.Abs(Mathf.DeltaAngle(_pitch, _targetPitch)) < 0.5f)
+        {
+            _pitch = _targetPitch;
+            _lerpingToPitch = false;
+        }
+    }
+
+    void ApplyRotation()
+    {
+        transform.eulerAngles = new Vector3(_pitch, _yaw, 0f);
     }
 }

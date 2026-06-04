@@ -106,9 +106,14 @@ public class CraftJob : JobBase
         if (leftover > 0)
             DroppedItem.Spawn(_recipe.Result, leftover, _table.transform.position + Vector3.up * 0.3f);
 
-        // ── 스킬 성장 ─────────────────────────────────────────────────────────
+        // ── 스킬 성장 (켄시식) ────────────────────────────────────────────────
         if (_recipe.SkillGrowthAmount > 0f)
-            unit.Stats.GrowCraftSkill(_recipe.RequiredSkillType, _recipe.SkillGrowthAmount);
+        {
+            float xp = _recipe.SkillGrowthAmount
+                     * CombatXp.ChallengeMult(skill, required)
+                     * CombatXp.Sol(skill);
+            unit.Stats.GrowCraftSkill(_recipe.RequiredSkillType, xp);
+        }
 
         // ── 로그 ──────────────────────────────────────────────────────────────
         string dest      = added > 0 && leftover == 0 ? "인벤토리"

@@ -15,4 +15,7 @@ public class ResourceNodeData : ScriptableObject
     [Tooltip("게이지 1회 달성 시 드롭 수량 범위")]
     public int DropMin = 1;
     public int DropMax = 3;
+
+    [Tooltip("이 자원 채굴의 권장 스킬 레벨 (XP 도전 비율 계산용)")]
+    public float RequiredSkill = 0f;
 }

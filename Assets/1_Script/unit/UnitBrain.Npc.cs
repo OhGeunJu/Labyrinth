@@ -11,7 +11,7 @@ public partial class UnitBrain
         {
             NpcType.Villager      => BuildVillagerTree(npc),
             NpcType.Guard         => BuildGuardTree(npc),
-            NpcType.ShopMerchant  => BuildShopMerchantTree(),
+            NpcType.ShopMerchant  => BuildShopMerchantTree(npc),
             NpcType.EventMerchant => BuildEventMerchantTree(npc),
             _                     => new IdleNode(),
         };
@@ -37,9 +37,11 @@ public partial class UnitBrain
             .Add(new IdleNode());
     }
 
-    // 상점 상인: 그냥 서있음
-    BTNode BuildShopMerchantTree()
+    // 상점 상인: NpcData의 MerchantData를 Merchant 컴포넌트에 연결 후 대기
+    BTNode BuildShopMerchantTree(NpcData npc)
     {
+        var merchant = GetComponent<Merchant>() ?? gameObject.AddComponent<Merchant>();
+        merchant.Data = npc.MerchantData;
         return new IdleNode();
     }
 

@@ -166,10 +166,16 @@ public class WorkNode : BTNode
         {
             bb.Mover.StopMovement();
             var brain = bb.Self.GetComponent<UnitBrain>();
-            float skill = node.Data != null && node.Data.ResourceType == ResourceType.Wood
-                ? brain.Stats.Cutting
-                : brain.Stats.Mining;
+            bool isCutting = node.Data != null && node.Data.ResourceType == ResourceType.Wood;
+            StatName workStat = isCutting ? StatName.Cutting : StatName.Mining;
+            float skill = brain.Stats.GetStat(workStat);
             node.Work(skill);
+
+            float required = node.Data != null ? node.Data.RequiredSkill : 0f;
+            float xp = 0.05f * Time.deltaTime
+                     * CombatXp.ChallengeMult(skill, required)
+                     * CombatXp.Sol(skill);
+            brain.Stats.GrowStat(workStat, xp);
         }
 
         return BTStatus.Running;

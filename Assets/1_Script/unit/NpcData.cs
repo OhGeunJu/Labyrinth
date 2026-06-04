@@ -16,4 +16,7 @@ public class NpcData : UnitData
 
     [Tooltip("EventMerchant 목적지 — 비우면 던전 코어 위치 사용")]
     public Vector3 ArrivalOffset = Vector3.zero;
+
+    [Tooltip("ShopMerchant 전용 — 판매 목록/골드 설정")]
+    public MerchantData MerchantData;
 }

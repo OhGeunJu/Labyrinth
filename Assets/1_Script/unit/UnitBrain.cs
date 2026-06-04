@@ -25,6 +25,21 @@ public partial class UnitBrain : MonoBehaviour
 
     public UnitBlackboard Blackboard => _bb;
     public UnitData Data => unitData;
+    public string UnitName { get; private set; }
+
+    Sprite _portrait;
+    bool   _portraitTried;
+
+    // 로스터 등에서 표시 직전 호출. 최초 1회만 3D 모델을 렌더해 캐싱.
+    public Sprite EnsurePortrait()
+    {
+        if (!_portraitTried)
+        {
+            _portraitTried = true;
+            _portrait = PortraitCapture.Capture(gameObject);
+        }
+        return _portrait;
+    }
     public UnitStats Stats { get; private set; }
     public Inventory Inventory { get; private set; }
     public Equipment Equipment { get; private set; }
@@ -38,6 +53,8 @@ public partial class UnitBrain : MonoBehaviour
         gameObject.AddComponent<StatusEffectSystem>();
 
         Stats = UnitStats.FromData(unitData);
+        Stats.IsLocked = unitData is MinionData;
+        Stats.Owner    = gameObject;
 
         _maxHp = unitData != null ? unitData.MaxHP : 100f;
         _hp    = _maxHp;
@@ -58,6 +75,8 @@ public partial class UnitBrain : MonoBehaviour
             _mover.SetStats(Stats, Inventory);
         }
 
+        UnitName = ResolveUnitName();
+
         _root = BuildTree();
 
         var faction = GetComponent<Faction>();
@@ -67,6 +86,15 @@ public partial class UnitBrain : MonoBehaviour
             Priorities = gameObject.AddComponent<UnitPriorities>();
     }
 
+
+    string ResolveUnitName()
+    {
+        if (unitData != null && unitData.NamePool != null && unitData.NamePool.Count > 0)
+            return unitData.NamePool[UnityEngine.Random.Range(0, unitData.NamePool.Count)];
+        if (unitData != null && !string.IsNullOrEmpty(unitData.RaceName))
+            return unitData.RaceName;
+        return gameObject.name;
+    }
 
     void Start()
     {
@@ -144,7 +172,7 @@ public partial class UnitBrain : MonoBehaviour
     void BecomeCorpse()
     {
         var corpse = gameObject.AddComponent<Corpse>();
-        corpse.Init(unitData != null ? unitData.RaceName : name, Inventory);
+        corpse.Init(UnitName, Inventory);
 
         enabled = false;
         if (_mover != null) _mover.enabled = false;

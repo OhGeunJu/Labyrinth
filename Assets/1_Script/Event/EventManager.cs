@@ -60,7 +60,7 @@ public class EventManager : MonoBehaviour
         {
             case GameEventType.Raid:          SpawnRaid(data);          break;
             case GameEventType.Merchant:      SpawnMerchant(data);      break;
-            case GameEventType.Reinforcement: /* 뼈대 — 추후 구현 */   break;
+            case GameEventType.Reinforcement: SpawnReinforcement(data); break;
             case GameEventType.Discovery:     SpawnDiscovery(data);     break;
         }
     }
@@ -78,6 +78,38 @@ public class EventManager : MonoBehaviour
             Vector3 pos = edge + new Vector3(Random.Range(-3f, 3f), 0f, Random.Range(-3f, 3f));
             pos.y = SampleHeight(pos);
             Instantiate(prefab, pos, Quaternion.identity);
+        }
+    }
+
+    // ── 지원군 ───────────────────────────────────────────────────────────────
+
+    void SpawnReinforcement(GameEventData data)
+    {
+        if (data.ReinforcementPrefabs == null || data.ReinforcementPrefabs.Count == 0) return;
+
+        Vector3 edge = GetMapEdgePosition();
+        var core = DungeonCore.Instance;
+        Vector3 rally = core != null
+            ? core.transform.position
+            : edge;
+
+        for (int i = 0; i < data.ReinforcementCount; i++)
+        {
+            var prefab = data.ReinforcementPrefabs[Random.Range(0, data.ReinforcementPrefabs.Count)];
+            if (prefab == null) continue;
+
+            Vector3 pos = edge + new Vector3(Random.Range(-3f, 3f), 0f, Random.Range(-3f, 3f));
+            pos.y = SampleHeight(pos);
+            var go = Instantiate(prefab, pos, Quaternion.identity);
+
+            // 던전 코어 방향으로 초기 이동 (랜덤 오프셋으로 뭉치지 않게)
+            var mover = go.GetComponent<PawnMover>();
+            if (mover != null)
+            {
+                Vector3 dest = rally + new Vector3(Random.Range(-5f, 5f), 0f, Random.Range(-5f, 5f));
+                dest.y = SampleHeight(dest);
+                mover.SetMoveTarget(dest);
+            }
         }
     }
 

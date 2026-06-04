@@ -53,6 +53,23 @@ public class CombatHandler : MonoBehaviour
         _attackTimer = 0f;
     }
 
+    // ── 켄시식 XP 성장 헬퍼 ─────────────────────────────────────────
+    void GrowXp(CombatHandler unit, StatName stat, float mySkill, float oppSkill, float eventMult = 1f)
+    {
+        if (unit == null) return;
+        int enemyCount = CombatXp.CountNearbyEnemies(unit.gameObject);
+        float xp = growthRate * eventMult * CombatXp.Calculate(mySkill, oppSkill, enemyCount);
+        unit._stats.GrowStat(stat, xp);
+    }
+
+    void GrowWeaponXp(CombatHandler unit, WeaponType type, float mySkill, float oppSkill, float eventMult = 1f)
+    {
+        if (unit == null) return;
+        int enemyCount = CombatXp.CountNearbyEnemies(unit.gameObject);
+        float xp = growthRate * eventMult * CombatXp.Calculate(mySkill, oppSkill, enemyCount);
+        unit._stats.GrowSkillForWeapon(type, xp);
+    }
+
     // ── 근접 공격 ────────────────────────────────────────────────────
     void TryAttack()
     {
@@ -72,17 +89,25 @@ public class CombatHandler : MonoBehaviour
         // Weakened 디버프: 공격 적중률 감소
         if (_sfx != null) attackSkill *= _sfx.AttackChanceMod;
 
+        bool defUnarmed     = targetCombat != null && targetCombat.GetWeaponType() == WeaponType.Unarmed;
+        float defSkill      = targetCombat != null ? targetCombat._stats.GetDefenseCombatSkill(defUnarmed) : 0f;
+        StatName defStatName = defUnarmed ? StatName.MartialArts : StatName.MeleeDefense;
+
         if (targetCombat != null && TryBlock(targetCombat, attackSkill))
         {
-            GrowDefenseStat(targetCombat);
+            // 방어 성공: 적은 XP (baseline 1x)
+            GrowXp(targetCombat, defStatName, defSkill, attackSkill, 1f);
+            // 공격자: 블록 당함 = 0.5x
+            GrowWeaponXp(this, weaponType, weaponSkill, defSkill, 0.5f);
+            if (!unarmed) GrowXp(this, StatName.MeleeAttack, attackSkill, defSkill, 0.25f);
             Debug.Log($"[Combat] {target.name} 방어 성공");
             return;
         }
 
         if (targetCombat != null && TryDodge(targetCombat, attackSkill))
         {
-            if (!targetCombat.IsMinion)
-                targetCombat._stats.Evasion = Mathf.Min(100f, targetCombat._stats.Evasion + growthRate);
+            // 회피 성공: Evasion baseline XP, 공격자는 히트박스 미접촉 → 0
+            GrowXp(targetCombat, StatName.Evasion, targetCombat._stats.Evasion, attackSkill, 1f);
             Debug.Log($"[Combat] {target.name} 회피 성공");
             return;
         }
@@ -101,13 +126,14 @@ public class CombatHandler : MonoBehaviour
             && weapon.EffectChance > 0f && UnityEngine.Random.value < weapon.EffectChance)
             ApplyHolyEffect(weapon, target);
 
-        // 무기 숙련도 + 근접공격 스킬 동시 성장 (하수인 제외)
-        if (!IsMinion)
+        // 피격 시: 방어자는 방어 실패 = 8x XP, 공격자는 무기/MeleeAttack 정상
+        if (targetCombat != null)
         {
-            _stats.GrowSkillForWeapon(weaponType, growthRate);
-            if (!unarmed)
-                _stats.MeleeAttack = Mathf.Min(100f, _stats.MeleeAttack + growthRate * 0.5f);
+            GrowXp(targetCombat, defStatName, defSkill, attackSkill, 8f);
+            GrowXp(targetCombat, StatName.Evasion, targetCombat._stats.Evasion, attackSkill, 2f);
         }
+        GrowWeaponXp(this, weaponType, weaponSkill, defSkill, 1f);
+        if (!unarmed) GrowXp(this, StatName.MeleeAttack, attackSkill, defSkill, 0.5f);
 
         OnDamageDealt?.Invoke(this, damage);
         Debug.Log($"[Combat] {gameObject.name} → {target.name} {damage:F1} 데미지 ({weaponType})");
@@ -163,16 +189,6 @@ public class CombatHandler : MonoBehaviour
         return UnityEngine.Random.value < dodgeChance;
     }
 
-    void GrowDefenseStat(CombatHandler defender)
-    {
-        if (defender.IsMinion) return;
-        bool defUnarmed = defender.GetWeaponType() == WeaponType.Unarmed;
-        if (defUnarmed)
-            defender._stats.MartialArts  = Mathf.Min(100f, defender._stats.MartialArts  + growthRate);
-        else
-            defender._stats.MeleeDefense = Mathf.Min(100f, defender._stats.MeleeDefense + growthRate);
-    }
-
     // ── 원거리/마법 ──────────────────────────────────────────────────
     public void TryFireRanged(GameObject intendedTarget)
     {
@@ -207,7 +223,8 @@ public class CombatHandler : MonoBehaviour
     public void FireRanged(GameObject intendedTarget)
     {
         float hitChance = 0.6f + (_stats.PrecisionShooting / 100f) * 0.4f;
-        _stats.PrecisionShooting = Mathf.Min(100f, _stats.PrecisionShooting + growthRate);
+        // PrecisionShooting은 도전 대상이 없어 SOL만 적용
+        _stats.GrowStat(StatName.PrecisionShooting, growthRate * CombatXp.Sol(_stats.PrecisionShooting));
 
         if (UnityEngine.Random.value < hitChance)
             DealRangedDamage(intendedTarget, false);
@@ -228,10 +245,12 @@ public class CombatHandler : MonoBehaviour
         float attackSkill      = _stats.PrecisionShooting;
         if (_sfx != null) attackSkill *= _sfx.AttackChanceMod;
 
+        float defRangedSkill = targetCombat != null ? targetCombat._stats.RangedDefense : 0f;
+
         if (targetCombat != null && TryBlockRanged(targetCombat, attackSkill))
         {
-            if (!targetCombat.IsMinion)
-                targetCombat._stats.RangedDefense = Mathf.Min(100f, targetCombat._stats.RangedDefense + growthRate);
+            GrowXp(targetCombat, StatName.RangedDefense, defRangedSkill, attackSkill, 1f);
+            GrowWeaponXp(this, weaponType, weaponSkill, defRangedSkill, 0.5f);
             Debug.Log($"[Combat] {target.name} 원거리 방어 성공");
             return;
         }
@@ -247,7 +266,9 @@ public class CombatHandler : MonoBehaviour
         if (bodySystem != null) bodySystem.TakeDamage(dmgInfo);
         else if (brain != null) brain.TakeDamage(dmgInfo);
 
-        if (!IsMinion) _stats.GrowSkillForWeapon(weaponType, growthRate);
+        if (targetCombat != null)
+            GrowXp(targetCombat, StatName.RangedDefense, defRangedSkill, attackSkill, 8f);
+        GrowWeaponXp(this, weaponType, weaponSkill, defRangedSkill, 1f);
         OnDamageDealt?.Invoke(this, damage);
         Debug.Log($"[Combat] {gameObject.name} 원거리 → {target.name} {damage:F1}{(friendly ? " (동료!)" : "")}");
     }

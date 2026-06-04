@@ -71,6 +71,9 @@ public class NpcWanderNode : BTNode
 public class NpcEventMerchantNode : BTNode
 {
     readonly float _stayDuration;
+    bool _moveSent;
+
+    const float ArrivalDist = 2f;
 
     public NpcEventMerchantNode(float stayDuration) => _stayDuration = stayDuration;
 
@@ -79,11 +82,17 @@ public class NpcEventMerchantNode : BTNode
         switch (bb.NpcPhase)
         {
             case 0: // 목적지로 이동
-                bb.Mover.SetDestination(bb.NpcDestination);
-                if (!bb.Mover.IsMoving())
+                if (!_moveSent)
                 {
+                    bb.Mover.SetDestination(bb.NpcDestination);
+                    _moveSent = true;
+                }
+                if (Vector3.Distance(bb.Self.transform.position, bb.NpcDestination) < ArrivalDist)
+                {
+                    bb.Mover.StopMovement();
                     bb.NpcTimer = 0f;
                     bb.NpcPhase = 1;
+                    _moveSent   = false;
                 }
                 return BTStatus.Running;
 
@@ -92,11 +101,12 @@ public class NpcEventMerchantNode : BTNode
                 if (bb.NpcTimer >= _stayDuration)
                 {
                     bb.NpcPhase = 2;
+                    _moveSent   = false;
                     bb.Mover.SetDestination(bb.HomePosition);
                 }
                 return BTStatus.Running;
 
-            case 2: // 홈(맵 가장자리)으로 귀환
+            case 2: // 홈(맵 가장자리)으로 귀환 후 소멸
                 if (!bb.Mover.IsMoving())
                     Object.Destroy(bb.Self);
                 return BTStatus.Running;

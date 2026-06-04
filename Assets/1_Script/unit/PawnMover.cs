@@ -114,10 +114,8 @@ public class PawnMover : MonoBehaviour
 
                 move += (to / dist) * effectiveSpeed;
 
-                // 이동 중 육상 스킬 성장
                 if (_stats != null)
-                    if (!_isMinion)
-                        _stats.Athletics = Mathf.Min(100f, _stats.Athletics + athleticsGrowthRate * Time.deltaTime);
+                    _stats.GrowStat(StatName.Athletics, athleticsGrowthRate * Time.deltaTime * CombatXp.Sol(_stats.Athletics));
             }
         }
 

@@ -5,8 +5,15 @@ using UnityEngine.UI;
 
 // 인벤토리 아이콘에 붙어서 드래그/드롭/회전 처리.
 // InventoryGridUI가 아이콘 생성 시 자동 추가.
-public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class DraggableItem : MonoBehaviour,
+    IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler,
+    IBeginDragHandler, IDragHandler, IEndDragHandler
 {
+    // EquipSlotUI.OnDrop에서 참조
+    public static ItemInstance     DraggedInstance { get; private set; }
+    public static InventoryGridUI  DraggedSourceGrid { get; private set; }
+    public static bool             DropHandled;
+
     ItemInstance     _instance;
     InventoryGridUI  _sourceGrid;
     RectTransform    _rt;
@@ -28,10 +35,31 @@ public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
         _img        = GetComponent<Image>();
     }
 
+    public void OnPointerEnter(PointerEventData _)
+    {
+        if (_instance?.Data != null)
+            ItemInfoPanel.Show(_instance.Data, _instance.Quality);
+    }
+
+    public void OnPointerExit(PointerEventData _) => ItemInfoPanel.Hide();
+
+    public void OnPointerClick(PointerEventData e)
+    {
+        if (e.clickCount == 2)
+            PawnInventoryPanel.NotifyItemDoubleAction(_instance, _sourceGrid);
+        else
+            PawnInventoryPanel.NotifyItemSelected(_instance, _sourceGrid);
+    }
+
     public void OnBeginDrag(PointerEventData e)
     {
+        ItemInfoPanel.Hide();
         if (_canvas == null) _canvas = GetComponentInParent<Canvas>();
         if (_canvas == null || _sourceGrid == null) return;
+
+        DraggedInstance   = _instance;
+        DraggedSourceGrid = _sourceGrid;
+        DropHandled       = false;
 
         _origParent  = transform.parent;
         _dragRotated = _instance.Rotated;
@@ -115,7 +143,13 @@ public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
         _previewGrid = null;
 
         bool placed = TryPlace(e);
+        if (!placed) placed = TrySellDrop(e);
+        if (!placed) placed = DropHandled;   // EquipSlotUI.OnDrop이 처리한 경우
         if (!placed) placed = TryWorldDrop(e);
+
+        DraggedInstance   = null;
+        DraggedSourceGrid = null;
+        DropHandled       = false;
 
         var c = _img.color; c.a = 1f; _img.color = c;
         _img.raycastTarget = true;
@@ -154,6 +188,18 @@ public class DraggableItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
         if (!dstInv.TryAddAt(_instance.Data, _instance.Quantity, newX, newY, _dragRotated)) return false;
         srcInv.RemoveInstance(_instance);
         return true;
+    }
+
+    // ── 판매 드롭 ─────────────────────────────────────────────────────────────
+
+    bool TrySellDrop(PointerEventData e)
+    {
+        if (MerchantUI.ActiveMerchant == null || MerchantUI.SellZoneRect == null) return false;
+        Camera uiCam = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? _canvas.worldCamera : null;
+        if (!RectTransformUtility.RectangleContainsScreenPoint(MerchantUI.SellZoneRect, e.position, uiCam))
+            return false;
+        return MerchantUI.TrySellItem(_instance);
     }
 
     // ── 월드 드롭 ─────────────────────────────────────────────────────────────

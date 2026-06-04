@@ -9,7 +9,9 @@
       "Bash(mv ArmorSlot.cs ArmorSlot.cs.meta ResourceType.cs ResourceType.cs.meta Item/)",
       "Bash(mv JobCategory.cs JobCategory.cs.meta PriorityManager.cs PriorityManager.cs.meta StorageBuilding.cs StorageBuilding.cs.meta UnitPriorities.cs UnitPriorities.cs.meta Job/)",
       "Bash(mv Pathfinder.cs Pathfinder.cs.meta ResourceNodeData.cs ResourceNodeData.cs.meta Map/)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(Remove-Item \"C:\\\\unity\\\\Labyrinth\\\\Assets\\\\1_Script\\\\UI\\\\EquipRowUI.cs\" -Force)",
+      "Bash(Remove-Item \"C:\\\\unity\\\\Labyrinth\\\\Assets\\\\1_Script\\\\UI\\\\EquipRowUI.cs.meta\" -Force -ErrorAction SilentlyContinue)"
     ]
   }
 }

@@ -22,6 +22,11 @@ public class GameEventData : ScriptableObject
     [Header("상인 (Merchant)")]
     public GameObject MerchantPrefab;
 
+    [Header("지원군 (Reinforcement)")]
+    public List<GameObject> ReinforcementPrefabs = new();
+    [Tooltip("스폰할 지원군 수")]
+    public int ReinforcementCount = 3;
+
     [Header("발견 (Discovery)")]
     public GameObject ResourceNodePrefab;
     [Tooltip("던전 코어 기준 스폰 최소/최대 거리")]

@@ -30,6 +30,9 @@ public enum ResourceType
     // 목재
     Wood,
     Lumber,      // 목재 판자 (제재소 산출물)
+
+    // 화폐
+    Gold,
 }
 
 public static class ResourceTypeExt
@@ -57,6 +60,7 @@ public static class ResourceTypeExt
         ResourceType.GoldIngot   => "금 주괴",
         ResourceType.Wood        => "목재",
         ResourceType.Lumber      => "목재 판자",
+        ResourceType.Gold        => "골드",
         _                        => t.ToString(),
     };
 }

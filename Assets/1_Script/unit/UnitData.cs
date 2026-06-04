@@ -1,4 +1,13 @@
+using System.Collections.Generic;
 using UnityEngine;
+
+[System.Serializable]
+public class StatGradeEntry
+{
+    public StatName Stat;
+    public StatGrade Min = StatGrade.D;
+    public StatGrade Max = StatGrade.D;
+}
 
 [CreateAssetMenu(fileName = "UnitData", menuName = "DungeonColony/UnitData")]
 public class UnitData : ScriptableObject
@@ -6,6 +15,9 @@ public class UnitData : ScriptableObject
     [Header("기본 정보")]
     public string RaceName;
     public Sprite Icon;
+
+    [Tooltip("개체 고유 이름 후보. 소환 시 랜덤 1개 선택. 비어 있으면 RaceName 사용.")]
+    public List<string> NamePool = new();
     public float MaxHP      = 100f;
     public float MoveSpeed  = 4f;
 
@@ -14,68 +26,25 @@ public class UnitData : ScriptableObject
     public float AttackRange   = 1.5f;
     public float DetectRange   = 10f;
 
+    [Header("등급 (기본)")]
+    [Tooltip("오버라이드되지 않은 모든 스탯의 기본 등급 범위")]
+    public StatGrade DefaultMinGrade = StatGrade.D;
+    public StatGrade DefaultMaxGrade = StatGrade.D;
 
-    [Header("속성 범위")]
-    public Vector2 StrengthRange  = new Vector2(5f, 20f);
-    public Vector2 ToughnessRange = new Vector2(5f, 20f);
-    public Vector2 DexterityRange = new Vector2(5f, 20f);
-    public Vector2 CognitionRange = new Vector2(5f, 20f);
+    [Header("등급 오버라이드 (스탯별)")]
+    [Tooltip("특정 스탯에 다른 등급 범위 지정. Min==Max면 고정값")]
+    public List<StatGradeEntry> StatGrades = new();
 
-    [Header("전투 기술 범위")]
-    public Vector2 MeleeAttackRange       = new Vector2(1f, 10f);
-    public Vector2 MeleeDefenseRange      = new Vector2(1f, 10f);
-    public Vector2 RangedDefenseRange     = new Vector2(1f, 10f);
-    public Vector2 PrecisionShootingRange = new Vector2(1f, 10f);
+    public (StatGrade min, StatGrade max) GetGradeRange(StatName stat)
+    {
+        for (int i = 0; i < StatGrades.Count; i++)
+            if (StatGrades[i].Stat == stat) return (StatGrades[i].Min, StatGrades[i].Max);
+        return (DefaultMinGrade, DefaultMaxGrade);
+    }
 
-    [Header("근접 무기 범위")]
-    public Vector2 OneHandSwordRange = new Vector2(1f, 10f);
-    public Vector2 OneHandAxeRange   = new Vector2(1f, 10f);
-    public Vector2 OneHandMaceRange  = new Vector2(1f, 10f);
-    public Vector2 TwoHandSwordRange = new Vector2(1f, 10f);
-    public Vector2 TwoHandAxeRange   = new Vector2(1f, 10f);
-    public Vector2 TwoHandMaceRange  = new Vector2(1f, 10f);
-    public Vector2 PolearmRange      = new Vector2(1f, 10f);
-
-    [Header("원거리 무기 범위")]
-    public Vector2 BowRange      = new Vector2(1f, 10f);
-    public Vector2 CrossbowRange = new Vector2(1f, 10f);
-    public Vector2 JavelinRange  = new Vector2(1f, 10f);
-
-    [Header("마법 범위")]
-    public Vector2 ElementalMagicRange = new Vector2(1f, 10f);
-    public Vector2 DarkMagicRange      = new Vector2(1f, 10f);
-    public Vector2 HolyMagicRange      = new Vector2(1f, 10f);
-
-    [Header("마법 원소 범위")]
-    public Vector2 ElementalFireRange      = new Vector2(1f, 10f);
-    public Vector2 ElementalIceRange       = new Vector2(1f, 10f);
-    public Vector2 ElementalLightningRange = new Vector2(1f, 10f);
-    public Vector2 ElementalPoisonRange    = new Vector2(1f, 10f);
-    public Vector2 DarkFireRange           = new Vector2(1f, 10f);
-    public Vector2 DarkIceRange            = new Vector2(1f, 10f);
-    public Vector2 DarkLightningRange      = new Vector2(1f, 10f);
-    public Vector2 DarkPoisonRange         = new Vector2(1f, 10f);
-    public Vector2 HolyFireRange           = new Vector2(1f, 10f);
-    public Vector2 HolyIceRange            = new Vector2(1f, 10f);
-    public Vector2 HolyLightningRange      = new Vector2(1f, 10f);
-    public Vector2 HolyPoisonRange         = new Vector2(1f, 10f);
-
-    [Header("신체 기술 범위")]
-    public Vector2 MartialArtsRange = new Vector2(1f, 10f);
-    public Vector2 EvasionRange     = new Vector2(1f, 10f);
-    public Vector2 AthleticsRange   = new Vector2(5f, 20f);
-    public Vector2 SwimmingRange    = new Vector2(1f, 10f);
-
-    [Header("노동 범위")]
-    public Vector2 LaborRange          = new Vector2(1f, 10f);
-    public Vector2 MiningRange         = new Vector2(1f, 10f);
-    public Vector2 GrowingRange        = new Vector2(1f, 10f);
-    public Vector2 CuttingRange        = new Vector2(1f, 10f);
-    public Vector2 TamingRange         = new Vector2(1f, 10f);
-    public Vector2 CookingRange        = new Vector2(1f, 10f);
-    public Vector2 MedicineRange       = new Vector2(1f, 10f);
-    public Vector2 ResearchRange       = new Vector2(1f, 10f);
-    public Vector2 WeaponCraftingRange = new Vector2(1f, 10f);
-    public Vector2 ArmorCraftingRange  = new Vector2(1f, 10f);
-    public Vector2 AlchemyRange        = new Vector2(1f, 10f);
+    public StatGrade RollGrade(StatName stat)
+    {
+        var (min, max) = GetGradeRange(stat);
+        return StatGradeExt.RandomBetween(min, max);
+    }
 }

@@ -116,6 +116,20 @@ public class Inventory : MonoBehaviour
         OnChanged?.Invoke();
     }
 
+    // 지정 인스턴스에서 1개만 제거. 수량 0이 되면 인스턴스 자체 삭제.
+    public bool RemoveOne(ItemInstance inst)
+    {
+        if (inst == null || !_items.Contains(inst)) return false;
+        inst.Quantity--;
+        if (inst.Quantity <= 0)
+        {
+            ClearCells(inst);
+            _items.Remove(inst);
+        }
+        OnChanged?.Invoke();
+        return true;
+    }
+
     // 지정 ItemData를 amount만큼 제거. 부족하면 가능한 만큼만. 반환: 실제 제거 수량.
     public int Remove(ItemData data, int amount)
     {

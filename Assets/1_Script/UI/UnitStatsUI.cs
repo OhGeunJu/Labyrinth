@@ -43,7 +43,6 @@ public class UnitStatsUI : MonoBehaviour
             if (next) Refresh();
         }
 
-        // 열려있는 동안 매 프레임 갱신
         if (panel != null && panel.activeSelf) Refresh();
     }
 
@@ -60,104 +59,148 @@ public class UnitStatsUI : MonoBehaviour
         var sb    = new StringBuilder();
 
         string raceName = brain.Data != null ? brain.Data.RaceName : pawn.name;
-        sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>스탯</color>");
+        string lockTag  = stats.IsLocked ? "  <color=#888>[고정]</color>" : "";
+        sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>스탯</color>{lockTag}");
         sb.AppendLine();
 
         // 속성
         sb.AppendLine(H("■ 속성"));
-        sb.AppendLine(Row2("근력",   $"{stats.Strength:F1}",
-                           "강인함", $"{stats.Toughness:F1}"));
-        sb.AppendLine(Row2("손재주", $"{stats.Dexterity:F1}",
-                           "인지력", $"{stats.Cognition:F1}"));
+        sb.AppendLine(Row2("근력",   F(stats, StatName.Strength),
+                           "강인함", F(stats, StatName.Toughness)));
+        sb.AppendLine(Row2("손재주", F(stats, StatName.Dexterity),
+                           "인지력", F(stats, StatName.Cognition)));
         sb.AppendLine();
 
         // 전투 기술
         sb.AppendLine(H("■ 전투"));
-        sb.AppendLine(Row2("근접공격",   $"{stats.MeleeAttack:F1}",
-                           "근접방어",   $"{stats.MeleeDefense:F1}"));
-        sb.AppendLine(Row2("원거리방어", $"{stats.RangedDefense:F1}",
-                           "정밀사격",   $"{stats.PrecisionShooting:F1}"));
-        sb.AppendLine(Row2("무술",       $"{stats.MartialArts:F1}",
-                           "회피",       $"{stats.Evasion:F1}"));
-        sb.AppendLine($"  육상  <b>{stats.Athletics:F1}</b>");
+        sb.AppendLine(Row2("근접공격",   F(stats, StatName.MeleeAttack),
+                           "근접방어",   F(stats, StatName.MeleeDefense)));
+        sb.AppendLine(Row2("원거리방어", F(stats, StatName.RangedDefense),
+                           "정밀사격",   F(stats, StatName.PrecisionShooting)));
+        sb.AppendLine(Row2("무술",       F(stats, StatName.MartialArts),
+                           "회피",       F(stats, StatName.Evasion)));
+        sb.AppendLine($"  육상  {F(stats, StatName.Athletics)}");
 
-        // 장착 무기 숙련도
         if (equip?.MainHand != null)
         {
-            float skill = stats.GetSkillForWeapon(equip.MainHand.Type);
-            sb.AppendLine($"  <color=#AAF>{equip.MainHand.ItemName} 숙련도  <b>{skill:F1}</b></color>");
+            StatName wStat = WeaponToStat(equip.MainHand.Type);
+            sb.AppendLine($"  <color=#AAF>{equip.MainHand.ItemName} 숙련도  {F(stats, wStat)}</color>");
         }
         sb.AppendLine();
 
-        // 마법 (기본값 초과 시만)
         AppendMagicSkills(sb, stats);
-
-        // 노동
         AppendLaborSkills(sb, stats);
 
         if (infoText != null) infoText.text = sb.ToString();
     }
 
-    // ── 헬퍼 ──────────────────────────────────────────────────────────────
+    // 등급 + 진행도 텍스트 생성
+    static string F(UnitStats stats, StatName name)
+    {
+        float val   = stats.GetStat(name);
+        StatGrade g = stats.GetGrade(name);
+        string hex  = ColorUtility.ToHtmlStringRGB(g.GetColor());
+
+        if (g == StatGrade.SSSPlus)
+            return $"<color=#{hex}><b>{g.ToDisplay()}</b></color>";
+
+        float currentBase = (int)g * StatGradeExt.StepValue;
+        int percent       = Mathf.Clamp(Mathf.FloorToInt((val - currentBase) / StatGradeExt.StepValue * 100f), 0, 99);
+        return $"<color=#{hex}><b>{g.ToDisplay()}</b></color> <size=70%><color=#888>{percent}%</color></size>";
+    }
 
     static void AppendMagicSkills(StringBuilder sb, UnitStats s)
     {
-        bool any = s.ElementalMagic > 1 || s.DarkMagic > 1 || s.HolyMagic > 1
-                || s.ElementalFire > 1 || s.ElementalIce > 1 || s.ElementalLightning > 1 || s.ElementalPoison > 1
-                || s.DarkFire > 1 || s.DarkIce > 1 || s.DarkLightning > 1 || s.DarkPoison > 1
-                || s.HolyFire > 1 || s.HolyIce > 1 || s.HolyLightning > 1 || s.HolyPoison > 1;
+        bool any = HasAny(s, StatName.ElementalMagic, StatName.DarkMagic, StatName.HolyMagic,
+            StatName.ElementalFire, StatName.ElementalIce, StatName.ElementalLightning, StatName.ElementalPoison,
+            StatName.DarkFire, StatName.DarkIce, StatName.DarkLightning, StatName.DarkPoison,
+            StatName.HolyFire, StatName.HolyIce, StatName.HolyLightning, StatName.HolyPoison);
         if (!any) return;
 
         sb.AppendLine(H("■ 마법"));
-        if (s.ElementalMagic > 1 || s.DarkMagic > 1 || s.HolyMagic > 1)
-            sb.AppendLine($"  원소 <b>{s.ElementalMagic:F1}</b>   암흑 <b>{s.DarkMagic:F1}</b>   신성 <b>{s.HolyMagic:F1}</b>");
+        if (HasAny(s, StatName.ElementalMagic, StatName.DarkMagic, StatName.HolyMagic))
+            sb.AppendLine($"  원소 {F(s, StatName.ElementalMagic)}   암흑 {F(s, StatName.DarkMagic)}   신성 {F(s, StatName.HolyMagic)}");
 
-        AppendElementRow(sb, "원소", s.ElementalFire,  s.ElementalIce,  s.ElementalLightning,  s.ElementalPoison);
-        AppendElementRow(sb, "암흑", s.DarkFire,       s.DarkIce,       s.DarkLightning,       s.DarkPoison);
-        AppendElementRow(sb, "신성", s.HolyFire,       s.HolyIce,       s.HolyLightning,       s.HolyPoison);
+        AppendElementRow(sb, s, "원소", StatName.ElementalFire,  StatName.ElementalIce,  StatName.ElementalLightning,  StatName.ElementalPoison);
+        AppendElementRow(sb, s, "암흑", StatName.DarkFire,       StatName.DarkIce,       StatName.DarkLightning,       StatName.DarkPoison);
+        AppendElementRow(sb, s, "신성", StatName.HolyFire,       StatName.HolyIce,       StatName.HolyLightning,       StatName.HolyPoison);
         sb.AppendLine();
     }
 
-    static void AppendElementRow(StringBuilder sb, string prefix, float fire, float ice, float lightning, float poison)
+    static void AppendElementRow(StringBuilder sb, UnitStats s, string prefix, StatName fire, StatName ice, StatName lightning, StatName poison)
     {
-        if (fire <= 1 && ice <= 1 && lightning <= 1 && poison <= 1) return;
-        sb.AppendLine($"  {prefix}  불 {fire:F1}  얼음 {ice:F1}  전기 {lightning:F1}  독 {poison:F1}");
+        if (!HasAny(s, fire, ice, lightning, poison)) return;
+        sb.AppendLine($"  {prefix}  불 {F(s, fire)}  얼음 {F(s, ice)}  전기 {F(s, lightning)}  독 {F(s, poison)}");
     }
 
     static void AppendLaborSkills(StringBuilder sb, UnitStats s)
     {
         var list = new System.Collections.Generic.List<string>();
-        if (s.Mining         > 1) list.Add($"채굴 {s.Mining:F1}");
-        if (s.Growing        > 1) list.Add($"원예 {s.Growing:F1}");
-        if (s.Cutting        > 1) list.Add($"벌목 {s.Cutting:F1}");
-        if (s.Taming         > 1) list.Add($"조련 {s.Taming:F1}");
-        if (s.Cooking        > 1) list.Add($"요리 {s.Cooking:F1}");
-        if (s.Medicine       > 1) list.Add($"의료 {s.Medicine:F1}");
-        if (s.Research       > 1) list.Add($"연구 {s.Research:F1}");
-        if (s.WeaponCrafting > 1) list.Add($"무기제작 {s.WeaponCrafting:F1}");
-        if (s.ArmorCrafting  > 1) list.Add($"갑옷제작 {s.ArmorCrafting:F1}");
-        if (s.Alchemy        > 1) list.Add($"연금 {s.Alchemy:F1}");
-        if (s.Smelting       > 1) list.Add($"제련 {s.Smelting:F1}");
-        if (s.Stonecutting   > 1) list.Add($"석재가공 {s.Stonecutting:F1}");
-        if (s.Woodworking    > 1) list.Add($"목공 {s.Woodworking:F1}");
-        if (s.Gemcutting     > 1) list.Add($"보석가공 {s.Gemcutting:F1}");
-        if (s.Labor          > 1) list.Add($"노동 {s.Labor:F1}");
+        AddIfAny(list, s, "채굴",     StatName.Mining);
+        AddIfAny(list, s, "원예",     StatName.Growing);
+        AddIfAny(list, s, "벌목",     StatName.Cutting);
+        AddIfAny(list, s, "조련",     StatName.Taming);
+        AddIfAny(list, s, "요리",     StatName.Cooking);
+        AddIfAny(list, s, "의료",     StatName.Medicine);
+        AddIfAny(list, s, "연구",     StatName.Research);
+        AddIfAny(list, s, "무기제작", StatName.WeaponCrafting);
+        AddIfAny(list, s, "갑옷제작", StatName.ArmorCrafting);
+        AddIfAny(list, s, "연금",     StatName.Alchemy);
+        AddIfAny(list, s, "제련",     StatName.Smelting);
+        AddIfAny(list, s, "석재가공", StatName.Stonecutting);
+        AddIfAny(list, s, "목공",     StatName.Woodworking);
+        AddIfAny(list, s, "보석가공", StatName.Gemcutting);
+        AddIfAny(list, s, "노동",     StatName.Labor);
         if (list.Count == 0) return;
 
         sb.AppendLine(H("■ 노동"));
         for (int i = 0; i < list.Count; i += 2)
         {
-            if (i + 1 < list.Count) sb.AppendLine(Row2("", list[i], "", list[i + 1]));
+            if (i + 1 < list.Count) sb.AppendLine($"  {list[i],-35}  {list[i + 1]}");
             else                    sb.AppendLine($"  {list[i]}");
         }
     }
 
+    static void AddIfAny(System.Collections.Generic.List<string> list, UnitStats s, string label, StatName name)
+    {
+        if (s.GetStat(name) > 1f) list.Add($"{label} {F(s, name)}");
+    }
+
+    static bool HasAny(UnitStats s, params StatName[] names)
+    {
+        foreach (var n in names) if (s.GetStat(n) > 1f) return true;
+        return false;
+    }
+
+    static StatName WeaponToStat(WeaponType type) => type switch
+    {
+        WeaponType.OneHandSword       => StatName.OneHandSword,
+        WeaponType.OneHandAxe         => StatName.OneHandAxe,
+        WeaponType.OneHandMace        => StatName.OneHandMace,
+        WeaponType.TwoHandSword       => StatName.TwoHandSword,
+        WeaponType.TwoHandAxe         => StatName.TwoHandAxe,
+        WeaponType.TwoHandMace        => StatName.TwoHandMace,
+        WeaponType.Polearm            => StatName.Polearm,
+        WeaponType.Bow                => StatName.Bow,
+        WeaponType.Crossbow           => StatName.Crossbow,
+        WeaponType.Javelin            => StatName.Javelin,
+        WeaponType.ElementalFire      => StatName.ElementalFire,
+        WeaponType.ElementalIce       => StatName.ElementalIce,
+        WeaponType.ElementalLightning => StatName.ElementalLightning,
+        WeaponType.ElementalPoison    => StatName.ElementalPoison,
+        WeaponType.DarkFire           => StatName.DarkFire,
+        WeaponType.DarkIce            => StatName.DarkIce,
+        WeaponType.DarkLightning      => StatName.DarkLightning,
+        WeaponType.DarkPoison         => StatName.DarkPoison,
+        WeaponType.HolyFire           => StatName.HolyFire,
+        WeaponType.HolyIce            => StatName.HolyIce,
+        WeaponType.HolyLightning      => StatName.HolyLightning,
+        WeaponType.HolyPoison         => StatName.HolyPoison,
+        _                             => StatName.MartialArts,
+    };
+
     static string H(string t) => $"<color=#E8C566>{t}</color>";
 
     static string Row2(string l1, string v1, string l2, string v2)
-    {
-        string left  = l1.Length > 0 ? $"{l1}  <b>{v1}</b>" : v1;
-        string right = l2.Length > 0 ? $"{l2}  <b>{v2}</b>" : v2;
-        return $"  {left,-20}  {right}";
-    }
+        => $"  {l1}  {v1,-50}  {l2}  {v2}";
 }

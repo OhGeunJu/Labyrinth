@@ -46,9 +46,11 @@ public class ResearchJob : JobBase
         if (_data == null || _table == null) { Status = JobStatus.Done; return; }
         if (Time.time < _endTime) return;
 
-        // 연구 스킬 성장
         if (_data.SkillGrowthAmount > 0f)
-            unit.Stats.Research = Mathf.Min(100f, unit.Stats.Research + _data.SkillGrowthAmount);
+        {
+            float xp = _data.SkillGrowthAmount * CombatXp.Sol(unit.Stats.Research);
+            unit.Stats.GrowStat(StatName.Research, xp);
+        }
 
         ResearchManager.Instance?.Complete(_data);
         Debug.Log($"[ResearchJob] 연구 완료 — {_data.ResearchName}");
