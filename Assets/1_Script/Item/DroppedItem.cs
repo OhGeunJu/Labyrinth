@@ -19,12 +19,22 @@ public class DroppedItem : MonoBehaviour
         col.radius    = 0.3f;
         col.isTrigger = true;
 
-        // 작은 큐브로 시각 표현
-        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        cube.transform.SetParent(go.transform);
-        cube.transform.localScale   = Vector3.one * 0.25f;
-        cube.transform.localPosition = Vector3.zero;
-        Object.Destroy(cube.GetComponent<BoxCollider>());
+        // 시각 표현: ItemData.WorldModel 우선, 없으면 작은 큐브 폴백.
+        GameObject visual;
+        if (item.WorldModel != null)
+        {
+            visual = Object.Instantiate(item.WorldModel);
+        }
+        else
+        {
+            visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            visual.transform.localScale = Vector3.one * 0.25f;
+        }
+        visual.transform.SetParent(go.transform, false);
+        visual.transform.localPosition = Vector3.zero;
+        // 픽업은 부모 SphereCollider 트리거가 담당 → 모델 콜라이더는 제거(레이캐스트/이동 간섭 방지)
+        foreach (var c in visual.GetComponentsInChildren<Collider>())
+            Object.Destroy(c);
 
         var dropped = go.AddComponent<DroppedItem>();
         dropped.Item   = item;

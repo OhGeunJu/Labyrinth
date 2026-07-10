@@ -16,6 +16,10 @@ public class DungeonCore : MonoBehaviour
 
     public static event Action<DungeonCore> OnSelected;
 
+    // 영역(핵 union) 변경 시 발동 — 핵 이동/서브코어 등록·해제. 건물 휴면 재평가 트리거.
+    public static event Action OnTerritoryChanged;
+    public static void RaiseTerritoryChanged() => OnTerritoryChanged?.Invoke();
+
     // ── 하수인 캡 ────────────────────────────────────────────────────────────
     readonly List<SubCore> _subCores = new();
     int _currentMinionCount;
@@ -31,8 +35,8 @@ public class DungeonCore : MonoBehaviour
         return bonus;
     }
 
-    public void RegisterSubCore(SubCore sc)   { if (!_subCores.Contains(sc)) _subCores.Add(sc); }
-    public void UnregisterSubCore(SubCore sc) { _subCores.Remove(sc); }
+    public void RegisterSubCore(SubCore sc)   { if (!_subCores.Contains(sc)) { _subCores.Add(sc); RaiseTerritoryChanged(); } }
+    public void UnregisterSubCore(SubCore sc) { if (_subCores.Remove(sc)) RaiseTerritoryChanged(); }
 
     public IReadOnlyList<SubCore> SubCores => _subCores;
 
@@ -80,6 +84,26 @@ public class DungeonCore : MonoBehaviour
         // 핵의 현재 위치에 빌드존을 정렬
         if (MapManager.Instance != null)
             MapManager.Instance.RecenterAt(transform.position);
+        // 초기 영역 확정 → 핵 생성 전에 OnEnable한 건물들이 휴면 여부 재평가하도록.
+        RaiseTerritoryChanged();
+    }
+
+    // 메인 핵 이전(relocate). 정착지 필드맵은 고정(200×200)이므로 그리드를 recenter하지 않는다.
+    // 코어는 고정 필드 안에서만 이동하며, 영역(핵 radius union)만 바뀐다 → 건물 휴면 자동 재평가.
+    // 점유(_occupied)는 절대좌표라 이동해도 건물·점유가 리셋되지 않는다.
+    // (UI/입력 트리거는 후속 — 이 메서드만 호출하면 됨)
+    public void RelocateTo(Vector3 worldPosition)
+    {
+        transform.position = worldPosition;
+        RaiseTerritoryChanged();
+    }
+
+    // 정착지 전환 시 이 코어를 활성 메인 코어로 재지정 (SettlementManager가 호출).
+    // MapManager.SetAsPlayerZone과 짝 — 활성 정착지의 코어/존 싱글톤을 일치시킨다.
+    public void SetAsActive()
+    {
+        Instance = this;
+        RaiseTerritoryChanged();
     }
 
     public void Select()
@@ -120,6 +144,14 @@ public class DungeonCore : MonoBehaviour
         if (prefab == null)
         {
             Debug.LogWarning($"[DungeonCore] {minionData.RaceName}에 연결된 프리팹이 없습니다.");
+            return false;
+        }
+
+        // 바이옴 콘텐츠 게이팅(step 7). BiomeContentData 미설정 바이옴은 제한 없음 → 기존 씬 무영향.
+        if (SettlementManager.Instance != null &&
+            !BiomeContent.IsMinionAllowed(SettlementManager.Instance.ActiveBiome, minionData))
+        {
+            Debug.Log($"[DungeonCore] {minionData.RaceName}은(는) 현재 바이옴에서 소환 불가");
             return false;
         }
 

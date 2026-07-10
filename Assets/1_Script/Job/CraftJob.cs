@@ -34,6 +34,7 @@ public class CraftJob : JobBase
     readonly CraftingTable _table;
     readonly RecipeData    _recipe;
     float _craftEndTime;
+    bool  _consumed;   // 재료 차감됨 + 아직 완성 전 → 취소 시 환불 대상
 
     public override JobCategory Category => _recipe?.Category ?? JobCategory.Crafting;
 
@@ -63,6 +64,7 @@ public class CraftJob : JobBase
         }
         foreach (var ing in _recipe.Ingredients)
             Storage.ConsumeByItem(ing.Item, ing.Amount);
+        _consumed = true;
 
         Debug.Log($"[CraftJob] 제작 시작 — {_recipe.RecipeName} ({_recipe.CraftTime}초)");
         _craftEndTime = Time.time + _recipe.CraftTime;
@@ -100,6 +102,9 @@ public class CraftJob : JobBase
             finalAmount = Mathf.Max(1, Mathf.RoundToInt(_recipe.ResultAmount * mult));
         }
 
+        // 완성품 생성 시점 — 재료는 결과물로 전환됨, 환불 대상 아님
+        _consumed = false;
+
         // ── 인벤토리 입고 / 드롭 ──────────────────────────────────────────────
         int added    = unit.Inventory.TryAdd(_recipe.Result, finalAmount, quality);
         int leftover = finalAmount - added;
@@ -123,5 +128,19 @@ public class CraftJob : JobBase
         string penalty   = !skilled ? " (스킬 미달 -50%)" : "";
         Debug.Log($"[CraftJob] 제작 완료 — {_recipe.RecipeName}{qualLabel} ×{finalAmount}{penalty} → {dest}  ({_recipe.RequiredSkillType} {skill:F0})");
         Status = JobStatus.Done;
+    }
+
+    // 완성 전 취소(유닛 사망/재배정/연료 부재 등) 시 차감한 재료를 작업대에 드롭 환불.
+    // 운반 작업이 창고로 회수 → 재료 손실 방지.
+    protected override void OnCancelled()
+    {
+        if (!_consumed || _recipe == null) return;
+        _consumed = false;
+
+        Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
+        foreach (var ing in _recipe.Ingredients)
+            DroppedItem.Spawn(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+
+        Debug.Log($"[CraftJob] 제작 취소 — 재료 환불(드롭): {_recipe.RecipeName}");
     }
 }

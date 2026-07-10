@@ -54,7 +54,15 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 - `StatGrades: List<StatGradeEntry>` — 스탯별 등급 오버라이드 (`{StatName, Min, Max}`)
 - `GetGradeRange(stat)` / `RollGrade(stat)` — Min~Max 사이 가중치 없는 랜덤 등급 추첨
 
-`UnitStats.FromData(data)` — 모든 `StatName`을 순회하며 `data.RollGrade(stat).ToValue()`로 초기화. Min==Max면 고정값.
+`UnitStats.FromData(data)` — 모든 `StatName`을 순회하며 `data.RollGrade(stat).ToValue()`로 초기화. Min==Max면 고정값. `SourceData`(소속 `UnitData`)도 여기서 세팅.
+
+### 종족별 성장 속도
+
+`UnitData.StatGrowthRates: List<StatGrowthEntry>` — 종족이 **특정 스탯만** 빠르게/느리게 성장. `StatGrowthEntry { StatName Stat; float Multiplier; }`. 목록에 없는 스탯은 기본 1.0.
+
+`UnitStats.GrowStat`에서 `amount *= SourceData.GetGrowthRate(stat)` 적용 → 전투/노동/마법 모든 성장에 자동 반영. 배율 0 = 해당 스탯 성장 차단. 마이너스 성장(퇴화)은 미지원.
+
+예: Human.asset `StatGrowthRates`에 `Mining=1.5`, `MeleeAttack=0.7`만 넣으면 채굴은 빠르게·근접공격은 느리게, 나머지는 기본 속도.
 
 ### 미니언 스탯 잠금
 

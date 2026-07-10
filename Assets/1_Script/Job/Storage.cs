@@ -19,16 +19,25 @@ public class Storage : MonoBehaviour
     public IReadOnlyList<ResourceType> AllowedTypes => allowedTypes;
 
     Camera _cam;
+    BuildingDormancy _dormancy;
+
+    // 핵 영역 밖(휴면) 창고는 집계/탐색에서 제외 → "작동 정지". 영역 복구 시 자동 재참여.
+    public bool IsActive => _dormancy == null || !_dormancy.IsDormant;
 
     void Awake()
     {
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
         Inventory.OnChanged += () => OnChanged?.Invoke();
-        All.Add(this);
         _cam = Camera.main;
     }
 
-    void OnDestroy() => All.Remove(this);
+    // 레지스트리는 OnEnable/OnDisable 기준 — 비활성 정착지(루트 SetActive(false))의 창고는
+    // All에서 빠져 집계/탐색에서 자동 제외된다(정착지 전환 격리). 항상 활성이면 기존과 동일.
+    void OnEnable()  => All.Add(this);
+    void OnDisable() => All.Remove(this);
+
+    // BuildingDormancy는 배치 시 AddComponent될 수 있어 Awake 이후에 붙음 → Start에서 해석.
+    void Start() => _dormancy = GetComponent<BuildingDormancy>();
 
     void Update()
     {
@@ -69,7 +78,10 @@ public class Storage : MonoBehaviour
     {
         int total = 0;
         foreach (var sb in All)
+        {
+            if (!sb.IsActive) continue;
             total += sb.Inventory.GetTotalByType(type);
+        }
         return total;
     }
 
@@ -79,6 +91,7 @@ public class Storage : MonoBehaviour
         foreach (var sb in All)
         {
             if (remaining <= 0) break;
+            if (!sb.IsActive) continue;
             remaining -= sb.Inventory.RemoveByType(type, remaining);
         }
         return remaining <= 0;
@@ -89,7 +102,10 @@ public class Storage : MonoBehaviour
     {
         int total = 0;
         foreach (var sb in All)
+        {
+            if (!sb.IsActive) continue;
             total += sb.Inventory.GetTotalQuantity(item);
+        }
         return total;
     }
 
@@ -100,6 +116,7 @@ public class Storage : MonoBehaviour
         foreach (var sb in All)
         {
             if (remaining <= 0) break;
+            if (!sb.IsActive) continue;
             remaining -= sb.Inventory.Remove(item, remaining);
         }
         return remaining <= 0;
@@ -110,9 +127,12 @@ public class Storage : MonoBehaviour
     public static (Storage building, ItemData itemData) FindStorageWithType(ResourceType type)
     {
         foreach (var sb in All)
+        {
+            if (!sb.IsActive) continue;
             foreach (var inst in sb.Inventory.Items)
                 if (inst.Data is ResourceItemData r && r.ResourceType == type && inst.Quantity > 0)
                     return (sb, inst.Data);
+        }
         return (null, null);
     }
 
@@ -123,6 +143,7 @@ public class Storage : MonoBehaviour
         float minDist = float.MaxValue;
         foreach (var sb in All)
         {
+            if (!sb.IsActive) continue;
             if (item != null && !sb.CanAccept(item)) continue;
             float d = Vector3.Distance(position, sb.transform.position);
             if (d < minDist) { minDist = d; nearest = sb; }

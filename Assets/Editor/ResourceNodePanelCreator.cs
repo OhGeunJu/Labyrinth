@@ -198,7 +198,7 @@ public static class ResourceNodePanelCreator
         var nameTMP = nameGO.AddComponent<TextMeshProUGUI>();
         nameTMP.text = "이름"; nameTMP.fontSize = 11; nameTMP.color = Color.white;
         nameTMP.alignment = TextAlignmentOptions.Center; nameTMP.raycastTarget = false;
-        nameTMP.enableWordWrapping = false; nameTMP.overflowMode = TextOverflowModes.Ellipsis;
+        nameTMP.textWrappingMode = TextWrappingModes.NoWrap; nameTMP.overflowMode = TextOverflowModes.Ellipsis;
         ApplyFont(nameTMP);
 
         // 해제 버튼: 카드 우상단 코너 오버레이 (레이아웃 무시)

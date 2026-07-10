@@ -120,7 +120,14 @@ public class BuildingBlueprint : MonoBehaviour
         {
             var go = Instantiate(_data.Prefab, transform.position, transform.rotation);
             // SubCore는 프리팹에 설정된 값 사용, 추가 Init 불필요
+            // 핵 영역 이탈 시 휴면/재가동 (설계: design_core_creep.md step 3)
+            BuildingDormancy.Ensure(go);
+            // 철거/환불용 메타 보관
+            PlacedBuilding.Attach(go, _data);
         }
+
+        // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
+        HierarchicalPathfinder.Instance?.RebakeObstacleAt(transform.position);
 
         Destroy(gameObject);
     }

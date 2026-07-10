@@ -257,11 +257,14 @@ public class UnitStats
     [System.NonSerialized] public bool IsLocked = false;
     [System.NonSerialized] public System.Action<UnitStats, StatName, StatGrade> OnGradeUp;
     [System.NonSerialized] public GameObject Owner;
+    [System.NonSerialized] public UnitData SourceData;
     public static event System.Action<UnitStats, StatName, StatGrade> OnAnyGradeUp;
 
     public void GrowStat(StatName stat, float amount)
     {
         if (IsLocked || amount <= 0f) return;
+        if (SourceData != null) amount *= SourceData.GetGrowthRate(stat);
+        if (amount <= 0f) return;
         float oldVal = GetStat(stat);
         StatGrade oldGrade = StatGradeExt.FromValue(oldVal);
         SetStat(stat, oldVal + amount);
@@ -279,6 +282,7 @@ public class UnitStats
     {
         var s = new UnitStats();
         if (data == null) return s;
+        s.SourceData = data;
 
         foreach (StatName stat in Enum.GetValues(typeof(StatName)))
         {

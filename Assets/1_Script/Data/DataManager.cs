@@ -48,6 +48,14 @@ public static class DataManager
             if (r.RequiredSkillType == skill) yield return r;
     }
 
+    // ResourceType → 해당 ResourceItemData (건설 환불 등). 없으면 null.
+    public static ResourceItemData GetResourceItem(ResourceType type)
+    {
+        foreach (var v in _items.Values)
+            if (v is ResourceItemData r && r.ResourceType == type) return r;
+        return null;
+    }
+
     public static IReadOnlyDictionary<string, ItemData>   AllItems   => _items;
     public static IReadOnlyDictionary<string, RecipeData> AllRecipes => _recipes;
 

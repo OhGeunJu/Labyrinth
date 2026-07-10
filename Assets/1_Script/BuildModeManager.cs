@@ -38,6 +38,12 @@ public class BuildModeManager : MonoBehaviour
     readonly List<Vector2Int> _footprint = new() { Vector2Int.zero };
     Camera _cam;
 
+    // ── 철거 모드 ──────────────────────────────────────────────────────────────
+    bool    _demolish;
+    bool    _dragging;
+    Vector2 _dragStart;
+    readonly HashSet<PlacedBuilding> _pending = new();
+
     GameObject _ghost;
     GameObject _ghostSourcePrefab;
 
@@ -82,6 +88,11 @@ public class BuildModeManager : MonoBehaviour
 
         if (!_active) return;
 
+        if (Keyboard.current.xKey.wasPressedThisFrame)
+            ToggleDemolish();
+
+        if (_demolish) { UpdateDemolish(); return; }
+
         if (Keyboard.current.tabKey.wasPressedThisFrame)
             ToggleMode();
 
@@ -106,17 +117,136 @@ public class BuildModeManager : MonoBehaviour
         gridRenderer.HidePreview();
     }
 
+    // ── 철거 모드 ──────────────────────────────────────────────────────────────
+
+    void ToggleDemolish()
+    {
+        _demolish = !_demolish;
+        ClearPending();
+        _dragging = false;
+        HideGhost();
+        gridRenderer.HidePreview();
+        _previewShown = false;
+    }
+
+    void UpdateDemolish()
+    {
+        var mouse = Mouse.current;
+        if (mouse == null) return;
+
+        // UI 위에서는 철거 안 함
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            ClearPending();
+            return;
+        }
+
+        Vector2 cur = mouse.position.ReadValue();
+
+        if (mouse.leftButton.wasPressedThisFrame)
+        {
+            _dragStart = cur;
+            _dragging  = false;
+        }
+
+        if (mouse.leftButton.isPressed && !_dragging &&
+            Vector2.Distance(_dragStart, cur) > 8f)
+            _dragging = true;
+
+        // 예정 표시 갱신: 드래그 중이면 박스 내부, 아니면 커서 위 단일.
+        RefreshPending(cur);
+
+        if (mouse.leftButton.wasReleasedThisFrame)
+        {
+            ExecuteDemolish();
+            _dragging = false;
+        }
+    }
+
+    void RefreshPending(Vector2 cur)
+    {
+        var next = new HashSet<PlacedBuilding>();
+
+        if (_dragging)
+        {
+            float minX = Mathf.Min(_dragStart.x, cur.x), maxX = Mathf.Max(_dragStart.x, cur.x);
+            float minY = Mathf.Min(_dragStart.y, cur.y), maxY = Mathf.Max(_dragStart.y, cur.y);
+            foreach (var pb in PlacedBuilding.All)
+            {
+                if (pb == null) continue;
+                var sp = _cam.WorldToScreenPoint(pb.transform.position);
+                if (sp.z < 0f) continue;
+                if (sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY)
+                    next.Add(pb);
+            }
+        }
+        else
+        {
+            var hit = PlacedBuilding.PickUnderCursor(_cam, cur);
+            if (hit != null) next.Add(hit);
+        }
+
+        // diff: 빠진 건 해제, 새로 든 건 표시
+        foreach (var pb in _pending)
+            if (pb != null && !next.Contains(pb)) pb.SetPendingHighlight(false);
+        foreach (var pb in next)
+            if (!_pending.Contains(pb)) pb.SetPendingHighlight(true);
+
+        _pending.Clear();
+        foreach (var pb in next) _pending.Add(pb);
+    }
+
+    void ExecuteDemolish()
+    {
+        foreach (var pb in _pending)
+            if (pb != null) pb.Demolish(); // 파괴되면서 All/하이라이트도 정리됨
+        _pending.Clear();
+    }
+
+    void ClearPending()
+    {
+        foreach (var pb in _pending)
+            if (pb != null) pb.SetPendingHighlight(false);
+        _pending.Clear();
+    }
+
     void OnGUI()
     {
         if (!_active) return;
+
+        if (_demolish)
+        {
+            GUI.color = new Color(1f, 0.7f, 0.7f, 1f);
+            GUI.Label(new Rect(10, 10, 600, 24),
+                "[철거] 클릭=단일 / 드래그=일괄 (건설비 75% 환불)  X=철거 끄기  Esc=나가기");
+            GUI.color = Color.white;
+            DrawDemolishBox();
+            return;
+        }
+
         float yaw = _mode == PlacementMode.Grid ? _gridYaw : _freeYaw;
         string modeLabel = $"{(_mode == PlacementMode.Grid ? "그리드" : "자유")} ({yaw:F0}°)";
         string capInfo   = "";
         var core = DungeonCore.Instance;
         if (core != null)
             capInfo = $"  하수인: {core.CurrentMinionCount}/{core.TotalMinionCap}";
-        GUI.Label(new Rect(10, 10, 500, 24),
-            $"[건설] {SelectedDisplayName} ({_selectedIndex + 1}/{TotalCount})  모드: {modeLabel}  Tab=모드 Q/E=회전{capInfo}");
+        GUI.Label(new Rect(10, 10, 600, 24),
+            $"[건설] {SelectedDisplayName} ({_selectedIndex + 1}/{TotalCount})  모드: {modeLabel}  Tab=모드 Q/E=회전 X=철거{capInfo}");
+    }
+
+    void DrawDemolishBox()
+    {
+        if (!_dragging) return;
+        Vector2 cur = Mouse.current.position.ReadValue();
+        Vector2 s = new(_dragStart.x, Screen.height - _dragStart.y);
+        Vector2 e = new(cur.x,        Screen.height - cur.y);
+        Rect rect = new(Mathf.Min(s.x, e.x), Mathf.Min(s.y, e.y),
+                        Mathf.Abs(s.x - e.x), Mathf.Abs(s.y - e.y));
+        GUI.color = new Color(1f, 0.3f, 0.3f, 0.25f);
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = new Color(1f, 0.3f, 0.3f, 0.9f);
+        GUI.Box(rect, GUIContent.none);
+        GUI.color = Color.white;
     }
 
     void SetActive(bool active)
@@ -129,6 +259,9 @@ public class BuildModeManager : MonoBehaviour
             gridRenderer.HidePreview();
             _previewShown = false;
             HideGhost();
+            ClearPending();
+            _demolish = false;
+            _dragging = false;
         }
     }
 
@@ -194,7 +327,7 @@ public class BuildModeManager : MonoBehaviour
             gridRenderer.ShowPreview(fp, IsBuildableGrid(fp));
         }
 
-        var snapWorld = MapManager.Instance.TileToWorld(tile);
+        var snapWorld = MapManager.Instance.TileToGround(tile);
         ShowGhost(snapWorld, Quaternion.Euler(0, _gridYaw, 0));
 
         if (Mouse.current.leftButton.wasPressedThisFrame)
@@ -219,13 +352,15 @@ public class BuildModeManager : MonoBehaviour
 
     bool IsBuildableGrid(List<Vector2Int> footprint)
     {
-        if (!MapManager.Instance.IsBuildable(footprint)) return false;
-        var core = DungeonCore.Instance;
-        if (core != null)
-            foreach (var t in footprint)
-                if (!core.IsWithinAnyRange(t)) return false;
+        var map = MapManager.Instance;
+        var sel = SelectedBuilding;
+        // 바닥은 바닥요구를 우회(공허에 깖), 건물은 바닥 위+점유+평탄(IsBuildable로 일원화).
+        bool ok = sel != null && sel.IsFloor
+            ? map.CanPlaceFloor(footprint)
+            : map.IsBuildable(footprint);
+        if (!ok) return false;
         foreach (var bp in BuildingBlueprint.All)
-            if (footprint.Contains(MapManager.Instance.WorldToTile(bp.transform.position)))
+            if (footprint.Contains(map.WorldToTile(bp.transform.position)))
                 return false;
         return true;
     }
@@ -235,8 +370,7 @@ public class BuildModeManager : MonoBehaviour
         var map = MapManager.Instance;
         if (!map.IsInBuildZone(worldPoint)) return false;
 
-        var core = DungeonCore.Instance;
-        if (core != null && !core.IsWithinAnyRangeWorld(worldPoint)) return false;
+        // 모델 A: 코어 union은 건설을 차단하지 않음(union 밖은 BuildingDormancy가 휴면 처리).
 
         var rotation = Quaternion.Euler(0, yaw, 0);
         var center   = worldPoint + Vector3.up * overlapHalfExtents.y;
@@ -258,7 +392,7 @@ public class BuildModeManager : MonoBehaviour
         var footprint = GetFootprint(tile);
         if (!IsBuildableGrid(footprint)) return;
 
-        Place(MapManager.Instance.TileToWorld(tile), Quaternion.Euler(0, _gridYaw, 0));
+        Place(MapManager.Instance.TileToGround(tile), Quaternion.Euler(0, _gridYaw, 0));
         _previewShown = false;
     }
 
@@ -282,6 +416,16 @@ public class BuildModeManager : MonoBehaviour
         var prefab = data.Prefab != null ? data.Prefab : fallbackPrefab;
         if (prefab == null) return;
 
+        // 바닥(모델 A): 코어 무관 substrate. 휴면/장애물 처리 없음. Floor 컴포넌트가 바닥 자동 등록.
+        if (data.IsFloor)
+        {
+            var floor = Instantiate(prefab, pos, rot);
+            if (floor.GetComponent<Floor>() == null) floor.AddComponent<Floor>(); // 프리팹 누락 대비 안전망
+            PlacedBuilding.Attach(floor, data);   // 철거 지원(환불 0)
+            Debug.Log($"[Build] 바닥 배치 — {data.BuildingName}");
+            return;
+        }
+
         if (data.UsesBlueprint)
         {
             var bp = new GameObject($"[Blueprint] {data.BuildingName}");
@@ -295,6 +439,12 @@ public class BuildModeManager : MonoBehaviour
         instance.GetComponent<Bed>()?.Init(data);
         instance.GetComponent<FarmPlot>()?.Init(data);
         instance.GetComponent<WaterSource>()?.Init(data);
+        // 핵 영역 이탈 시 휴면/재가동 (설계: design_core_creep.md step 3)
+        BuildingDormancy.Ensure(instance);
+        // 철거/환불용 메타 보관
+        PlacedBuilding.Attach(instance, data);
+        // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
+        HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
         Debug.Log($"[Build] 배치 완료 — {data.BuildingName}");
     }
 

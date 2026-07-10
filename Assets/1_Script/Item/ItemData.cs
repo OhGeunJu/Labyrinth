@@ -6,6 +6,8 @@ public class ItemData : ScriptableObject
     public string ItemName;
     [TextArea(2, 5)] public string Description;
     public Sprite Icon;
+    [Tooltip("바닥에 드랍될 때 쓰는 3D 모델 프리팹. 비면 기본 큐브로 폴백.")]
+    public GameObject WorldModel;
     [Min(0)] public float Weight = 0f;
 
     [Header("그리드 크기 (셀 단위)")]

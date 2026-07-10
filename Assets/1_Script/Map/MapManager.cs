@@ -17,14 +17,29 @@ public class MapManager : MonoBehaviour
 
     public static event Action<Vector2Int> OnTileChanged;
     public static event Action OnZoneRecentered;
+    // 바닥 타일 등록/해제 통보 (바닥 지오메트리 렌더링용 — 후속).
+    public static event Action<Vector2Int> OnFloorChanged;
 
-    [Header("빌드존 크기 (타일 단위)")]
-    [SerializeField] int buildZoneSize = 50;
+    [Header("빌드존 크기 (타일 단위) — 최대 바깥 경계 클램프. 실제 건설 게이트는 코어 union.")]
+    [SerializeField] int buildZoneSize = 200;
 
     [Header("건설")]
     [SerializeField] float buildHeightTolerance = 0.5f;
 
-    TileData[,] _tiles;
+    [Header("지형 샘플")]
+    [Tooltip("지면 높이 레이캐스트 마스크. Terrain이 있으면 불필요. 평면 바닥 씬은 바닥 레이어만 지정. " +
+             "Everything/Nothing이면 레이캐스트 생략(평지 y=0 처리) — 건물/유닛 오인 방지.")]
+    [SerializeField] LayerMask groundMask = 0;
+
+    // 점유 타일 희소 저장 (절대 월드 타일 좌표). 핵 이동(RecenterAt)에도 살아남는다.
+    // ResourceNode 등 막힌 타일만 등록 — 비면 통행 가능이 기본값.
+    readonly HashSet<Vector2Int> _occupied = new();
+
+    // 바닥 타일 희소 저장 (절대 월드 타일 좌표, 모델 A). 코어와 무관하게 깔리는 substrate.
+    // 비면 = 바닥 시스템 미사용(필드/지형 맵) → 건물이 바닥을 요구하지 않음.
+    // 하나라도 있으면 = 던전형 맵 → 건물은 바닥 위(floored)에만 배치 가능.
+    readonly HashSet<Vector2Int> _floored = new();
+
     Vector2Int _zoneOriginTile; // 빌드존 좌하단 타일 (절대 월드 타일 좌표)
 
     public int BuildZoneSize => buildZoneSize;
@@ -35,8 +50,6 @@ public class MapManager : MonoBehaviour
 
     void Awake()
     {
-        _tiles = new TileData[buildZoneSize, buildZoneSize];
-        ClearTiles();
         _allZones.Add(this);
         if (Instance == null) Instance = this;
     }
@@ -58,20 +71,13 @@ public class MapManager : MonoBehaviour
     // DungeonCore가 호출 — 이 존을 플레이어 던전존으로 지정.
     public void SetAsPlayerZone() => Instance = this;
 
-    // 미궁핵 이동 시 호출. 빌드존을 새 중심으로 옮기고 타일 데이터 초기화.
+    // 미궁핵 이동 시 호출. 빌드존 중심(라우팅용 origin)만 옮긴다.
+    // 점유(_occupied)는 절대좌표 희소 저장이라 wipe하지 않음 → "이동 시 빌드존 리셋" 방지.
     public void RecenterAt(Vector3 worldCenter)
     {
         var centerTile = WorldToTile(worldCenter);
         _zoneOriginTile = centerTile - new Vector2Int(buildZoneSize / 2, buildZoneSize / 2);
-        ClearTiles();
         OnZoneRecentered?.Invoke();
-    }
-
-    void ClearTiles()
-    {
-        for (int x = 0; x < buildZoneSize; x++)
-            for (int y = 0; y < buildZoneSize; y++)
-                _tiles[x, y] = TileData.MakePassable();
     }
 
     // ── 좌표 변환 (절대 월드 타일) ────────────────────────────────────────────
@@ -81,10 +87,8 @@ public class MapManager : MonoBehaviour
 
     public Vector3 TileToWorld(Vector2Int tile)
     {
-        float wx = tile.x + 0.5f;
-        float wz = tile.y + 0.5f;
-        float wy = TryToLocal(tile, out var lx, out var ly) ? _tiles[lx, ly].Height : 0f;
-        return new Vector3(wx, wy, wz);
+        // Y는 0(평면) 기준. 지형 높이는 배치 시 온디맨드 샘플(step 2)에서 처리.
+        return new Vector3(tile.x + 0.5f, 0f, tile.y + 0.5f);
     }
 
     public Vector3 WorldOrigin => new Vector3(_zoneOriginTile.x, 0f, _zoneOriginTile.y);
@@ -109,37 +113,121 @@ public class MapManager : MonoBehaviour
 
     // ── 타일 접근 ─────────────────────────────────────────────────────────────
 
-    // 빌드존 밖 타일은 Passable 기본값 반환. NavMesh가 진짜 장애물 처리.
-    public TileData GetTile(Vector2Int tile)
-    {
-        if (TryToLocal(tile, out var lx, out var ly)) return _tiles[lx, ly];
-        return TileData.MakePassable();
-    }
+    // 점유 집합에 있으면 Impassable, 아니면 Passable. 빌드존 경계와 무관(절대좌표).
+    public TileData GetTile(Vector2Int tile) =>
+        _occupied.Contains(tile) ? TileData.MakeImpassable() : TileData.MakePassable();
 
     public TileData GetTile(int x, int y) => GetTile(new Vector2Int(x, y));
 
+    // 통행 가능 여부만 희소 저장에 반영. 핵 이동에도 유지됨.
     public void SetTile(Vector2Int tile, TileData data)
     {
-        if (!TryToLocal(tile, out var lx, out var ly)) return;
-        _tiles[lx, ly] = data;
-        OnTileChanged?.Invoke(tile);
+        bool changed = data.IsPassable ? _occupied.Remove(tile) : _occupied.Add(tile);
+        if (changed) OnTileChanged?.Invoke(tile);
     }
 
     public void SetTile(int x, int y, TileData data) => SetTile(new Vector2Int(x, y), data);
 
+    // ── 바닥(floor) ────────────────────────────────────────────────────────────
+    // 코어와 무관한 substrate. Floor 컴포넌트가 자기 footprint를 등록/해제한다.
+
+    public bool HasFloorSystem => _floored.Count > 0;
+    public bool IsFloored(Vector2Int tile) => _floored.Contains(tile);
+    public bool IsFloored(Vector3 world)   => IsFloored(WorldToTile(world));
+
+    public void RegisterFloor(Vector2Int tile)
+    {
+        if (_floored.Add(tile)) OnFloorChanged?.Invoke(tile);
+    }
+
+    public void UnregisterFloor(Vector2Int tile)
+    {
+        if (_floored.Remove(tile)) OnFloorChanged?.Invoke(tile);
+    }
+
+    // ── 온디맨드 지형 샘플 ──────────────────────────────────────────────────────
+
+    // 월드 (x,z)의 지면 높이.
+    //  1) Terrain.activeTerrain → 지면만 샘플(건물/유닛에 안 걸림). 가장 안전.
+    //  2) groundMask가 "특정 레이어"로 설정된 경우에만 레이캐스트. Everything(~0)/Nothing(0)이면
+    //     엉뚱한 콜라이더(건물·코어·유닛)를 지면으로 오인할 수 있어 건너뛰고 평지(0)로 처리.
+    //  3) 그 외 → 0 (평지 가정). 평면 바닥 씬은 groundMask를 바닥 레이어로 지정하면 됨.
+    public float SampleGroundHeight(float worldX, float worldZ)
+    {
+        var t = Terrain.activeTerrain;
+        if (t != null) return t.SampleHeight(new Vector3(worldX, 0f, worldZ)) + t.transform.position.y;
+
+        int mask = groundMask.value;
+        if (mask != 0 && mask != ~0)
+        {
+            var origin = new Vector3(worldX, 500f, worldZ);
+            if (Physics.Raycast(origin, Vector3.down, out var hit, 1000f, mask, QueryTriggerInteraction.Ignore))
+                return hit.point.y;
+        }
+        return 0f;
+    }
+
+    public float SampleGroundHeight(Vector3 worldPos) => SampleGroundHeight(worldPos.x, worldPos.z);
+
+    // 타일 중심을 지면에 스냅한 월드 좌표 (배치/시각화용). 길찾기용 TileToWorld(Y=0)와 분리.
+    public Vector3 TileToGround(Vector2Int tile)
+    {
+        float wx = tile.x + 0.5f, wz = tile.y + 0.5f;
+        return new Vector3(wx, SampleGroundHeight(wx, wz), wz);
+    }
+
+    // footprint 바운드의 4코너 지면 높이차가 tolerance 이내인지 (울퉁불퉁 지형 자동 반영).
+    public bool IsFlatEnough(IEnumerable<Vector2Int> footprint)
+    {
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+        foreach (var p in footprint)
+        {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+        }
+        if (minX > maxX) return false; // 빈 footprint
+
+        // 월드 코너 = 타일 경계 (minTile 좌하단 ~ maxTile+1 우상단)
+        float h00 = SampleGroundHeight(minX,     minY);
+        float h10 = SampleGroundHeight(maxX + 1, minY);
+        float h01 = SampleGroundHeight(minX,     maxY + 1);
+        float h11 = SampleGroundHeight(maxX + 1, maxY + 1);
+        float lo = Mathf.Min(Mathf.Min(h00, h10), Mathf.Min(h01, h11));
+        float hi = Mathf.Max(Mathf.Max(h00, h10), Mathf.Max(h01, h11));
+        return (hi - lo) <= buildHeightTolerance;
+    }
+
     // ── 건설 가능 판정 ─────────────────────────────────────────────────────────
 
+    // 건설 판정(모델 A): 존 클램프 + 바닥 위 + 점유 안 됨 + (지형 있으면) 평탄.
+    //  - 코어 union은 건설을 차단하지 않는다(union 밖 건물은 BuildingDormancy가 휴면 처리).
+    //  - 존(buildZoneSize=200)은 최대 바깥 경계 클램프.
+    //  - 바닥 시스템이 활성(HasFloorSystem)일 때만 "바닥(floored) 위에만" 강제 → 바닥 없는 필드/지형 맵은 무영향.
+    //  - 바닥 자체를 까는 배치는 이 검사를 우회해야 함(공허에 바닥을 놓는 것) — 후속 floor placeable에서 처리.
     public bool IsBuildable(IEnumerable<Vector2Int> footprint)
     {
-        float minH = float.MaxValue, maxH = float.MinValue;
+        bool floorRequired = HasFloorSystem;
         foreach (var pos in footprint)
         {
-            if (!IsInBuildZone(pos)) return false;
-            var tile = GetTile(pos);
-            if (!tile.IsPassable) return false;
-            if (tile.Height < minH) minH = tile.Height;
-            if (tile.Height > maxH) maxH = tile.Height;
+            if (!IsInBuildZone(pos)) return false;              // 최대 경계 클램프
+            if (floorRequired && !_floored.Contains(pos)) return false; // 바닥 위에만
+            if (!GetTile(pos).IsPassable) return false;        // 점유
         }
-        return minH <= maxH && (maxH - minH) <= buildHeightTolerance;
+        return IsFlatEnough(footprint);
+    }
+
+    // 바닥 배치 판정: 존 클램프 + 아직 바닥 아님 + 점유 안 됨 + (지형시) 평탄.
+    // 건물과 달리 "바닥 위에만" 요구를 받지 않음 — 바닥 자체를 공허에 까는 것이므로.
+    public bool CanPlaceFloor(IEnumerable<Vector2Int> footprint)
+    {
+        foreach (var pos in footprint)
+        {
+            if (!IsInBuildZone(pos)) return false;      // 최대 경계 클램프
+            if (_floored.Contains(pos)) return false;   // 이미 바닥
+            if (!GetTile(pos).IsPassable) return false; // 점유
+        }
+        return IsFlatEnough(footprint);
     }
 }

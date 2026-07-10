@@ -1,0 +1,48 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+// 바이옴 콘텐츠 게이팅 레지스트리 (step 7). DataManager와 같은 static 로더 패턴.
+// Resources/Data/Biomes/ 의 모든 BiomeContentData를 Biome별로 색인해 질의에 답한다.
+//
+// 게이팅 미설정(SO 없음/해당 바이옴 없음)이면 "제한 없음"으로 처리 → 기존 씬 무영향.
+public static class BiomeContent
+{
+    static Dictionary<Biome, BiomeContentData> _byBiome;
+
+    static void EnsureLoaded()
+    {
+        if (_byBiome != null) return;
+        _byBiome = new Dictionary<Biome, BiomeContentData>();
+        foreach (var d in Resources.LoadAll<BiomeContentData>("Data/Biomes"))
+            if (d != null) _byBiome[d.Biome] = d;
+    }
+
+    public static BiomeContentData Get(Biome b)
+    {
+        EnsureLoaded();
+        return _byBiome.TryGetValue(b, out var v) ? v : null;
+    }
+
+    public static IReadOnlyList<ResourceNodeData> ResourceNodes(Biome b) =>
+        Get(b)?.ResourceNodes ?? (IReadOnlyList<ResourceNodeData>)Array.Empty<ResourceNodeData>();
+
+    public static IReadOnlyList<MinionData> SummonableMinions(Biome b) =>
+        Get(b)?.SummonableMinions ?? (IReadOnlyList<MinionData>)Array.Empty<MinionData>();
+
+    public static IReadOnlyList<ResearchData> UnlockableResearch(Biome b) =>
+        Get(b)?.UnlockableResearch ?? (IReadOnlyList<ResearchData>)Array.Empty<ResearchData>();
+
+    // 이 바이옴에서 해당 하수인을 소환할 수 있는가.
+    // 데이터 없음/목록 비어있음 = 제한 없음(전부 허용) → 게이팅 미도입 씬 그대로 동작.
+    public static bool IsMinionAllowed(Biome b, MinionData m)
+    {
+        var d = Get(b);
+        return d == null || d.SummonableMinions.Count == 0 || d.SummonableMinions.Contains(m);
+    }
+
+#if UNITY_EDITOR
+    // 에디터에서 SO 추가/수정 후 캐시 무효화용(런타임 미사용).
+    public static void ClearCache() => _byBiome = null;
+#endif
+}

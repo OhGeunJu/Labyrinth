@@ -56,13 +56,13 @@ Guidance for Claude Code in this repository.
 
 | Class | 주요 API |
 |---|---|
-| `MapManager` | `TileToWorld` / `WorldToTile` / `OnTileChanged` static event / `GetForPosition(Vector3)` |
+| `MapManager` | 점유=`HashSet<Vector2Int>` 희소 저장(절대좌표, 핵 이동에도 유지). `TileToWorld`(Y=0, 길찾기용) / `TileToGround`(지면 스냅, 배치/시각화용) / `WorldToTile` / `SampleGroundHeight(x,z)` / `IsFlatEnough(footprint)` / `IsBuildable` / `OnTileChanged` static event / `GetForPosition(Vector3)` |
 | `JobManager` | `RegisterJob` / `RequestJob(unit)` / `RequestJobFiltered(unit, categories)` |
 | `PriorityManager` | `Get/Set/Increase/Decrease/IsEnabled(JobCategory)` |
-| `DungeonCore` | `Summon(MinionData, pos)` / `IsWithinAnyRangeWorld(Vector3)` / `RegisterSubCore` |
+| `DungeonCore` | `Summon(MinionData, pos)` / `IsWithinAnyRangeWorld(Vector3)`(메인+서브 union) / `RegisterSubCore` / `RelocateTo(pos)`(핵 이전) / `OnTerritoryChanged` static event(영역 변경 → `BuildingDormancy` 재평가) |
 | `EventManager` | `checkInterval`(기본 300초) 주기 랜덤 이벤트 발동. `OnEventTriggered` static event |
 | `GameTimeManager` | 낮30분+밤30분=1일. `NormalizedTime`(0-1) / `IsDay` / `CurrentDay` / `OnDayChanged` / `OnTimeChanged(float)` |
-| `HierarchicalPathfinder` | 씬에 배치 필요. `FindPath(from, to)` |
+| `HierarchicalPathfinder` | 씬에 배치 필요. `ComputeCoarseRoute(from,to)`(메소/L2) + `FindLocalPath(pos,target)`(유닛 중심 Theta* 윈도우) / `RebakeObstacleAt`. `obstacleLayer`=Wall만, `agentRadius`=유닛 반경 |
 | `ResearchManager` | `IsUnlocked(recipe)` / `CanResearch(data)` / `Complete(data)` |
 | `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill(CraftSkill)` / `AllItems` / `AllRecipes` |
 
@@ -177,6 +177,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 - `placeableBuildings: BuildingData[]` 단일 배열. `UsesBlueprint=true` → 2단계 건설, `false` → 즉시 배치
 - 설계 원칙: `BuildingData`는 배치 방법만 담당. 각 컴포넌트(Storage, SubCore, FarmPlot 등)가 동작 데이터를 프리팹 SerializeField로 직접 보유
 - `OnActiveChanged` — 건설 모드 토글 시 다른 UI 자동 닫힘
+- **핵 영역(크립) / 건물 휴면**: 점유는 절대좌표 희소 저장이라 핵 이동에도 유지. 영역(핵 union) 밖 건물은 `BuildingDormancy`가 휴면(작동 정지+회색 틴트, 철거 X), 복구 시 재가동. 런타임 배치 시 `BuildingDormancy.Ensure`로 자동 부착(씬 사전 배치 건물은 수동 부착 필요). 설계: `docs/design_core_creep.md`
 
 ### Input & Camera
 
@@ -197,6 +198,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 - `StatGrade` enum (27단계) + `StatName` enum (51개) — 통합 식별자
 - `UnitData.DefaultMinGrade/MaxGrade` + `StatGrades` 오버라이드 리스트로 등급 정의 (Vector2 range 제거됨)
 - `UnitStats.GrowStat(name, amount)` — 모든 성장 진입점. `IsLocked=true` (미니언) 시 차단
+- `UnitData.StatGrowthRates` — 종족별 **특정 스탯만** 성장 속도 배율(목록에 없으면 1.0). `GrowStat`에서 `amount × GetGrowthRate(stat)` 적용
 - `UnitStats.OnAnyGradeUp` static event — 등급 승급 감지 (UI 알림용)
 - 켄시식 XP: `CombatXp.Calculate(my, opp, enemyCount)` = ChallengeMult × Sol × OutnumberedMult
 - 전투 외 노동(`BTLeafNodes`, `CraftJob`, `ResearchJob`, `PawnMover.Athletics`)도 SOL/ChallengeMult 적용
@@ -205,7 +207,6 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 ## 알려진 이슈
 
 - **한글 폰트**: `AddComponent<TextMeshProUGUI>` 시 기본 폰트(LiberationSans SDF) 한글 미지원. `Project Settings → TMP → Default Font Asset` 설정 권장.
-- **핵 이동 시 빌드존 리셋**: 그리드 데이터 초기화, 건물 시각 사라짐 (GameObject는 유지). 향후 정책 결정 필요.
-- **CraftJob 재료 손실**: `OnStart`에서 즉시 소비 — 유닛 사망 시 재료 손실 (의도된 단순 동작).
-- **Blueprint 반투명 머티리얼**: URP에서 코드 생성 투명 머티리얼이 불투명 렌더될 수 있음. 에디터에서 직접 제작 후 연결 권장.
-- **DataManager SO 미수집**: RecipeData 에셋이 `Assets/Resources/Data/Recipes/`에 없으면 미인식. 해당 폴더로 이동하거나 JSON으로 전환 필요.
+- **핵 이동 시 빌드존 리셋**: step 1(2026-06-06)로 점유 데이터·Blocked 오버레이 wipe는 제거됨(`HashSet` 절대좌표 희소 저장). 남은 작업은 영역 union 기반 건설 판정 + 고아 건물 비활성/재가동(`docs/design_core_creep.md` step 2~5).
+- **Blueprint 반투명 머티리얼**: URP에서 코드 생성 투명 머티리얼(`BuildingBlueprint.CreateBlueprintMaterial`)이 불투명 렌더될 수 있음. 에디터에서 직접 제작 후 연결 권장.
+- **DataManager**: `Resources.LoadAll<RecipeData>("Data/Recipes")` + JSON 스키마(`DataSchemas`) 경로 둘 다 지원. SO는 `Assets/Resources/Data/{Items,Recipes,Research}/`에 있어야 인식.

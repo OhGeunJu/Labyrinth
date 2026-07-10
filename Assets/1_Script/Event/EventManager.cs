@@ -127,14 +127,38 @@ public class EventManager : MonoBehaviour
 
     void SpawnDiscovery(GameEventData data)
     {
-        if (data.ResourceNodePrefab == null) return;
         var core = DungeonCore.Instance;
         Vector3 origin = core != null ? core.transform.position : Vector3.zero;
         float angle = Random.value * 360f * Mathf.Deg2Rad;
         float dist  = Random.Range(data.DiscoveryMinDist, data.DiscoveryMaxDist);
         Vector3 pos = origin + new Vector3(Mathf.Cos(angle) * dist, 0f, Mathf.Sin(angle) * dist);
         pos.y = SampleHeight(pos);
+
+        // 바이옴 게이팅(step 7): 현재 바이옴 자원 풀에서 노드를 뽑는다.
+        // 풀이 없으면(게이팅 미설정) 이벤트 기본 프리팹으로 폴백 → 기존 동작 유지.
+        var nodeData = PickBiomeNode();
+        if (nodeData != null)
+        {
+            var prefab = nodeData.Prefab != null ? nodeData.Prefab : data.ResourceNodePrefab;
+            if (prefab == null) return;
+            var go = Instantiate(prefab, pos, Quaternion.identity);
+            var node = go.GetComponent<ResourceNode>();
+            if (node != null) node.Init(nodeData);
+            return;
+        }
+
+        if (data.ResourceNodePrefab == null) return;
         Instantiate(data.ResourceNodePrefab, pos, Quaternion.identity);
+    }
+
+    // 활성 정착지 바이옴의 자원 노드 풀에서 랜덤 1개. 게이팅 미설정이면 null.
+    static ResourceNodeData PickBiomeNode()
+    {
+        var sm = SettlementManager.Instance;
+        if (sm == null) return null;
+        var pool = BiomeContent.ResourceNodes(sm.ActiveBiome);
+        if (pool == null || pool.Count == 0) return null;
+        return pool[Random.Range(0, pool.Count)];
     }
 
     // ── 유틸 ─────────────────────────────────────────────────────────────────

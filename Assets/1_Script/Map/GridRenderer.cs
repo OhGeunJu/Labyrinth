@@ -18,14 +18,13 @@ public class GridRenderer : MonoBehaviour
 
     void Start()
     {
-        MapManager.OnTileChanged   += OnTileChanged;
-        MapManager.OnZoneRecentered += ClearBlockOverlays;
+        MapManager.OnTileChanged += OnTileChanged;
+        // 핵 이동(OnZoneRecentered) 시에도 점유는 절대좌표로 유지되므로 오버레이를 지우지 않는다.
     }
 
     void OnDestroy()
     {
-        MapManager.OnTileChanged   -= OnTileChanged;
-        MapManager.OnZoneRecentered -= ClearBlockOverlays;
+        MapManager.OnTileChanged -= OnTileChanged;
         HidePreview();
         ClearBlockOverlays();
     }
@@ -45,7 +44,8 @@ public class GridRenderer : MonoBehaviour
         if (!tile.IsPassable)
         {
             if (_blockOverlays.ContainsKey(pos)) return;
-            _blockOverlays[pos] = SpawnOverlay(pos, tile.Height + 0.05f, blockedColor, $"Blocked_{pos.x}_{pos.y}");
+            float groundY = MapManager.Instance.SampleGroundHeight(pos.x + 0.5f, pos.y + 0.5f);
+            _blockOverlays[pos] = SpawnOverlay(pos, groundY + 0.05f, blockedColor, $"Blocked_{pos.x}_{pos.y}");
         }
         else
         {
@@ -66,8 +66,8 @@ public class GridRenderer : MonoBehaviour
         foreach (var pos in footprint)
         {
             if (!MapManager.Instance.IsInBounds(pos)) continue;
-            var tile = MapManager.Instance.GetTile(pos);
-            _previewOverlays[pos] = SpawnOverlay(pos, tile.Height + 0.07f, color, $"Preview_{pos.x}_{pos.y}");
+            float groundY = MapManager.Instance.SampleGroundHeight(pos.x + 0.5f, pos.y + 0.5f);
+            _previewOverlays[pos] = SpawnOverlay(pos, groundY + 0.07f, color, $"Preview_{pos.x}_{pos.y}");
         }
     }
 

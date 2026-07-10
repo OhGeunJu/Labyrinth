@@ -104,7 +104,7 @@ public static class PawnRosterCreator
         var nameTMP = nameGO.AddComponent<TextMeshProUGUI>();
         nameTMP.text = "이름"; nameTMP.fontSize = 14; nameTMP.color = Color.white;
         nameTMP.alignment = TextAlignmentOptions.Center; nameTMP.raycastTarget = false;
-        nameTMP.enableWordWrapping = false; nameTMP.overflowMode = TextOverflowModes.Ellipsis;
+        nameTMP.textWrappingMode = TextWrappingModes.NoWrap; nameTMP.overflowMode = TextOverflowModes.Ellipsis;
         ApplyFont(nameTMP);
 
         var entry = root.AddComponent<PawnRosterEntryUI>();

@@ -9,6 +9,14 @@ public class StatGradeEntry
     public StatGrade Max = StatGrade.D;
 }
 
+[System.Serializable]
+public class StatGrowthEntry
+{
+    public StatName Stat;
+    [Tooltip("이 스탯의 성장 속도 개별 배율. 종족 GrowthRate에 곱해짐")]
+    public float Multiplier = 1f;
+}
+
 [CreateAssetMenu(fileName = "UnitData", menuName = "DungeonColony/UnitData")]
 public class UnitData : ScriptableObject
 {
@@ -34,6 +42,17 @@ public class UnitData : ScriptableObject
     [Header("등급 오버라이드 (스탯별)")]
     [Tooltip("특정 스탯에 다른 등급 범위 지정. Min==Max면 고정값")]
     public List<StatGradeEntry> StatGrades = new();
+
+    [Header("성장 속도 (스탯별)")]
+    [Tooltip("이 종족이 특정 스탯만 빠르게/느리게 성장. 목록에 없는 스탯은 기본(1.0)")]
+    public List<StatGrowthEntry> StatGrowthRates = new();
+
+    public float GetGrowthRate(StatName stat)
+    {
+        for (int i = 0; i < StatGrowthRates.Count; i++)
+            if (StatGrowthRates[i].Stat == stat) return StatGrowthRates[i].Multiplier;
+        return 1f;
+    }
 
     public (StatGrade min, StatGrade max) GetGradeRange(StatName stat)
     {
