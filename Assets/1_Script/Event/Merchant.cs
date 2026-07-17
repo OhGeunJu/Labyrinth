@@ -67,7 +67,7 @@ public class Merchant : MonoBehaviour
         }
     }
 
-    // 구매 시도. Storage 골드 부족 또는 보관 창고 없으면 false.
+    // 구매 시도. Storage 골드 부족, 보관 창고 없음, 창고 만석이면 false.
     public bool TryBuy(MerchantStockEntry entry)
     {
         if (Data?.GoldItem == null || entry.Stock <= 0) return false;
@@ -76,13 +76,15 @@ public class Merchant : MonoBehaviour
         var dest = Storage.FindNearest(transform.position, entry.Item);
         if (dest == null) return false;
 
-        Storage.ConsumeByItem(Data.GoldItem, entry.Price);
-        dest.Inventory.TryAdd(entry.Item, 1);
+        // 아이템 입고(품질 유지)를 먼저 확정 → 실패 시 골드 손실 없음
+        if (dest.Inventory.TryAdd(entry.Item, 1, entry.Quality) <= 0) return false;
+
+        Storage.ConsumeByItem(Data.GoldItem, entry.Price); // 위에서 총량 확인됨
         entry.Stock--;
         return true;
     }
 
-    // 판매 시도. 아이템 1개를 인벤토리에서 제거하고 골드를 Storage에 추가.
+    // 판매 시도. 골드 입고를 먼저 확정한 뒤 아이템을 제거 — 실패 시 양쪽 모두 원복.
     public bool TrySell(ItemInstance inst, Inventory sourceInv)
     {
         if (Data?.GoldItem == null || inst == null || sourceInv == null) return false;
@@ -92,8 +94,18 @@ public class Merchant : MonoBehaviour
         var goldDest = Storage.FindNearest(transform.position, Data.GoldItem);
         if (goldDest == null) return false;
 
-        sourceInv.RemoveOne(inst);
-        goldDest.Inventory.TryAdd(Data.GoldItem, price);
+        int addedGold = goldDest.Inventory.TryAdd(Data.GoldItem, price);
+        if (addedGold < price)
+        {
+            if (addedGold > 0) goldDest.Inventory.Remove(Data.GoldItem, addedGold);
+            return false;
+        }
+
+        if (!sourceInv.RemoveOne(inst))
+        {
+            goldDest.Inventory.Remove(Data.GoldItem, price);
+            return false;
+        }
         return true;
     }
 

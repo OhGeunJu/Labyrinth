@@ -40,7 +40,8 @@ public class Equipment : MonoBehaviour
     {
         if (weapon == null) return false;
         var inst = FindInInventory(weapon);
-        if (inst == null || _inventory.Remove(weapon, 1) != 1) return false;
+        // 찾은 인스턴스를 정확히 소모 — Remove(data)는 다른 등급 인스턴스를 뺄 수 있음
+        if (inst == null || !_inventory.RemoveOne(inst)) return false;
 
         if (MainHand != null)
             _inventory.TryAdd(MainHand, 1, _mainHandInst?.Quality ?? ItemQuality.Common);
@@ -71,7 +72,7 @@ public class Equipment : MonoBehaviour
         if (item == null) return false;
         if (OffHandLocked) return false;
         var inst = FindInInventory(item);
-        if (inst == null || _inventory.Remove(item, 1) != 1) return false;
+        if (inst == null || !_inventory.RemoveOne(inst)) return false;
 
         if (OffHand != null)
             _inventory.TryAdd(OffHand, 1, _offHandInst?.Quality ?? ItemQuality.Common);
@@ -98,7 +99,7 @@ public class Equipment : MonoBehaviour
     {
         if (armor == null) return false;
         var inst = FindInInventory(armor);
-        if (inst == null || _inventory.Remove(armor, 1) != 1) return false;
+        if (inst == null || !_inventory.RemoveOne(inst)) return false;
 
         if (_armor.TryGetValue(armor.Slot, out var prev))
             _inventory.TryAdd(prev, 1, _armorInst.TryGetValue(armor.Slot, out var pi) ? pi.Quality : ItemQuality.Common);

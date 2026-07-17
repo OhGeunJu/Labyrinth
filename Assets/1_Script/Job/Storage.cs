@@ -87,6 +87,7 @@ public class Storage : MonoBehaviour
 
     public static bool Consume(ResourceType type, int amount)
     {
+        if (GetTotal(type) < amount) return false; // 부족 시 부분 차감 없이 실패
         int remaining = amount;
         foreach (var sb in All)
         {

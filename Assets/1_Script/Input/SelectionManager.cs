@@ -28,6 +28,7 @@ public class SelectionManager : MonoBehaviour
         _cam = Camera.main;
         OnSelectionChanged += (pawn, selected) =>
         {
+            if (pawn == null) return; // 선택 중 파괴된 유닛
             var indicator = pawn.GetComponent<SelectionIndicator>();
             if (indicator != null) indicator.SetSelected(selected);
         };
@@ -133,8 +134,8 @@ public class SelectionManager : MonoBehaviour
             var faction = pawn.GetComponent<Faction>();
             if (faction == null || faction.Type != FactionType.Player) continue;
 
-            Vector2 screenPos = _cam.WorldToScreenPoint(pawn.transform.position);
-            if (screenRect.Contains(screenPos, true))
+            Vector3 screenPos = _cam.WorldToScreenPoint(pawn.transform.position);
+            if (screenPos.z > 0f && screenRect.Contains((Vector2)screenPos, true))
                 AddToSelection(pawn);
         }
     }

@@ -42,6 +42,10 @@ public class ResourceNode : MonoBehaviour
             if (brain != null && brain.Blackboard.AssignedNode == this)
                 brain.Blackboard.AssignedNode = null;
         _assigned.Clear();
+
+        // Awake에서 막아둔 점유 타일 해제 — 노드 소멸 자리가 영구 건설 불가로 남는 것 방지
+        if (_tileBlocked && MapManager.Instance != null)
+            MapManager.Instance.SetTile(_blockedTile, TileData.MakePassable());
     }
 
     // 월드 위치에서 타일 좌표 자동 파생
@@ -51,13 +55,19 @@ public class ResourceNode : MonoBehaviour
     float _gauge;
     int _totalYielded;
     bool _haulJobPending;
+    bool _tileBlocked;
+    Vector2Int _blockedTile;
 
     void Awake()
     {
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
         // 빌드존 안일 때만 타일 막힘 표시 (시각화용). 실제 이동 차단은 콜라이더+NavMesh 담당.
         if (MapManager.Instance != null && MapManager.Instance.IsInBuildZone(TileCoord))
-            MapManager.Instance.SetTile(TileCoord, TileData.MakeImpassable());
+        {
+            _blockedTile = TileCoord;
+            _tileBlocked = true;
+            MapManager.Instance.SetTile(_blockedTile, TileData.MakeImpassable());
+        }
     }
 
     public void Init(ResourceNodeData nodeData) => data = nodeData;

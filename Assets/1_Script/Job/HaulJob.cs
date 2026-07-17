@@ -47,8 +47,23 @@ public class HaulJob : JobBase
 
             int toTake = _source.Inventory.Remove(_itemData, available);
             int added  = unit.Inventory.TryAdd(_itemData, toTake);
-            _amount = toTake;
+            if (added < toTake)
+            {
+                // 인벤에 다 안 들어감 — 나머지는 노드에 되돌림 (증발 방지)
+                int back = _source.Inventory.TryAdd(_itemData, toTake - added);
+                int lost = toTake - added - back;
+                if (lost > 0)
+                    DroppedItem.Spawn(_itemData, lost, _source.transform.position);
+            }
+            _amount = added;
             Debug.Log($"[HaulJob] 수거 {toTake}개 → 인벤 추가 {added}개 → 창고로 이동");
+
+            if (_amount <= 0)
+            {
+                Status = JobStatus.Done;
+                _onDone?.Invoke();
+                return;
+            }
 
             _phase    = Phase.GoToStorage;
             TileCoord = MapManager.Instance.WorldToTile(_storage.transform.position);
@@ -58,20 +73,25 @@ public class HaulJob : JobBase
             int removed = unit.Inventory.Remove(_itemData, _amount);
             Debug.Log($"[HaulJob] GoToStorage — 인벤에서 {removed}/{_amount}개 꺼냄");
 
-            if (removed == _amount)
+            // 실제 꺼낸 수량 기준으로 입고. 못 들어간 잔량은 인벤 복귀 → 드롭 순으로 보존.
+            int leftover = removed;
+            if (leftover > 0 && _storage != null && _storage.CanAccept(_itemData))
+                leftover -= _storage.Inventory.TryAdd(_itemData, leftover);
+
+            if (leftover > 0)
             {
-                if (!_storage.TryAdd(_itemData, _amount))
-                {
-                    var fallback = Storage.FindNearest(unit.transform.position, _itemData);
-                    bool stored  = fallback != null && fallback.TryAdd(_itemData, _amount);
-                    if (!stored)
-                    {
-                        int returned = unit.Inventory.TryAdd(_itemData, _amount);
-                        if (returned < _amount)
-                            DroppedItem.Spawn(_itemData, _amount - returned, unit.transform.position);
-                    }
-                }
+                var fallback = Storage.FindNearest(unit.transform.position, _itemData);
+                if (fallback != null)
+                    leftover -= fallback.Inventory.TryAdd(_itemData, leftover);
             }
+
+            if (leftover > 0)
+            {
+                leftover -= unit.Inventory.TryAdd(_itemData, leftover);
+                if (leftover > 0)
+                    DroppedItem.Spawn(_itemData, leftover, unit.transform.position);
+            }
+
             Status = JobStatus.Done;
             _onDone?.Invoke();
             Debug.Log("[HaulJob] 완료");

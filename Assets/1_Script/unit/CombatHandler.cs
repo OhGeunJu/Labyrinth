@@ -38,8 +38,12 @@ public class CombatHandler : MonoBehaviour
         {
             _attackTimer = 0f;
             WeaponData weapon = _equipment?.MainHand;
+            var target = _brain.Blackboard.Target;
             if (weapon != null && weapon.IsRanged)
-                TryFireRanged(_brain.Blackboard.Target);
+            {
+                // BT 틱(0.1s) 사이에 타겟이 파괴될 수 있음 — 매 프레임 도는 여기서도 확인
+                if (target != null) TryFireRanged(target);
+            }
             else
                 TryAttack();
         }
@@ -192,6 +196,7 @@ public class CombatHandler : MonoBehaviour
     // ── 원거리/마법 ──────────────────────────────────────────────────
     public void TryFireRanged(GameObject intendedTarget)
     {
+        if (intendedTarget == null) return;
         float distance       = Vector3.Distance(transform.position, intendedTarget.transform.position);
         float effectiveRange = _brain.Blackboard.AttackRange;
         float normalized     = distance / Mathf.Max(effectiveRange, 0.1f);
@@ -378,11 +383,13 @@ public class CombatHandler : MonoBehaviour
 
     void ExtraHit(GameObject target)
     {
+        if (target == null) return;
         var weaponType = GetWeaponType();
         float extraDamage = CalcMeleeDamage(weaponType, _stats.GetSkillForWeapon(weaponType), false) * 0.5f;
         var dmg = BuildDamageInfo(extraDamage);
-        target?.GetComponent<BodyPartSystem>()?.TakeDamage(dmg);
-        target?.GetComponent<UnitBrain>()?.TakeDamage(dmg);
+        var body = target.GetComponent<BodyPartSystem>();
+        if (body != null) body.TakeDamage(dmg);
+        else target.GetComponent<UnitBrain>()?.TakeDamage(dmg);
     }
 
     void HolyAoEHeal(float bloodAmount, float partsAmount)

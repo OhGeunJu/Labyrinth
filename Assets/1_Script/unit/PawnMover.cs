@@ -223,13 +223,13 @@ public class PawnMover : MonoBehaviour
     public void SetLimping(bool limping)
     {
         _mobilityMult = limping ? 0.5f : 1f;
-        // ���߿� �����̴� �ִϸ��̼� ����
+        // 나중에 절뚝이는 애니메이션 연결
     }
 
     public void SetCrawling(bool crawling)
     {
         _mobilityMult = crawling ? 0.2f : 1f;
-        // ���߿� ���� �ִϸ��̼� ����
+        // 나중에 기는 애니메이션 연결
     }
 
     float CalcWeightCorrection()

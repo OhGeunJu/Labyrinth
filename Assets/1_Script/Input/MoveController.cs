@@ -24,6 +24,7 @@ public class MoveController : MonoBehaviour
         var wanderers = new List<PawnMover>();
         foreach (var pawn in selectionManager.Selected)
         {
+            if (pawn == null) continue; // 선택 후 파괴된 유닛
             var brain = pawn.GetComponent<UnitBrain>();
             if (brain != null && !(brain.Data is MinionData))
                 wanderers.Add(pawn);

@@ -13,10 +13,10 @@ Guidance for Claude Code in this repository.
 - Unity 2022+, New Input System (`UnityEngine.InputSystem`), TextMeshPro
 - CLI 빌드 없음 — Unity Editor Play Mode로 테스트
 
-## 폴더 구조 (`Assets/1 Script/`)
+## 폴더 구조 (`Assets/1_Script/`)
 
 ```
-1 Script/
+1_Script/
 ├── BuildModeManager.cs       ← 빌드 모드 토글
 ├── Combat/                   ← DamageInfo, DamageCategory, DamageElement, PhysicalType
 ├── Data/                     ← DataManager (static), DataSchemas

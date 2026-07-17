@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-07-11 — 전체 코드 리뷰: 버그 수정 1차
+
+핵심 시스템(전투/AI/작업/창고/건설/상인) 전수 리뷰. 명백한 버그는 즉시 수정(아래), 설계 판단이 필요한 항목은 백로그로.
+
+### 수정 완료 — 자원/아이템 증발 계열
+- **`Storage.Consume` 부분 차감**: 총량 확인 없이 창고를 돌며 차감 → 부족하면 이미 뺀 자원 증발. `ConsumeByItem`처럼 `GetTotal` 선확인 추가 (소환/건설 실패 시 자원 손실 해결).
+- **`BuildModeManager.Place` 순서**: 자원 소비 후 프리팹 null 체크 → 프리팹 미연결 시 자원만 소실. 프리팹 확인을 소비보다 먼저로 이동. + `Keyboard.current` null 가드.
+- **`HaulJob` 아이템 소실 2곳**: 수거 시 인벤에 못 들어간 잔량을 노드에 반환(안 되면 드롭), 납품 시 `removed == _amount` 전량 일치 요구 폐지 → 실제 꺼낸 수량 기준 창고→폴백창고→인벤복귀→드롭 순 보존.
+- **`Merchant.TryBuy`**: ① `entry.Quality` 미전달로 구매 장비가 일반 등급으로 입고되던 것 수정, ② 아이템 입고를 먼저 확정한 뒤 골드 차감(창고 만석 시 골드 손실 방지). **`TrySell`**: 골드 입고 선확정 → 실패 시 원복 후 아이템 제거 (창고 만석 시 아이템 증발 방지).
+- **`Equipment` 인스턴스 불일치**: `FindInInventory`(앞에서 탐색) + `Remove(data,1)`(뒤에서 차감) 조합으로 표시 등급과 실제 소모 아이템이 어긋나던 것 → `RemoveOne(inst)`로 통일 (무기/오프핸드/갑옷 3곳).
+- **`EatNode`**: 창고에서 꺼낸 음식이 인벤 만석 시 증발 → 창고 반환 후 포기.
+
+### 수정 완료 — 전투/AI
+- **시체 무한 타겟팅**: `BecomeCorpse`에서 `Faction` 제거 + `BTTargetUtil.IsAttackable`(파괴/비활성/시체 제외) 신설, `DetectNode`/`FightNode` 타겟 유효성에 적용. 시체 대상 무한 공격·XP 파밍 차단. `DetectNode` myFaction null 가드도 추가.
+- **원거리 NRE**: `CombatHandler.Update`가 BT 틱 사이 파괴된 타겟으로 `TryFireRanged` 호출 → null 가드 2중 추가.
+- **신성 번개 `ExtraHit` 이중 피해**: BodyPartSystem과 UnitBrain 폴백 HP 양쪽에 피해 적용되던 것 → if/else로 수정.
+
+### 수정 완료 — 기타
+- **`ResourceNode` 점유 잔류**: Awake에서 막은 타일을 `OnDestroy`에서 해제 (노드 소멸 자리 영구 건설 불가 방지).
+- **`SelectionManager`/`MoveController`**: 선택 중 파괴된 유닛 참조로 MissingReferenceException 나던 것 가드. `SelectByRect` 카메라 뒤 유닛(z≤0) 선택 제외.
+- **`CraftJob` 타이머**: `OnStart`(수주 시점)가 아닌 작업대 도착 후 첫 `Execute`에서 시작 — 이동 시간이 제작 시간을 공짜로 깎던 것 수정.
+- **주석 인코딩 복구**: `JobBase.cs` / `BTLeafNodes.cs` / `PawnMover.cs`의 CP949 깨짐(`����`) 주석을 UTF-8 한글로 재작성. CLAUDE.md의 `1 Script` → `1_Script` 경로 오기 수정.
+
+### 버그 백로그 (설계 판단 필요 — 논의 후 처리)
+- **건물 타일 점유 비대칭**: `BuildModeManager.Place`는 점유(`SetTile`)를 등록하지 않는데 `PlacedBuilding.Demolish`는 해제함 → 같은 타일에 건물 중복 배치 가능 + 철거가 자원노드 점유까지 풀 수 있음. 건물이 타일을 점유해야 하는지(벽만? 전부?) 설계 결정 필요.
+- **기절 영구**: `Blackboard.IsKnockedOut = true`를 해제하는 코드가 없음 → 기절 유닛은 영원히 정지. 회복(시간 경과/치료) 시스템 미구현.
+- **화상 DoT 무효화**: `StatusEffectSystem.ApplyBurningDoT`가 매 프레임 미세 피해를 정식 파이프라인으로 보내는데, 방어구 **고정 감소**(`BodyPartSystem.TakeDamage`)가 매번 차감 → 방어구 1개만 있어도 화상 피해 0. DoT는 틱 누적 or 방어구 우회 필요.
+- **허기 피해가 숨겨진 폴백 HP로**: `UnitBrain.UpdateHunger` → `TakeDamage(float)`는 `_hp`(BodyPartSystem 없는 유닛용)를 깎음. 신체 부위와 무관한 제2 체력으로 아사 — UI에 안 보임.
+- **CraftJob 재료 부족 시 조용히 소멸**: `OnStart`에서 `Status = Done` 처리 → 제작 주문이 통보 없이 사라짐. 대기/재시도/알림 정책 결정 필요.
+- **DroppedItem 품질 미보존**: `DroppedItem`에 quality 필드 없음 → 장비가 드롭을 거치면 등급 소실 (CraftJob 넘침 드롭, 환불 등).
+- **Storage.TryAdd 부분 입고에도 true**: `Inventory.TryAdd(...) > 0` 기준이라 일부만 들어가도 성공 취급 — 나머지는 호출자가 모름. 의미 재정의 필요.
+- **클릭 레이캐스트 분산**: `Storage`/`Bed`/`FarmPlot`/`Merchant`가 각자 Update에서 클릭마다 레이캐스트 → 건물 수만큼 중복 + SelectionManager와 우선순위 미조정. 클릭 라우팅 일원화 리팩터링.
+- **신체 부위 균등 타격**: `GetRandomBodyPart` 7부위 균등(머리 14%) — 의도 확인.
+- **static 이벤트 구독 해제 점검**: `UnitStats.OnAnyGradeUp` 등 static 이벤트를 UI가 구독 — 씬 전환 시 해제 누락하면 파괴된 객체 참조.
+- **빌드 고스트 부수효과**: `EnsureGhost`가 Instantiate 후 컴포넌트를 끄지만 Awake/OnEnable 부수효과는 한 프레임 실행됨. OnEnable 등록 컴포넌트 추가 시 함정.
+
+---
+
 ## 2026-07-10 — 월드맵 백엔드: 정착지 등록 배선 + 오프라인 생산 + 바이옴 게이팅
 
 설계 `docs/design_world_field.md` step 4(일부)/5/7의 **코드/데이터 부분**(UI 제외) 구현.

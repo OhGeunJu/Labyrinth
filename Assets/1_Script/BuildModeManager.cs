@@ -80,6 +80,8 @@ public class BuildModeManager : MonoBehaviour
 
     void Update()
     {
+        if (Keyboard.current == null) return;
+
         if (Keyboard.current.bKey.wasPressedThisFrame)
             SetActive(!_active);
 
@@ -407,14 +409,14 @@ public class BuildModeManager : MonoBehaviour
         var data = SelectedBuilding;
         if (data == null) return;
 
+        var prefab = data.Prefab != null ? data.Prefab : fallbackPrefab;
+        if (prefab == null) return;
+
         if (data.CostAmount > 0 && !Storage.Consume(data.CostType, data.CostAmount))
         {
             Debug.Log($"[Build] 자원 부족 — {data.CostType} ×{data.CostAmount}");
             return;
         }
-
-        var prefab = data.Prefab != null ? data.Prefab : fallbackPrefab;
-        if (prefab == null) return;
 
         // 바닥(모델 A): 코어 무관 substrate. 휴면/장애물 처리 없음. Floor 컴포넌트가 바닥 자동 등록.
         if (data.IsFloor)

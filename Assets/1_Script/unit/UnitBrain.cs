@@ -179,6 +179,10 @@ public partial class UnitBrain : MonoBehaviour
 
         var combat = GetComponent<CombatHandler>();
         if (combat != null) combat.enabled = false;
+
+        // 팩션 제거 — 시체가 적으로 재탐지·재공격되는 것 방지
+        var faction = GetComponent<Faction>();
+        if (faction != null) Destroy(faction);
     }
 
     public void Draft()

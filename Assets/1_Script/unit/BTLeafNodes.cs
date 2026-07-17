@@ -1,7 +1,15 @@
 using System;
 using UnityEngine;
 
-// ���� üũ
+// BT 타겟 공용 유틸
+public static class BTTargetUtil
+{
+    // 살아있는 공격 대상인지 — 파괴됨/비활성/시체 제외
+    public static bool IsAttackable(GameObject go) =>
+        go != null && go.activeInHierarchy && go.GetComponent<Corpse>() == null;
+}
+
+// 조건 체크
 public class ConditionNode : BTNode
 {
     readonly Func<UnitBlackboard, bool> _condition;
@@ -10,20 +18,21 @@ public class ConditionNode : BTNode
         _condition(bb) ? BTStatus.Success : BTStatus.Failure;
 }
 
-// �� ����
+// 적 감지
 public class DetectNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
     {
-        // �̹� Ÿ�� ������ ����ִ��� Ȯ��
+        // 이미 잡은 타겟이 아직 유효한지 확인
         if (bb.Target != null)
         {
-            if (bb.Target.activeInHierarchy) return BTStatus.Success;
+            if (BTTargetUtil.IsAttackable(bb.Target)) return BTStatus.Success;
             bb.Target = null;
         }
 
-        // �ֺ� Ž��
+        // 주변 탐색
         var myFaction = bb.Self.GetComponent<Faction>();
+        if (myFaction == null) return BTStatus.Failure;
         Collider[] hits = Physics.OverlapSphere(bb.Self.transform.position, bb.DetectRange);
 
         foreach (var hit in hits)
@@ -33,7 +42,7 @@ public class DetectNode : BTNode
             var otherFaction = hit.GetComponent<Faction>();
             if (otherFaction == null) continue;
 
-            if (myFaction.IsHostileTo(otherFaction))
+            if (myFaction.IsHostileTo(otherFaction) && BTTargetUtil.IsAttackable(hit.gameObject))
             {
                 bb.Target = hit.gameObject;
                 return BTStatus.Success;
@@ -45,17 +54,17 @@ public class DetectNode : BTNode
     }
 }
 
-// ���� ���� (���� ���)
+// 소집 상태 (직접 제어)
 public class DraftedNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
     {
-        // �ǰ� �� �ݰ��� ���߿� ���⼭ ó��
+        // 피격 시 반격은 나중에 여기서 처리
         return BTStatus.Running;
     }
 }
 
-// ����
+// 전투
 public class FightNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
@@ -63,8 +72,8 @@ public class FightNode : BTNode
         var combat = bb.Self.GetComponent<CombatHandler>();
         if (combat == null) return BTStatus.Failure;
 
-        // Ÿ�� ���ų� �׾����� ���� ����
-        if (bb.Target == null || !bb.Target.activeInHierarchy)
+        // 타겟이 없거나 죽었으면(시체 포함) 전투 종료
+        if (!BTTargetUtil.IsAttackable(bb.Target))
         {
             bb.Target = null;
             combat.ExitCombat();
@@ -74,7 +83,7 @@ public class FightNode : BTNode
         float dist = Vector3.Distance(bb.Self.transform.position,
                                        bb.Target.transform.position);
 
-        // ���� ���� ���̸� �̵�
+        // 공격 범위 밖이면 이동
         if (dist > bb.AttackRange)
         {
             combat.ExitCombat();
@@ -82,14 +91,14 @@ public class FightNode : BTNode
             return BTStatus.Running;
         }
 
-        // ���� ���� ���̸� ����
+        // 공격 범위 안이면 공격
         bb.Mover.StopMovement();
         combat.EnterCombat();
         return BTStatus.Running;
     }
 }
 
-// �۾�
+// 작업
 public class WorkNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
@@ -366,7 +375,13 @@ public class EatNode : BTNode
                 // 창고 도착 → 음식 꺼내기
                 int picked = _sourceStorage.Inventory.Remove(_food, 1);
                 if (picked <= 0) { Reset(); return BTStatus.Failure; }
-                brain.Inventory.TryAdd(_food, 1);
+                if (brain.Inventory.TryAdd(_food, 1) <= 0)
+                {
+                    // 인벤 만석 — 꺼낸 음식을 창고에 되돌리고 포기 (증발 방지)
+                    _sourceStorage.Inventory.TryAdd(_food, 1);
+                    Reset();
+                    return BTStatus.Failure;
+                }
                 _hasFood = true;
                 bb.Mover.StopMovement();
             }

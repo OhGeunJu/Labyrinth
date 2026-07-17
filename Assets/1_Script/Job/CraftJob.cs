@@ -34,6 +34,7 @@ public class CraftJob : JobBase
     readonly CraftingTable _table;
     readonly RecipeData    _recipe;
     float _craftEndTime;
+    bool  _timerStarted; // 유닛이 작업대에 도착해 실제 제작을 시작했는지
     bool  _consumed;   // 재료 차감됨 + 아직 완성 전 → 취소 시 환불 대상
 
     public override JobCategory Category => _recipe?.Category ?? JobCategory.Crafting;
@@ -67,7 +68,7 @@ public class CraftJob : JobBase
         _consumed = true;
 
         Debug.Log($"[CraftJob] 제작 시작 — {_recipe.RecipeName} ({_recipe.CraftTime}초)");
-        _craftEndTime = Time.time + _recipe.CraftTime;
+        // 타이머는 유닛이 작업대에 도착한 첫 Execute에서 시작 (이동 시간이 제작 시간을 깎지 않게)
     }
 
     protected override void Execute(UnitBrain unit)
@@ -77,6 +78,11 @@ public class CraftJob : JobBase
         // 연료 없으면 대기 (FuelJob이 채워줄 때까지)
         if (!_table.HasFuel) return;
 
+        if (!_timerStarted)
+        {
+            _timerStarted = true;
+            _craftEndTime = Time.time + _recipe.CraftTime;
+        }
         if (Time.time < _craftEndTime) return;
 
         float skill    = unit.Stats.GetCraftSkill(_recipe.RequiredSkillType);

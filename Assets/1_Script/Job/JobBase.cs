@@ -17,7 +17,7 @@ public abstract class JobBase
     public int Priority { get; protected set; } = 0;
     public virtual JobCategory Category => JobCategory.None;
 
-    // ���� ���� ��������������������������������������������������������������������������������
+    // ── 예약 ──────────────────────────────────────────────────────────
     public bool Reserve(UnitBrain unit)
     {
         if (Status != JobStatus.Available) return false;
@@ -32,7 +32,7 @@ public abstract class JobBase
         Status = JobStatus.Available;
     }
 
-    // ���� ���� ��������������������������������������������������������������������������������
+    // ── 진행 ──────────────────────────────────────────────────────────
     public void Start()
     {
         Status = JobStatus.InProgress;
@@ -54,7 +54,7 @@ public abstract class JobBase
 
     public bool IsComplete() => Status == JobStatus.Done;
 
-    // ���� ���� Ŭ�������� ���� ��������������������������������������������������
+    // ── 파생 클래스 구현 ───────────────────────────────────────────────
     protected abstract void Execute(UnitBrain unit);
     protected virtual void OnStart() { }
     protected virtual void OnCancelled() { }
