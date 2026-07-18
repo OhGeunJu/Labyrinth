@@ -307,15 +307,23 @@ public class BuildModeManager : MonoBehaviour
         }
 
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (!Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+        Vector3 point;
+        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+            point = hit.point;
+        // 공허(던전 씬): 콜라이더가 없어도 y=0 평면 교차로 조준 — 바닥을 공허에 깔 수 있어야 함.
+        else if (new Plane(Vector3.up, 0f).Raycast(ray, out float enter) && enter <= 500f)
+            point = ray.GetPoint(enter);
+        else
         {
             if (_previewShown) { gridRenderer.HidePreview(); _previewShown = false; }
             HideGhost();
             return;
         }
 
-        if (_mode == PlacementMode.Grid) UpdateGridPreview(hit.point);
-        else                              UpdateFreePreview(hit.point);
+        // 바닥은 타일 정렬이 필수 — 자유 모드여도 그리드 배치로 강제.
+        bool forceGrid = SelectedBuilding != null && SelectedBuilding.IsFloor;
+        if (_mode == PlacementMode.Grid || forceGrid) UpdateGridPreview(point);
+        else                                          UpdateFreePreview(point);
     }
 
     void UpdateGridPreview(Vector3 worldPoint)
@@ -332,7 +340,10 @@ public class BuildModeManager : MonoBehaviour
         var snapWorld = MapManager.Instance.TileToGround(tile);
         ShowGhost(snapWorld, Quaternion.Euler(0, _gridYaw, 0));
 
-        if (Mouse.current.leftButton.wasPressedThisFrame)
+        // 바닥은 드래그 페인트(좌클릭 유지로 연속 배치) — 이미 깔린 타일은 CanPlaceFloor가 거름.
+        bool paintDrag = SelectedBuilding != null && SelectedBuilding.IsFloor
+                         && Mouse.current.leftButton.isPressed;
+        if (Mouse.current.leftButton.wasPressedThisFrame || paintDrag)
             TryPlaceGrid(tile);
     }
 
@@ -371,6 +382,9 @@ public class BuildModeManager : MonoBehaviour
     {
         var map = MapManager.Instance;
         if (!map.IsInBuildZone(worldPoint)) return false;
+
+        // 던전형 맵: 자유 배치도 바닥 위에만 (그리드와 동일 게이트).
+        if (map.FloorRequired && !map.IsFloored(worldPoint)) return false;
 
         // 모델 A: 코어 union은 건설을 차단하지 않음(union 밖은 BuildingDormancy가 휴면 처리).
 

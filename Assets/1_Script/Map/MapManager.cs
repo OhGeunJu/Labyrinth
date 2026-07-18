@@ -26,6 +26,11 @@ public class MapManager : MonoBehaviour
     [Header("건설")]
     [SerializeField] float buildHeightTolerance = 0.5f;
 
+    [Header("바닥 (던전형 맵)")]
+    [Tooltip("건물을 바닥(floored) 위에만 배치하도록 강제. 공허 던전 씬은 켤 것 — " +
+             "바닥이 하나도 없는 상태에서도 게이트가 걸린다. 꺼도 바닥이 1개 이상 깔리면 자동으로 강제됨.")]
+    [SerializeField] bool requireFloor = false;
+
     [Header("지형 샘플")]
     [Tooltip("지면 높이 레이캐스트 마스크. Terrain이 있으면 불필요. 평면 바닥 씬은 바닥 레이어만 지정. " +
              "Everything/Nothing이면 레이캐스트 생략(평지 y=0 처리) — 건물/유닛 오인 방지.")]
@@ -132,6 +137,8 @@ public class MapManager : MonoBehaviour
     // 코어와 무관한 substrate. Floor 컴포넌트가 자기 footprint를 등록/해제한다.
 
     public bool HasFloorSystem => _floored.Count > 0;
+    // 건물의 "바닥 위에만" 강제 여부: 명시 플래그(공허 씬, 바닥 0장이어도 게이트) 또는 바닥 존재 시 자동.
+    public bool FloorRequired  => requireFloor || _floored.Count > 0;
     public bool IsFloored(Vector2Int tile) => _floored.Contains(tile);
     public bool IsFloored(Vector3 world)   => IsFloored(WorldToTile(world));
 
@@ -208,7 +215,7 @@ public class MapManager : MonoBehaviour
     //  - 바닥 자체를 까는 배치는 이 검사를 우회해야 함(공허에 바닥을 놓는 것) — 후속 floor placeable에서 처리.
     public bool IsBuildable(IEnumerable<Vector2Int> footprint)
     {
-        bool floorRequired = HasFloorSystem;
+        bool floorRequired = FloorRequired;
         foreach (var pos in footprint)
         {
             if (!IsInBuildZone(pos)) return false;              // 최대 경계 클램프

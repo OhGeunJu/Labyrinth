@@ -11,9 +11,12 @@ public class PawnMover : MonoBehaviour
     [Header("Ground")]
     public float gravity = -20f;
     public float groundStickForce = -2f;
+    [Tooltip("이 높이 아래로 떨어지면 마지막 접지 위치로 복귀 (공허 던전 맵 낙하 안전망)")]
+    public float fallRecoveryY = -10f;
 
     CharacterController _cc;
     float _verticalVel;
+    Vector3 _lastGroundedPos;
 
     // 내비게이션: 코스 라우트(L2 장거리) + 유닛 중심 로컬 정밀 경로
     Vector3       _finalGoal;
@@ -50,6 +53,7 @@ public class PawnMover : MonoBehaviour
     {
         _cc = GetComponent<CharacterController>();
         _currentTarget = transform.position;
+        _lastGroundedPos = transform.position;
         _baseMoveSpeed = moveSpeed;
         _replanDriftSqr = replanDistance * replanDistance;
     }
@@ -180,9 +184,25 @@ public class PawnMover : MonoBehaviour
     void Update()
     {
         if (_cc.isGrounded)
+        {
             _verticalVel = groundStickForce;
+            _lastGroundedPos = transform.position;
+        }
         else
+        {
             _verticalVel += gravity * Time.deltaTime;
+
+            // 공허 낙하 안전망: 바닥 밖으로 떨어지면 마지막 접지 위치로 복귀
+            if (transform.position.y < fallRecoveryY)
+            {
+                StopMovement();
+                _verticalVel = 0f;
+                _cc.enabled = false;
+                transform.position = _lastGroundedPos;
+                _cc.enabled = true;
+                return;
+            }
+        }
 
         Vector3 move = new Vector3(0f, _verticalVel, 0f);
 

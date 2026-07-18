@@ -6335,6 +6335,7 @@ MonoBehaviour:
   stopDistance: 0.05
   gravity: -20
   groundStickForce: -2
+  fallRecoveryY: -10
   arriveDistance: 0.5
   coarseReachDistance: 4
   replanDistance: 15
@@ -7482,7 +7483,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &417106433
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7499,6 +7500,7 @@ MonoBehaviour:
   stopDistance: 0.05
   gravity: -20
   groundStickForce: -2
+  fallRecoveryY: -10
   arriveDistance: 0.5
   coarseReachDistance: 4
   replanDistance: 15
@@ -8263,6 +8265,10 @@ PrefabInstance:
     - target: {fileID: 8966668425763606030, guid: 2e57f18687e8b4b47b9e1d4c05355c7f, type: 3}
       propertyPath: m_Layer
       value: 7
+      objectReference: {fileID: 0}
+    - target: {fileID: 8966668425763606030, guid: 2e57f18687e8b4b47b9e1d4c05355c7f, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -16617,6 +16623,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -17910,6 +17920,7 @@ MonoBehaviour:
   stopDistance: 0.05
   gravity: -20
   groundStickForce: -2
+  fallRecoveryY: -10
   arriveDistance: 0.5
   coarseReachDistance: 4
   replanDistance: 15
@@ -19970,6 +19981,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -21689,6 +21704,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -21753,6 +21772,10 @@ PrefabInstance:
     - target: {fileID: 919132149155446097, guid: 840c56c7f56bb83449ffa5ecc10ec543, type: 3}
       propertyPath: m_Name
       value: character (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 840c56c7f56bb83449ffa5ecc10ec543, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5465940246521907071, guid: 840c56c7f56bb83449ffa5ecc10ec543, type: 3}
       propertyPath: m_LocalPosition.x
@@ -22473,7 +22496,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2531543384354079731, guid: d38a895011c83d140aefac9aefe10400, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2531543384354079733, guid: d38a895011c83d140aefac9aefe10400, type: 3}
       propertyPath: m_Layer
@@ -22643,6 +22666,7 @@ MonoBehaviour:
   stopDistance: 0.05
   gravity: -20
   groundStickForce: -2
+  fallRecoveryY: -10
   arriveDistance: 0.5
   coarseReachDistance: 4
   replanDistance: 15
@@ -25514,6 +25538,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -27312,6 +27340,10 @@ PrefabInstance:
     - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
       propertyPath: m_Layer
       value: 7
+      objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -31510,6 +31542,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -31966,7 +32002,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1738647517
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -32318,7 +32354,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1755570603
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -32761,6 +32797,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MapManager
   buildZoneSize: 200
   buildHeightTolerance: 0.5
+  requireFloor: 1
   groundMask:
     serializedVersion: 2
     m_Bits: 512
@@ -33277,7 +33314,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1838445546
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -35983,7 +36020,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1931487882
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -38327,6 +38364,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -38383,6 +38424,10 @@ PrefabInstance:
     - target: {fileID: 2276845459903854475, guid: 89bfac101e6d49e44a388b4c30b8f475, type: 3}
       propertyPath: m_Name
       value: FarmPlot
+      objectReference: {fileID: 0}
+    - target: {fileID: 2276845459903854475, guid: 89bfac101e6d49e44a388b4c30b8f475, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4703291955402698081, guid: 89bfac101e6d49e44a388b4c30b8f475, type: 3}
       propertyPath: availableSeeds.Array.size
@@ -39115,6 +39160,7 @@ MonoBehaviour:
   stopDistance: 0.05
   gravity: -20
   groundStickForce: -2
+  fallRecoveryY: -10
   arriveDistance: 0.5
   coarseReachDistance: 4
   replanDistance: 15
@@ -39158,6 +39204,10 @@ PrefabInstance:
     - target: {fileID: 4185958040884079187, guid: 596c6a2609d89c94bbefebb73577d31b, type: 3}
       propertyPath: m_Layer
       value: 7
+      objectReference: {fileID: 0}
+    - target: {fileID: 4185958040884079187, guid: 596c6a2609d89c94bbefebb73577d31b, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5719900086889454791, guid: 596c6a2609d89c94bbefebb73577d31b, type: 3}
       propertyPath: m_Layer
@@ -39395,6 +39445,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -39547,6 +39601,10 @@ PrefabInstance:
     - target: {fileID: 4652254238737930578, guid: 30e1d3ccc8daad74c99fbbdc0d081d47, type: 3}
       propertyPath: m_Name
       value: WaterSource
+      objectReference: {fileID: 0}
+    - target: {fileID: 4652254238737930578, guid: 30e1d3ccc8daad74c99fbbdc0d081d47, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
