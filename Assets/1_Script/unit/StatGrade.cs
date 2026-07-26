@@ -35,7 +35,9 @@ public static class StatGradeExt
     public const float MaxStatValue = 130f;
     public const float StepValue = 5f;
 
-    public static float ToValue(this StatGrade g) => (int)g * StepValue;
+    // 최솟값 1 — F-(인덱스 0)도 값 0이 아닌 1에서 시작. 값 0은 방어/회피 대립 굴림에서
+    // 무방비(0/0 → 가드로 0%)가 되므로, 등급 스케일 차원에서 바닥을 깐다. FromValue(1)==F- 유지.
+    public static float ToValue(this StatGrade g) => Mathf.Max(1f, (int)g * StepValue);
 
     public static string ToDisplay(this StatGrade g)
     {

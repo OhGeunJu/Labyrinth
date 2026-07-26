@@ -19,8 +19,6 @@ public class UnitBlackboard
     public bool IsDrafted;
     public bool IsUnarmed  = true;
     public bool IsKnockedOut;
-    public bool IsStaggered;
-    public float StaggerTimer;
 
     // 순찰
     public PatrolZone AssignedPatrolZone;

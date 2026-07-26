@@ -19,6 +19,9 @@ public partial class UnitBrain : MonoBehaviour
     float _tickTimer;
     bool _isDead;
 
+    // 신체 부위 시스템(있으면 혈액/부위가 진짜 체력). 없는 유닛은 아래 폴백 HP 사용.
+    BodyPartSystem _body;
+
     // BodyPartSystem 없는 유닛을 위한 폴백 HP
     float _hp;
     float _maxHp;
@@ -48,6 +51,7 @@ public partial class UnitBrain : MonoBehaviour
     void Awake()
     {
         _mover    = GetComponent<PawnMover>();
+        _body     = GetComponent<BodyPartSystem>();
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
         Equipment = GetComponent<Equipment>() ?? gameObject.AddComponent<Equipment>();
         gameObject.AddComponent<StatusEffectSystem>();
@@ -103,10 +107,10 @@ public partial class UnitBrain : MonoBehaviour
 
     void Update()
     {
-        if (_bb.IsKnockedOut) return;
-        if (_bb.IsStaggered)  return;
-
+        // 허기는 기절 중에도 진행 — 쓰러진 채 굶으면 혈액이 계속 빠져 결국 아사(BT 정지와 무관).
         UpdateHunger();
+
+        if (_bb.IsKnockedOut) return;
 
         _tickTimer += Time.deltaTime;
         if (_tickTimer < tickInterval) return;
@@ -115,6 +119,7 @@ public partial class UnitBrain : MonoBehaviour
     }
 
     const float BaseHungerDecayRate = 0.5f; // 초당 감소량 (100 기준 약 3.3분에 고갈)
+    const float StarveBloodPerSec   = 2f;   // 허기 0 시 초당 혈액 손실 (아사)
 
     void UpdateHunger()
     {
@@ -132,7 +137,12 @@ public partial class UnitBrain : MonoBehaviour
         _bb.Hunger = Mathf.Max(0f, _bb.Hunger - rate * Time.deltaTime);
 
         if (_bb.Hunger <= 0f)
-            TakeDamage(2f * Time.deltaTime);
+        {
+            // 신체 부위 시스템이 있으면 혈액을 깎아(전신 쇠약) UI에 보이는 혈액 파이프라인으로
+            // 기절→사망시킨다. 없는 유닛만 숨은 폴백 HP를 깎는다.
+            if (_body != null) _body.Starve(StarveBloodPerSec * Time.deltaTime);
+            else               TakeDamage(StarveBloodPerSec * Time.deltaTime);
+        }
     }
 
     // BodyPartSystem 없는 유닛용 폴백

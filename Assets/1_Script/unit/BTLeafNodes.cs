@@ -4,9 +4,11 @@ using UnityEngine;
 // BT 타겟 공용 유틸
 public static class BTTargetUtil
 {
-    // 살아있는 공격 대상인지 — 파괴됨/비활성/시체 제외
+    // 살아있는 공격 대상인지 — 파괴됨/비활성/시체/기절 제외.
+    // 기절 유닛을 제외해야 KO가 사형선고가 아니라 회복 가능한 상태가 된다 (켄시식).
     public static bool IsAttackable(GameObject go) =>
-        go != null && go.activeInHierarchy && go.GetComponent<Corpse>() == null;
+        go != null && go.activeInHierarchy && go.GetComponent<Corpse>() == null
+        && !(go.GetComponent<UnitBrain>()?.Blackboard?.IsKnockedOut ?? false);
 }
 
 // 조건 체크
@@ -119,6 +121,13 @@ public class WorkNode : BTNode
             if (job == null) return BTStatus.Failure;
             bb.CurrentJob = job;
             job.Start();
+            // OnStart이 즉시 종료(예: 재료 부족으로 주문 재큐)한 경우 헛걸음 방지 — 바로 놓는다.
+            if (job.IsComplete())
+            {
+                JobManager.Instance.CompleteJob(job);
+                bb.CurrentJob = null;
+                return BTStatus.Failure;
+            }
             bb.Mover.SetMoveTarget(TileToWorld(job.TileCoord, bb));
         }
 
@@ -203,7 +212,8 @@ public class WorkNode : BTNode
         foreach (var dir in dirs)
         {
             var neighbor = tile + dir;
-            if (MapManager.Instance.GetTile(neighbor.x, neighbor.y).IsPassable)
+            if (MapManager.Instance.GetTile(neighbor.x, neighbor.y).IsPassable
+                && MapManager.Instance.IsStandable(neighbor))   // 공허 게이트: 바닥 밖 접근 타일 제외
                 return neighbor;
         }
         return tile;
@@ -272,13 +282,14 @@ public class PatrolNode : BTNode
     }
 }
 
-// 침대 휴식: 혈액 < 60% 이거나 BloodCap이 덜 회복됐으면 가장 가까운 빈 침대로
+// 침대 휴식: 혈액 < 60% / BloodCap 미회복 / 기능 상실 부위(회복 가능)가 있으면 가장 가까운 빈 침대로
 public class RestNode : BTNode
 {
     const float RestThreshold  = 0.6f;  // 혈액 60% 이하 시 휴식 필요
     const float CapThreshold   = 0.95f; // 캡 95% 이상이면 충분히 회복됨
     const float BloodHealRate  = 2f;    // 초당 혈액 회복
     const float CapRestoreRate = 1f;    // 초당 캡 회복
+    const float PartHealRate   = 1f;    // 초당 부위 HP 회복 (자연 회복에 추가로 얹힘)
     const float ArrivalDist    = 1.5f;
 
     Bed _bed;
@@ -289,7 +300,8 @@ public class RestNode : BTNode
         if (body == null) return BTStatus.Failure;
 
         bool needsRest = body.Blood    < body.MaxBlood * RestThreshold
-                      || body.BloodCap < body.MaxBlood * CapThreshold;
+                      || body.BloodCap < body.MaxBlood * CapThreshold
+                      || body.HasRecoverableDisabledPart;
 
         if (!needsRest) { LeaveBed(bb); return BTStatus.Failure; }
 
@@ -309,12 +321,14 @@ public class RestNode : BTNode
         float dist = Vector3.Distance(bb.Self.transform.position, _bed.transform.position);
         if (dist > ArrivalDist) return BTStatus.Running;
 
-        // 침대에서 회복 (캡 감소 없이)
+        // 침대에서 회복 (캡 감소 없이, 부위 HP 포함)
         bb.Mover.StopMovement();
         body.HealBlood(BloodHealRate * Time.deltaTime, degradeCap: false);
         body.RestoreBloodCap(CapRestoreRate * Time.deltaTime);
+        body.HealBodyParts(PartHealRate * Time.deltaTime);
 
-        if (body.Blood >= body.BloodCap && body.BloodCap >= body.MaxBlood * CapThreshold)
+        if (body.Blood >= body.BloodCap && body.BloodCap >= body.MaxBlood * CapThreshold
+            && !body.HasRecoverableDisabledPart)
         {
             LeaveBed(bb);
             return BTStatus.Success;

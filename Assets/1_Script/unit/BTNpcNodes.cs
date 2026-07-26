@@ -57,6 +57,7 @@ public class NpcWanderNode : BTNode
         {
             Vector2 rnd = Random.insideUnitCircle * _radius;
             Vector3 dest = bb.HomePosition + new Vector3(rnd.x, 0f, rnd.y);
+            if (!MapManager.Instance.IsStandable(dest)) return BTStatus.Running; // 공허 목적지 — 다음 틱 재추첨
             bb.Mover.SetDestination(dest);
 
             _waitTimer    = 0f;

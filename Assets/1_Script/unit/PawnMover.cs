@@ -34,7 +34,12 @@ public class PawnMover : MonoBehaviour
     UnitStats _stats;
     Inventory _inventory;
     StatusEffectSystem _sfx;
+    UnitBrain _brain;
     bool _isMinion;
+
+    // 기절 중이면 BT가 정지해 이동 명령을 안 내리지만, MoveController 우클릭 등
+    // BT 밖 경로가 SetMoveTarget을 호출할 수 있어 이동 차단이 필요하다.
+    bool IsKnockedOut => _brain != null && _brain.Blackboard != null && _brain.Blackboard.IsKnockedOut;
 
     [Header("내비게이션")]
     [Tooltip("최종 목적지 도착 판정 거리")]
@@ -45,6 +50,8 @@ public class PawnMover : MonoBehaviour
     public float replanDistance = 15f;
     [Tooltip("새 목표가 기존 목표와 이 거리 안이면 재계획 생략 (매 틱 같은 목표 재지정 시 재베이크 방지)")]
     public float goalEpsilon = 1.5f;
+    [Tooltip("공허 낭떠러지 가드 전방 확인 거리(m). 던전형 맵에서 이만큼 앞이 바닥 밖이면 정지")]
+    public float ledgeLookahead = 0.6f;
 
     [Header("Athletics 성장")]
     [SerializeField] float athleticsGrowthRate = 0.005f;
@@ -69,11 +76,15 @@ public class PawnMover : MonoBehaviour
         _stats     = stats;
         _inventory = inventory;
         _sfx       = GetComponent<StatusEffectSystem>();
-        _isMinion  = GetComponent<UnitBrain>()?.Data is MinionData;
+        _brain     = GetComponent<UnitBrain>();
+        _isMinion  = _brain?.Data is MinionData;
     }
 
     public void SetMoveTarget(Vector3 worldPoint)
     {
+        // 기절 중엔 이동 명령 무시 (기상하면 IsKnockedOut이 풀려 복귀 이동은 정상 동작)
+        if (IsKnockedOut) return;
+
         worldPoint.y = transform.position.y;
 
         // 목표가 거의 동일하고 이미 이동 중이면 재계획 생략 (재베이크 방지).
@@ -169,6 +180,15 @@ public class PawnMover : MonoBehaviour
         if (IsStuck(pos)) StopMovement();
     }
 
+    // 던전형 맵(FloorRequired)에서 다음 스텝이 바닥 밖이면 true.
+    // 현재 타일이 바닥일 때만 발동 — 어쩌다 바닥 밖에 놓인 유닛의 복귀 이동은 막지 않는다.
+    bool IsVoidAhead(Vector3 pos, Vector3 dir)
+    {
+        var map = MapManager.Instance;
+        if (map == null || !map.FloorRequired) return false;
+        return map.IsFloored(pos) && !map.IsFloored(pos + dir * ledgeLookahead);
+    }
+
     bool IsStuck(Vector3 pos)
     {
         Vector3 t = _currentTarget; t.y = pos.y;
@@ -206,7 +226,13 @@ public class PawnMover : MonoBehaviour
 
         Vector3 move = new Vector3(0f, _verticalVel, 0f);
 
-        if (_hasTarget)
+        // 기절 상태에서 목표가 남아 있으면 (KO 직전 타이밍 등) 정지시켜 조향을 막는다.
+        // 중력/낙하 안전망은 위에서 이미 처리됐으므로 아래 조향만 건너뛴다.
+        if (IsKnockedOut)
+        {
+            if (_hasTarget) StopMovement();
+        }
+        else if (_hasTarget)
         {
             Vector3 pos = transform.position;
 
@@ -221,6 +247,13 @@ public class PawnMover : MonoBehaviour
             if (dist <= stopDistance)
             {
                 AdvanceWaypoint();
+            }
+            else if (_localPath == null && IsVoidAhead(pos, to / dist))
+            {
+                // 공허 낭떠러지 가드: 경로 실패 직선 폴백이 공허를 향할 때만 발동.
+                // 유효한 로컬 경로는 이미 바닥 게이트를 통과했으므로 검사하지 않는다
+                // (좁은 다리에서 전방 샘플이 대각 공허 타일을 찍는 오발 방지).
+                StopMovement();
             }
             else
             {

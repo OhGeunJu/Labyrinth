@@ -9,6 +9,12 @@ public class CombatHandler : MonoBehaviour
     [SerializeField] float baseAttackInterval = 2f;  // 무기 미장착 시 폴백
     [SerializeField] float growthRate = 0.1f;
 
+    [Header("방어/회피 밸런스")]
+    [Tooltip("대립 굴림 지수 k — 클수록 공격/방어 스킬 격차가 확률에 급격히 반영 (1이면 선형)")]
+    [SerializeField] float defenseExponent = 1.5f;
+    [Tooltip("공격자 우위 계수 — 클수록 파리티(공격=방어) 기본 방어/회피율이 낮아짐 (1이면 50%)")]
+    [SerializeField] float attackerBias = 4f;
+
     float _attackTimer;
     UnitStats _stats;
     UnitBrain _brain;
@@ -164,13 +170,24 @@ public class CombatHandler : MonoBehaviour
     }
 
     // ── 방어/회피 ────────────────────────────────────────────────────
+    // 대립 굴림: def^k / (atk^k × bias + def^k)
+    //  · k(지수)   — 스킬 격차를 확률에 얼마나 급격히 반영할지
+    //  · bias(우위) — 공격자 쪽 가중. 파리티에서 기본 확률 = 1 / (1 + bias)
+    static float OpposedChance(float defense, float attack, float exponent, float bias)
+    {
+        if (defense <= 0f) return 0f;
+        float d = Mathf.Pow(defense, exponent);
+        float a = Mathf.Pow(Mathf.Max(0f, attack), exponent) * bias;
+        return d / (a + d);
+    }
+
     bool TryBlock(CombatHandler defender, float attackerAttackSkill)
     {
         bool defUnarmed    = defender.GetWeaponType() == WeaponType.Unarmed;
         float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
         float shieldBonus  = defender._equipment?.OffHand?.BlockBonus ?? 0f;
         float effective    = defenseSkill + shieldBonus;
-        float blockChance  = effective / (attackerAttackSkill + effective);
+        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
         if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
         return UnityEngine.Random.value < blockChance;
     }
@@ -180,7 +197,7 @@ public class CombatHandler : MonoBehaviour
         float defenseSkill = defender._stats.RangedDefense;
         float shieldBonus  = defender._equipment?.OffHand?.RangedBlockBonus ?? 0f;
         float effective    = defenseSkill + shieldBonus;
-        float blockChance  = effective / (attackerAttackSkill + effective);
+        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
         if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
         return UnityEngine.Random.value < blockChance;
     }
@@ -188,7 +205,7 @@ public class CombatHandler : MonoBehaviour
     bool TryDodge(CombatHandler defender, float attackerAttackSkill)
     {
         float evasion     = defender._stats.Evasion;
-        float dodgeChance = evasion / (attackerAttackSkill + evasion);
+        float dodgeChance = OpposedChance(evasion, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
         if (defender._sfx != null) dodgeChance *= defender._sfx.DefenseChanceMod;
         return UnityEngine.Random.value < dodgeChance;
     }

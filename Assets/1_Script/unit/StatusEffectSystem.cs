@@ -144,7 +144,8 @@ public class StatusEffectSystem : MonoBehaviour
                 Amount       = e.Strength * Time.deltaTime,
                 Category     = DamageCategory.Elemental,
                 Element      = DamageElement.Fire,
-                EffectChance = 0f,  // DoT는 상태이상 연쇄 없음
+                EffectChance = 0f,   // DoT는 상태이상 연쇄 없음
+                IgnoreArmor  = true, // 매 틱 미세 피해가 방어구 고정 감소로 0이 되던 것 방지 (화상이 방어구로 무효화되던 버그)
             });
         }
     }
