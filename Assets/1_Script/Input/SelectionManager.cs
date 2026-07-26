@@ -116,6 +116,18 @@ public class SelectionManager : MonoBehaviour
                 AddToSelection(pawn);
                 return;
             }
+
+            // 클릭 가능한 건물(창고/침대/농지/상인/작업대/연구대/순찰구역) — 단일 레이캐스트로 라우팅.
+            // 유닛/노드/코어 선택은 해제하고 건물 자신의 선택 이벤트를 발동한다(기존 개별 레이캐스트 동작 대체).
+            var clickable = hit.collider.GetComponent<IWorldClickable>();
+            if (clickable != null)
+            {
+                ClearSelection();
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(null);
+                clickable.OnWorldClick();
+                return;
+            }
         }
 
         ClearSelection();

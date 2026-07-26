@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class ResearchTable : MonoBehaviour
+public class ResearchTable : MonoBehaviour, IWorldClickable
 {
     [SerializeField] List<ResearchData> availableResearch = new();
 
@@ -11,17 +11,8 @@ public class ResearchTable : MonoBehaviour
 
     public static event Action<ResearchTable> OnSelected;
 
-    Camera _cam;
-
-    void Awake() => _cam = Camera.main;
-
-    void Update()
-    {
-        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
-            OnSelected?.Invoke(this);
-    }
+    // SelectionManager의 단일 레이캐스트가 이 연구대를 클릭 판정 시 호출.
+    public void OnWorldClick() => OnSelected?.Invoke(this);
 
     public void QueueResearch(ResearchData data)
     {

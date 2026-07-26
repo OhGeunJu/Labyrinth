@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 
 public enum FarmState { Empty, Planted, ReadyToHarvest }
 
-public class FarmPlot : MonoBehaviour
+public class FarmPlot : MonoBehaviour, IWorldClickable
 {
     public static readonly List<FarmPlot> All = new();
     public static event Action<FarmPlot> OnSelected;
@@ -26,18 +26,15 @@ public class FarmPlot : MonoBehaviour
     bool  _harvestJobPending;
     float _jobCheckTimer;
 
-    Camera _cam;
-
     public Vector2Int TileCoord => MapManager.Instance != null
         ? MapManager.Instance.WorldToTile(transform.position)
         : Vector2Int.zero;
 
-    void OnEnable()  { All.Add(this); _cam = Camera.main; }
+    void OnEnable()  => All.Add(this);
     void OnDisable() => All.Remove(this);
 
     void Update()
     {
-        HandleClick();
         UpdateGrowth();
 
         _jobCheckTimer -= Time.deltaTime;
@@ -48,13 +45,8 @@ public class FarmPlot : MonoBehaviour
         }
     }
 
-    void HandleClick()
-    {
-        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
-            OnSelected?.Invoke(this);
-    }
+    // SelectionManager의 단일 레이캐스트가 이 농지를 클릭 판정 시 호출.
+    public void OnWorldClick() => OnSelected?.Invoke(this);
 
     void UpdateGrowth()
     {

@@ -14,6 +14,9 @@ public class PlacedBuilding : MonoBehaviour
 
     public BuildingData Data => data;
 
+    // 이 건물이 점유(통행 불가) 등록한 타일들. 철거 시 정확히 이것만 해제 → 노드 등 타 점유를 건드리지 않음.
+    readonly List<Vector2Int> _occupiedTiles = new();
+
     // 철거 예정 빨간 틴트용
     static readonly int BaseColorId = Shader.PropertyToID("_BaseColor"); // URP
     static readonly int ColorId     = Shader.PropertyToID("_Color");     // Built-in
@@ -34,6 +37,17 @@ public class PlacedBuilding : MonoBehaviour
         return pb;
     }
 
+    // footprint 타일들을 통행 불가로 등록하고 소유 목록에 보관 (BuildingData.OccupiesTile일 때만 호출).
+    public void OccupyTiles(IEnumerable<Vector2Int> tiles)
+    {
+        if (MapManager.Instance == null) return;
+        foreach (var t in tiles)
+        {
+            MapManager.Instance.SetTile(t, TileData.MakeImpassable());
+            _occupiedTiles.Add(t);
+        }
+    }
+
     // 마우스 위치의 건물 PlacedBuilding 반환 (없으면 null).
     public static PlacedBuilding PickUnderCursor(Camera cam, Vector2 screenPos)
     {
@@ -51,9 +65,10 @@ public class PlacedBuilding : MonoBehaviour
 
         Refund();
 
-        // 점유 타일 해제 (자원노드 등이 막아둔 게 아닌 한 건물 자기 타일)
+        // 자기가 등록한 점유 타일만 해제 → 같은 타일을 막고 있는 자원노드 등 타 점유는 건드리지 않음.
         if (MapManager.Instance != null)
-            MapManager.Instance.SetTile(MapManager.Instance.WorldToTile(pos), TileData.MakePassable());
+            foreach (var t in _occupiedTiles)
+                MapManager.Instance.SetTile(t, TileData.MakePassable());
 
         Destroy(gameObject);
 

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class Storage : MonoBehaviour
+public class Storage : MonoBehaviour, IWorldClickable
 {
     public static readonly List<Storage> All = new();
     public static event Action OnChanged;
@@ -18,7 +18,6 @@ public class Storage : MonoBehaviour
     public Inventory Inventory { get; private set; }
     public IReadOnlyList<ResourceType> AllowedTypes => allowedTypes;
 
-    Camera _cam;
     BuildingDormancy _dormancy;
 
     // 핵 영역 밖(휴면) 창고는 집계/탐색에서 제외 → "작동 정지". 영역 복구 시 자동 재참여.
@@ -28,7 +27,6 @@ public class Storage : MonoBehaviour
     {
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
         Inventory.OnChanged += () => OnChanged?.Invoke();
-        _cam = Camera.main;
     }
 
     // 레지스트리는 OnEnable/OnDisable 기준 — 비활성 정착지(루트 SetActive(false))의 창고는
@@ -39,13 +37,8 @@ public class Storage : MonoBehaviour
     // BuildingDormancy는 배치 시 AddComponent될 수 있어 Awake 이후에 붙음 → Start에서 해석.
     void Start() => _dormancy = GetComponent<BuildingDormancy>();
 
-    void Update()
-    {
-        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
-            OnSelected?.Invoke(this);
-    }
+    // SelectionManager의 단일 레이캐스트가 이 건물을 클릭 판정 시 호출.
+    public void OnWorldClick() => OnSelected?.Invoke(this);
 
     public void Init(BuildingData data)
     {
@@ -66,11 +59,16 @@ public class Storage : MonoBehaviour
         return item is ResourceItemData r && allowedTypes.Contains(r.ResourceType);
     }
 
-    // 필터 통과 시에만 입고. 성공 여부 반환.
-    public bool TryAdd(ItemData item, int amount)
+    // 필터 통과 시에만 입고. 실제 입고된 수량 반환 (0=거부/만적, amount 미만=부분 입고).
+    // 부분 입고 시 호출자가 남은 양을 폴백 라우팅해야 증발하지 않는다.
+    public int TryAdd(ItemData item, int amount)
+        => TryAdd(item, amount, ItemQuality.Common);
+
+    // 등급 보존 입고 (땅 아이템 운반 등 장비 등급 유지용).
+    public int TryAdd(ItemData item, int amount, ItemQuality quality)
     {
-        if (!CanAccept(item)) return false;
-        return Inventory.TryAdd(item, amount) > 0;
+        if (!CanAccept(item)) return 0;
+        return Inventory.TryAdd(item, amount, quality);
     }
 
     // ── 정적 집계 (ResourceType 기반) ────────────────────────────────

@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 using Random = UnityEngine.Random;
 
 // 마을 상주 상인 NPC에 부착. 매일 자정에 재고 갱신.
-public class Merchant : MonoBehaviour
+public class Merchant : MonoBehaviour, IWorldClickable
 {
     public static event Action<Merchant> OnSelected;
 
@@ -18,11 +18,8 @@ public class Merchant : MonoBehaviour
 
     public List<MerchantStockEntry> CurrentStock { get; private set; } = new();
 
-    Camera _cam;
-
     void Awake()
     {
-        _cam = Camera.main;
         GameTimeManager.OnDayChanged += RefreshStock;
         // 인스펙터에서 직접 Data가 지정된 경우 초기 재고 생성
         if (_data != null) RefreshStock();
@@ -30,13 +27,8 @@ public class Merchant : MonoBehaviour
 
     void OnDestroy() => GameTimeManager.OnDayChanged -= RefreshStock;
 
-    void Update()
-    {
-        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
-            OnSelected?.Invoke(this);
-    }
+    // SelectionManager의 단일 레이캐스트가 이 상인을 클릭 판정 시 호출.
+    public void OnWorldClick() => OnSelected?.Invoke(this);
 
     public void RefreshStock()
     {

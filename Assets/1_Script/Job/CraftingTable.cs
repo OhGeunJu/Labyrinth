@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class CraftingTable : MonoBehaviour
+public class CraftingTable : MonoBehaviour, IWorldClickable
 {
     [Serializable]
     public struct FuelEntry
@@ -50,23 +50,13 @@ public class CraftingTable : MonoBehaviour
 
     public static event Action<CraftingTable> OnSelected;
 
-    Camera _cam;
-
-    void Awake() => _cam = Camera.main;
-
     void Update()
     {
-        HandleClick();
         UpdateFuel();
     }
 
-    void HandleClick()
-    {
-        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
-            OnSelected?.Invoke(this);
-    }
+    // SelectionManager의 단일 레이캐스트가 이 작업대를 클릭 판정 시 호출.
+    public void OnWorldClick() => OnSelected?.Invoke(this);
 
     void UpdateFuel()
     {

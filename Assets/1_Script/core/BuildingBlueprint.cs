@@ -123,7 +123,10 @@ public class BuildingBlueprint : MonoBehaviour
             // 핵 영역 이탈 시 휴면/재가동 (설계: design_core_creep.md step 3)
             BuildingDormancy.Ensure(go);
             // 철거/환불용 메타 보관
-            PlacedBuilding.Attach(go, _data);
+            var placed = PlacedBuilding.Attach(go, _data);
+            // 타일 점유(통행 차단) 건물이면 footprint를 통행 불가로 등록 (철거 시 대칭 해제)
+            if (_data.OccupiesTile && MapManager.Instance != null)
+                placed.OccupyTiles(new[] { MapManager.Instance.WorldToTile(transform.position) });
         }
 
         // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)

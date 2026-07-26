@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 
 public enum PatrolMode { Waypoint, Area, Idle }
 
-public class PatrolZone : MonoBehaviour
+public class PatrolZone : MonoBehaviour, IWorldClickable
 {
     public static event Action<PatrolZone> OnSelected;
 
@@ -19,19 +19,11 @@ public class PatrolZone : MonoBehaviour
     public float Radius = 10f;
 
     readonly List<UnitBrain> _assigned = new();
-    Camera _cam;
 
     public IReadOnlyList<UnitBrain> Assigned => _assigned;
 
-    void OnEnable()  => _cam = Camera.main;
-
-    void Update()
-    {
-        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
-            OnSelected?.Invoke(this);
-    }
+    // SelectionManager의 단일 레이캐스트가 이 순찰구역을 클릭 판정 시 호출.
+    public void OnWorldClick() => OnSelected?.Invoke(this);
 
     public void Assign(UnitBrain unit)
     {

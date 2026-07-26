@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class Bed : MonoBehaviour
+public class Bed : MonoBehaviour, IWorldClickable
 {
     public static event Action<Bed> OnSelected;
     static readonly List<Bed> _all = new();
@@ -14,19 +14,13 @@ public class Bed : MonoBehaviour
     public UnitBrain  AssignedUnit { get; private set; }
 
     UnitBrain _occupant;
-    Camera    _cam;
     public bool IsOccupied => _occupant != null;
 
-    void OnEnable()  { _all.Add(this);    _cam = Camera.main; }
+    void OnEnable()  => _all.Add(this);
     void OnDisable() => _all.Remove(this);
 
-    void Update()
-    {
-        if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-        var ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        if (Physics.Raycast(ray, out var hit) && hit.collider.gameObject == gameObject)
-            OnSelected?.Invoke(this);
-    }
+    // SelectionManager의 단일 레이캐스트가 이 건물을 클릭 판정 시 호출.
+    public void OnWorldClick() => OnSelected?.Invoke(this);
 
     public void Assign(UnitBrain unit)
     {

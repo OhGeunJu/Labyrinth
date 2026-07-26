@@ -276,12 +276,25 @@ public class BuildModeManager : MonoBehaviour
         if (_ghost != null && _ghostSourcePrefab == prefab) return;
 
         if (_ghost != null) Destroy(_ghost);
-        _ghost = Instantiate(prefab);
-        _ghostSourcePrefab = prefab;
-        _ghost.name = "[BuildGhost]";
 
-        foreach (var c in _ghost.GetComponentsInChildren<Collider>())     c.enabled = false;
-        foreach (var b in _ghost.GetComponentsInChildren<MonoBehaviour>()) b.enabled = false;
+        // 비활성 컨테이너 아래에서 인스턴스화 → 자식의 Awake/OnEnable이 유예된다(Unity는 비활성
+        // 계층의 스크립트를 깨우지 않음). 이 상태에서 스크립트를 제거하면, 이후 ShowGhost가
+        // 활성화해도 창고 등록·이벤트 구독 등 부수효과가 전혀 실행되지 않는 '순수 시각용' 고스트가 된다.
+        // (기존엔 활성 프리팹을 Instantiate → Awake/OnEnable이 한 프레임 실행된 뒤에야 비활성화.)
+        _ghost = new GameObject("[BuildGhost]");
+        _ghost.SetActive(false);
+
+        var model = Instantiate(prefab, _ghost.transform);
+        model.transform.localPosition = Vector3.zero;
+        model.transform.localRotation = Quaternion.identity;
+        _ghostSourcePrefab = prefab;
+
+        // 비활성이라 아직 Awake 전 — 지금 제거하면 활성화돼도 영영 실행되지 않는다(렌더러/메시는 남음).
+        // 배치 대상 건물 컴포넌트는 상호 RequireComponent가 없어 제거 순서 무관.
+        foreach (var b in model.GetComponentsInChildren<MonoBehaviour>(true))
+            if (b != null) DestroyImmediate(b);
+        foreach (var c in model.GetComponentsInChildren<Collider>(true))
+            c.enabled = false;
     }
 
     void HideGhost()
@@ -375,6 +388,12 @@ public class BuildModeManager : MonoBehaviour
         foreach (var bp in BuildingBlueprint.All)
             if (footprint.Contains(map.WorldToTile(bp.transform.position)))
                 return false;
+        // 완성된 건물과도 중복 금지 (점유 플래그 무관 — 창고/침대라도 겹쳐 쌓지 못하게). 바닥은 밑에 깔리므로 제외.
+        if (sel == null || !sel.IsFloor)
+            foreach (var pb in PlacedBuilding.All)
+                if (pb.Data != null && !pb.Data.IsFloor
+                    && footprint.Contains(map.WorldToTile(pb.transform.position)))
+                    return false;
         return true;
     }
 
@@ -398,6 +417,10 @@ public class BuildModeManager : MonoBehaviour
         }
         foreach (var bp in BuildingBlueprint.All)
             if (Vector3.Distance(worldPoint, bp.transform.position) < 1f) return false;
+        // 완성된 건물과도 중복 금지 (바닥 제외 — 건물은 바닥 위에 배치).
+        foreach (var pb in PlacedBuilding.All)
+            if (pb.Data != null && !pb.Data.IsFloor
+                && Vector3.Distance(worldPoint, pb.transform.position) < 1f) return false;
         return true;
     }
 
@@ -458,7 +481,10 @@ public class BuildModeManager : MonoBehaviour
         // 핵 영역 이탈 시 휴면/재가동 (설계: design_core_creep.md step 3)
         BuildingDormancy.Ensure(instance);
         // 철거/환불용 메타 보관
-        PlacedBuilding.Attach(instance, data);
+        var placed = PlacedBuilding.Attach(instance, data);
+        // 타일 점유(통행 차단) 건물이면 footprint를 통행 불가로 등록 (철거 시 대칭 해제)
+        if (data.OccupiesTile && MapManager.Instance != null)
+            placed.OccupyTiles(new[] { MapManager.Instance.WorldToTile(pos) });
         // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
         Debug.Log($"[Build] 배치 완료 — {data.BuildingName}");
