@@ -4,6 +4,286 @@
 
 ---
 
+## 2026-07-26 (5) — 화상 DoT 방어구 무효화 임시 수정: 방어구 우회 플래그 (버그 백로그 처리)
+
+버그 백로그 "화상 DoT 무효화" 처리. `ApplyBurningDoT`가 매 프레임 `strength × deltaTime`(≈0.08) 미세 피해를 `BodyPartSystem.TakeDamage` 정식 파이프라인에 보내는데, 방어구 **고정 감소**(`armor.DamageReduction`)가 매 틱 그보다 큰 값을 빼 → 방어구 1개만 있어도 화상 피해 상시 0.
+
+### 수정 (임시 — 화상/마법 전면 개편 전까지)
+- **`DamageInfo.IgnoreArmor` 플래그** 추가. true면 `BodyPartSystem.TakeDamage`의 방어구 고정 감소 블록을 건너뜀(강인함 저항·혈액 손실·부위 피해 파이프라인은 유지).
+- **`ApplyBurningDoT`**: `IgnoreArmor = true` 설정 → 화상이 방어구와 무관하게 매 틱 피해. (틱 누적 대신 우회 선택 — 사용자 요청: 화상/마법은 추후 전면 재작성 예정이라 최소 수정.)
+- 매 프레임 파이프라인으로 가는 DoT는 화상뿐(독은 lump/부패 게이지라 무관) — 우회 범위 화상 한정.
+
+### 검증 필요 (Play Mode)
+1. 방어구 착용 유닛에 화상 부여 → 부위 HP/혈액이 지속 감소(이전엔 0). 무방비 유닛과 화상 피해가 비슷한지.
+
+---
+
+## 2026-07-26 (4) — 빌드 고스트 부수효과 차단: 비활성 인스턴스화 + 스크립트 제거 (버그 백로그 처리)
+
+버그 백로그 "빌드 고스트 부수효과" 처리. `EnsureGhost`가 **활성 프리팹을 `Instantiate`** → 모든 컴포넌트의 `Awake`/`OnEnable`이 즉시 실행된 뒤에야 `enabled=false`로 끔. `enabled=false`는 `OnEnable/Update`만 막을 뿐, 이미 실행된 부수효과(창고/침대/농지 레지스트리 `All.Add`, 이벤트 구독 등)는 되돌리지 않음 → 배치도 안 한 미리보기 고스트가 레지스트리에 유령 등록. OnEnable 등록 컴포넌트를 새로 붙이면 바로 함정.
+
+### 수정
+- **비활성 컨테이너 밑에서 인스턴스화**: `new GameObject` 컨테이너를 `SetActive(false)` 후 그 자식으로 프리팹 인스턴스화 → Unity가 비활성 계층 스크립트를 깨우지 않아 `Awake`/`OnEnable` 자체가 유예됨.
+- **깨어나기 전에 스크립트 제거**: 비활성 상태(=아직 Awake 전)에서 자식의 모든 `MonoBehaviour`를 `DestroyImmediate` → 이후 `ShowGhost`가 컨테이너를 활성화해도 스크립트가 없어 부수효과 전무. `Collider`는 `enabled=false`(비활성화). **렌더러/메시는 남아 미리보기 정상 표시.** 배치 대상 건물은 상호 `RequireComponent`가 없어 제거 순서 무관(확인함).
+- 위치/회전은 컨테이너가 받고(`ShowGhost`의 `SetPositionAndRotation`) 모델은 로컬 0으로 정렬 → 기존 배치 미리보기 동작과 동일. 실제 배치(`Place`)는 별도 `Instantiate`라 무영향.
+
+### 검증 필요 (Play Mode)
+1. 건설 모드에서 창고/침대/농지 고스트를 띄우고 이리저리 움직인 뒤 취소 → `Storage.All`/`Bed`/`FarmPlot` 레지스트리에 유령 항목 없어야(배치 전엔 창고 집계·운반 대상에 안 잡힘).
+2. 고스트 미리보기 시각(메시)은 이전처럼 정상 표시.
+3. 실제 배치 시 건물 정상 동작(레지스트리 등록·작업).
+
+---
+
+## 2026-07-26 (3) — 신체 부위 균등 타격 → 가중치 추첨 (버그 백로그 처리)
+
+버그 백로그 "신체 부위 균등 타격" 처리(의도 확인 → 가중치 부여로 결정). `GetRandomBodyPart`가 `Enum.GetValues` 7부위 **균등 추첨**(각 14.3%)이라 머리가 몸통과 똑같이 자주 맞아 비현실적 + 코어 부위(즉사/기절) 판정이 과하게 잦았음.
+
+### 수정
+- **`BodyPart.HitWeight`** 필드 추가(생성자 마지막 인자, 기본 1). 부위 크기·노출도 기반 피격 가중치.
+- **`BodyPartSystem.InitBodyParts`**: 가중치 부여 — 가슴 30 / 복부 20 / 머리 10 / 사지 각 10 (합 100). **몸통 50%, 머리 10%**(기존 14%). 튜닝 지점이 부위 정의와 한곳에 모임.
+- **`GetRandomBodyPart`**: `HitWeight` 합에 대한 가중치 추첨으로 교체(누적 롤). 총합 0/부동소수 오차 시 `Chest` 폴백.
+
+### 검증 필요 (Play Mode)
+1. 다수 전투 반복 → 몸통(가슴/복부) 피격이 확연히 잦고 머리 피격은 드문지(로그/부위 HP 감소 분포).
+2. 머리 즉사·기절 빈도가 이전보다 낮아졌는지(체감).
+
+---
+
+## 2026-07-26 (2) — 클릭 레이캐스트 일원화: 건물 개별 레이캐스트 → SelectionManager 단일 라우팅 (버그 백로그 처리)
+
+버그 백로그 "클릭 레이캐스트 분산" 처리. `Storage`/`Bed`/`FarmPlot`/`Merchant`/`CraftingTable`/`ResearchTable`/`PatrolZone` 7종이 **각자 `Update`에서 좌클릭마다 전체 씬 `Physics.Raycast`** → ① 건물 수만큼 중복 레이캐스트, ② UI 관통(패널 위 클릭도 건물 열림 — `IsPointerOverGameObject` 미검사), ③ 빌드모드 미게이트, ④ `SelectionManager`(유닛/노드/코어/시체 선택)와 우선순위 미조정.
+
+### 수정 — 라우팅 일원화
+- **`IWorldClickable` 인터페이스 신설**(`Assets/1_Script/Input/`): `void OnWorldClick()`. 클릭 선택 가능한 건물이 구현.
+- **7개 건물**: 각자의 `Update` 클릭 레이캐스트 블록(+`_cam` 필드) 제거 → `OnWorldClick() => OnSelected?.Invoke(this)`로 대체. `FarmPlot`(성장/작업 등록)·`CraftingTable`(연료)는 `Update`의 나머지 로직 유지, 클릭 부분만 제거. 각 `OnSelected` static 이벤트·구독 UI는 그대로.
+- **`SelectionManager.SelectSingle`**: 기존 단일 레이캐스트(Core→Node→Corpse→Pawn) 뒤에 `hit.collider.GetComponent<IWorldClickable>()` 분기 추가 → 유닛/노드/코어 선택 해제 후 `OnWorldClick()` 발동. **클릭당 레이캐스트 1회**로 통일.
+
+### 부수 동작 변화(개선)
+- 건물 클릭이 이제 **UI 블로킹**(패널 위 클릭 시 건물 안 열림) + **빌드모드 게이트**(`BuildModeManager.IsActive` 시 무시) 적용 — `SelectionManager` 경로 공유로 자동. 유닛 선택 해제 동작은 기존과 동일(건물 클릭 = 유닛 선택 해제).
+
+### 검증 필요 (Play Mode)
+1. 각 건물(창고/침대/농지/상인/작업대/연구대/순찰구역) 클릭 → 해당 패널이 이전처럼 정상 오픈.
+2. UI 패널 위에서 클릭 → 뒤 건물이 안 열림(관통 방지).
+3. 빌드모드 중 건물 클릭 → 패널 안 열림(배치에 집중).
+4. 건물 클릭 시 선택 중이던 유닛 해제되는지(기존 동작 유지).
+
+---
+
+## 2026-07-26 — 아사(허기) 피해를 숨은 폴백 HP → 혈액 파이프라인으로 (버그 백로그 처리)
+
+버그 백로그 "허기 피해가 숨겨진 폴백 HP로" 처리. `UnitBrain.UpdateHunger`가 허기 0일 때 `TakeDamage(float)`로 `_hp`(BodyPartSystem 없는 유닛용 폴백)를 깎았음 → 신체 부위 시스템을 가진 유닛(대부분의 방랑자/하수인)은 **UI에 안 보이는 제2 체력**으로 아사, 혈액/신체 부위와 무관하게 즉사.
+
+### 수정
+- **`BodyPartSystem.Starve(amount)`** 신설: 무작위 부위/갑옷과 무관하게 혈액을 직접 깎고 `CheckBloodState` 호출 → 기존 혈액 파이프라인(기절 0% → 사망 -30%)으로 전신 쇠약. `UnitHPUI`가 `Blood`를 표시하므로 아사 진행이 눈에 보임.
+- **`UnitBrain`**: `_body`(BodyPartSystem) 캐시 추가. `UpdateHunger`의 아사 분기를 `_body != null → Starve` / 없으면 `_hp` 폴백으로 분리. 아사 속도 상수화(`StarveBloodPerSec = 2f`).
+- **아사 진행을 기절 게이트 밖으로**: `Update`의 `UpdateHunger` 호출을 `IsKnockedOut` 조기 반환 **위로** 이동 → 굶어 쓰러진 뒤에도 혈액이 계속 빠져 실제 아사(死)에 도달. (안 옮기면 기절 중 허기 정지 + 혈액 자연회복으로 기상↔재기절 무한 진동, 영원히 안 죽음.)
+
+### 비틀거림(Stagger) 시스템 제거 + 기절 임계 20% → 0%
+혈액 30% 임계 비틀거림(짧은 행동 불능)은 불필요하다고 판단 → 전면 제거. `BodyPartSystem`의 `OnStaggered`/`staggerBloodThreshold`/`baseStaggerDuration`/`_bloodStaggerTriggered`/`TryStagger`/`Stagger`/`UpdateStagger` + `UnitBlackboard.IsStaggered`/`StaggerTimer` + `UnitBrain.Update`의 stagger 게이트 삭제.
+- **기절 임계 `koBloodThreshold` 0.2 → 0**: 비틀거림 제거로 중간 약화가 없어졌으니, "피가 바닥나면(0% 미만) 기절"이 직관적. 기상 임계(`wakeBloodRatio` 25%)와의 간격이 5%→25%로 넓어져 기절이 더 의미 있어짐. **코드 기본값 + Scene1 직렬화 값 5곳 모두 0으로 변경**(직렬화 값이 코드 기본값을 덮으므로 둘 다 필요). 코어 부위 -10 이하 강제 기절(`coreKoDepth`)은 그대로 유지.
+- 혈액 상태는 이제 기절(0% 미만)/사망(-30%) 2단. Scene1의 stagger 직렬화 잔여값(`staggerBloodThreshold`/`baseStaggerDuration`)은 없는 필드라 Unity 다음 저장 시 자동 폐기(무해). 문서(combat/units/README) 동기화.
+
+### 검증 필요 (Play Mode)
+1. 방랑자를 굶김(음식 없음) → 허기 0 후 **혈액 바가 눈에 띄게 감소**(숨은 죽음 아님) → 혈액 바닥(0%)서 기절 → 계속 굶으면 사망.
+2. 기절한 굶주린 유닛이 기상↔재기절 무한 반복 없이 결국 사망하는지.
+3. 굶는 도중 음식 공급 → 허기 회복 후 혈액 자연회복으로 정상 복귀(재기절 안 함).
+
+---
+
+## 2026-07-21 (7) — 건물 타일 점유 비대칭: 건물별 점유 플래그(대칭 등록/해제) + 중복 배치 금지
+
+버그 백로그 "건물 타일 점유 비대칭" 처리(설계 결정: 건물별 플래그 = RimWorld식). 기존엔 `Place`가 `_occupied` 등록을 안 하는데 `Demolish`는 center 타일을 무조건 해제 → ① 같은 타일 중복 배치, ② 건물이 노드 타일에 겹치면 철거가 노드 점유까지 해제. (`_occupied`는 ResourceNode만 등록, 건설 판정+길찾기 공유 축.)
+
+### 정책: 건물별 점유 플래그 (통행 차단 = 중복 차단, 단 중복 금지는 전 건물 공통)
+- **`BuildingData.OccupiesTile`** 플래그 추가(기본 false). 벽·작업대 등 실체 건물=true(통행 불가), 창고·침대·농지=false(유닛이 밟음). 작업은 인접 타일에서(`GetAdjacentPassable`) 하므로 점유해도 작업 가능.
+- **`PlacedBuilding`**: `OccupyTiles(tiles)`로 footprint를 `_occupied` 등록 + 소유 목록 보관. `Demolish`는 **자기가 등록한 타일만** 해제 → 노드 등 타 점유 안 건드림(비대칭 해소).
+- **`BuildModeManager.Place` / `BuildingBlueprint.Complete`**: `OccupiesTile`이면 배치 시 `OccupyTiles` 호출(즉시 배치·2단계 건설 양쪽). 점유는 ResourceNode와 동일한 `SetTile`→`OnTileChanged` 경로라 메소/L1 재베이크 자동 반영.
+- **중복 배치 금지(전 건물)**: `IsBuildableGrid`/`IsBuildableFree`에 `PlacedBuilding.All` 검사 추가 — 점유 플래그와 무관하게 완성 건물 위에 겹쳐 배치 불가(창고/침대도). 바닥(`IsFloor`)은 밑에 깔리므로 제외.
+
+### 후속 (에디터 데이터 작업 — 사용자)
+- 벽/작업대 등 통행 차단할 `BuildingData` 에셋의 `OccupiesTile`을 체크. 창고·침대·농지는 false 유지(기본값).
+
+### 검증 필요 (Play Mode)
+1. 같은 타일에 건물 2개 배치 시도 → 두 번째 빨강/거부(창고·침대 포함).
+2. `OccupiesTile` 건물(벽) 배치 → 유닛이 그 타일 우회, 철거 시 통행 복구.
+3. 자원노드 옆/위에 건물 짓고 철거 → 노드 점유 유지(노드가 계속 통행 차단).
+4. 작업대(OccupiesTile=true) → 유닛이 인접에서 제작 정상.
+
+---
+
+## 2026-07-21 (6) — static 이벤트 구독 해제 누락(람다) 수정
+
+버그 백로그 "static 이벤트 구독 해제 점검" 처리. 전 static 이벤트(약 35개)의 `+=`/`-=` 짝을 전수 조사 → 대부분 정상, **람다 구독 4곳**만 결함. 람다는 참조가 매번 달라 `-=`로 못 떼거나 아예 해제 코드가 없어, static 이벤트가 파괴된 UI를 계속 참조 → 이후 이벤트 발동 시 `MissingReferenceException` + 리스너 누수.
+
+### 수정 (람다 → 명명 메서드)
+- **`CorpseInventoryPanel`**: `BuildModeManager.OnActiveChanged += b => {…}` 해제 없음 → `OnBuildModeChanged` 메서드 + OnDestroy 해제.
+- **`PatrolZoneUI`**: 동일(OnActiveChanged 람다 해제 없음) → 명명 메서드 + OnDestroy 해제.
+- **`MerchantUI`**: 동일 → 명명 메서드 + OnDestroy 해제.
+- **`ResearchTableUI`**: `ResearchManager.OnResearchCompleted += _ => RebuildList();` 와 `-= _ => RebuildList();`가 **서로 다른 람다**라 해제가 no-op → `HandleResearchCompleted` 명명 메서드로 교체(정상 해제).
+
+### 정상 확인(수정 불필요)
+- 나머지 UI/코어 구독은 `OnEnable/Awake` ↔ `OnDisable/OnDestroy`로 짝 정상.
+- 인스턴스 이벤트 람다(`entry.OnSelected += …`, `Inventory.OnChanged += …`)는 퍼블리셔가 구독자와 같이 파괴돼 누수 아님 — 제외.
+
+### 검증 필요 (Play Mode)
+- 상점/시체/순찰/연구 패널을 연 상태로 건설 모드 토글 반복 + 해당 건물 철거(패널 파괴) 후 다시 건설 모드 토글 → 콘솔에 MissingReferenceException 없어야 함.
+
+---
+
+## 2026-07-21 (5) — Storage.TryAdd 부분 입고 시 잔량 증발 해소
+
+버그 백로그 "Storage.TryAdd 부분 입고에도 true" 처리. `Storage.TryAdd`가 `Inventory.TryAdd(...) > 0`(bool) 기준이라, 격자에 일부만 들어가도 성공(true)으로 취급 → 호출자는 전량 입고로 오인하고 나머지를 방치 → **잔량 증발**(유닛은 이미 인벤에서 뺀 뒤).
+
+### 수정
+- **`Storage.TryAdd` 반환 bool → int(실제 입고 수량)**: 0=거부/만적, amount 미만=부분 입고. 계약 명시.
+- **`GroundHaulJob`**: 부분 입고 잔량을 다른 창고 → 인벤 복귀(방금 뺀 공간이라 반드시 수용) 순으로 라우팅. 증발 방지.
+- **`FarmHarvestJob`**: 잔량을 다른 창고 → 땅 드롭 순으로 라우팅.
+- 호출자는 이 2개 파일 4곳뿐(그 외 `.TryAdd`는 전부 `Inventory.TryAdd` int 버전이라 무영향). 상인 `dest.Inventory.TryAdd`도 Inventory 직접 호출이라 무관.
+
+### 검증 필요 (Play Mode)
+1. 거의 찬 창고로 다량 운반 → 들어갈 만큼만 입고, 나머지는 다른 창고/인벤으로 (사라지지 않음).
+2. 수확물 운반도 동일 — 잔량이 땅에 드롭되어 재운반 가능.
+
+---
+
+## 2026-07-21 (4) — DroppedItem 등급(quality) 보존: 장비 드롭 시 등급 소실 해소
+
+버그 백로그 "DroppedItem 품질 미보존" 처리. `DroppedItem`이 `Item`/`Amount`만 들고 quality가 없어, 등급 있는 장비가 땅 드롭을 거치면 Common으로 소실됐음(플레이어가 인벤에서 버림, 제작 넘침 드롭, 픽업 잔량 재드롭 등).
+
+### 수정
+- **`DroppedItem`**: `Quality` 필드 + `Spawn(item, amount, pos, quality = Common)` 오버로드. `PickUp`이 `Inventory.TryAdd(Item, Amount, Quality)`로 등급 유지 + 잔량 재드롭도 등급 보존.
+- **`Storage.TryAdd(item, amount, quality)` 오버로드**: 하부 `Inventory`가 `ItemInstance.Quality`를 보유하므로 등급째 입고 가능(기존 무인자 버전은 Common 위임).
+- **`GroundHaulJob`**: 드롭 아이템의 `Quality`를 잡에 저장 → 창고/폴백 입고를 등급 인지 `TryAdd`로 처리(땅 장비를 창고로 운반해도 등급 유지).
+- **등급 보존 드롭 지점**: 플레이어 월드 드롭(`DraggableItem`), 제작 결과물 넘침 드롭(`CraftJob`), 픽업 잔량 재드롭(`DroppedItem`).
+- **Common 유지(의도)**: 자원 노드 운반(`HaulJob`), 수확물(`FarmHarvestJob`), 건물 환불·재료 환불(`PlacedBuilding`/`CraftJob` 재료) — 자원/식량은 등급 개념 없음.
+
+### 검증 필요 (Play Mode)
+1. 희귀 등급 무기를 인벤에서 땅으로 드래그 드롭 → 다시 주우면 [희귀] 유지(Common 아님).
+2. 스킬 높은 유닛이 장비 제작 → 인벤 꽉 차 넘침 드롭된 것도 등급 유지.
+3. 등급 장비 땅 드롭 → 운반되어 창고 입고 후에도 등급 유지.
+
+---
+
+## 2026-07-21 (3) — 제작 주문 재료 부족 시 소멸 → 대기/재개 (RimWorld식)
+
+버그 백로그 "CraftJob 재료 부족 시 조용히 소멸" 처리. 재료가 없으면 유닛이 주문을 잡아 `OnStart`에서 `Status=Done`으로 없애버려, 플레이어 주문이 통보 없이 사라지고 헛걸음까지 하던 문제.
+
+### 정책: 없애지 말고 큐에서 대기 → 재료 입고 시 자동 재개 (알림 없음, 상태로만)
+- **`JobBase.IsReady`(virtual, 기본 true)**: 작업이 지금 수행 가능한지 게이트. `JobManager.RequestJobInternal`이 `!IsReady` 잡은 배정 스킵(큐엔 유지) → 조건 충족 시 자동 재개.
+- **`CraftJob.IsReady`** = `_table.CanCraft(_recipe)`(재료 충분). 재료 없는 제작 주문은 배정 안 되고 대기.
+- **`CraftJob.OnStart` 레이스 처리**: IsReady로 걸러도 예약~시작 사이 타 제작자가 재료를 소진할 수 있음(주문 N개 vs 재료 1인분). 이때 `Status=Done`으로 없애는 대신 `_table.QueueOrder(_recipe)`로 **동등 주문 재등록** → 주문 보존, 재료 도착 시 재개. 재등록분은 IsReady=false라 대기(루프 없음).
+- **`WorkNode`**: `job.Start()` 직후 `IsComplete()`면(재큐 등 즉시 종료) 헛걸음 없이 바로 놓음.
+
+### 검증 필요 (Play Mode)
+1. 재료 없이 제작 주문 → 유닛이 안 잡고 대기(주문 유지). 재료를 창고에 넣으면 자동으로 제작 시작.
+2. 재료 1인분에 주문 2개 → 하나만 제작되고 나머지는 대기(소멸 X), 재료 보충 시 재개.
+3. 정상 제작 회귀 없음(재료 충분 시 기존대로 즉시 제작).
+
+---
+
+## 2026-07-21 (2) — 방어/회피 확률 밸런스: 지수 대립 굴림 + 공격자 우위
+
+D랭크끼리 시험 중 방어·회피 성공률이 과함. 원인 2중: ① 방어(Block)와 회피(Dodge)를 **순차 2회 굴림**해 곱산됨(파리티 50%×2 → 75% 무효). ② 선형 대립 굴림 `def/(atk+def)`이 스킬 격차를 확률에 약하게 반영(최대 공격자도 D 방어자에 38% 흘림).
+
+### 수정 (`CombatHandler`)
+- 세 굴림(근접 방어/원거리 방어/회피)을 공통 `OpposedChance(def, atk, k, bias)` = `def^k / (atk^k × bias + def^k)`로 통합.
+- **지수 `defenseExponent`(k=1.5)**: 스킬 격차를 확률에 급격히 반영(B안).
+- **공격자 우위 `attackerBias`(=4)**: 파리티 기본 확률을 `1/(1+bias)`로 끌어내림(50→20%). "기본 확률이 높다" 해소.
+- 둘 다 `SerializeField` — Play Mode 튜닝. shieldBonus는 지수 전 방어 base에 가산, `DefenseChanceMod`는 사후 배율로 유지.
+- **F- 값 바닥 1** (`StatGrade.ToValue` = `Mathf.Max(1, idx×5)`): F-(값 0)이면 방어=0이라 `OpposedChance` 가드로 무방비였음. 값을 만드는 유일한 소스인 `ToValue`에서 바닥을 깔아 F-도 동급 파리티 확률(20%)을 받음(하류 `SetStat` 클램프 아님 — 등급 스케일 차원의 정직한 수정). 값 1도 `FromValue`상 F- 표시 유지.
+
+### 결과 (per-roll → 합산 무효율, k=1.5 bias=4 기준)
+| 공격 vs 방어 | 기존(선형) | 변경 |
+|---|---|---|
+| 동급 파리티 (F ~ SSS+) | 75% | **36%** |
+| 70 vs 35 (C+ vs D) | 55% | **약 16%** |
+| 130 vs 35 (max vs D) | 38% | **약 7%** |
+| 방어 2배 우위 | — | 여전히 잘 막음 |
+
+### 검증 필요 (Play Mode)
+- 동급 전투에서 적중률 체감 상승 확인. bias/exponent 인스펙터 튜닝으로 원하는 곡선 조정.
+
+---
+
+## 2026-07-21 — 기절 중 이동 버그 수정: PawnMover에 KO 게이트
+
+07-19(2) 백로그 "기절 중에도 이동함" 처리. 기절 게이트가 `UnitBrain.Update`(BT)에만 있어 BT 밖 이동 명령(`MoveController` 우클릭 → `SetMoveTarget`)이 살아 있던 구멍.
+
+### 수정 (`PawnMover`)
+- `UnitBrain` 참조 저장(`SetStats`에서 캐시) + `IsKnockedOut` 프로퍼티(`_brain.Blackboard.IsKnockedOut` 안전 접근).
+- **`SetMoveTarget` 거부**: 기절 중 호출 시 즉시 return — 우클릭 등 BT 밖 명령 차단. 기상하면 `IsKnockedOut`이 풀려 복귀 이동은 정상.
+- **`Update` 조향 게이트**: 기절 상태면 남은 목표를 `StopMovement`로 정리하고 조향 스킵(KO 직전 타이밍에 걸린 목표 방어). 중력·낙하 안전망은 그대로 동작.
+- 적 클릭 타겟팅(`Blackboard.Target` 직접 세팅)은 combat 경로라 BT 게이트(`UnitBrain.Update` line 106)가 이미 차단 — 손대지 않음.
+
+### 검증 필요 (Play Mode)
+- 방랑자 기절 → 우클릭 이동 명령해도 안 움직임(눕는 포즈 유지) → 기상 후 우클릭 이동 정상 복귀.
+
+---
+
+## 2026-07-19 (2) — 기절 회복 시스템 (켄시식): 영구 기절 버그 해소
+
+07-11 백로그 "기절 영구" 처리. 기절은 걸리기만 하고 해제 코드가 없었음 + 출혈 페이싱(기존 1~5/s, 20~100초 사망)이 너무 빨랐음.
+
+### 설계 (켄시식 상태 기반)
+- **기상 조건** (`BodyPartSystem.UpdateKnockOutRecovery`): 최소 기절 시간(`minKnockOutSeconds` 20s) 경과 + 코어 부위(머리/가슴/복부) 전부 HP > 0 + 혈액 ≥ `wakeBloodRatio`(25%). BloodCap이 기준 밑까지 깎였으면 캡까지 찼을 때 기상 허용(기절 중엔 침대 못 가는 교착 방지). `OnRecovered` static event 추가.
+- **자연 지혈**: 부상 후 `clotSeconds`(30s)에 걸쳐 출혈 선형 감쇠, 재피격 시 리셋(`BodyPart.LastWoundTime`). 단일 부상은 출혈만으론 안 죽고 연타당할 때만 위험. BleedRate도 하향: 머리 3→0.5 / 가슴 5→0.8 / 복부 2→0.4 / 팔다리 1→0.2.
+- **자연 회복** (`UpdateRegen`): 혈액 0.2/s(BloodCap까지) + 부위 HP 0.25/s(파괴 부위 제외 — 파괴는 영구). 부위 회복이 기상 조건과 절뚝임 해제를 성립시킴.
+- **기절 부수효과 차단** (`KnockOut`): BT 정지로 못 끄던 `CombatHandler.ExitCombat()` + `PawnMover.StopMovement()` 직접 호출 — 쓰러진 채 매 프레임 공격하던 구멍 해소.
+- **침대 연동** (`RestNode`): 부위 HP 회복 추가(`PartHealRate` 1/s, 자연 회복에 얹힘), 휴식 트리거/퇴장 조건에 `HasRecoverableDisabledPart`(파괴 제외 기능상실 부위) 반영.
+- **피격 혈액 손실 (2차 — 켄시 축 완성)**: 베기만 혈액을 깎던 것 → **모든 피해가 혈액을 깎음**(베기 0.5× / 둔기 0.1× / 그 외 0.25×). 혈액 20% 미만 → **과다출혈 기절**(강인함 무관, `CheckBloodState` 공통 판정 — 피격/출혈 양쪽). 기상 기준(25%)이 기절 임계(20%)보다 높아 기상 직후 재기절 없음.
+- **기절 재판정 + 확정 기절**: 이미 기능 상실한 코어 부위(머리/가슴/복부)를 또 맞으면 `TryKnockOut` 재굴림(기존엔 0을 처음 넘는 순간 한 번만 판정). 코어 부위 HP가 `coreKoDepth`(-10) 이하로 깊어지면 **무조건 기절** — 굴림은 0 근처에서 버티는 용도로만. 강인함 저항은 최대 90% 캡(스탯 0~130이라 100+에서 기절/비틀거림 완전 면역이던 것 수정).
+- 수치는 전부 `BodyPartSystem` 인스펙터 SerializeField — Play Mode 튜닝 가능.
+
+### 3차 — Play Mode 테스트 피드백 반영 ("기절을 못 봄" 원인 3중)
+- **혈액 음수 허용 + 사망 분리**: 강한 타격이 기절 임계(20%)를 건너뛰고 혈액 0 → 즉사하던 것 수정. 켄시식 — 혈액은 음수로 내려가며 `deathBloodRatio`(-30%)에 닿아야 사망. 기절(20% 미만)→빈사(음수)→사망(-30%) 구간이 생김.
+- **기절 유닛 타겟팅 제외** (`BTTargetUtil.IsAttackable`): 적이 쓰러진 유닛을 계속 때려 KO가 수 초 만에 사망으로 이어지던 것 → 기절 유닛은 자동 타겟에서 제외(다른 대상으로 전환). KO가 사형선고가 아니라 회복 가능한 상태가 됨. 부작용: 플레이어 지정 공격도 기절 대상은 못 잡음(확인 사항).
+- **눕는 포즈**: 기절 시 Z축 90도 회전, 기상 시 복구 — 기절이 눈에 보이게 됨(CharacterController 캡슐은 회전 무시라 충돌 무영향). 애니메이션 도입 전 임시.
+- **`UnitHPUI` MissingReferenceException**: 선택 중이던 유닛이 사망(Destroy)하면 파괴된 `PawnMover` 참조로 매 프레임 예외 → null 가드 + 패널 닫기.
+
+### 검증 필요 (Play Mode)
+1. 유닛 기절시키기(코어 부위 기능상실 or 혈액 20% 미만) → 20초+ 후 조건 회복되면 스스로 기상, 기상 후 BT 정상 재개(작업/전투 복귀)
+2. 기절 중 공격 안 함 / 이동 정지
+3. 출혈: 한 대 크게 맞고 방치 → 30초쯤 뒤 출혈 멎고 혈액 서서히 회복
+4. 다리 기능상실 절뚝임 → 시간 지나면(또는 침대) 정상 보행 복귀
+5. 팔다리 파괴(-100)는 회복 안 됨(영구) + 그 상태로 침대에서 나옴(교착 없음)
+6. 지속 전투에서 혈액이 매 타격 감소 → 20% 밑에서 쓰러짐(사망 아님), 죽는 건 혈액 0 도달 시만
+
+---
+
+## 2026-07-19 — 공허 경로 차단 검증 중 발견: 좁은 다리에서 유닛이 우회 안 하고 밀어붙임
+
+07-18(2) 검증에서 항목 2·3 통과, 항목 1(좁은 다리 우회) 실패 — 유닛이 다리 근처에서 공허 방향으로만 밀며 전진 못 함. 원인 2중.
+
+### 원인·수정
+- **도착 셀 unwalkable 시 즉시 null** (`PathGrid.FindPath`): 메소 웨이포인트(2m 셀 중심)가 좁은 다리 옆 공허 타일에 앉으면 L1 도착 셀이 unwalkable → 경로 실패 → `ReplanLocal` 직선 폴백이 공허로 직진 → 낭떠러지 가드 정지 → BT 재명령 무한 반복. → `FindNearestWalkable`(링 탐색, 반경 4셀)로 도착점을 근처 walkable 셀에 스냅 후 계속 탐색. 벽 부풀림으로 막힌 도착점(벽 옆 작업 대상)도 같이 개선됨.
+- **낭떠러지 가드 오발** (`PawnMover`): 유효한 로컬 경로를 따라 좁은 다리를 걸을 때도 0.6m 전방 샘플이 대각 공허 타일을 찍으면 `StopMovement`로 이동 전체가 죽음. → 가드를 설계 의도대로 **직선 폴백일 때만**(`_localPath == null`) 발동. 로컬 경로는 이미 바닥 게이트를 통과했으므로 이중 검사 불필요.
+
+### 검증 (✅ 전부 통과)
+Play Mode: 좁은 다리 우회 / ㄱ자 다리 페인트 직후 코스 즉시 반영(기즈모로 메소 라우트 확인) / 바닥 철거 후 다른 모양 재설치도 반영 / 필드 씬 이동 회귀 없음. **07-18(2) 검증 5항목 전부 완료 — 공허 경로 차단 작업 마무리.**
+
+---
+
+## 2026-07-18 (2) — 공허 경로 차단: 길찾기·AI가 바닥 밖을 못 밟게
+
+floor 3차의 남은 한계("길찾기는 공허를 막힌 타일로 안 봄") 해소. 필드 맵(FloorRequired=false)은 전부 무영향.
+
+### 수정/추가
+- **`MapManager.IsStandable(tile/world)`**: 공허 게이트 헬퍼 — `FloorRequired`면 바닥 필수, 아니면 항상 true. 점유(IsPassable)와 별개 축.
+- **L1 로컬 윈도우** (`LocalGridManager`): ① 윈도우 원점을 정수 좌표에 스냅 — 1m 셀이 맵 타일과 정확히 겹쳐 게이트가 타일 단위로 정확. ② 바닥 없는 셀 unwalkable → Theta* 경로가 바닥 위로만 나옴 (바닥 다리 따라 우회).
+- **메소 격자** (`HierarchicalPathfinder.BakeCell`): `floorGate` 파라미터 — 2m 셀이 덮는 타일에 바닥이 하나도 없으면 unwalkable. 관대한 판정(하나라도 있으면 통과)으로 좁은 바닥 다리 코스 유지, 정밀 차단은 L1 담당. L2(100m)는 미적용(타일 스캔 비용 무의미). `RebakeObstacleAt`도 floorGate 유지(건물 재베이크가 게이트를 풀지 않게).
+- **바닥 변경 반영**: `MapManager.OnFloorChanged` 구독 → 해당 타일이 속한 메소 셀 1개만 재베이크 (바닥은 반경 부풀림 없음 — 스타터 400타일 일괄 등록도 감당). Floor는 OnEnable(-45) 등록이라 파인더 Start 초기 베이크보다 항상 먼저.
+- **`PawnMover` 낭떠러지 가드**: 이동 프레임마다 `ledgeLookahead`(0.6m) 앞 타일이 바닥 밖이면 `StopMovement` — **경로 실패 시 직선 폴백**(`ReplanLocal`)이 공허로 직진하던 최종 구멍을 막는 예방선. 현재 타일이 바닥일 때만 발동(바닥 밖 유닛의 복귀는 안 막음). 낙하 안전망(fallRecoveryY)은 최후 보루로 유지.
+- **AI 목적지 선정**: `NpcWanderNode` 배회 목적지가 공허면 재추첨, `BTLeafNodes.GetAdjacentPassable` 작업 접근 타일에 standable 검사 추가.
+
+### 검증 필요 (Play Mode)
+1. 바닥 두 섬을 좁은 다리로 연결 → 유닛이 다리 따라 우회(직선 아님)
+2. 연결 안 된 섬으로 이동 명령 → 가장자리에서 정지 (낙하 X)
+3. NPC/배회 유닛이 공허로 안 걸어감
+4. 바닥 페인트 직후 그 위로 경로 즉시 생김 (OnFloorChanged 재베이크)
+5. 필드 씬(Scene 지형) 이동 회귀 없음
+
+---
+
 ## 2026-07-18 — floor 3차 검증 완료: "바닥 없어도 건설됨" 원인 = 씬 설정
 
 07-17 재테스트 실패의 원인 진단·해결. **코드 문제 아님.**
@@ -74,17 +354,7 @@ Play Mode: 공허에 건물 배치 거부(빨간 프리뷰), 스타터 바닥 �
 - **주석 인코딩 복구**: `JobBase.cs` / `BTLeafNodes.cs` / `PawnMover.cs`의 CP949 깨짐(`����`) 주석을 UTF-8 한글로 재작성. CLAUDE.md의 `1 Script` → `1_Script` 경로 오기 수정.
 
 ### 버그 백로그 (설계 판단 필요 — 논의 후 처리)
-- **건물 타일 점유 비대칭**: `BuildModeManager.Place`는 점유(`SetTile`)를 등록하지 않는데 `PlacedBuilding.Demolish`는 해제함 → 같은 타일에 건물 중복 배치 가능 + 철거가 자원노드 점유까지 풀 수 있음. 건물이 타일을 점유해야 하는지(벽만? 전부?) 설계 결정 필요.
-- **기절 영구**: `Blackboard.IsKnockedOut = true`를 해제하는 코드가 없음 → 기절 유닛은 영원히 정지. 회복(시간 경과/치료) 시스템 미구현.
-- **화상 DoT 무효화**: `StatusEffectSystem.ApplyBurningDoT`가 매 프레임 미세 피해를 정식 파이프라인으로 보내는데, 방어구 **고정 감소**(`BodyPartSystem.TakeDamage`)가 매번 차감 → 방어구 1개만 있어도 화상 피해 0. DoT는 틱 누적 or 방어구 우회 필요.
-- **허기 피해가 숨겨진 폴백 HP로**: `UnitBrain.UpdateHunger` → `TakeDamage(float)`는 `_hp`(BodyPartSystem 없는 유닛용)를 깎음. 신체 부위와 무관한 제2 체력으로 아사 — UI에 안 보임.
-- **CraftJob 재료 부족 시 조용히 소멸**: `OnStart`에서 `Status = Done` 처리 → 제작 주문이 통보 없이 사라짐. 대기/재시도/알림 정책 결정 필요.
-- **DroppedItem 품질 미보존**: `DroppedItem`에 quality 필드 없음 → 장비가 드롭을 거치면 등급 소실 (CraftJob 넘침 드롭, 환불 등).
-- **Storage.TryAdd 부분 입고에도 true**: `Inventory.TryAdd(...) > 0` 기준이라 일부만 들어가도 성공 취급 — 나머지는 호출자가 모름. 의미 재정의 필요.
-- **클릭 레이캐스트 분산**: `Storage`/`Bed`/`FarmPlot`/`Merchant`가 각자 Update에서 클릭마다 레이캐스트 → 건물 수만큼 중복 + SelectionManager와 우선순위 미조정. 클릭 라우팅 일원화 리팩터링.
-- **신체 부위 균등 타격**: `GetRandomBodyPart` 7부위 균등(머리 14%) — 의도 확인.
-- **static 이벤트 구독 해제 점검**: `UnitStats.OnAnyGradeUp` 등 static 이벤트를 UI가 구독 — 씬 전환 시 해제 누락하면 파괴된 객체 참조.
-- **빌드 고스트 부수효과**: `EnsureGhost`가 Instantiate 후 컴포넌트를 끄지만 Awake/OnEnable 부수효과는 한 프레임 실행됨. OnEnable 등록 컴포넌트 추가 시 함정.
+- (전 항목 처리 완료 — 2026-07-21·2026-07-26 엔트리 참조. 화상 DoT는 방어구 우회로 임시 수정, 화상/마법 전면 개편은 추후.)
 
 ---
 

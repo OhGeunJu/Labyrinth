@@ -65,13 +65,17 @@ public class FarmHarvestJob : JobBase
             int removed = unit.Inventory.Remove(_seed.HarvestItem, _harvested);
             if (removed > 0)
             {
-                if (!_storage.TryAdd(_seed.HarvestItem, removed))
+                int leftover = removed - _storage.TryAdd(_seed.HarvestItem, removed);
+
+                // 부분 입고 시 남은 양을 다른 창고로, 그래도 남으면 땅에 드롭 → 증발 방지.
+                if (leftover > 0)
                 {
                     var fallback = Storage.FindNearest(unit.transform.position, _seed.HarvestItem);
-                    bool stored  = fallback != null && fallback.TryAdd(_seed.HarvestItem, removed);
-                    if (!stored)
-                        DroppedItem.Spawn(_seed.HarvestItem, removed, unit.transform.position);
+                    if (fallback != null)
+                        leftover -= fallback.TryAdd(_seed.HarvestItem, leftover);
                 }
+                if (leftover > 0)
+                    DroppedItem.Spawn(_seed.HarvestItem, leftover, unit.transform.position);
             }
             Status = JobStatus.Done;
         }

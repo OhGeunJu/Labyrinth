@@ -16,7 +16,8 @@ public class LocalGridManager
     // target이 윈도우 밖이면 경계 안쪽으로 클램프해 점진 이동을 유도한다.
     public List<Vector3> FindWindowPath(Vector3 center, Vector3 target, int size, float clearance)
     {
-        var origin = new Vector3(center.x - size * 0.5f, center.y, center.z - size * 0.5f);
+        // 원점을 정수 좌표에 스냅 — 1m 셀이 맵 타일과 정확히 겹쳐 바닥(공허) 게이트가 타일 단위로 맞는다.
+        var origin = new Vector3(Mathf.Floor(center.x) - size * 0.5f, center.y, Mathf.Floor(center.z) - size * 0.5f);
         if (_windowGrid == null || _windowGrid.Width != size)
             _windowGrid = new PathGrid(size, size, 1f, origin);
         else
@@ -40,12 +41,21 @@ public class LocalGridManager
     // 넓은 길은 벽에서 떨어져 지나가게 한다(콜라이더 끼임 방지).
     void BakeGrid(PathGrid grid, int size, float clearance)
     {
+        // 공허 게이트(던전형 맵): 바닥 없는 셀은 이동 불가 — 경로가 바닥 위로만 나온다.
+        var  map      = MapManager.Instance;
+        bool voidGate = map != null && map.FloorRequired;
+
         float half = 0.45f + clearance;
         var halfBox = new Vector3(half, 2f, half);
         for (int x = 0; x < size; x++)
         for (int y = 0; y < size; y++)
         {
             var worldPos = grid.CellToWorld(new Vector2Int(x, y));
+            if (voidGate && !map.IsFloored(worldPos))
+            {
+                grid.SetWalkable(x, y, false);
+                continue;
+            }
             bool blocked = Physics.CheckBox(worldPos, halfBox, Quaternion.identity, _obstacleLayer);
             grid.SetWalkable(x, y, !blocked);
         }

@@ -2,7 +2,7 @@
 
 ## UnitBrain & UnitBlackboard
 
-`UnitBrain` — BT를 0.1초 틱으로 실행. `IsKnockedOut` 또는 `IsStaggered` 동안 BT 정지.
+`UnitBrain` — BT를 0.1초 틱으로 실행. `IsKnockedOut` 동안 BT 정지.
 
 `UnitBrain`은 partial class로 분리:
 - `UnitBrain.cs` — `BuildTree()` 분기 (unitData 타입에 따라 서브 메서드 호출)
@@ -23,7 +23,6 @@
 | `IsDrafted` | 방랑자 징집 여부 |
 | `IsUnarmed` | 비무장 여부 |
 | `IsKnockedOut` | 기절 여부 |
-| `IsStaggered` / `StaggerTimer` | 비틀거림 |
 | `AttackDamage` / `AttackRange` | 무기 스탯 (Equipment.SyncBlackboard로 갱신) |
 | `Hunger` | 0~100. Player 팩션만 시간에 따라 감소 |
 | `AssignedPatrolZone` | 배정된 순찰 구역 |

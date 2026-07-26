@@ -138,13 +138,14 @@ interval = weapon.BaseAttackInterval
 
 7개 부위: Head, Chest, Abdomen, LeftArm, RightArm, LeftLeg, RightLeg
 
+**타격 부위 추첨** (`GetRandomBodyPart`): 균등이 아니라 `BodyPart.HitWeight` 가중치 — 가슴 30 / 복부 20 / 머리 10 / 사지 각 10 (합 100). 몸통 50%, 머리 10%(작은 표적). 부위별 튜닝은 `InitBodyParts`.
+
 | 상태 | 임계값 | Head/Chest/Abdomen | Arm | Leg |
 |---|---|---|---|---|
 | Disabled | ≤ 0 | TryKnockOut | AttackAbility 갱신 | SetLimping/Crawling |
 | Destroyed | ≤ −100 | Die() | TryKnockOut | TryKnockOut |
 
 - `TryKnockOut`: `resistChance = Toughness / 100`. 실패 → `IsKnockedOut = true`
-- `TryStagger`: 혈액 30% 미만 시 발동. Duration = `base × (1 − Toughness/100)`, 최소 0.2s
 - `TakeDamage(DamageInfo)` 처리 순서:
   1. 타입 배율 (Blunt ×1.3, Lightning ×1.2)
   2. 갑옷 감소 `armor.DamageReduction × qualityMult` (Pierce/Elemental Ice 관통)

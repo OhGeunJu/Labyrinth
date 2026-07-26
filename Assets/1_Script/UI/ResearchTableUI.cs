@@ -29,15 +29,17 @@ public class ResearchTableUI : MonoBehaviour
         if (detailPanel != null) detailPanel.SetActive(false);
         ResearchTable.OnSelected         += Open;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
-        ResearchManager.OnResearchCompleted += _ => RebuildList();
+        ResearchManager.OnResearchCompleted += HandleResearchCompleted;
     }
 
     void OnDestroy()
     {
         ResearchTable.OnSelected            -= Open;
         BuildModeManager.OnActiveChanged    -= OnBuildModeChanged;
-        ResearchManager.OnResearchCompleted -= _ => RebuildList();
+        ResearchManager.OnResearchCompleted -= HandleResearchCompleted;
     }
+
+    void HandleResearchCompleted(ResearchData _) => RebuildList();
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }
 

@@ -43,8 +43,10 @@ public class MerchantUI : MonoBehaviour
         if (sellZone) SellZoneRect = sellZone;
         if (buyButton) { buyButton.interactable = false; buyButton.onClick.AddListener(OnBuyClicked); }
         Merchant.OnSelected              += Open;
-        BuildModeManager.OnActiveChanged += b => { if (b) Close(); };
+        BuildModeManager.OnActiveChanged += OnBuildModeChanged;
     }
+
+    void OnBuildModeChanged(bool active) { if (active) Close(); }
 
     void Start()
     {
@@ -55,7 +57,8 @@ public class MerchantUI : MonoBehaviour
     void OnDestroy()
     {
         _instance = null;
-        Merchant.OnSelected -= Open;
+        Merchant.OnSelected              -= Open;
+        BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
     }
 
     void Update()

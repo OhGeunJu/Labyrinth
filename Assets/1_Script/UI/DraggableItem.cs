@@ -216,7 +216,7 @@ public class DraggableItem : MonoBehaviour,
 
         var dropPos = inv.transform.position + Vector3.up * 0.15f;
         inv.RemoveInstance(_instance);
-        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos);
+        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality);
         return true;
     }
 }

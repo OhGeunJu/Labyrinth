@@ -109,7 +109,7 @@ public class HierarchicalPathfinder : MonoBehaviour
         _mesoCenter = center;
         for (int x = 0; x < n; x++)
         for (int y = 0; y < n; y++)
-            BakeCell(_meso, x, y, mesoTileSize);
+            BakeCell(_meso, x, y, mesoTileSize, floorGate: true);
     }
 
     void BakeFromTerrain(PathGrid grid, float tileSize)
@@ -119,9 +119,12 @@ public class HierarchicalPathfinder : MonoBehaviour
             BakeCell(grid, x, y, tileSize);
     }
 
-    // 셀 하나 베이크: 지형 경사(있으면) + 장애물 CheckBox(에이전트 반경 부풀림).
+    // 셀 하나 베이크: 지형 경사(있으면) + 공허 게이트(floorGate) + 장애물 CheckBox(에이전트 반경 부풀림).
     // 재베이크에도 쓰이므로 walkable을 항상 마지막에 확정한다.
-    void BakeCell(PathGrid grid, int x, int y, float tileSize)
+    // floorGate: 던전형 맵(FloorRequired)에서 셀이 덮는 타일에 바닥이 하나도 없으면 이동 불가.
+    // 관대한 판정(하나라도 있으면 통과) — 좁은 바닥 다리 코스를 살리고, 정밀 차단은 L1이 담당.
+    // 메소 전용(L2 100m 셀은 타일 스캔이 무의미하게 비쌈).
+    void BakeCell(PathGrid grid, int x, int y, float tileSize, bool floorGate = false)
     {
         var worldCenter = grid.CellToWorld(new Vector2Int(x, y));
 
@@ -137,11 +140,33 @@ public class HierarchicalPathfinder : MonoBehaviour
         }
         else grid.SetCost(x, y, 1f);
 
+        if (floorGate && !AnyFlooredInCell(worldCenter, tileSize))
+        {
+            grid.SetWalkable(x, y, false);
+            return;
+        }
+
         // 에이전트 반경만큼 부풀려 좁은 틈은 막고 벽에서 거리를 둔다.
         float half = tileSize * 0.45f + agentRadius;
         var halfBox = new Vector3(half, 2f, half);
         bool blocked = Physics.CheckBox(worldCenter, halfBox, Quaternion.identity, obstacleLayer);
         grid.SetWalkable(x, y, !blocked);
+    }
+
+    // 셀 범위와 겹치는 맵 타일 중 바닥이 하나라도 있는가. FloorRequired가 아니면 항상 통과.
+    static bool AnyFlooredInCell(Vector3 cellCenter, float tileSize)
+    {
+        var map = MapManager.Instance;
+        if (map == null || !map.FloorRequired) return true;
+
+        int x0 = Mathf.FloorToInt(cellCenter.x - tileSize * 0.5f);
+        int z0 = Mathf.FloorToInt(cellCenter.z - tileSize * 0.5f);
+        int x1 = Mathf.CeilToInt (cellCenter.x + tileSize * 0.5f) - 1;
+        int z1 = Mathf.CeilToInt (cellCenter.z + tileSize * 0.5f) - 1;
+        for (int tx = x0; tx <= x1; tx++)
+        for (int tz = z0; tz <= z1; tz++)
+            if (map.IsFloored(new Vector2Int(tx, tz))) return true;
+        return false;
     }
 
     // ── 공개 길찾기 API ────────────────────────────────────────────────
@@ -196,19 +221,32 @@ public class HierarchicalPathfinder : MonoBehaviour
         for (int dx = -r; dx <= r; dx++)
         for (int dy = -r; dy <= r; dy++)
             if (_meso.InBounds(c.x + dx, c.y + dy))
-                BakeCell(_meso, c.x + dx, c.y + dy, mesoTileSize);
+                BakeCell(_meso, c.x + dx, c.y + dy, mesoTileSize, floorGate: true);
     }
 
     // ── 동적 업데이트 ───────────────────────────────────────────────────
 
     void SubscribeEvents()
     {
-        MapManager.OnTileChanged += OnTileChanged;
+        MapManager.OnTileChanged  += OnTileChanged;
+        MapManager.OnFloorChanged += OnFloorChanged;
     }
 
     void UnsubscribeEvents()
     {
-        MapManager.OnTileChanged -= OnTileChanged;
+        MapManager.OnTileChanged  -= OnTileChanged;
+        MapManager.OnFloorChanged -= OnFloorChanged;
+    }
+
+    // 바닥 설치/철거 시 그 타일이 속한 메소 셀만 재베이크.
+    // 장애물과 달리 반경 부풀림이 없으므로 단일 셀이면 충분 — 스타터 바닥(400타일) 일괄 등록도 감당.
+    void OnFloorChanged(Vector2Int tileCoord)
+    {
+        if (_meso == null || MapManager.Instance == null) return;
+        var worldPos = MapManager.Instance.TileToWorld(tileCoord);
+        if (!_meso.InWorldBounds(worldPos)) return;
+        var c = _meso.WorldToCell(worldPos);
+        BakeCell(_meso, c.x, c.y, mesoTileSize, floorGate: true);
     }
 
     // 타일 변경(자원 노드 등) 시 메소 격자의 해당 영역만 CheckBox 재베이크.

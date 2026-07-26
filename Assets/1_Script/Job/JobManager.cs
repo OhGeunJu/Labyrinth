@@ -62,6 +62,7 @@ public class JobManager : MonoBehaviour
         foreach (var job in _jobs)
         {
             if (job.Status != JobStatus.Available) continue;
+            if (!job.IsReady) continue;   // 재료 부족 등 미준비 작업은 큐에 두고 배정 보류
             if (allowed != null && allowed.Count > 0 && !allowed.Contains(job.Category)) continue;
 
             int priority = unitPriorities != null

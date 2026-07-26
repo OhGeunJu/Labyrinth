@@ -27,7 +27,7 @@ public class PatrolZoneUI : MonoBehaviour
         if (panel != null) panel.SetActive(false);
 
         PatrolZone.OnSelected            += Open;
-        BuildModeManager.OnActiveChanged += b => { if (b) Close(); };
+        BuildModeManager.OnActiveChanged += OnBuildModeChanged;
 
         modeWaypoint?.onClick.AddListener(() => SetMode(PatrolMode.Waypoint));
         modeArea?.onClick.AddListener(()     => SetMode(PatrolMode.Area));
@@ -35,7 +35,13 @@ public class PatrolZoneUI : MonoBehaviour
         assignButton?.onClick.AddListener(AssignSelected);
     }
 
-    void OnDestroy() => PatrolZone.OnSelected -= Open;
+    void OnDestroy()
+    {
+        PatrolZone.OnSelected            -= Open;
+        BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+    }
+
+    void OnBuildModeChanged(bool active) { if (active) Close(); }
 
     void Update()
     {

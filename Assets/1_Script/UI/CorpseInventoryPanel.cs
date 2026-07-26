@@ -29,8 +29,10 @@ public class CorpseInventoryPanel : MonoBehaviour
         if (panel != null) panel.SetActive(false);
         if (closeButton != null) closeButton.onClick.AddListener(Close);
         SelectionManager.OnCorpseSelected    += OnCorpseSelected;
-        BuildModeManager.OnActiveChanged     += b => { if (b) Close(); };
+        BuildModeManager.OnActiveChanged     += OnBuildModeChanged;
     }
+
+    void OnBuildModeChanged(bool active) { if (active) Close(); }
 
     void Start()
     {
@@ -38,7 +40,11 @@ public class CorpseInventoryPanel : MonoBehaviour
             playerInventoryPanel = FindFirstObjectByType<PawnInventoryPanel>();
     }
 
-    void OnDestroy() => SelectionManager.OnCorpseSelected -= OnCorpseSelected;
+    void OnDestroy()
+    {
+        SelectionManager.OnCorpseSelected -= OnCorpseSelected;
+        BuildModeManager.OnActiveChanged  -= OnBuildModeChanged;
+    }
 
     void BindEquipSlots(Equipment eq)
     {

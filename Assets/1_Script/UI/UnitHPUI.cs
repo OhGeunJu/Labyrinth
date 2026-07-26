@@ -32,6 +32,7 @@ public class UnitHPUI : MonoBehaviour
         panel?.SetActive(true);
 
         var pawn  = selectionManager.Selected[0];
+        if (pawn == null) { panel?.SetActive(false); return; }   // 선택 중 파괴된 유닛(사망 Destroy)
         var brain = pawn.GetComponent<UnitBrain>();
         var body  = pawn.GetComponent<BodyPartSystem>();
         var sfx   = pawn.GetComponent<StatusEffectSystem>();

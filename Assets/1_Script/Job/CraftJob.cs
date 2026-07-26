@@ -39,6 +39,9 @@ public class CraftJob : JobBase
 
     public override JobCategory Category => _recipe?.Category ?? JobCategory.Crafting;
 
+    // 재료가 다 있어야 배정 — 없으면 큐에서 대기(주문 유지), 재료 입고 시 자동 재개.
+    public override bool IsReady => _table != null && _recipe != null && _table.CanCraft(_recipe);
+
     public CraftJob(CraftingTable table, RecipeData recipe)
     {
         _table  = table;
@@ -53,13 +56,16 @@ public class CraftJob : JobBase
     {
         if (_recipe == null || _table == null) { Status = JobStatus.Done; return; }
 
-        // 재료 확인 후 즉시 소비 (예약 개념)
+        // 재료 재확인 후 즉시 소비 (예약 개념).
+        // IsReady 게이트로 거르지만, 예약~시작 사이 타 제작자가 소진했을 수 있어 여기서 한 번 더 확인.
+        // 부족하면 주문을 없애지 않고 큐에 되돌려(재등록) 재료 도착 시 자동 재개하게 한다.
         foreach (var ing in _recipe.Ingredients)
         {
             if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
             {
-                Debug.Log($"[CraftJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요");
-                Status = JobStatus.Done;
+                Debug.Log($"[CraftJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요, 주문 대기열로 반환");
+                _table.QueueOrder(_recipe);   // 동등 주문 재등록 (IsReady 게이트로 대기)
+                Status = JobStatus.Done;      // 이 잡 인스턴스는 종료 → 유닛이 놓음
                 return;
             }
         }
@@ -115,7 +121,7 @@ public class CraftJob : JobBase
         int added    = unit.Inventory.TryAdd(_recipe.Result, finalAmount, quality);
         int leftover = finalAmount - added;
         if (leftover > 0)
-            DroppedItem.Spawn(_recipe.Result, leftover, _table.transform.position + Vector3.up * 0.3f);
+            DroppedItem.Spawn(_recipe.Result, leftover, _table.transform.position + Vector3.up * 0.3f, quality);
 
         // ── 스킬 성장 (켄시식) ────────────────────────────────────────────────
         if (_recipe.SkillGrowthAmount > 0f)

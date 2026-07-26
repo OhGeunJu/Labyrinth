@@ -38,7 +38,7 @@ Assets/
 │   │   ├── UnitStats.cs             # 숙련도 (0-100, 플레이 중 성장)
 │   │   ├── UnitData.cs              # 유닛 템플릿 (ScriptableObject)
 │   │   ├── CombatHandler.cs         # 근접/원거리 전투, 무게·상태 보정
-│   │   ├── BodyPartSystem.cs        # 부위별 체력 / 혈액 / 기절 / 비틀거림
+│   │   ├── BodyPartSystem.cs        # 부위별 체력 / 혈액 / 기절
 │   │   ├── BodyPart.cs              # 부위 데이터 (HP 0=기능상실, -100=파괴)
 │   │   ├── Faction.cs               # 진영 (Player / Enemy)
 │   │   ├── BTNode.cs / BTSequence / BTSelector
@@ -105,7 +105,7 @@ Assets/
 
 ### BT (Behavior Tree)
 
-기절(IsKnockedOut) / 비틀거림(IsStaggered) 시 틱 중단.
+기절(IsKnockedOut) 시 틱 중단.
 
 ### 작업 시스템
 
@@ -134,7 +134,7 @@ P키로 패널 열기. 카테고리별 0(OFF)~5 설정. 0이면 해당 작업 �
 | 카테고리 | 스탯 | 주요 효과 |
 |---|---|---|
 | **속성** | 근력 | 맨손 피해, 대형무기 속도, 최대 수용 무게(×5) |
-| | 강인함 | 피해 저항, 기절/비틀거림 저항 |
+| | 강인함 | 피해 저항, 기절 저항 |
 | | 손재주 | 공격/방어 속도, 절단 피해 |
 | | 인지력 | 원거리 명중률 |
 | **전투 기술** | 근접공격/방어 | 무기 착용 시 공격빈도/블록 |
@@ -172,7 +172,7 @@ weightCorrection = maxWeight / currentWeight
 | 팔 | 공격력 감소 | 기절 시도 |
 | 다리 | 절뚝거림/기기 | 기절 시도 |
 
-혈액 30% 이하 → 비틀거림 시도. 0 → 사망.
+혈액 0% 미만 → 기절. -30% → 사망.
 
 ### 인벤토리 & 드롭
 

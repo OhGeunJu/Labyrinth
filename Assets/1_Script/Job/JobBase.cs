@@ -17,6 +17,10 @@ public abstract class JobBase
     public int Priority { get; protected set; } = 0;
     public virtual JobCategory Category => JobCategory.None;
 
+    // 지금 이 작업을 실제로 수행할 수 있는가 (예: 제작 재료 보유).
+    // false면 JobManager가 배정을 미루고 큐에 대기 — 조건 충족 시 자동 재개.
+    public virtual bool IsReady => true;
+
     // ── 예약 ──────────────────────────────────────────────────────────
     public bool Reserve(UnitBrain unit)
     {

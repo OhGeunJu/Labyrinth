@@ -177,7 +177,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 - `placeableBuildings: BuildingData[]` 단일 배열. `UsesBlueprint=true` → 2단계 건설, `false` → 즉시 배치
 - 설계 원칙: `BuildingData`는 배치 방법만 담당. 각 컴포넌트(Storage, SubCore, FarmPlot 등)가 동작 데이터를 프리팹 SerializeField로 직접 보유
 - `OnActiveChanged` — 건설 모드 토글 시 다른 UI 자동 닫힘
-- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에디터: `Create Floor Prefab + Data`(placeable) / `Create Dungeon Starter Floor`(코어바닥 20×20 저작 + requireFloor 자동 켬). 공허 낙하는 `PawnMover.fallRecoveryY` 안전망이 복구.
+- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에디터: `Create Floor Prefab + Data`(placeable) / `Create Dungeon Starter Floor`(코어바닥 20×20 저작 + requireFloor 자동 켬). 공허 이동 차단 3중: 길찾기(L1/메소)가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지 선정은 `MapManager.IsStandable` 검사.
 - **핵 영역(크립) / 건물 휴면**: 점유는 절대좌표 희소 저장이라 핵 이동에도 유지. 영역(핵 union) 밖 건물은 `BuildingDormancy`가 휴면(작동 정지+회색 틴트, 철거 X), 복구 시 재가동. 런타임 배치 시 `BuildingDormancy.Ensure`로 자동 부착(씬 사전 배치 건물은 수동 부착 필요). 설계: `docs/design_core_creep.md`
 
 ### Input & Camera

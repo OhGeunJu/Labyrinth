@@ -78,7 +78,16 @@ public class PathGrid
         var end   = WorldToCell(toWorld);
         if (start == end) return new List<Vector3> { toWorld };
         // 시작 셀이 막혀도(반경 부풀림으로 벽에 붙은 경우 등) 탈출은 허용. 도착 셀만 검사.
-        if (!IsWalkable(end.x, end.y)) return null;
+        // 도착 셀이 막힘(공허/벽 부풀림) — 근처 walkable 셀로 스냅해 접근 경로를 만든다.
+        // 메소 웨이포인트(2m 셀 중심)가 좁은 바닥 다리 옆 공허 타일에 앉는 경우가 대표 사례.
+        if (!IsWalkable(end.x, end.y))
+        {
+            var snapped = FindNearestWalkable(end, 4);
+            if (snapped == null) return null;
+            end     = snapped.Value;
+            toWorld = CellToWorld(end);
+            if (start == end) return new List<Vector3> { toWorld };
+        }
 
         int n = Width * Height;
 
@@ -265,6 +274,26 @@ public class PathGrid
             }
         }
         return true;
+    }
+
+    // 막힌 셀 주변을 링(체비쇼프 거리)으로 확장하며 가장 가까운 walkable 셀 탐색.
+    Vector2Int? FindNearestWalkable(Vector2Int c, int maxRadius)
+    {
+        for (int r = 1; r <= maxRadius; r++)
+        {
+            Vector2Int? best  = null;
+            int         bestD = int.MaxValue;
+            for (int dx = -r; dx <= r; dx++)
+            for (int dy = -r; dy <= r; dy++)
+            {
+                if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;   // 링 껍질만
+                if (!IsWalkable(c.x + dx, c.y + dy)) continue;
+                int d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = new Vector2Int(c.x + dx, c.y + dy); }
+            }
+            if (best != null) return best;
+        }
+        return null;
     }
 
     List<Vector3> BuildPath(int endIdx, Vector3 exactEnd)

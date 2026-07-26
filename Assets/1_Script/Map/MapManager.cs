@@ -142,6 +142,11 @@ public class MapManager : MonoBehaviour
     public bool IsFloored(Vector2Int tile) => _floored.Contains(tile);
     public bool IsFloored(Vector3 world)   => IsFloored(WorldToTile(world));
 
+    // 유닛이 설 수 있는 타일인가 — 공허 게이트. 던전형 맵(FloorRequired)에서만 바닥을 요구하고
+    // 필드/지형 맵은 항상 true. 점유(IsPassable)와는 별개 축이므로 필요 시 둘 다 검사할 것.
+    public bool IsStandable(Vector2Int tile) => !FloorRequired || _floored.Contains(tile);
+    public bool IsStandable(Vector3 world)   => IsStandable(WorldToTile(world));
+
     public void RegisterFloor(Vector2Int tile)
     {
         if (_floored.Add(tile)) OnFloorChanged?.Invoke(tile);

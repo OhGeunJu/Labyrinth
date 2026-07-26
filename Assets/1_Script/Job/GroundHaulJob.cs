@@ -9,6 +9,7 @@ public class GroundHaulJob : JobBase
     DroppedItem     _droppedItem;
     ItemData        _itemData;
     int             _amount;
+    ItemQuality     _quality;
     Storage _storage;
     Phase           _phase = Phase.GoToItem;
 
@@ -17,6 +18,7 @@ public class GroundHaulJob : JobBase
         _droppedItem = droppedItem;
         _itemData    = droppedItem.Item;
         _amount      = droppedItem.Amount;
+        _quality     = droppedItem.Quality;
         _storage     = storage;
         TileCoord    = MapManager.Instance.WorldToTile(droppedItem.transform.position);
         Priority     = 4;  // ResourceNode HaulJob(5)보다 낮음
@@ -35,17 +37,19 @@ public class GroundHaulJob : JobBase
         }
         else
         {
-            if (unit.Inventory.Remove(_itemData, _amount) == _amount)
+            int removed  = unit.Inventory.Remove(_itemData, _amount);
+            int leftover = removed - _storage.TryAdd(_itemData, removed, _quality);
+
+            // 부분 입고 시 남은 양을 다른 창고로, 그래도 남으면 인벤 복귀(방금 뺀 공간이라 반드시 수용) → 증발 방지.
+            if (leftover > 0)
             {
-                if (!_storage.TryAdd(_itemData, _amount))
-                {
-                    var fallback = Storage.FindNearest(unit.transform.position, _itemData);
-                    if (fallback != null)
-                        fallback.TryAdd(_itemData, _amount);
-                    else
-                        unit.Inventory.TryAdd(_itemData, _amount);
-                }
+                var fallback = Storage.FindNearest(unit.transform.position, _itemData);
+                if (fallback != null)
+                    leftover -= fallback.TryAdd(_itemData, leftover, _quality);
             }
+            if (leftover > 0)
+                unit.Inventory.TryAdd(_itemData, leftover, _quality);
+
             Status = JobStatus.Done;
         }
     }
