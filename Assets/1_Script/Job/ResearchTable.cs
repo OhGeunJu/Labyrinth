@@ -17,6 +17,8 @@ public class ResearchTable : MonoBehaviour, IWorldClickable
     public void QueueResearch(ResearchData data)
     {
         if (data == null || JobManager.Instance == null) return;
+        // 휴면(핵 영역 밖) 연구대는 사용 불가 — UI 경로가 막혀도 직접 호출 방어.
+        if (BuildingDormancy.IsDormantAt(this)) { Debug.Log("[ResearchTable] 휴면 중 — 연구 불가"); return; }
         JobManager.Instance.RegisterJob(new ResearchJob(this, data));
     }
 

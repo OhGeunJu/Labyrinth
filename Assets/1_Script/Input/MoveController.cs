@@ -18,6 +18,7 @@ public class MoveController : MonoBehaviour
     void HandleMove()
     {
         if (!Mouse.current.rightButton.wasPressedThisFrame) return;
+        if (CoreRelocator.IsActive) return;   // 이전 모드에선 우클릭 = 취소
         if (selectionManager.Selected.Count == 0) return;
 
         // 방랑자만 명령 대상 (하수인은 정보 확인만 가능)
@@ -33,14 +34,18 @@ public class MoveController : MonoBehaviour
 
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
 
-        // 적 클릭 → 타겟 지정
+        // 적 클릭 → 타겟 지정. 플레이어 세력이 아니면 명령으로 공격 가능(중립도 조준 허용 — 선공은 플레이어 몫).
         if (Physics.Raycast(ray, out RaycastHit hit, 500f))
         {
             var faction = hit.collider.GetComponent<Faction>();
-            if (faction != null && faction.Type == FactionType.Enemy)
+            if (faction != null && !faction.IsPlayer)
             {
                 foreach (var pawn in wanderers)
-                    pawn.GetComponent<UnitBrain>().Blackboard.Target = hit.collider.gameObject;
+                {
+                    var bb = pawn.GetComponent<UnitBrain>().Blackboard;
+                    bb.Target     = hit.collider.gameObject;
+                    bb.ManualMove = false;   // 공격 명령이 이동 명령을 대체
+                }
                 return;
             }
         }
@@ -50,7 +55,20 @@ public class MoveController : MonoBehaviour
         {
             Vector3[] positions = CalcFormation(groundHit.point, wanderers.Count);
             for (int i = 0; i < wanderers.Count; i++)
+            {
+                // 이동 명령 = 교전 이탈 + 하던 작업 취소.
+                // Target을 그대로 두면 FightNode가 다음 틱에 목적지를 적 위치로 덮어쓰고,
+                // 작업을 남겨두면 도착하자마자 일하러 돌아간다 — 둘 다 명령이 안 먹는 것처럼 보인다.
+                var brain = wanderers[i].GetComponent<UnitBrain>();
+                var bb    = brain.Blackboard;
+
+                bb.Target     = null;
+                bb.ManualMove = true;
+                brain.AbandonWork();
+
+                wanderers[i].GetComponent<CombatHandler>()?.ExitCombat();
                 wanderers[i].SetMoveTarget(positions[i]);
+            }
         }
     }
 

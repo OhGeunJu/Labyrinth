@@ -13,6 +13,10 @@ public partial class UnitBrain : MonoBehaviour
     [Header("유닛 데이터")]
     [SerializeField] UnitData unitData;
 
+    [Tooltip("AI 프로필 — 도주/교전 성향과 유휴 배회 설정. 비우면 타입별 기본값 " +
+             "(일반·경비 = 교전+배회 / NPC 주민 = 도주+배회 / 상점 상인 = 도주+제자리).")]
+    [SerializeField] AiProfileData aiProfile;
+
     PawnMover _mover;
     UnitBlackboard _bb;
     BTNode _root;
@@ -28,6 +32,36 @@ public partial class UnitBrain : MonoBehaviour
 
     public UnitBlackboard Blackboard => _bb;
     public UnitData Data => unitData;
+    public AiProfileData AiProfile => aiProfile;
+
+    // ── 전투 성향 (런타임 조정 가능) ─────────────────────────────────────
+    // NPC/적은 프로필 에셋으로 고정 운용하지만, 플레이어 유닛은 상황에 따라 바꾸고 싶다.
+    // 우선순위: 런타임 오버라이드 > AI 프로필 > 역할 기본값(트리 조립 시 지정).
+    CombatStance? _stanceOverride;
+    CombatStance  _roleStanceFallback = CombatStance.Fight;
+
+    public CombatStance EffectiveStance =>
+        _stanceOverride ?? (aiProfile != null ? aiProfile.Stance : _roleStanceFallback);
+
+    public bool HasStanceOverride => _stanceOverride.HasValue;
+
+    // 이 유닛만 성향을 바꾼다(프로필 에셋은 건드리지 않음). BT 재조립 불필요 — 매 틱 읽는다.
+    public void SetStanceOverride(CombatStance stance) => _stanceOverride = stance;
+    public void ClearStanceOverride()                  => _stanceOverride = null;
+
+    // 지금 도망쳐야 하는가 — 성향과 현재 상태로 매 틱 판단.
+    public bool ShouldFleeNow()
+    {
+        switch (EffectiveStance)
+        {
+            case CombatStance.Flee:
+                return true;
+            case CombatStance.FightWhileHealthy:
+                return IsBloodBelow(aiProfile != null ? aiProfile.FleeBloodRatio : 0.4f);
+            default:
+                return false;
+        }
+    }
     public string UnitName { get; private set; }
 
     Sprite _portrait;
@@ -46,7 +80,7 @@ public partial class UnitBrain : MonoBehaviour
     public UnitStats Stats { get; private set; }
     public Inventory Inventory { get; private set; }
     public Equipment Equipment { get; private set; }
-    public UnitPriorities Priorities { get; private set; }
+    public WorkSettings Work { get; private set; }
 
     void Awake()
     {
@@ -83,11 +117,14 @@ public partial class UnitBrain : MonoBehaviour
 
         _root = BuildTree();
 
-        var faction = GetComponent<Faction>();
-        bool isEnemy  = faction != null && faction.Type == FactionType.Enemy;
-        bool isMinion = unitData is MinionData;
-        if (!isEnemy && !isMinion)
-            Priorities = gameObject.AddComponent<UnitPriorities>();
+        // 작업 설정은 플레이어 세력 일꾼(방랑자·하수인)만 갖는다. 적/NPC는 작업 큐를 쓰지 않는다.
+        // 하수인은 MinionData.AllowedJobs를 초기값으로 받되, 이후 조정은 개체별로 적용된다.
+        if (!UsesEnemyAi && !(unitData is NpcData))
+        {
+            Work = gameObject.AddComponent<WorkSettings>();
+            if (unitData is MinionData minionData)
+                Work.InitFromAllowed(minionData.AllowedJobs);
+        }
     }
 
 
@@ -114,8 +151,16 @@ public partial class UnitBrain : MonoBehaviour
 
         _tickTimer += Time.deltaTime;
         if (_tickTimer < tickInterval) return;
+        _bb.TickDelta = _tickTimer;   // 노드가 쓸 실제 경과 시간 (한 프레임이 아니라 틱 간격)
         _tickTimer = 0f;
+
+        _bb.RestTicked = false;
         _root.Tick(_bb);
+
+        // 전투·소집 등 상위 분기가 휴식을 밀어냈는데 폰이 아직 누워 있으면 일으켜 세운다.
+        // (BT 노드에는 중단 콜백이 없어 RestNode가 스스로 정리할 기회를 못 얻는다.)
+        if (!_bb.RestTicked && _mover != null && _mover.IsSleeping)
+            _mover.SetSleeping(false);
     }
 
     const float BaseHungerDecayRate = 0.5f; // 초당 감소량 (100 기준 약 3.3분에 고갈)
@@ -123,9 +168,9 @@ public partial class UnitBrain : MonoBehaviour
 
     void UpdateHunger()
     {
-        // 플레이어 팩션(방랑자/하수인)만 허기 적용
+        // 플레이어 세력(방랑자/하수인)만 허기 적용
         var faction = GetComponent<Faction>();
-        if (faction == null || faction.Type != FactionType.Player) return;
+        if (faction == null || !faction.IsPlayer) return;
 
         float rate = BaseHungerDecayRate;
 
@@ -160,17 +205,13 @@ public partial class UnitBrain : MonoBehaviour
         if (_isDead) return;
         _isDead = true;
 
-        // 진행 중인 작업이 있으면 취소해서 pending 플래그 해제
-        if (_bb?.CurrentJob != null)
-        {
-            JobManager.Instance?.CancelJob(_bb.CurrentJob);
-            _bb.CurrentJob = null;
-        }
+        // 진행 중인 작업이 있으면 취소해서 pending 플래그 해제 + 노드 배정 정리
+        AbandonWork();
 
         OnUnitDied?.Invoke(this);
 
-        var faction = GetComponent<Faction>();
-        if (faction != null && faction.Type == FactionType.Enemy)
+        // 적 AI 유닛은 약탈 가능한 시체로 남는다(플레이어 유닛/NPC는 기존대로 제거).
+        if (UsesEnemyAi)
         {
             BecomeCorpse();
             return;
@@ -195,6 +236,22 @@ public partial class UnitBrain : MonoBehaviour
         if (faction != null) Destroy(faction);
     }
 
+    // 하던 일을 놓는다 — 큐 일감은 취소(각 Job의 OnCancelled가 재료 환불·주문 재등록을 처리),
+    // 노드 직접 배정도 해제. 사망과 플레이어의 직접 이동 명령이 같은 경로를 쓴다.
+    // (배정을 남겨두면 명령한 곳에 도착하자마자 다시 일하러 돌아가 명령이 안 먹는 것처럼 보인다.)
+    public void AbandonWork()
+    {
+        if (_bb == null) return;
+
+        if (_bb.CurrentJob != null)
+        {
+            JobManager.Instance?.CancelJob(_bb.CurrentJob);
+            _bb.CurrentJob = null;
+        }
+
+        _bb.AssignedNode?.Unassign(this);
+    }
+
     public void Draft()
     {
         _bb.IsDrafted = true;
@@ -206,11 +263,21 @@ public partial class UnitBrain : MonoBehaviour
         _bb.IsDrafted = false;
     }
 
+    // 적 AI(감지→전투) 대상인가 — 플레이어 조작 세력이 아니고, NPC/하수인도 아닌 전투 유닛.
+    // 세력이 늘어나도(고블린·산적 등) 플레이어 편만 아니면 자동으로 적 트리를 쓴다.
+    public bool UsesEnemyAi
+    {
+        get
+        {
+            if (unitData is NpcData || unitData is MinionData) return false;
+            var faction = GetComponent<Faction>();
+            return faction != null && !faction.IsPlayer;
+        }
+    }
+
     BTNode BuildTree()
     {
-        var faction = GetComponent<Faction>();
-
-        if (faction != null && faction.Type == FactionType.Enemy)
+        if (UsesEnemyAi)
             return BuildEnemyTree();
         if (unitData is NpcData)
             return BuildNpcTree((NpcData)unitData);

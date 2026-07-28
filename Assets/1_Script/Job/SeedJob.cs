@@ -16,6 +16,7 @@ public class SeedJob : JobBase
         _seed    = seed;
         Priority = 3;
         TileCoord = plot.TileCoord;
+        SetSite(plot);
     }
 
     protected override void OnStart()

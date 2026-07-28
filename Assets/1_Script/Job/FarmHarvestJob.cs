@@ -18,6 +18,7 @@ public class FarmHarvestJob : JobBase
         _seed     = seed;
         Priority  = 5;
         TileCoord = plot.TileCoord;
+        SetSite(plot);
     }
 
     protected override void OnStart()

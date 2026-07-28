@@ -47,6 +47,7 @@ public class CraftJob : JobBase
         _table  = table;
         _recipe = recipe;
         Priority = 1;
+        SetSite(table);
 
         if (MapManager.Instance != null)
             TileCoord = MapManager.Instance.WorldToTile(table.transform.position);
@@ -146,13 +147,19 @@ public class CraftJob : JobBase
     // 운반 작업이 창고로 회수 → 재료 손실 방지.
     protected override void OnCancelled()
     {
-        if (!_consumed || _recipe == null) return;
-        _consumed = false;
+        if (_recipe == null) return;
 
-        Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
-        foreach (var ing in _recipe.Ingredients)
-            DroppedItem.Spawn(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+        if (_consumed)
+        {
+            _consumed = false;
+            Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
+            foreach (var ing in _recipe.Ingredients)
+                DroppedItem.Spawn(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+        }
 
-        Debug.Log($"[CraftJob] 제작 취소 — 재료 환불(드롭): {_recipe.RecipeName}");
+        // 주문 자체는 잃지 않는다 — 큐에 되돌려 다른 폰(또는 나중에 이 폰)이 이어받게 한다.
+        // 재료 부족 경로와 같은 정책. 취소가 사망뿐 아니라 **플레이어 이동 명령**으로도
+        // 일어나게 됐으므로, 주문이 조용히 사라지면 안 된다.
+        _table?.QueueOrder(_recipe);
     }
 }

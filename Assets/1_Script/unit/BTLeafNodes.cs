@@ -25,35 +25,56 @@ public class DetectNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
     {
-        // 이미 잡은 타겟이 아직 유효한지 확인
-        if (bb.Target != null)
-        {
-            if (BTTargetUtil.IsAttackable(bb.Target)) return BTStatus.Success;
-            bb.Target = null;
-        }
+        Vector3 selfPos = bb.Self.transform.position;
 
-        // 주변 탐색
+        // 이미 잡은 타겟이 유효하면 유지하되, 훨씬 가까운 적이 생기면 갈아탄다.
+        // (옆에 적을 두고 멀리 있는 상대를 패러 가는 것 방지 — 단 매 틱 흔들리지 않게 여유를 둔다)
+        GameObject current = bb.Target != null && BTTargetUtil.IsAttackable(bb.Target) ? bb.Target : null;
+        float currentDistSqr = current != null ? SqrDist(selfPos, current) : float.MaxValue;
+
         var myFaction = bb.Self.GetComponent<Faction>();
-        if (myFaction == null) return BTStatus.Failure;
-        Collider[] hits = Physics.OverlapSphere(bb.Self.transform.position, bb.DetectRange);
+        if (myFaction == null) { bb.Target = current; return current != null ? BTStatus.Success : BTStatus.Failure; }
 
-        foreach (var hit in hits)
+        // 후보: 감지 범위 내 적대 유닛 + 나를 때린 상대(관계 무관, 감지 범위 2배까지).
+        GameObject best = null;
+        float bestDistSqr = float.MaxValue;
+
+        foreach (var hit in Physics.OverlapSphere(selfPos, bb.DetectRange))
         {
             if (hit.gameObject == bb.Self) continue;
 
             var otherFaction = hit.GetComponent<Faction>();
             if (otherFaction == null) continue;
+            if (!myFaction.IsHostileTo(otherFaction)) continue;
+            if (!BTTargetUtil.IsAttackable(hit.gameObject)) continue;
 
-            if (myFaction.IsHostileTo(otherFaction) && BTTargetUtil.IsAttackable(hit.gameObject))
-            {
-                bb.Target = hit.gameObject;
-                return BTStatus.Success;
-            }
+            float d = SqrDist(selfPos, hit.gameObject);
+            if (d < bestDistSqr) { bestDistSqr = d; best = hit.gameObject; }
         }
 
-        bb.Target = null;
-        return BTStatus.Failure;
+        // 반격 대상 — 중립이라 위 스캔에 안 걸리지만 대응해야 한다. 거리 비교에 함께 넣는다.
+        if (bb.HasFreshAttacker && BTTargetUtil.IsAttackable(bb.LastAttacker))
+        {
+            float d = SqrDist(selfPos, bb.LastAttacker);
+            float limit = bb.DetectRange * 2f;   // 원거리 저격수를 맵 끝까지 쫓지는 않는다
+            if (d <= limit * limit && d < bestDistSqr) { bestDistSqr = d; best = bb.LastAttacker; }
+        }
+
+        if (best == null)
+        {
+            bb.Target = current;   // 새 후보가 없으면 기존 타겟 유지(추격 중 놓치지 않게)
+            return current != null ? BTStatus.Success : BTStatus.Failure;
+        }
+
+        // 기존 타겟보다 확실히 가까울 때만 교체 (SwitchMargin 배 이내면 그대로 — 타겟 흔들림 방지)
+        bb.Target = (current == null || bestDistSqr * SwitchMargin < currentDistSqr) ? best : current;
+        return BTStatus.Success;
     }
+
+    const float SwitchMargin = 1.5f;   // 새 후보가 기존 타겟보다 이 배수만큼 가까워야 갈아탄다
+
+    static float SqrDist(Vector3 from, GameObject go) =>
+        (go.transform.position - from).sqrMagnitude;
 }
 
 // 소집 상태 (직접 제어)
@@ -62,6 +83,26 @@ public class DraftedNode : BTNode
     public override BTStatus Tick(UnitBlackboard bb)
     {
         // 피격 시 반격은 나중에 여기서 처리
+        return BTStatus.Running;
+    }
+}
+
+// 플레이어 직접 이동 명령 — 도착할 때까지 자동 행동(전투/휴식/작업)을 막는다.
+// 소집(Draft) 바로 아래에 두어 "내가 시킨 게 최우선"이 되게 한다.
+public class ManualOrderNode : BTNode
+{
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        if (!bb.ManualMove) return BTStatus.Failure;
+
+        // 도착했거나(목표 소진) 길찾기가 포기해 멈췄으면 명령 종료 → 평소 행동으로 복귀.
+        // 이 해제 조건이 없으면 한 번 명령한 폰이 영영 일을 안 한다.
+        if (bb.Mover == null || !bb.Mover.HasTarget())
+        {
+            bb.ManualMove = false;
+            return BTStatus.Failure;
+        }
+
         return BTStatus.Running;
     }
 }
@@ -112,11 +153,8 @@ public class WorkNode : BTNode
         // 기존 JobManager 경로
         if (bb.CurrentJob == null)
         {
-            var brain      = bb.Self.GetComponent<UnitBrain>();
-            var minionData = brain.Data as MinionData;
-            var job = minionData != null
-                ? JobManager.Instance.RequestJobFiltered(brain, minionData.AllowedJobs)
-                : JobManager.Instance.RequestJob(brain);
+            var brain = bb.Self.GetComponent<UnitBrain>();
+            var job   = JobManager.Instance.RequestJob(brain);
 
             if (job == null) return BTStatus.Failure;
             bb.CurrentJob = job;
@@ -190,7 +228,7 @@ public class WorkNode : BTNode
             node.Work(skill);
 
             float required = node.Data != null ? node.Data.RequiredSkill : 0f;
-            float xp = 0.05f * Time.deltaTime
+            float xp = 0.05f * bb.TickDelta
                      * CombatXp.ChallengeMult(skill, required)
                      * CombatXp.Sol(skill);
             brain.Stats.GrowStat(workStat, xp);
@@ -237,7 +275,7 @@ public class PatrolNode : BTNode
         if (_waitTimer > 0f)
         {
             bb.Mover.StopMovement();
-            _waitTimer -= Time.deltaTime;
+            _waitTimer -= bb.TickDelta;
             return BTStatus.Running;
         }
 
@@ -282,63 +320,81 @@ public class PatrolNode : BTNode
     }
 }
 
-// 침대 휴식: 혈액 < 60% / BloodCap 미회복 / 기능 상실 부위(회복 가능)가 있으면 가장 가까운 빈 침대로
+// 침대 휴식: **배정된 침대가 있으면 그 침대로 가서 눕는다.** 누워 있는 동안은 일하지 않고 회복만 한다.
+// 배정 해제 = 다시 일하러 감. 배고프면(EatNode 임계) 일어나 먹고 돌아온다 — 누운 채 아사하지 않게.
+// 전투/소집 등 상위 분기가 이 노드를 밀어내면 UnitBrain이 자동으로 깨운다(bb.RestTicked).
 public class RestNode : BTNode
 {
-    const float RestThreshold  = 0.6f;  // 혈액 60% 이하 시 휴식 필요
-    const float CapThreshold   = 0.95f; // 캡 95% 이상이면 충분히 회복됨
     const float BloodHealRate  = 2f;    // 초당 혈액 회복
     const float CapRestoreRate = 1f;    // 초당 캡 회복
     const float PartHealRate   = 1f;    // 초당 부위 HP 회복 (자연 회복에 추가로 얹힘)
-    const float ArrivalDist    = 1.5f;
+    const float ArrivalDist    = 1.0f;  // 접근 지점(침대 옆) 기준
+    const float HungerLeave    = 60f;   // EatNode 임계와 동일
 
-    Bed _bed;
+    Bed     _bed;
+    Vector3 _approach;
 
     public override BTStatus Tick(UnitBlackboard bb)
     {
-        var body = bb.Self.GetComponent<BodyPartSystem>();
-        if (body == null) return BTStatus.Failure;
+        var brain    = bb.Self.GetComponent<UnitBrain>();
+        var assigned = Bed.FindAssigned(brain);
 
-        bool needsRest = body.Blood    < body.MaxBlood * RestThreshold
-                      || body.BloodCap < body.MaxBlood * CapThreshold
-                      || body.HasRecoverableDisabledPart;
+        // 배정 해제됐거나 배가 고프면 일어난다
+        if (assigned == null || bb.Hunger <= HungerLeave) { LeaveBed(bb); return BTStatus.Failure; }
 
-        if (!needsRest) { LeaveBed(bb); return BTStatus.Failure; }
+        var pos = bb.Self.transform.position;
 
-        // 배정된 침대만 사용
         if (_bed == null)
         {
-            var brain = bb.Self.GetComponent<UnitBrain>();
-            _bed = Bed.FindAssigned(brain);
-            if (_bed == null) return BTStatus.Failure;
+            if (!assigned.TryOccupy(brain)) return BTStatus.Failure;   // 다른 폰이 쓰는 중
+            _bed = assigned;
 
-            if (!_bed.TryOccupy(brain)) { _bed = null; return BTStatus.Failure; }
-
-            bb.Mover.SetMoveTarget(_bed.transform.position);
+            // 침대 중심이 아니라 **설 수 있는 옆면**으로 간다. 중심을 목표로 주면
+            // 침대에 정면으로 처박혀(길찾기 그래프에 없는 장애물) 그대로 굳는다.
+            _approach = _bed.ApproachPosition(pos);
+            bb.Mover.SetMoveTarget(_approach);
         }
-
-        // 이동 중
-        float dist = Vector3.Distance(bb.Self.transform.position, _bed.transform.position);
-        if (dist > ArrivalDist) return BTStatus.Running;
-
-        // 침대에서 회복 (캡 감소 없이, 부위 HP 포함)
-        bb.Mover.StopMovement();
-        body.HealBlood(BloodHealRate * Time.deltaTime, degradeCap: false);
-        body.RestoreBloodCap(CapRestoreRate * Time.deltaTime);
-        body.HealBodyParts(PartHealRate * Time.deltaTime);
-
-        if (body.Blood >= body.BloodCap && body.BloodCap >= body.MaxBlood * CapThreshold
-            && !body.HasRecoverableDisabledPart)
+        else if (_bed != assigned)   // 침대를 옮겨 배정한 경우
         {
             LeaveBed(bb);
-            return BTStatus.Success;
+            return BTStatus.Running;
         }
 
+        // 이동 중 — 도착 못 하고 이동도 끝났으면(막힘) 접근 면을 다시 고른다
+        if (!bb.Mover.IsSleeping)
+        {
+            if (Vector3.Distance(pos, _approach) > ArrivalDist)
+            {
+                if (!bb.Mover.HasTarget())
+                {
+                    _approach = _bed.ApproachPosition(pos);
+                    bb.Mover.SetMoveTarget(_approach);
+                }
+                return BTStatus.Running;
+            }
+
+            // 도착 — 다가온 면에 맞춰 눕는다
+            bb.Mover.SetSleeping(true, _bed.SleepPosition, _bed.SleepRotationFrom(pos));
+        }
+
+        bb.RestTicked = true;   // 이번 틱에 쉬고 있음 (상위 분기로 넘어가면 UnitBrain이 깨운다)
+
+        // 누워 있는 동안 회복 (캡 감소 없이, 부위 HP 포함)
+        var body = bb.Self.GetComponent<BodyPartSystem>();
+        if (body != null)
+        {
+            body.HealBlood(BloodHealRate * bb.TickDelta, degradeCap: false);
+            body.RestoreBloodCap(CapRestoreRate * bb.TickDelta);
+            body.HealBodyParts(PartHealRate * bb.TickDelta);
+        }
+
+        // 회복이 끝나도 일어나지 않는다 — 배정이 곧 "쉬는 중"이라는 명령.
         return BTStatus.Running;
     }
 
     void LeaveBed(UnitBlackboard bb)
     {
+        if (bb.Mover != null) bb.Mover.SetSleeping(false);
         if (_bed == null) return;
         _bed.Vacate(bb.Self.GetComponent<UnitBrain>());
         _bed = null;
@@ -402,7 +458,7 @@ public class EatNode : BTNode
         }
 
         // 먹는 중
-        _eatTimer += Time.deltaTime;
+        _eatTimer += bb.TickDelta;
         if (_eatTimer < _food.EatTime) return BTStatus.Running;
 
         brain.Inventory.Remove(_food, 1);

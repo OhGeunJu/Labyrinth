@@ -90,6 +90,8 @@ public class CraftingTable : MonoBehaviour, IWorldClickable
     public void QueueOrder(RecipeData recipe)
     {
         if (recipe == null || JobManager.Instance == null) return;
+        // 휴면(핵 영역 밖) 작업대에는 주문을 넣을 수 없다 — UI 경로가 막혀도 직접 호출 방어.
+        if (BuildingDormancy.IsDormantAt(this)) { Debug.Log("[CraftingTable] 휴면 중 — 주문 불가"); return; }
         JobManager.Instance.RegisterJob(new CraftJob(this, recipe));
     }
 

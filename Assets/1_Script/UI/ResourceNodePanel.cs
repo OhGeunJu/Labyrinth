@@ -70,13 +70,21 @@ public class ResourceNodePanel : MonoBehaviour
     {
         SelectionManager.OnNodeSelected  += OnNodeSelected;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
+        ResourceNode.OnAssignmentChanged += OnAssignmentChanged;
     }
 
     void OnDisable()
     {
         SelectionManager.OnNodeSelected  -= OnNodeSelected;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+        ResourceNode.OnAssignmentChanged -= OnAssignmentChanged;
         Unsubscribe();
+    }
+
+    // 패널 밖에서 배정이 풀린 경우(이동 명령·사망 등)에도 목록을 맞춘다.
+    void OnAssignmentChanged(ResourceNode node)
+    {
+        if (node == _current) RefreshAssigned();
     }
 
     void OnBuildModeChanged(bool active) { if (active && panel != null) panel.SetActive(false); }

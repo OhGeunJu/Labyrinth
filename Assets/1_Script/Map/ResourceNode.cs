@@ -1,8 +1,13 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class ResourceNode : MonoBehaviour
 {
+    // 배정/해제 통보 — 노드 패널·무리 관리 패널이 즉시 갱신하도록.
+    // 해제는 패널 밖(이동 명령·사망)에서도 일어나므로, 폴링만으로는 목록이 낡은 채로 남는다.
+    public static event Action<ResourceNode> OnAssignmentChanged;
+
     [SerializeField] ResourceNodeData data;
     [SerializeField] int haulThreshold = 10;  // 이 수량 이상 쌓이면 운반 작업 등록
     public Inventory Inventory { get; private set; }
@@ -25,7 +30,7 @@ public class ResourceNode : MonoBehaviour
         if (_assigned.Contains(brain)) return;
         _assigned.Add(brain);
         brain.Blackboard.AssignedNode = this;
-        Debug.Log($"[ResourceNode] {brain.name} 배정됨");
+        OnAssignmentChanged?.Invoke(this);
     }
 
     public void Unassign(UnitBrain brain)
@@ -33,7 +38,7 @@ public class ResourceNode : MonoBehaviour
         if (!_assigned.Remove(brain)) return;
         if (brain.Blackboard.AssignedNode == this)
             brain.Blackboard.AssignedNode = null;
-        Debug.Log($"[ResourceNode] {brain.name} 배정 해제");
+        OnAssignmentChanged?.Invoke(this);
     }
 
     void OnDestroy()
@@ -41,7 +46,10 @@ public class ResourceNode : MonoBehaviour
         foreach (var brain in _assigned)
             if (brain != null && brain.Blackboard.AssignedNode == this)
                 brain.Blackboard.AssignedNode = null;
+
+        bool had = _assigned.Count > 0;
         _assigned.Clear();
+        if (had) OnAssignmentChanged?.Invoke(this);
 
         // Awake에서 막아둔 점유 타일 해제 — 노드 소멸 자리가 영구 건설 불가로 남는 것 방지
         if (_tileBlocked && MapManager.Instance != null)
@@ -78,7 +86,6 @@ public class ResourceNode : MonoBehaviour
         if (data == null) return;
 
         _gauge += power;
-        Debug.Log($"[ResourceNode] 채굴 중 {_gauge:F1} / {data.GaugeRequired} ({_gauge / data.GaugeRequired * 100f:F0}%)");
 
         if (_gauge >= data.GaugeRequired)
         {
@@ -95,20 +102,17 @@ public class ResourceNode : MonoBehaviour
             return;
         }
 
-        int amount = Random.Range(data.DropMin, data.DropMax + 1);
+        int amount = UnityEngine.Random.Range(data.DropMin, data.DropMax + 1);
         _totalYielded++;
 
         // 노드 인벤토리에 쌓아둠
         Inventory.TryAdd(data.DropItem, amount);
-        Debug.Log($"[ResourceNode] {data.DropItem.ItemName} ×{amount} 적재 (누적: {Inventory.GetTotalQuantity(data.DropItem)})");
 
         // 임계값 이상 쌓이고 운반 작업이 없을 때만 등록
         int total = Inventory.GetTotalQuantity(data.DropItem);
-        Debug.Log($"[ResourceNode] 재고:{total}/{haulThreshold} pending:{_haulJobPending}");
         if (!_haulJobPending && total >= haulThreshold)
         {
             var storage = Storage.FindNearest(transform.position, data.DropItem);
-            Debug.Log($"[ResourceNode] HaulJob 등록 시도 — 창고:{storage?.name ?? "없음"}");
             if (storage != null && JobManager.Instance != null)
             {
                 _haulJobPending = true;

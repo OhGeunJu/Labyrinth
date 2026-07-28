@@ -19,6 +19,7 @@ public class FuelJob : JobBase
         _table    = table;
         _fuel     = fuel;
         Priority  = 3;
+        SetSite(table);
         TileCoord = MapManager.Instance != null
             ? MapManager.Instance.WorldToTile(table.transform.position)
             : Vector2Int.zero;

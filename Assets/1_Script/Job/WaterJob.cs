@@ -16,6 +16,7 @@ public class WaterJob : JobBase
         _plot     = plot;
         Priority  = 4;
         TileCoord = plot.TileCoord;
+        SetSite(plot);
     }
 
     protected override void Execute(UnitBrain unit)

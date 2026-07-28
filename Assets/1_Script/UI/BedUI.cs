@@ -61,7 +61,7 @@ public class BedUI : MonoBehaviour
     {
         if (_current == null || assignedUnitText == null) return;
         var unit = _current.AssignedUnit;
-        assignedUnitText.text = unit != null ? unit.gameObject.name : "미배정";
+        assignedUnitText.text = unit != null ? unit.UnitName : "미배정";
     }
 
     void AssignSelected()

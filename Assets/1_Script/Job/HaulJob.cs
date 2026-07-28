@@ -13,6 +13,7 @@ public class HaulJob : JobBase
     Storage      _storage;
     Phase        _phase = Phase.GoToSource;
     Action       _onDone;
+    UnitBrain    _carrier;   // 짐을 들고 있는 폰 (취소 시 내려놓기용)
 
     public HaulJob(ResourceNode source, ItemData itemData, int amount, Storage storage, Action onDone = null)
     {
@@ -25,21 +26,15 @@ public class HaulJob : JobBase
         Priority  = 5;
     }
 
-    protected override void OnStart()
-    {
-        Debug.Log($"[HaulJob] 시작 — 운반자:{ReservedBy?.name} 소스:{_source?.name} 아이템:{_itemData?.ItemName}");
-    }
-
     protected override void Execute(UnitBrain unit)
     {
+        _carrier = unit;
+
         if (_phase == Phase.GoToSource)
         {
             int available = _source != null ? _source.Inventory.GetTotalQuantity(_itemData) : 0;
-            Debug.Log($"[HaulJob] GoToSource — 노드 재고:{available} 운반자:{unit.name}");
-
             if (available <= 0)
             {
-                Debug.Log("[HaulJob] 노드에 아이템 없음 → 완료");
                 Status = JobStatus.Done;
                 _onDone?.Invoke();
                 return;
@@ -56,7 +51,6 @@ public class HaulJob : JobBase
                     DroppedItem.Spawn(_itemData, lost, _source.transform.position);
             }
             _amount = added;
-            Debug.Log($"[HaulJob] 수거 {toTake}개 → 인벤 추가 {added}개 → 창고로 이동");
 
             if (_amount <= 0)
             {
@@ -71,8 +65,6 @@ public class HaulJob : JobBase
         else
         {
             int removed = unit.Inventory.Remove(_itemData, _amount);
-            Debug.Log($"[HaulJob] GoToStorage — 인벤에서 {removed}/{_amount}개 꺼냄");
-
             // 실제 꺼낸 수량 기준으로 입고. 못 들어간 잔량은 인벤 복귀 → 드롭 순으로 보존.
             int leftover = removed;
             if (leftover > 0 && _storage != null && _storage.CanAccept(_itemData))
@@ -94,9 +86,20 @@ public class HaulJob : JobBase
 
             Status = JobStatus.Done;
             _onDone?.Invoke();
-            Debug.Log("[HaulJob] 완료");
         }
     }
 
-    protected override void OnCancelled() => _onDone?.Invoke();
+    // 취소 시 들고 있던 짐을 그 자리에 내려놓는다.
+    // 안 그러면 운반 도중 취소된 물건이 폰 인벤토리에 갇힌다(이동 명령 취소가 잦아지며 드러난 경로).
+    // 드롭되면 GroundHaulJob이 자동 등록돼 다른 폰이 창고로 옮긴다.
+    protected override void OnCancelled()
+    {
+        _onDone?.Invoke();
+
+        if (_phase != Phase.GoToStorage || _carrier == null || _itemData == null || _amount <= 0) return;
+
+        int removed = _carrier.Inventory.Remove(_itemData, _amount);
+        if (removed > 0)
+            DroppedItem.Spawn(_itemData, removed, _carrier.transform.position);
+    }
 }
