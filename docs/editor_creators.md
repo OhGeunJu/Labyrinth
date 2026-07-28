@@ -241,6 +241,21 @@ Object.DestroyImmediate(root);
 return prefabGO.GetComponent<EntryUI>();
 ```
 
+## 모양은 씬이, 코드는 데이터만 (반복 항목 = 템플릿 복제)
+
+목록·그리드처럼 항목이 반복되는 UI는 **행 하나를 씬에 만들어 두고 런타임에 그걸 복제**한다. 코드가 모양을 만들면 안 된다.
+
+```
+Content
+ └ RowTemplate   ← 편집 중 보이는 그 행. 런타임에 SetActive(false) + Instantiate 원본
+```
+
+- 런타임 컴포넌트는 **데이터 연결만** 한다(`PawnRosterRowUI.Bind`: 이름·초상화·상태·클릭). 여백·폰트·색·크기는 전부 씬 오브젝트가 갖는다.
+- 이렇게 하면 **편집 중 모양 = 게임 모양**이 구조적으로 보장된다. 미리보기를 따로 그리는 방식은 반드시 실제와 어긋난다.
+- 요소는 앵커로 붙일 것 — 이름 칸을 좌우 스트레치로 두면 패널 폭만 바꿔도 목록이 알아서 늘어난다(코드 계산 불필요).
+- 편집 중 생성물은 씬 폰트 상속이 안 되므로 생성기가 `ApplyFont`로 한글 폰트를 직접 박을 것.
+- 프리팹 대신 씬 안 템플릿을 쓰는 이유: 그 패널에서만 쓰는 행이라 에셋으로 분리할 이유가 없고, 씬에서 바로 보면서 고칠 수 있다.
+
 ## 생성된 UI 목록
 
 | UI | 컴포넌트 | 비고 |
@@ -255,4 +270,5 @@ return prefabGO.GetComponent<EntryUI>();
 | CorpseInventoryPanel | `CorpseInventoryPanel` | 시체 루팅, PawnInventoryPanel 연동 |
 | CorpseInventoryPanel EquipRow | `CorpseInventoryPanel` 하위 추가 | `Add Corpse Equip Row`. 6개 EquipSlotUI 생성 후 패널 필드에 직접 연결 |
 | ResourceNode_Panel | `ResourceNodePanel` | `Create Resource Node Panel`. 우측 패널, 상단 #0D0D0D 헤더+CloseButton, 재고/배정/이송/운반임계값 |
-| PawnRoster_Panel | `PawnRosterPanel` | `Create Pawn Roster UI`. 하단 가로 바, 대기중/작업중 2행 그리드 카드(초상화+개체명). "Portrait" 레이어 자동 생성 |
+| PawnRoster_Panel | `PawnRosterPanel` | `Create Pawn Roster UI`. 우측 하단 세로 명부(340×760). 헤더·스크롤·**행 템플릿(`RowTemplate`)까지 씬 오브젝트로** 만든다 — 런타임엔 템플릿을 숨기고 복제해 목록을 채운다. 모양 수정은 인스펙터에서, 코드 수정 불필요. "Portrait" 레이어 자동 생성 |
+| ColonyPanel | `ColonyPanel` | `Create Colony Panel`. 중앙 표 패널(P키). **행·열 라벨은 런타임 생성**(작업 카테고리에서 파생) — 생성기는 헤더/열제목 행/스크롤/하단 안내만 만든다. 구버전 `Priority_UI`·`PriorityManager` 오브젝트 자동 제거 |

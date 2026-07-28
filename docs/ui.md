@@ -17,10 +17,10 @@
 | `FarmPlotUI` | FarmPlot 좌클릭 | 씨앗 선택 + 상태/성장/수분 표시. ESC로 닫기 |
 | `BedUI` | Bed 좌클릭 | 선택 유닛 배정/해제 버튼 |
 | `PatrolZoneUI` | PatrolZone 좌클릭 | 모드 전환 버튼 3개 + 배정 유닛 목록 |
-| `PriorityPanel` | P키 | 작업 우선순위 조절 |
+| `ColonyPanel` | P키 | **무리 관리** — 폰 전체를 한 표에서. 행=폰, 열=작업 on/off + 현재 배정 + 전투 성향 |
 | `BuildModeUI` | B키 | 화면 하단 건설 바. 왼쪽 카테고리, 오른쪽 건물 목록 |
 | `NodeInfoPanel` | ResourceNode 클릭 | 자원 노드 정보. haulThreshold +5/-5 버튼 |
-| `PawnRosterPanel` | 항상 표시 | 건설 모드 외에는 항상 열림 |
+| `PawnRosterPanel` | 항상 표시 | **우측 하단 세로 명부**(340×760, 모서리에 딱 붙임). 한 줄 = 초상화+이름+현재 상태(`PawnStatusText`). 초상화·글자는 `rowHeight`(52)에 비례. 넘치면 스크롤, 행 클릭 = 선택(선택 행 배경 강조). 건설 모드에선 숨김 |
 | `EventNotificationUI` | 이벤트 발동 | 화면 상단 팝업. 5초 자동 닫힘 |
 | `DungeonCoreUI` | 코어 선택 | 던전 코어 정보/소환 |
 
@@ -28,6 +28,7 @@
 - `BuildModeManager.OnActiveChanged` — 건설 모드 열릴 때 대부분 UI 자동 닫힘
 - `CloseButton` — `Target` RectTransform 연결 시 클릭으로 비활성화
 - ESC 키 — 대부분 패널이 `Update()`에서 `escapeKey.wasPressedThisFrame` 체크로 닫힘
+- 마우스 휠 — 커서가 UI 위면 `CameraController`가 줌을 건너뛴다(패널 스크롤 우선). 클릭 게이트와 같은 `EventSystem.IsPointerOverGameObject` 방식
 
 ## InventoryGridUI
 
@@ -103,6 +104,7 @@
 | Create Merchant UI | MerchantUI + ItemInfoPanel 씬 생성, MerchantStockEntry/SellItemEntry 프리팹 저장 |
 | Create Pawn Inventory UI | PawnInventoryPanel 전체 UI 재생성 (그리드+장착슬롯+액션바) |
 | Add Corpse Equip Row | CorpseInventoryPanel에 장착 슬롯 행 추가 |
+| Create Colony Panel | ColonyPanel(무리 관리, P키) 생성 + 구버전 Priority_UI/PriorityManager 오브젝트 제거 |
 
 ## Inventory 클래스
 
