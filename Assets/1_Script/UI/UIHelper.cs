@@ -4,6 +4,38 @@ using TMPro;
 
 public static class UIHelper
 {
+    // 런타임 생성 TMP는 기본 폰트(LiberationSans SDF)를 쓰는데 한글 글리프가 없어 □로 나온다.
+    // TMP Settings의 기본 폰트 → 씬에 이미 있는 TMP 텍스트의 폰트 순으로 한글 가능한 폰트를 물려받는다.
+    // (NanumGothic SDF는 Resources 밖이라 Resources.Load 불가 — 씬에서 상속하는 게 유일한 런타임 경로.)
+    public static void ApplyKoreanFont(TextMeshProUGUI tmp, Transform context = null)
+    {
+        if (tmp == null) return;
+        var font = ResolveKoreanFont(context != null ? context : tmp.transform);
+        if (font != null) tmp.font = font;
+    }
+
+    static TMP_FontAsset _cachedFont;
+
+    static TMP_FontAsset ResolveKoreanFont(Transform context)
+    {
+        if (_cachedFont != null) return _cachedFont;
+
+        var def = TMP_Settings.defaultFontAsset;
+        if (def != null && def.HasCharacter('한')) return _cachedFont = def;
+
+        // 같은 캔버스(계층 루트) 안의 기존 텍스트 우선 — 패널과 같은 폰트를 쓰게 된다.
+        var root = context != null ? context.root : null;
+        if (root != null)
+            foreach (var t in root.GetComponentsInChildren<TextMeshProUGUI>(true))
+                if (t.font != null && t.font.HasCharacter('한')) return _cachedFont = t.font;
+
+        foreach (var t in Object.FindObjectsByType<TextMeshProUGUI>(FindObjectsInactive.Include,
+                                                                   FindObjectsSortMode.None))
+            if (t.font != null && t.font.HasCharacter('한')) return _cachedFont = t.font;
+
+        return null;   // 못 찾으면 기본 폰트 유지(□) — TMP Settings에 한글 폰트를 지정하면 해결
+    }
+
     public static GameObject MakePanel(Transform parent, string name, Vector2 size,
                                        Vector2 pivot, Vector2 anchoredPos)
     {
@@ -40,6 +72,7 @@ public static class UIHelper
         tmp.fontStyle = style == FontStyle.Bold ? FontStyles.Bold : FontStyles.Normal;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color     = Color.white;
+        ApplyKoreanFont(tmp, parent);
 
         return tmp;
     }
@@ -75,6 +108,7 @@ public static class UIHelper
         tmp.fontSize  = fontSize;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color     = Color.white;
+        ApplyKoreanFont(tmp, parent);
 
         return btn;
     }

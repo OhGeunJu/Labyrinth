@@ -33,6 +33,8 @@ public class UnitData : ScriptableObject
     public float AttackDamage  = 10f;
     public float AttackRange   = 1.5f;
     public float DetectRange   = 10f;
+    // 전투 성향(교전/도주)·유휴 배회는 종족이 아니라 개체의 역할이므로 여기가 아니라
+    // AI 프로필(AiProfileData SO, UnitBrain.aiProfile에 연결)에 있다 — 같은 "사람"이라도 마을사람/경비병이 다르다.
 
     [Header("등급 (기본)")]
     [Tooltip("오버라이드되지 않은 모든 스탯의 기본 등급 범위")]

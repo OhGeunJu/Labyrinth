@@ -10,41 +10,72 @@ public class UnitHPUI : MonoBehaviour
     [SerializeField] TextMeshProUGUI infoText;
     [SerializeField] SelectionManager selectionManager;
 
+    // 조작 불가 유닛(적/NPC)을 클릭했을 때의 조사 대상. 선택 유닛이 있으면 그쪽이 우선.
+    UnitBrain _inspected;
+
     void Awake()
     {
         if (panel != null) panel.SetActive(false);
         selectionManager.OnSelectionChanged += (_, __) => Refresh();
+        SelectionManager.OnPawnInspected    += OnPawnInspected;
         BuildModeManager.OnActiveChanged    += OnBuildModeChanged;
     }
 
-    void OnDestroy() => BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+    void OnDestroy()
+    {
+        SelectionManager.OnPawnInspected -= OnPawnInspected;
+        BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+    }
 
-    void OnBuildModeChanged(bool active) { if (active && panel != null) panel.SetActive(false); }
+    void OnPawnInspected(UnitBrain brain)
+    {
+        _inspected = brain;
+        Refresh();
+    }
+
+    void OnBuildModeChanged(bool active)
+    {
+        if (!active) return;
+        _inspected = null;
+        if (panel != null) panel.SetActive(false);
+    }
 
     void Update()
     {
-        if (selectionManager.Selected.Count > 0) Refresh();
+        if (selectionManager.Selected.Count > 0 || _inspected != null) Refresh();
     }
 
     void Refresh()
     {
-        if (selectionManager.Selected.Count == 0) { panel?.SetActive(false); return; }
+        // 내 유닛 선택이 우선, 없으면 클릭으로 조사 중인 유닛
+        UnitBrain brain = null;
+        if (selectionManager.Selected.Count > 0)
+        {
+            var selected = selectionManager.Selected[0];
+            if (selected != null) brain = selected.GetComponent<UnitBrain>();
+        }
+        else if (_inspected != null)
+        {
+            brain = _inspected;
+        }
+
+        if (brain == null) { panel?.SetActive(false); return; }   // 선택 없음 / 파괴된 유닛
         panel?.SetActive(true);
 
-        var pawn  = selectionManager.Selected[0];
-        if (pawn == null) { panel?.SetActive(false); return; }   // 선택 중 파괴된 유닛(사망 Destroy)
-        var brain = pawn.GetComponent<UnitBrain>();
-        var body  = pawn.GetComponent<BodyPartSystem>();
-        var sfx   = pawn.GetComponent<StatusEffectSystem>();
-        if (brain == null) return;
+        var pawn = brain.gameObject;
+        var body = brain.GetComponent<BodyPartSystem>();
+        var sfx  = brain.GetComponent<StatusEffectSystem>();
 
         var sb    = new StringBuilder();
         var equip = brain.Equipment;
 
-        // 헤더
-        string unitType = brain.Data is MinionData ? "하수인" : "방랑자";
-        string raceName = brain.Data != null ? brain.Data.RaceName : pawn.name;
-        sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>[{unitType}]</color>");
+        // 헤더 — 이름 [유형] (세력)
+        var faction = brain.GetComponent<Faction>();
+        string raceName = !string.IsNullOrEmpty(brain.UnitName) ? brain.UnitName
+                        : brain.Data != null ? brain.Data.RaceName : pawn.name;
+        string factionName = faction != null && faction.Data != null
+            ? $"  <color=#7AA>({faction.Data.FactionName})</color>" : "";
+        sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>[{UnitTypeLabel(brain, faction)}]</color>{factionName}");
         sb.AppendLine();
 
         // 혈액 / 보호막 / 부패
@@ -57,10 +88,13 @@ public class UnitHPUI : MonoBehaviour
                 sb.AppendLine($"부패  {BarColored(sfx.CorruptionGauge, StatusEffectSystem.MaxCorruption, "#A020F0", "#6010A0")}  {sfx.CorruptionGauge:F0}/{StatusEffectSystem.MaxCorruption:F0}");
         }
 
-        // 허기
-        float hunger = brain.Blackboard.Hunger;
-        string hungerColor = hunger > 60f ? "#8BC34A" : hunger > 30f ? "#FF9800" : "#F44336";
-        sb.AppendLine($"허기  {BarColored(hunger, 100f, hungerColor, hungerColor)}  <color={hungerColor}>{hunger:F0}/100</color>");
+        // 허기 — 플레이어 세력만 시뮬레이션되므로 그 유닛에만 표시
+        if (faction == null || faction.IsPlayer)
+        {
+            float hunger = brain.Blackboard.Hunger;
+            string hungerColor = hunger > 60f ? "#8BC34A" : hunger > 30f ? "#FF9800" : "#F44336";
+            sb.AppendLine($"허기  {BarColored(hunger, 100f, hungerColor, hungerColor)}  <color={hungerColor}>{hunger:F0}/100</color>");
+        }
 
         // 활성 상태이상
         if (sfx != null) AppendStatusEffects(sb, sfx);
@@ -105,6 +139,31 @@ public class UnitHPUI : MonoBehaviour
         if (sfx.HealMult           < 0.95f) parts.Add("<color=#F44>[힐감소]</color>");
         if (sfx.AttackChanceMod    < 0.95f) parts.Add("<color=#F84>[약화]</color>");
         if (parts.Count > 0) sb.AppendLine("상태  " + string.Join("  ", parts));
+    }
+
+    // 유형 라벨 — 플레이어 유닛은 방랑자/하수인, NPC는 역할, 그 외는 **우리 세력과의 관계**.
+    // (비플레이어를 무조건 "적"이라 부르면 중립 세력까지 적으로 표기된다)
+    static string UnitTypeLabel(UnitBrain brain, Faction faction)
+    {
+        if (brain.Data is MinionData) return "하수인";
+        if (brain.Data is NpcData npc) return npc.NpcType switch
+        {
+            NpcType.Villager      => "주민",
+            NpcType.Guard         => "경비",
+            NpcType.ShopMerchant  => "상인",
+            NpcType.EventMerchant => "행상인",
+            _                     => "NPC",
+        };
+        if (faction == null || faction.IsPlayer) return "방랑자";
+
+        var player = Faction.Player;
+        if (player == null) return "중립";
+        return player.StanceTo(faction) switch
+        {
+            FactionStance.Hostile => "적",
+            FactionStance.Ally    => "우호",
+            _                     => "중립",
+        };
     }
 
     static string H(string t)    => $"<color=#E8C566>{t}</color>";

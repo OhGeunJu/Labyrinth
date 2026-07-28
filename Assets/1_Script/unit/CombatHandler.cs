@@ -308,6 +308,7 @@ public class CombatHandler : MonoBehaviour
         {
             if (hit.collider.gameObject == gameObject)           continue;
             if (hit.collider.gameObject == intendedTarget)       continue;
+            // 적대 대상이 아니면(아군·중립) 오사 회피 대상 — 중립을 쏴서 원한 사는 것도 막는다.
             var f = hit.collider.GetComponent<Faction>();
             if (f == null || myFaction.IsHostileTo(f)) continue;
             return hit.collider.gameObject;
@@ -417,8 +418,9 @@ public class CombatHandler : MonoBehaviour
         foreach (var col in Physics.OverlapSphere(transform.position, range))
         {
             if (col.gameObject == gameObject) continue;
+            // 아군만 치유 — 중립은 대상 아님(관계 3단계로 바뀌며 명시화).
             var faction = col.GetComponent<Faction>();
-            if (myFaction != null && faction != null && myFaction.IsHostileTo(faction)) continue;
+            if (myFaction != null && faction != null && !myFaction.IsAllyOf(faction)) continue;
             col.GetComponent<BodyPartSystem>()?.Heal(bloodAmount, partsAmount);
         }
     }

@@ -23,6 +23,10 @@ public class SelectionManager : MonoBehaviour
     public static event Action<ResourceNode> OnNodeSelected;
     public static event Action<Corpse> OnCorpseSelected;
 
+    // 조작 불가 유닛(적/NPC)을 클릭했을 때 — 명령 대상은 아니지만 정보는 보여준다.
+    // 다른 것을 클릭하거나 빈 곳을 클릭하면 null로 해제된다.
+    public static event Action<UnitBrain> OnPawnInspected;
+
     void Awake()
     {
         _cam = Camera.main;
@@ -41,7 +45,8 @@ public class SelectionManager : MonoBehaviour
 
     void HandleSelection()
     {
-        if (BuildModeManager.IsActive) return;
+        // 건설 모드·핵 이전 모드 중에는 클릭이 그쪽 전용 (선택으로 새어나가지 않게)
+        if (BuildModeManager.IsActive || CoreRelocator.IsActive) return;
 
         if (Mouse.current.leftButton.wasPressedThisFrame)
         {
@@ -108,12 +113,23 @@ public class SelectionManager : MonoBehaviour
 
             var pawn = hit.collider.GetComponent<PawnMover>();
             var faction = hit.collider.GetComponent<Faction>();
-            if (pawn != null && faction != null && faction.Type == FactionType.Player)
+            if (pawn != null && faction != null && faction.IsPlayer)
             {
                 ClearSelection();
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
                 AddToSelection(pawn);
+                return;
+            }
+
+            // 조작 불가 유닛(적/NPC) — 선택(명령)은 안 되지만 정보 패널은 띄운다.
+            if (pawn != null)
+            {
+                ClearSelection();
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(pawn.GetComponent<UnitBrain>());
                 return;
             }
 
@@ -125,14 +141,23 @@ public class SelectionManager : MonoBehaviour
                 ClearSelection();
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                // 휴면(핵 영역 밖) 건물은 사용 불가 → 패널도 열지 않는다.
+                if (BuildingDormancy.IsDormantAt(hit.collider))
+                {
+                    Debug.Log("[Selection] 핵 영역 밖 건물은 사용할 수 없습니다(휴면).");
+                    return;
+                }
                 clickable.OnWorldClick();
                 return;
             }
         }
 
+        // 빈 곳 클릭 — 전부 해제
         ClearSelection();
         DungeonCore.Instance?.Deselect();
         OnNodeSelected?.Invoke(null);
+        OnPawnInspected?.Invoke(null);
     }
 
     void SelectByRect()
@@ -144,7 +169,7 @@ public class SelectionManager : MonoBehaviour
         foreach (var pawn in FindObjectsByType<PawnMover>(FindObjectsSortMode.None))
         {
             var faction = pawn.GetComponent<Faction>();
-            if (faction == null || faction.Type != FactionType.Player) continue;
+            if (faction == null || !faction.IsPlayer) continue;
 
             Vector3 screenPos = _cam.WorldToScreenPoint(pawn.transform.position);
             if (screenPos.z > 0f && screenRect.Contains((Vector2)screenPos, true))
