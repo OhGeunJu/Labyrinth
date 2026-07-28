@@ -46,16 +46,13 @@ public class JobManager : MonoBehaviour
         OnJobCancelled?.Invoke(job);
     }
 
-    // 작업 요청 — 방랑자용 (유닛 개인 우선순위 사용)
+    // 작업 요청 — 방랑자·하수인 공통.
+    // 폰이 그 작업을 하는지 여부는 개체별 WorkSettings(on/off), 무엇을 먼저 할지는
+    // JobCategoryInfo.QueueOrder(전역 고정 순서)가 정한다.
     public JobBase RequestJob(UnitBrain unit)
-        => RequestJobInternal(unit, null, unit.Priorities);
-
-    // 작업 요청 — 하수인용 (카테고리 필터 + 글로벌 우선순위)
-    public JobBase RequestJobFiltered(UnitBrain unit, List<JobCategory> allowed)
-        => RequestJobInternal(unit, allowed, null);
-
-    JobBase RequestJobInternal(UnitBrain unit, List<JobCategory> allowed, UnitPriorities unitPriorities)
     {
+        var settings = unit != null ? unit.Work : null;
+
         JobBase best      = null;
         int     bestScore = -1;
 
@@ -63,14 +60,15 @@ public class JobManager : MonoBehaviour
         {
             if (job.Status != JobStatus.Available) continue;
             if (!job.IsReady) continue;   // 재료 부족 등 미준비 작업은 큐에 두고 배정 보류
-            if (allowed != null && allowed.Count > 0 && !allowed.Contains(job.Category)) continue;
+            if (!job.IsSiteUsable) continue; // 휴면(핵 영역 밖) 건물의 일감도 대기 — 영역 복구 시 재개
 
-            int priority = unitPriorities != null
-                ? unitPriorities.Get(job.Category)
-                : (PriorityManager.Instance != null ? PriorityManager.Instance.Get(job.Category) : 3);
-            if (priority <= 0) continue;
+            // 큐 밖 카테고리(채굴·벌목 등 직접 배정)는 애초에 여기서 배정되지 않는다.
+            int weight = JobCategoryInfo.Weight(job.Category);
+            if (weight <= 0) continue;
 
-            int score = priority * 100 + job.Priority;
+            if (settings != null && !settings.IsEnabled(job.Category)) continue;
+
+            int score = weight * 100 + job.Priority;
             if (score > bestScore) { bestScore = score; best = job; }
         }
 

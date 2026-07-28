@@ -4,10 +4,9 @@
 
 `JobManager` (singleton):
 - `RegisterJob(JobBase)` — 작업 등록
-- `RequestJob(unit)` — 방랑자용 (필터 없음)
-- `RequestJobFiltered(unit, allowedCategories)` — 하수인용
+- `RequestJob(unit)` — 방랑자·하수인 공통 (폰의 `WorkSettings`로 필터)
 
-Job score = `globalPriority × 100 + job.Priority`. `PriorityManager.Get(category)` 0이면 비활성.
+Job score = `JobCategoryInfo.Weight(category) × 100 + job.Priority`. 폰이 그 카테고리를 껐으면 배정 제외.
 
 `JobBase.Category` — virtual `JobCategory` 프로퍼티.
 
@@ -15,7 +14,7 @@ Job score = `globalPriority × 100 + job.Priority`. `PriorityManager.Get(categor
 
 | Job | Category | 흐름 |
 |---|---|---|
-| `MineJob` | Mining | ResourceNode 도착 → Work 틱마다 `ResourceNode.Work` |
+| `MineJob` | Mining | **현재 미사용** — 어디서도 생성되지 않는다. 채굴은 노드 직접 배정(`WorkNode.TickAssigned`) 경로로만 돌아간다 |
 | `HaulJob` | Hauling | GoToSource(노드 재고 전량 수거) → GoToStorage(TryAdd) |
 | `GroundHaulJob` | Hauling | GoToItem(DroppedItem.PickUp) → GoToStorage |
 | `CraftJob` | Crafting | OnStart 재료 즉시 소비 → 테이블 도착 → CraftTime 카운트 → DroppedItem.Spawn |
@@ -35,13 +34,27 @@ Job score = `globalPriority × 100 + job.Priority`. `PriorityManager.Get(categor
 
 **WorkNode 작업 반경:** 2.0f (콜라이더에 끼어도 2.0f 이내면 실행). Logging은 `Stats.Cutting`, 그 외는 `Stats.Mining` 성장.
 
-## Priority System
+## 작업 배정 모델 (on/off + 전역 고정 순서)
 
-`PriorityManager` (singleton):
-- `Get(category)` / `Set(category, value)` / `Increase` / `Decrease` — 0~5
-- `IsEnabled(category)` — 0이면 false
+작업은 두 갈래다.
 
-`PriorityPanel` — P키 토글.
+| 갈래 | 카테고리 | 배정 방식 |
+|---|---|---|
+| **큐 작업** | Construction, Farming, Crafting, Research, Hauling | 건물/농지/작업대가 `JobManager`에 일감 등록 → 폰이 알아서 집어감 |
+| **직접 배정** | Mining, Logging (자원 노드), Guard (순찰 구역) | 플레이어가 대상에 폰을 직접 붙임 (`Blackboard.AssignedNode` / `AssignedPatrolZone`) |
+
+`JobCategoryInfo` — 이 구분과 표시명의 **단일 출처**.
+- `QueueOrder[]` — 큐를 타는 카테고리. **배열 순서 = 전역 우선순위**(앞이 먼저), 모든 폰 공통.
+- `Weight(category)` — 점수 가중치. 큐 밖 카테고리는 0 = 큐에서 배정되지 않음.
+- `IsQueued` / `DirectAssign[]` / `DisplayName(category)`
+- 새 Job 클래스의 카테고리를 `QueueOrder`에 넣지 않으면 **그 일감은 아무도 집지 않는다.**
+
+`WorkSettings` (폰 컴포넌트, `UnitBrain.Work`):
+- `IsEnabled(category)` / `SetEnabled` / `Toggle` — 폰별 **한다/안 한다**만. 숫자 우선순위 없음(폰마다 순서를 다르게 줄 이유가 없고, 그리드 관리 비용만 커진다).
+- `UnitBrain.Awake`가 플레이어 세력 일꾼(방랑자·하수인)에만 자동 부착. 기본값 전부 켬.
+- 하수인은 `MinionData.AllowedJobs`를 **초기값**으로만 사용 → 이후 조정은 개체별(같은 SO를 공유하는 다른 하수인에 영향 없음).
+
+UI: `ColonyPanel` — P키 토글 (`docs/ui.md`).
 
 ## Resource & Storage System
 
