@@ -43,26 +43,29 @@ Guidance for Claude Code in this repository.
 
 | Type | Data Class | BT 순서 |
 |---|---|---|
-| **방랑자** | `UnitData` | Draft → Fight → Rest → Eat → Work → Idle |
+| **방랑자** | `UnitData` | Draft → **직접 명령** → Fight → Rest → Eat → Work → Idle |
 | **하수인** | `MinionData` | Detect+Fight → Rest → Eat → Patrol → Work → Idle |
 | **Enemy** | `UnitData` | Detect → Fight → Idle |
 | **NPC** | `NpcData` | 타입별 (Villager: Flee→Wander / Guard: Fight→Patrol / EventMerchant: WalkIn→Stay→WalkOut) |
 
+### 팩션 (세력 관계)
+
+`FactionData` (SO) — 세력 1개. `PlayerControlled` / `DefaultStance` / `Relations[{Other, Stance}]`. **관계는 방향별**(`StanceTo`): A→B 적대여도 B→A 중립 가능. `Faction` 컴포넌트가 SO를 들고 `IsPlayer`/`IsHostileTo`/`IsAllyOf` 제공, **SO 미연결 시 레거시 `FactionType{Player,Enemy}` 폴백**(기존 씬 무영향). 반격은 관계와 무관 — `UnitBlackboard.LastAttacker`(15초). AI 역할은 `UnitBrain.UsesEnemyAi`(NPC/하수인 아님 && !IsPlayer). **적을 만났을 때의 반응 + 유휴 배회는 `AiProfileData`(SO)** — 유닛 프리팹의 `UnitBrain.aiProfile`에 연결(새 컴포넌트 부착 불필요, 프로필을 여러 프리팹이 공유). 세 축 분리: 종족(`UnitData`)=스탯 / 세력(`FactionData`)=누가 적인가 / 역할(`AiProfileData`)=어떻게 반응하는가. 비우면 타입별 기본값(일반·경비=교전+배회 / NPC 주민=도주+배회 / 상점상인=도주+제자리). 트리 조립은 `UnitBrain.AddCombatBranch` / `AddWanderBranch` 공용. 스타터 에셋: `DungeonColony → Create Starter AI Profiles`. 스타터 에셋: `DungeonColony → Create Starter Factions`. 상세 `docs/units.md`.
+
 - `MoveController` — 방랑자만 우클릭 명령 (`!(brain.Data is MinionData)`)
-- `MinionData.AllowedJobs` — 하수인 작업 필터 (`RequestJobFiltered`)
+- `MinionData.AllowedJobs` — 하수인 작업 설정의 **초기값**(이후 조정은 `WorkSettings`로 개체별)
 - `MinionData.CanProvideWater` — 우물 없이 직접 물 공급
 
 ### Key Singletons
 
 | Class | 주요 API |
 |---|---|
-| `MapManager` | 점유=`HashSet<Vector2Int>` 희소 저장(절대좌표, 핵 이동에도 유지). `TileToWorld`(Y=0, 길찾기용) / `TileToGround`(지면 스냅, 배치/시각화용) / `WorldToTile` / `SampleGroundHeight(x,z)` / `IsFlatEnough(footprint)` / `IsBuildable` / `OnTileChanged` static event / `GetForPosition(Vector3)` |
-| `JobManager` | `RegisterJob` / `RequestJob(unit)` / `RequestJobFiltered(unit, categories)` |
-| `PriorityManager` | `Get/Set/Increase/Decrease/IsEnabled(JobCategory)` |
-| `DungeonCore` | `Summon(MinionData, pos)` / `IsWithinAnyRangeWorld(Vector3)`(메인+서브 union) / `RegisterSubCore` / `RelocateTo(pos)`(핵 이전) / `OnTerritoryChanged` static event(영역 변경 → `BuildingDormancy` 재평가) |
+| `MapManager` | 점유=`HashSet<Vector2Int>` 희소 저장(절대좌표, 핵 이동에도 유지). `TileToWorld`(Y=0, 길찾기용) / `TileToGround`(표면 스냅, 배치/시각화용) / `SurfaceHeight(tile)`(바닥 윗면 ∥ 지형 높이) / `TryGetFloorSurface` / `WorldToTile` / `SampleGroundHeight(x,z)` / `IsFlatEnough(footprint)` / `IsBuildable` / `OnTileChanged` static event / `GetForPosition(Vector3)` |
+| `JobManager` | `RegisterJob` / `RequestJob(unit)`(방랑자·하수인 공통 — 폰의 `WorkSettings`로 필터) |
+| `DungeonCore` | `Summon(MinionData, pos)` / `IsWithinAnyRangeWorld(Vector3)`(메인+서브 union) / `RegisterSubCore` / `RelocateTo(pos)`(핵 이전, UI 진입점=`CoreRelocator`) / `WouldBeInRangeAt(corePos, worldPos)`(이전 미리보기용 영역 판정) / `OnTerritoryChanged` static event(영역 변경 → `BuildingDormancy` 재평가) |
 | `EventManager` | `checkInterval`(기본 300초) 주기 랜덤 이벤트 발동. `OnEventTriggered` static event |
 | `GameTimeManager` | 낮30분+밤30분=1일. `NormalizedTime`(0-1) / `IsDay` / `CurrentDay` / `OnDayChanged` / `OnTimeChanged(float)` |
-| `HierarchicalPathfinder` | 씬에 배치 필요. `ComputeCoarseRoute(from,to)`(메소/L2) + `FindLocalPath(pos,target)`(유닛 중심 Theta* 윈도우) / `RebakeObstacleAt`. `obstacleLayer`=Wall만, `agentRadius`=유닛 반경 |
+| `HierarchicalPathfinder` | 씬에 배치 필요. `ComputeCoarseRoute(from,to)`(메소/L2) + `FindLocalPath(pos,target,self)`(유닛 중심 Theta* 윈도우) / `RebakeObstacleAt`. `obstacleLayer`=Wall만. **통행 판정은 타일 단위** — 반경 부풀림은 타일보다 큰 에이전트에만. 상세 `docs/world.md` |
 | `ResearchManager` | `IsUnlocked(recipe)` / `CanResearch(data)` / `Complete(data)` |
 | `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill(CraftSkill)` / `AllItems` / `AllRecipes` |
 
@@ -78,11 +81,17 @@ storage.CanAccept(ItemData)              // 필터 통과 여부
 storage.TryAdd(item, amount)             // 필터 통과 시에만 입고
 ```
 
-### Job Categories & Score
+### Job Categories & 배정 모델
 
 `JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard, Crafting, Research
 
-Job score = `globalPriority × 100 + job.Priority`. Priority 0 = 비활성.
+**두 갈래** — `JobCategoryInfo`가 단일 출처.
+- **큐 작업**(`QueueOrder`: 건설 → 농사 → 제작 → 연구 → 운반): 건물/농지/작업대가 일감 등록 → 폰이 집어감. **배열 순서 = 전역 우선순위**(모든 폰 공통). `QueueOrder`에 없는 카테고리는 큐에서 배정되지 않는다.
+- **직접 배정**(Mining/Logging = 자원 노드, Guard = 순찰 구역): 플레이어가 대상에 폰을 붙임(`Blackboard.AssignedNode`/`AssignedPatrolZone`). 큐를 타지 않으므로 on/off 대상이 아님. (`MineJob`은 현재 미사용 코드)
+
+Job score = `JobCategoryInfo.Weight(category) × 100 + job.Priority`.
+
+폰별 설정은 **숫자 우선순위가 아니라 on/off** — `WorkSettings`(`UnitBrain.Work`, 플레이어 세력 일꾼에만 자동 부착). UI는 `ColonyPanel`(P키). 상세 `docs/jobs.md`.
 
 ### Damage Quick Ref
 
@@ -177,18 +186,18 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 - `placeableBuildings: BuildingData[]` 단일 배열. `UsesBlueprint=true` → 2단계 건설, `false` → 즉시 배치
 - 설계 원칙: `BuildingData`는 배치 방법만 담당. 각 컴포넌트(Storage, SubCore, FarmPlot 등)가 동작 데이터를 프리팹 SerializeField로 직접 보유
 - `OnActiveChanged` — 건설 모드 토글 시 다른 UI 자동 닫힘
-- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에디터: `Create Floor Prefab + Data`(placeable) / `Create Dungeon Starter Floor`(코어바닥 20×20 저작 + requireFloor 자동 켬). 공허 이동 차단 3중: 길찾기(L1/메소)가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지 선정은 `MapManager.IsStandable` 검사.
-- **핵 영역(크립) / 건물 휴면**: 점유는 절대좌표 희소 저장이라 핵 이동에도 유지. 영역(핵 union) 밖 건물은 `BuildingDormancy`가 휴면(작동 정지+회색 틴트, 철거 X), 복구 시 재가동. 런타임 배치 시 `BuildingDormancy.Ensure`로 자동 부착(씬 사전 배치 건물은 수동 부착 필요). 설계: `docs/design_core_creep.md`
+- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장(타일 → **바닥 윗면 Y**). 건물 배치 높이는 `SurfaceHeight` + `BuildModeManager.SpawnOnSurface` — 프리팹 루트 `localPosition.y`가 양수면 **저작 부양 높이**로 보고 그만큼 띄우고(서브코어 등), 아니면 `SnapOnSurface`가 렌더러 바닥면을 표면에 맞춘다(피벗 중앙 프리팹 파묻힘 방지, 올리기만 함). 즉시 배치/청사진/고스트/자유 배치 동일 규칙. 메인 핵은 `DungeonCore._hoverOffset`(Start에서 캡처)로 이전 후에도 부양 유지. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에디터: `Create Floor Prefab + Data`(placeable) / `Create Dungeon Starter Floor`(코어바닥 20×20 저작 + requireFloor 자동 켬). 공허 이동 차단 3중: 길찾기(L1/메소)가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지 선정은 `MapManager.IsStandable` 검사.
+- **핵 영역(크립) / 건물 휴면**: 점유는 절대좌표 희소 저장이라 핵 이동에도 유지. 영역(핵 union) 밖 건물은 `BuildingDormancy`가 휴면(작동 정지+회색 틴트, 철거 X), 복구 시 재가동. **휴면 = 전면 사용 불가**: 창고 집계 제외(`Storage.IsActive`), 침대·농지·작업대·연구대·우물 컴포넌트 `enabled=false`, 클릭해도 패널 안 열림(`SelectionManager` 게이트), 매달린 일감은 `JobBase.IsSiteUsable`로 배정 보류(취소 아님 → 복구 시 재개). 외부 판정은 `BuildingDormancy.IsDormantAt(Component)`. 런타임 배치 시 `BuildingDormancy.Ensure`로 자동 부착(씬 사전 배치 건물은 수동 부착 필요). **핵 이전**: `DungeonCoreUI`의 [핵 이전] 버튼 → `CoreRelocator`(좌클릭 확정 / 우클릭·Esc 취소, 타일 유효성 + 새 영역 원 + 휴면·재가동 예정 수 미리보기) → `RelocateTo`. 설계: `docs/design_core_creep.md` (step 1~5 완료)
 
 ### Input & Camera
 
 | Script | 트리거 | 동작 |
 |---|---|---|
-| `SelectionManager` | 좌클릭/드래그 | Player 팩션 유닛 선택 |
+| `SelectionManager` | 좌클릭/드래그 | Player 팩션 유닛 선택. 적/NPC 클릭 = `OnPawnInspected`(정보만, 명령 대상 아님) |
 | `MoveController` | 우클릭 | 방랑자 이동/타겟 설정 |
 | `PawnInventoryPanel` | I키 | 인벤토리/장비 패널 |
 | `UnitStatsUI` | C키 | 스탯 패널 토글 |
-| `PriorityPanel` | P키 | 우선순위 패널 |
+| `ColonyPanel` | P키 | 무리 관리(작업 on/off + 전투 성향, 폰 전체) |
 | `BuildModeUI` | B키 | 건설 모드 |
 | `CameraController` | WASD/중클/스크롤 | 카메라 |
 
@@ -207,7 +216,9 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 ## 알려진 이슈
 
-- **한글 폰트**: `AddComponent<TextMeshProUGUI>` 시 기본 폰트(LiberationSans SDF) 한글 미지원. `Project Settings → TMP → Default Font Asset` 설정 권장.
-- **핵 이동 시 빌드존 리셋**: step 1(2026-06-06)로 점유 데이터·Blocked 오버레이 wipe는 제거됨(`HashSet` 절대좌표 희소 저장). 남은 작업은 영역 union 기반 건설 판정 + 고아 건물 비활성/재가동(`docs/design_core_creep.md` step 2~5).
+- **BT 노드에서 `Time.deltaTime` 금지**: BT는 `tickInterval`(0.1초)마다 돌므로 프레임 델타를 누적하면 시간이 6배 이상 느려진다. `UnitBlackboard.TickDelta`를 쓸 것 (2026-07-27 전수 교체).
+
+- **한글 폰트**: `AddComponent<TextMeshProUGUI>` 시 기본 폰트(LiberationSans SDF) 한글 미지원(□). `UIHelper.MakeLabel/MakeButton`은 `ApplyKoreanFont`로 TMP 기본 폰트 → 씬의 기존 TMP 폰트를 자동 상속하지만, **직접 `AddComponent`할 땐 수동 지정 필요**. 근본 해결은 `Project Settings → TextMesh Pro → Default Font Asset`을 `Assets/NanumGothic SDF.asset`으로 설정(이 폰트는 Resources 밖이라 `Resources.Load` 불가).
+- **핵 이동 시 빌드존 리셋**: 해소됨. 점유는 `HashSet` 절대좌표 희소 저장이라 이동에도 유지되고, 영역 밖 건물은 `BuildingDormancy`가 휴면 처리(`docs/design_core_creep.md` step 1~5 완료).
 - **Blueprint 반투명 머티리얼**: URP에서 코드 생성 투명 머티리얼(`BuildingBlueprint.CreateBlueprintMaterial`)이 불투명 렌더될 수 있음. 에디터에서 직접 제작 후 연결 권장.
 - **DataManager**: `Resources.LoadAll<RecipeData>("Data/Recipes")` + JSON 스키마(`DataSchemas`) 경로 둘 다 지원. SO는 `Assets/Resources/Data/{Items,Recipes,Research}/`에 있어야 인식.
