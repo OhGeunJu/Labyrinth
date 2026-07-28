@@ -43,10 +43,13 @@
 2. ✅ (2026-06-06) 온디맨드 지형 평탄도 샘플. `MapManager.SampleGroundHeight`/`TileToGround`/`IsFlatEnough`, `IsBuildable`이 코너 높이차 검사, `BuildModeManager`·`GridRenderer` 지면 스냅(경사지 부유 버그 동시 해결).
 3. ✅ (2026-06-06) 핵 변경 이벤트(`DungeonCore.OnTerritoryChanged`) → 고아 건물 **휴면/재가동**(`BuildingDormancy`). FarmPlot/CraftingTable/WaterSource enabled 토글 + 회색 틴트, `Storage.IsActive`로 집계 제외. 상세: `docs/worklog.md`.
 4. ✅ (2026-06-06, step 2와 함께) 경사지 높이 버그 수정 + 비활성 회색 틴트 표시. (전용 영역 오버레이는 후속)
-5. 메인 핵 이전 액션(정책 C) — 이동 지점에서 `MapManager.RecenterAt` + `DungeonCore.RaiseTerritoryChanged` 호출만 연결하면 휴면 재평가 자동.
+5. ✅ (2026-07-27) 메인 핵 이전 액션 — `CoreRelocator`(이전 모드: 타일 유효성 + 새 영역 원 + 휴면/재가동 예정 수 미리보기 → 좌클릭 확정) + `DungeonCoreUI` [핵 이전] 버튼. 확정은 `DungeonCore.RelocateTo`(위치 이동 + `RaiseTerritoryChanged`) → 휴면 재평가 자동. **`RecenterAt`은 호출하지 않음** — 정착지 필드맵이 고정(200×200)이라 그리드 재중심이 불필요(초안의 `RecenterAt` 연결은 모델 A 확정으로 폐기). 상세: `docs/worklog.md`.
+
+**→ 이 설계는 step 1~5 전부 구현 완료.** 남은 것은 아래 "미결/주의"의 세부 정책뿐.
 
 ## 미결/주의
 
-- 비활성 건물의 작업/창고/길찾기 상호작용 정의 필요(예: 비활성 창고는 집계 제외? 비활성 침대 사용 불가?).
+- **휴면 건물 = 전면 사용 불가** (2026-07-27 확정). 창고 집계 제외, 침대 배정/사용 불가, 작업대·연구대 주문 불가, 클릭해도 패널 안 열림, 매달린 일감은 배정 보류(취소가 아니라 대기 → 영역 복구 시 재개).
+- **핵 이전은 무료·쿨다운 없음** (2026-07-27 확정). 비용/쿨다운은 도입하지 않는다.
 - 평탄도 기준(`buildHeightTolerance`)을 온디맨드 레이캐스트로 어떻게 계산할지 확정.
 - 1타일 = 1월드유닛 절대좌표(현행 유지).

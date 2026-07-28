@@ -16,13 +16,25 @@ public class DungeonCoreUI : MonoBehaviour
     [SerializeField] TextMeshProUGUI coreInfoText;     // 범위, 등급 등
     [SerializeField] TextMeshProUGUI minionCountText;  // 활성 하수인 수
 
+    [Header("액션")]
+    [SerializeField] Button relocateButton;   // 핵 이전 (씬에서 연결)
+
     DungeonCore _core;
 
     void Awake()
     {
         if (panel != null) panel.SetActive(false);
+        if (relocateButton != null) relocateButton.onClick.AddListener(OnRelocateClicked);
         DungeonCore.OnSelected           += Open;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
+    }
+
+    void OnRelocateClicked()
+    {
+        var core = _core;
+        if (core == null) return;
+        Close();                     // 배치 지점을 가리지 않게 패널을 먼저 닫는다
+        CoreRelocator.Begin(core);   // 좌클릭 확정 / 우클릭·Esc 취소
     }
 
     void OnDestroy()

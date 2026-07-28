@@ -79,11 +79,17 @@ public class DungeonCore : MonoBehaviour
         if (unit.Data is MinionData) _currentMinionCount = Mathf.Max(0, _currentMinionCount - 1);
     }
 
+    // 씬에 저작된 부양 높이(표면 위로 얼마나 떠 있는가). 핵 이전 시 이 높이를 유지한다.
+    float _hoverOffset;
+
     void Start()
     {
         // 핵의 현재 위치에 빌드존을 정렬
         if (MapManager.Instance != null)
             MapManager.Instance.RecenterAt(transform.position);
+
+        // Floor는 OnEnable에서 등록되므로 이 시점엔 바닥 높이가 준비돼 있다.
+        _hoverOffset = transform.position.y - SurfaceHeightAt(transform.position);
         // 초기 영역 확정 → 핵 생성 전에 OnEnable한 건물들이 휴면 여부 재평가하도록.
         RaiseTerritoryChanged();
     }
@@ -94,8 +100,17 @@ public class DungeonCore : MonoBehaviour
     // (UI/입력 트리거는 후속 — 이 메서드만 호출하면 됨)
     public void RelocateTo(Vector3 worldPosition)
     {
-        transform.position = worldPosition;
+        // Y는 목적지 표면 + 저작 부양 높이 — 일부러 띄워둔 핵이 이전 후 바닥에 박히지 않게.
+        float y = SurfaceHeightAt(worldPosition) + _hoverOffset;
+        transform.position = new Vector3(worldPosition.x, y, worldPosition.z);
         RaiseTerritoryChanged();
+    }
+
+    // 해당 위치 타일의 표면 높이(바닥 윗면 ∥ 지형). 맵이 없으면 그 위치의 Y를 그대로 본다.
+    static float SurfaceHeightAt(Vector3 worldPos)
+    {
+        var map = MapManager.Instance;
+        return map != null ? map.SurfaceHeight(map.WorldToTile(worldPos)) : worldPos.y;
     }
 
     // 정착지 전환 시 이 코어를 활성 메인 코어로 재지정 (SettlementManager가 호출).
@@ -180,6 +195,24 @@ public class DungeonCore : MonoBehaviour
         if (MapManager.Instance == null) return false;
         var tile = MapManager.Instance.WorldToTile(worldPos);
         if (IsWithinRange(tile)) return true;
+        foreach (var sc in _subCores)
+            if (sc != null && sc.IsWithinRangeWorld(worldPos)) return true;
+        return false;
+    }
+
+    // 메인 핵이 candidateCorePos에 있다고 가정했을 때 worldPos가 영역(메인+서브 union) 안인지.
+    // 핵 이전 미리보기(CoreRelocator)에서 휴면/재가동 예정 건물을 세는 데 쓴다.
+    // 판정은 IsWithinAnyRangeWorld와 동일하게 타일 중심 기준으로 맞춘다(경계에서 미리보기 ≠ 실제 방지).
+    public bool WouldBeInRangeAt(Vector3 candidateCorePos, Vector3 worldPos)
+    {
+        if (data == null) return true;                 // 반경 미설정 = 무제한 (IsWithinRange 관례)
+        if (MapManager.Instance == null) return false;
+
+        var wp = MapManager.Instance.TileToWorld(MapManager.Instance.WorldToTile(worldPos));
+        var dx = wp.x - candidateCorePos.x;
+        var dz = wp.z - candidateCorePos.z;
+        if (dx * dx + dz * dz <= data.BaseRadius * data.BaseRadius) return true;
+
         foreach (var sc in _subCores)
             if (sc != null && sc.IsWithinRangeWorld(worldPos)) return true;
         return false;

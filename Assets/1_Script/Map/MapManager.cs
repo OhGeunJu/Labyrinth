@@ -43,7 +43,8 @@ public class MapManager : MonoBehaviour
     // 바닥 타일 희소 저장 (절대 월드 타일 좌표, 모델 A). 코어와 무관하게 깔리는 substrate.
     // 비면 = 바닥 시스템 미사용(필드/지형 맵) → 건물이 바닥을 요구하지 않음.
     // 하나라도 있으면 = 던전형 맵 → 건물은 바닥 위(floored)에만 배치 가능.
-    readonly HashSet<Vector2Int> _floored = new();
+    // 값 = 바닥 윗면 월드 Y (건물이 이 높이 위에 얹힌다). 슬래브 두께를 반영하려고 높이까지 들고 있음.
+    readonly Dictionary<Vector2Int, float> _floored = new();
 
     Vector2Int _zoneOriginTile; // 빌드존 좌하단 타일 (절대 월드 타일 좌표)
 
@@ -139,17 +140,27 @@ public class MapManager : MonoBehaviour
     public bool HasFloorSystem => _floored.Count > 0;
     // 건물의 "바닥 위에만" 강제 여부: 명시 플래그(공허 씬, 바닥 0장이어도 게이트) 또는 바닥 존재 시 자동.
     public bool FloorRequired  => requireFloor || _floored.Count > 0;
-    public bool IsFloored(Vector2Int tile) => _floored.Contains(tile);
+    public bool IsFloored(Vector2Int tile) => _floored.ContainsKey(tile);
     public bool IsFloored(Vector3 world)   => IsFloored(WorldToTile(world));
+
+    // 바닥 윗면 Y (바닥 없으면 false). 배치 높이 계산용.
+    public bool TryGetFloorSurface(Vector2Int tile, out float surfaceY) => _floored.TryGetValue(tile, out surfaceY);
 
     // 유닛이 설 수 있는 타일인가 — 공허 게이트. 던전형 맵(FloorRequired)에서만 바닥을 요구하고
     // 필드/지형 맵은 항상 true. 점유(IsPassable)와는 별개 축이므로 필요 시 둘 다 검사할 것.
-    public bool IsStandable(Vector2Int tile) => !FloorRequired || _floored.Contains(tile);
+    public bool IsStandable(Vector2Int tile) => !FloorRequired || _floored.ContainsKey(tile);
     public bool IsStandable(Vector3 world)   => IsStandable(WorldToTile(world));
 
-    public void RegisterFloor(Vector2Int tile)
+    // surfaceY = 바닥 윗면 월드 Y. 같은 타일에 여러 바닥이 겹치면 더 높은 면을 채택(건물이 위에 얹히도록).
+    public void RegisterFloor(Vector2Int tile, float surfaceY = 0f)
     {
-        if (_floored.Add(tile)) OnFloorChanged?.Invoke(tile);
+        if (_floored.TryGetValue(tile, out float prev))
+        {
+            if (surfaceY > prev) _floored[tile] = surfaceY;
+            return;                       // 이미 바닥 — OnFloorChanged 중복 발동 안 함
+        }
+        _floored[tile] = surfaceY;
+        OnFloorChanged?.Invoke(tile);
     }
 
     public void UnregisterFloor(Vector2Int tile)
@@ -181,11 +192,18 @@ public class MapManager : MonoBehaviour
 
     public float SampleGroundHeight(Vector3 worldPos) => SampleGroundHeight(worldPos.x, worldPos.z);
 
-    // 타일 중심을 지면에 스냅한 월드 좌표 (배치/시각화용). 길찾기용 TileToWorld(Y=0)와 분리.
+    // 타일의 표면 높이 — 바닥이 깔려 있으면 그 윗면, 아니면 지형/평지 높이.
+    // 건물은 이 높이 "위에" 얹혀야 한다(바닥 슬래브 두께만큼 파묻히지 않도록).
+    public float SurfaceHeight(Vector2Int tile)
+    {
+        if (_floored.TryGetValue(tile, out float floorY)) return floorY;
+        return SampleGroundHeight(tile.x + 0.5f, tile.y + 0.5f);
+    }
+
+    // 타일 중심을 표면에 스냅한 월드 좌표 (배치/시각화용). 길찾기용 TileToWorld(Y=0)와 분리.
     public Vector3 TileToGround(Vector2Int tile)
     {
-        float wx = tile.x + 0.5f, wz = tile.y + 0.5f;
-        return new Vector3(wx, SampleGroundHeight(wx, wz), wz);
+        return new Vector3(tile.x + 0.5f, SurfaceHeight(tile), tile.y + 0.5f);
     }
 
     // footprint 바운드의 4코너 지면 높이차가 tolerance 이내인지 (울퉁불퉁 지형 자동 반영).
@@ -224,7 +242,7 @@ public class MapManager : MonoBehaviour
         foreach (var pos in footprint)
         {
             if (!IsInBuildZone(pos)) return false;              // 최대 경계 클램프
-            if (floorRequired && !_floored.Contains(pos)) return false; // 바닥 위에만
+            if (floorRequired && !_floored.ContainsKey(pos)) return false; // 바닥 위에만
             if (!GetTile(pos).IsPassable) return false;        // 점유
         }
         return IsFlatEnough(footprint);
@@ -237,7 +255,7 @@ public class MapManager : MonoBehaviour
         foreach (var pos in footprint)
         {
             if (!IsInBuildZone(pos)) return false;      // 최대 경계 클램프
-            if (_floored.Contains(pos)) return false;   // 이미 바닥
+            if (_floored.ContainsKey(pos)) return false;   // 이미 바닥
             if (!GetTile(pos).IsPassable) return false; // 점유
         }
         return IsFlatEnough(footprint);

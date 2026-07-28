@@ -46,6 +46,7 @@ public class BuildModeManager : MonoBehaviour
 
     GameObject _ghost;
     GameObject _ghostSourcePrefab;
+    float      _ghostHover;   // 현재 고스트 프리팹의 저작 부양 높이
 
     int TotalCount => placeableBuildings != null ? placeableBuildings.Length : 0;
 
@@ -267,6 +268,50 @@ public class BuildModeManager : MonoBehaviour
         }
     }
 
+    // ── 표면 스냅 ──────────────────────────────────────────────────────────────
+
+    // 프리팹 피벗이 중앙/임의 위치여도 **렌더러 바닥면**이 표면(surfaceY)에 닿도록 Y를 보정한다.
+    // 피벗 규칙을 프리팹마다 맞추지 않아도 되고, 바닥 슬래브 두께도 surfaceY에 이미 반영돼 있음.
+    // (surfaceY = MapManager.SurfaceHeight — 바닥이 있으면 그 윗면, 없으면 지형 높이)
+    // 프리팹에 저작된 "부양 높이" — 루트 localPosition.y. 서브코어처럼 일부러 띄워 만든 프리팹은
+    // 이 값이 양수다. Instantiate(prefab, pos, rot)는 이 Y를 덮어써 버리므로 배치 시 다시 얹어준다.
+    public static float AuthoredHover(GameObject prefab) =>
+        prefab != null ? Mathf.Max(0f, prefab.transform.localPosition.y) : 0f;
+
+    // 표면 위에 스폰. 저작된 부양 높이가 있으면 그만큼 띄우고(그 프리팹은 바닥 스냅 안 함),
+    // 없으면 렌더러 바닥면을 표면에 맞춘다.
+    public static GameObject SpawnOnSurface(GameObject prefab, Vector3 surfacePos, Quaternion rot)
+    {
+        float hover = AuthoredHover(prefab);
+        if (hover > 0f)
+            return Instantiate(prefab, surfacePos + Vector3.up * hover, rot);
+
+        var go = Instantiate(prefab, surfacePos, rot);
+        SnapOnSurface(go, surfacePos.y);
+        return go;
+    }
+
+    public static void SnapOnSurface(GameObject go, float surfaceY)
+    {
+        if (go == null) return;
+
+        bool  found = false;
+        var   bounds = new Bounds();
+        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+        {
+            // 파티클/트레일 등은 바운드가 실제 형상과 무관해 제외 — 메시 계열만 사용.
+            if (!(r is MeshRenderer || r is SkinnedMeshRenderer)) continue;
+            if (!found) { bounds = r.bounds; found = true; }
+            else        bounds.Encapsulate(r.bounds);
+        }
+        if (!found) return;   // 렌더러가 없으면 피벗 그대로 (보정 근거 없음)
+
+        // 올리기만 한다 — 메시가 피벗보다 위에 저작된(일부러 띄운) 프리팹을 끌어내리지 않도록.
+        float dy = surfaceY - bounds.min.y;
+        if (dy > 0.0001f)
+            go.transform.position += Vector3.up * dy;
+    }
+
     // ── 고스트 미리보기 ────────────────────────────────────────────────────────
 
     void EnsureGhost()
@@ -285,7 +330,9 @@ public class BuildModeManager : MonoBehaviour
         _ghost.SetActive(false);
 
         var model = Instantiate(prefab, _ghost.transform);
-        model.transform.localPosition = Vector3.zero;
+        // 저작된 부양 높이를 그대로 재현 — 미리보기와 실제 배치 높이를 일치시킨다.
+        _ghostHover = AuthoredHover(prefab);
+        model.transform.localPosition = new Vector3(0f, _ghostHover, 0f);
         model.transform.localRotation = Quaternion.identity;
         _ghostSourcePrefab = prefab;
 
@@ -308,6 +355,8 @@ public class BuildModeManager : MonoBehaviour
         if (_ghost == null) return;
         _ghost.SetActive(true);
         _ghost.transform.SetPositionAndRotation(pos, rot);
+        // 부양 프리팹은 이미 모델을 띄워 붙였으므로 스냅하지 않는다(실제 배치와 동일 규칙).
+        if (_ghostHover <= 0f) SnapOnSurface(_ghost, pos.y);
     }
 
     void UpdatePreview()
@@ -368,10 +417,20 @@ public class BuildModeManager : MonoBehaviour
         _previewShown  = true;
         gridRenderer.ShowPreview(GetFootprint(snapTile), placeable);
 
-        ShowGhost(worldPoint, Quaternion.Euler(0, _freeYaw, 0));
+        // XZ는 자유, Y는 바닥 윗면으로 — 레이가 어디에 맞았든 슬래브 위에 얹힌다.
+        var surfacePoint = OnSurface(worldPoint);
+        ShowGhost(surfacePoint, Quaternion.Euler(0, _freeYaw, 0));
 
         if (Mouse.current.leftButton.wasPressedThisFrame && placeable)
-            TryPlaceFree(worldPoint, _freeYaw);
+            TryPlaceFree(surfacePoint, _freeYaw);
+    }
+
+    // 바닥이 깔린 타일이면 Y를 슬래브 윗면으로 교체. 바닥이 없으면(지형 맵) 레이 높이 그대로.
+    Vector3 OnSurface(Vector3 p)
+    {
+        var map = MapManager.Instance;
+        if (map != null && map.TryGetFloorSurface(map.WorldToTile(p), out float y)) p.y = y;
+        return p;
     }
 
     // ── 검증 ───────────────────────────────────────────────────────────────────
@@ -458,8 +517,10 @@ public class BuildModeManager : MonoBehaviour
         // 바닥(모델 A): 코어 무관 substrate. 휴면/장애물 처리 없음. Floor 컴포넌트가 바닥 자동 등록.
         if (data.IsFloor)
         {
-            var floor = Instantiate(prefab, pos, rot);
-            if (floor.GetComponent<Floor>() == null) floor.AddComponent<Floor>(); // 프리팹 누락 대비 안전망
+            var floor = SpawnOnSurface(prefab, pos, rot);   // 슬래브 바닥면을 지면에 붙임
+            var fc = floor.GetComponent<Floor>();
+            if (fc == null) fc = floor.AddComponent<Floor>();   // 프리팹 누락 대비 안전망
+            fc.Refresh();   // 스냅으로 Y가 바뀌었으니 등록 높이(윗면) 재계산
             PlacedBuilding.Attach(floor, data);   // 철거 지원(환불 0)
             Debug.Log($"[Build] 바닥 배치 — {data.BuildingName}");
             return;
@@ -473,7 +534,8 @@ public class BuildModeManager : MonoBehaviour
             return;
         }
 
-        var instance = Instantiate(prefab, pos, rot);
+        // 표면 위에 얹기 — 피벗이 중앙이면 바닥면 스냅, 저작된 부양 높이(서브코어 등)가 있으면 그만큼 띄움.
+        var instance = SpawnOnSurface(prefab, pos, rot);
         instance.GetComponent<Storage>()?.Init(data);
         instance.GetComponent<Bed>()?.Init(data);
         instance.GetComponent<FarmPlot>()?.Init(data);

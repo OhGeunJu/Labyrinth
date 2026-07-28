@@ -13,7 +13,7 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class BuildingDormancy : MonoBehaviour
 {
-    [Tooltip("휴면 시 추가로 비활성화할 동작 컴포넌트(예: Bed). FarmPlot/CraftingTable/WaterSource는 자동 포함.")]
+    [Tooltip("휴면 시 추가로 비활성화할 동작 컴포넌트. FarmPlot/CraftingTable/WaterSource/Bed는 자동 포함.")]
     [SerializeField] List<Behaviour> suspendOnDormant = new();
     [SerializeField] Color dormantTint = new Color(0.45f, 0.45f, 0.55f, 1f);
 
@@ -72,6 +72,17 @@ public class BuildingDormancy : MonoBehaviour
         if (TryGetComponent<FarmPlot>(out var fp))      yield return fp;
         if (TryGetComponent<CraftingTable>(out var ct)) yield return ct;
         if (TryGetComponent<WaterSource>(out var ws))   yield return ws;
+        // 침대: enabled=false면 OnDisable로 정적 목록에서 빠져 배정/사용 대상에서 제외된다.
+        // (배정 정보 AssignedUnit은 남아 영역 복구 시 그대로 복원)
+        if (TryGetComponent<Bed>(out var bed))          yield return bed;
+    }
+
+    // 이 오브젝트(또는 부모)가 휴면 중인가 — 클릭/주문 등 외부 진입점 게이트용.
+    public static bool IsDormantAt(Component c)
+    {
+        if (c == null) return false;
+        var d = c.GetComponentInParent<BuildingDormancy>();
+        return d != null && d.IsDormant;
     }
 
     void ApplyTint(bool dormant)

@@ -32,7 +32,11 @@ public class BuildingBlueprint : MonoBehaviour
         if (_data?.Prefab == null) return;
 
         var ghost = Instantiate(_data.Prefab);
-        ghost.transform.SetParent(transform, false);
+        ghost.transform.SetParent(transform, false);   // 프리팹의 저작 부양 높이는 로컬 Y로 보존됨
+        // 완성 후 모습과 같은 높이로 — 부양 프리팹이 아니면 렌더러 바닥면을 표면에 맞춘다.
+        if (MapManager.Instance != null && BuildModeManager.AuthoredHover(_data.Prefab) <= 0f)
+            BuildModeManager.SnapOnSurface(
+                ghost, MapManager.Instance.SurfaceHeight(MapManager.Instance.WorldToTile(transform.position)));
 
         foreach (var c in ghost.GetComponentsInChildren<Collider>())     c.enabled = false;
         foreach (var b in ghost.GetComponentsInChildren<MonoBehaviour>()) b.enabled = false;
@@ -118,7 +122,13 @@ public class BuildingBlueprint : MonoBehaviour
 
         if (_data?.Prefab != null)
         {
-            var go = Instantiate(_data.Prefab, transform.position, transform.rotation);
+            // 청사진 위치의 표면 위에 얹기 — 즉시 배치와 동일 규칙(피벗 스냅 / 저작 부양 높이 유지)
+            var surfacePos = MapManager.Instance != null
+                ? new Vector3(transform.position.x,
+                              MapManager.Instance.SurfaceHeight(MapManager.Instance.WorldToTile(transform.position)),
+                              transform.position.z)
+                : transform.position;
+            var go = BuildModeManager.SpawnOnSurface(_data.Prefab, surfacePos, transform.rotation);
             // SubCore는 프리팹에 설정된 값 사용, 추가 Init 불필요
             // 핵 영역 이탈 시 휴면/재가동 (설계: design_core_creep.md step 3)
             BuildingDormancy.Ensure(go);

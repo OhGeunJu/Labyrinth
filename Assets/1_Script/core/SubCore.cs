@@ -66,8 +66,9 @@ public class SubCore : MonoBehaviour
             var brain = col.GetComponent<UnitBrain>();
             if (brain == null) continue;
 
+            // 서브코어는 플레이어 세력 소유물 — 플레이어 편이 아니면 피해, 같은 편이면 버프.
             var faction = col.GetComponent<Faction>();
-            bool isEnemy = faction != null && faction.Type == FactionType.Enemy;
+            bool isEnemy = faction != null && !faction.IsPlayer;
 
             if (!isEnemy && hasMove)
             {

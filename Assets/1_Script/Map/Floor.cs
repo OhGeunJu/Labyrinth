@@ -18,9 +18,32 @@ public class Floor : MonoBehaviour
     void OnEnable()
     {
         _zone = MapManager.GetForPosition(transform.position);
+        Register();
+    }
+
+    // 배치 직후 위치를 보정(표면 스냅)한 경우처럼, 등록 좌표·높이를 다시 계산해야 할 때 호출.
+    public void Refresh()
+    {
+        if (_zone == null) return;
+        foreach (var t in _tiles) _zone.UnregisterFloor(t);
+        _tiles.Clear();
+        Register();
+    }
+
+    void Register()
+    {
         if (_zone == null) return;
         ComputeTiles();
-        foreach (var t in _tiles) _zone.RegisterFloor(t);
+        float surfaceY = ComputeSurfaceY();
+        foreach (var t in _tiles) _zone.RegisterFloor(t, surfaceY);
+    }
+
+    // 바닥 윗면 월드 Y — 건물이 이 위에 얹힌다. 렌더러가 있으면 바운드 상단(슬래브 두께 반영),
+    // 없으면 피벗 높이. 경사 바닥은 지원하지 않음(타일당 단일 높이).
+    float ComputeSurfaceY()
+    {
+        if (TryGetComponent<Renderer>(out var r)) return r.bounds.max.y;
+        return transform.position.y;
     }
 
     void OnDisable()

@@ -44,8 +44,9 @@ public class GridRenderer : MonoBehaviour
         if (!tile.IsPassable)
         {
             if (_blockOverlays.ContainsKey(pos)) return;
-            float groundY = MapManager.Instance.SampleGroundHeight(pos.x + 0.5f, pos.y + 0.5f);
-            _blockOverlays[pos] = SpawnOverlay(pos, groundY + 0.05f, blockedColor, $"Blocked_{pos.x}_{pos.y}");
+            // 표면 높이 기준 — 바닥이 깔린 타일은 슬래브 윗면 위에 떠야 한다(밑에 깔리지 않게).
+            float surfaceY = MapManager.Instance.SurfaceHeight(pos);
+            _blockOverlays[pos] = SpawnOverlay(pos, surfaceY + 0.05f, blockedColor, $"Blocked_{pos.x}_{pos.y}");
         }
         else
         {
@@ -66,8 +67,8 @@ public class GridRenderer : MonoBehaviour
         foreach (var pos in footprint)
         {
             if (!MapManager.Instance.IsInBounds(pos)) continue;
-            float groundY = MapManager.Instance.SampleGroundHeight(pos.x + 0.5f, pos.y + 0.5f);
-            _previewOverlays[pos] = SpawnOverlay(pos, groundY + 0.07f, color, $"Preview_{pos.x}_{pos.y}");
+            float surfaceY = MapManager.Instance.SurfaceHeight(pos);
+            _previewOverlays[pos] = SpawnOverlay(pos, surfaceY + 0.07f, color, $"Preview_{pos.x}_{pos.y}");
         }
     }
 
