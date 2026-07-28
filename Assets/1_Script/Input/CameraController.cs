@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 public class CameraController : MonoBehaviour
@@ -89,6 +90,9 @@ public class CameraController : MonoBehaviour
     {
         float scroll = Mouse.current.scroll.ReadValue().y;
         if (scroll == 0f) return;
+
+        // 커서가 UI 위면 휠은 그 패널의 스크롤 몫 — 카메라가 가로채지 않는다.
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
         Plane groundPlane = new Plane(Vector3.up, Vector3.zero);

@@ -53,6 +53,24 @@ public class PawnMover : MonoBehaviour
     [Tooltip("공허 낭떠러지 가드 전방 확인 거리(m). 던전형 맵에서 이만큼 앞이 바닥 밖이면 정지")]
     public float ledgeLookahead = 0.6f;
 
+    [Header("장애물 회피")]
+    [Tooltip("이 거리 안의 다른 폰을 피해 조향한다. 0이면 회피 없음")]
+    public float avoidRadius = 1.5f;
+    [Tooltip("회피 조향의 세기. 클수록 크게 돌아간다")]
+    public float avoidStrength = 1f;
+    [Tooltip("이 시간(초)마다 실제 이동량을 검사해 막혔는지 판단")]
+    public float blockedCheckTime = 0.35f;
+    [Tooltip("막혔을 때 옆으로 비켜 걷는 시간(초)")]
+    public float sidestepTime = 0.6f;
+
+    // 회피/정체 상태
+    Vector3 _progressAnchor;
+    float   _progressTimer;
+    int     _blockedCount;
+    Vector3 _sidestepDir;
+    float   _sidestepTimer;
+    float   _lastDiagLogTime = -999f;   // 계측 로그 폰당 1초 제한
+
     [Header("Athletics 성장")]
     [SerializeField] float athleticsGrowthRate = 0.005f;
 
@@ -63,7 +81,30 @@ public class PawnMover : MonoBehaviour
         _lastGroundedPos = transform.position;
         _baseMoveSpeed = moveSpeed;
         _replanDriftSqr = replanDistance * replanDistance;
+
+        ApplyPawnCollisionRule();
     }
+
+    // 같은 레이어(= 같은 편)끼리는 서로 통과한다.
+    // 폰 지름이 타일 한 칸과 같아서, 아군이 몸으로 길을 막으면 옆으로 비킬 여유가 없다 —
+    // ㄷ자 포위·정면 교착이 여기서 나온다. 통과시키면 그 부류가 원인 채로 사라진다.
+    // 적(다른 레이어)과는 그대로 충돌하므로 몸으로 라인을 막는 전술은 살아 있다.
+    void ApplyPawnCollisionRule()
+    {
+        if (_cc == null) return;
+
+        // Default(0)에는 지면·잡오브젝트가 섞여 있어 제외하면 바닥을 뚫는다.
+        // 유닛은 반드시 전용 레이어(Player/Enemy 등)에 둘 것.
+        int layer = gameObject.layer;
+        if (layer == 0) return;
+
+        _cc.excludeLayers = 1 << layer;
+    }
+
+    // other가 나를 물리적으로 막는가 — 길찾기 베이크가 같은 규칙을 쓰도록 공개한다.
+    // (물리에서 통과하는 상대를 그래프에서 벽으로 굽으면 헛돌게 된다.)
+    public bool IsBlockedBy(PawnMover other)
+        => other != null && other != this && other.gameObject.layer != gameObject.layer;
 
     public void Init(UnitData data)
     {
@@ -85,6 +126,9 @@ public class PawnMover : MonoBehaviour
         // 기절 중엔 이동 명령 무시 (기상하면 IsKnockedOut이 풀려 복귀 이동은 정상 동작)
         if (IsKnockedOut) return;
 
+        // 이동 명령 = 일어난다. 누운 자세(침대 위)에서 경로를 잡지 않도록 먼저 내려온다.
+        if (IsSleeping) SetSleeping(false);
+
         worldPoint.y = transform.position.y;
 
         // 목표가 거의 동일하고 이미 이동 중이면 재계획 생략 (재베이크 방지).
@@ -95,6 +139,7 @@ public class PawnMover : MonoBehaviour
         _coarseRoute = Pathfinder.ComputeCoarseRoute(transform.position, worldPoint);
         _coarseIndex = 0;
         _hasTarget   = true;
+        ResetProgress();
         ReplanLocal();
     }
 
@@ -105,6 +150,38 @@ public class PawnMover : MonoBehaviour
         _localPath   = null;
     }
 
+    // ── 눕기(침대 휴식) ──────────────────────────────────────────────
+    // 누워 있는 동안은 CharacterController를 끄고 위치·회전을 침대에 고정한다.
+    // (중력/조향이 계속 돌면 침대 위에서 미끄러지거나 파묻힌다.)
+    // 일어날 때는 눕기 직전 서 있던 자리로 되돌린다 — 침대 콜라이더 위에서 깨어나 끼는 것 방지.
+    public bool IsSleeping { get; private set; }
+
+    Vector3    _wakePosition;
+    Quaternion _wakeRotation;
+
+    public void SetSleeping(bool sleeping, Vector3 lyingPos = default, Quaternion lyingRot = default)
+    {
+        if (sleeping == IsSleeping) return;
+
+        if (sleeping)
+        {
+            StopMovement();
+            _wakePosition = transform.position;
+            _wakeRotation = transform.rotation;
+
+            _cc.enabled = false;
+            transform.SetPositionAndRotation(lyingPos, lyingRot);
+            IsSleeping = true;
+        }
+        else
+        {
+            transform.SetPositionAndRotation(_wakePosition, _wakeRotation);
+            _cc.enabled  = true;
+            _verticalVel = 0f;
+            IsSleeping   = false;
+        }
+    }
+
     // 유닛 위치 중심 윈도우를 즉석 베이크해 조향 목표까지 로컬 정밀 경로 생성.
     void ReplanLocal()
     {
@@ -112,7 +189,7 @@ public class PawnMover : MonoBehaviour
         _replanAnchor = pos;
 
         Vector3 steer = SelectSteeringTarget(pos);
-        var local     = Pathfinder.FindLocalPath(pos, steer);
+        var local     = Pathfinder.FindLocalPath(pos, steer, this);   // 다른 폰도 장애물로 넣어 우회
 
         if (local != null && local.Count > 0)
         {
@@ -195,6 +272,154 @@ public class PawnMover : MonoBehaviour
         return (t - pos).sqrMagnitude <= stopDistance * stopDistance;
     }
 
+    // ── 지역 회피 & 정체 탈출 ────────────────────────────────────────
+    // 길찾기 그래프는 벽(정적)만 안다. 다른 폰·침대·창고처럼 그래프에 없는 장애물은
+    // 경로가 그대로 관통하게 나오고, CharacterController가 막혀 제자리에서 밀기만 한다.
+    // → ① 앞쪽 폰은 조향 단계에서 비켜 간다 ② 그래도 안 움직이면 옆으로 비켜섰다가 재계획한다.
+
+    static readonly List<PawnMover> _all = new();
+
+    // 길찾기 베이크가 다른 폰을 장애물로 굽는 데 쓴다.
+    public static IReadOnlyList<PawnMover> All => _all;
+
+    void OnEnable()  => _all.Add(this);
+    void OnDisable() => _all.Remove(this);
+
+    // 진행 방향 기준 오른쪽(수평)
+    static Vector3 RightOf(Vector3 dir) => new Vector3(dir.z, 0f, -dir.x);
+
+    Vector3 Steer(Vector3 pos, Vector3 desired)
+    {
+        Vector3 steer = desired;
+
+        // 막혀서 비켜서는 중 — 측면 성분을 크게 준다
+        if (_sidestepTimer > 0f)
+        {
+            _sidestepTimer -= Time.deltaTime;
+            steer = (desired * 0.35f + _sidestepDir).normalized;
+        }
+
+        Vector3 avoid = AvoidNearbyPawns(pos, desired);
+        if (avoid != Vector3.zero)
+            steer = (steer + avoid * avoidStrength).normalized;
+
+        return steer.sqrMagnitude > 0.001f ? steer : desired;
+    }
+
+    // 앞쪽에 있는 다른 폰에서 벗어나는 조향 성분.
+    // 측면 회피는 **항상 자기 기준 오른쪽** — 마주 오는 둘이 서로 반대 방향으로 갈라져
+    // "서로 맞대고 아무도 못 가는" 교착이 풀린다(우측통행). 근접 시 밀어내는 성분도 섞는다.
+    Vector3 AvoidNearbyPawns(Vector3 pos, Vector3 desired)
+    {
+        if (avoidRadius <= 0f) return Vector3.zero;
+
+        // 목적지 코앞에서는 회피하지 않는다 — 도착 지점에 모여야 하는 경우(창고·작업대·침대 옆)
+        // 끝까지 서로 밀어내면 아무도 도착하지 못한다.
+        if (HorizDistSqr(pos, _finalGoal) <= arriveDistance * arriveDistance * 4f)
+            return Vector3.zero;
+
+        // 교전 상대는 피하지 않는다 — 붙어야 때린다
+        var combatTarget = _brain != null && _brain.Blackboard != null ? _brain.Blackboard.Target : null;
+
+        Vector3 right = RightOf(desired);
+        Vector3 avoid = Vector3.zero;
+
+        foreach (var other in _all)
+        {
+            if (other == this || other == null || other.IsSleeping) continue;
+            if (combatTarget != null && other.gameObject == combatTarget) continue;
+
+            Vector3 d = other.transform.position - pos;
+            d.y = 0f;
+
+            float distSqr = d.sqrMagnitude;
+            if (distSqr > avoidRadius * avoidRadius || distSqr < 0.0001f) continue;
+
+            float dist = Mathf.Sqrt(distSqr);
+            Vector3 dir = d / dist;
+
+            float ahead = Vector3.Dot(dir, desired);
+            if (ahead <= 0.2f) continue;   // 뒤·옆으로 스치는 상대는 무시
+
+            float weight = (1f - dist / avoidRadius) * ahead;
+            avoid += (right + -dir * 0.5f) * weight;
+        }
+
+        return Vector3.ClampMagnitude(avoid, 1f);
+    }
+
+    // 실제로 나아가고 있는지 감시. 밀리기만 하면 단계적으로 탈출을 시도한다.
+    void TrackProgress(Vector3 pos, Vector3 desired, float speed)
+    {
+        _progressTimer += Time.deltaTime;
+        if (_progressTimer < blockedCheckTime) return;
+
+        float moved    = Mathf.Sqrt(HorizDistSqr(pos, _progressAnchor));
+        float expected = speed * _progressTimer * 0.35f;   // 기대치의 35%도 못 가면 막힌 것
+
+        if (moved >= expected) _blockedCount = 0;
+        else                   OnBlocked(pos, desired);
+
+        _progressAnchor = pos;
+        _progressTimer  = 0f;
+    }
+
+    // 막혔을 때의 대응. **좌우로 번갈아 비켜서지 않는다** — U자로 둘러싸인 자리에서
+    // 그러면 한쪽으로 갔다가 되돌아오는 진동만 반복하고 절대 빠져나가지 못한다.
+    // 한 번만 비켜서 보고, 안 되면 그 자리를 막힌 곳으로 기억시켜 **플래너에게 우회를 맡긴다.**
+    void OnBlocked(Vector3 pos, Vector3 desired)
+    {
+        _blockedCount++;
+
+        MovementDiagnostics.RecordStage(_blockedCount,
+                                        _brain != null ? _brain.UnitName : name,
+                                        pos, ref _lastDiagLogTime);
+
+        switch (_blockedCount)
+        {
+            case 1:   // 스치는 정체 — 한 번 비켜서 본다
+                _sidestepDir   = RightOf(desired);
+                _sidestepTimer = sidestepTime;
+                break;
+
+            case 2:   // 막힌 자리를 기억시키고 경로를 다시 뽑는다 (그래프가 우회로를 낸다)
+                _sidestepTimer = 0f;
+                RememberBlockedSpot(pos, desired);
+                ReplanLocal();
+                break;
+
+            case 3:   // 로컬 윈도우 밖으로 돌아야 하는 규모 — 전역 경로부터 다시
+                RememberBlockedSpot(pos, desired);
+                _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
+                _coarseIndex = 0;
+                ReplanLocal();
+                break;
+
+            default:  // 포기 — BT가 다른 행동을 고르거나 다음 틱에 다시 명령한다
+                MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
+                                              pos, _finalGoal, _localPath != null);
+                StopMovement();
+                break;
+        }
+    }
+
+    // 앞을 막고 있는 자리를 잠시 통행 불가로 기록. 내 발밑이 아니라 **가려던 쪽**을 막는다.
+    // 목적지 코앞은 제외 — 도착 지점 자체를 막아버리면 영영 못 간다.
+    void RememberBlockedSpot(Vector3 pos, Vector3 desired)
+    {
+        Vector3 spot = pos + desired * 0.9f;
+        if (HorizDistSqr(spot, _finalGoal) <= arriveDistance * arriveDistance * 4f) return;
+        PathBlockMemory.Block(spot);
+    }
+
+    void ResetProgress()
+    {
+        _progressAnchor = transform.position;
+        _progressTimer  = 0f;
+        _blockedCount   = 0;
+        _sidestepTimer  = 0f;
+    }
+
     static float HorizDistSqr(Vector3 a, Vector3 b)
     {
         float dx = a.x - b.x, dz = a.z - b.z;
@@ -203,6 +428,9 @@ public class PawnMover : MonoBehaviour
 
     void Update()
     {
+        // 누워 있는 동안은 중력·조향 모두 정지 (위치는 SetSleeping이 고정해뒀다)
+        if (IsSleeping) return;
+
         if (_cc.isGrounded)
         {
             _verticalVel = groundStickForce;
@@ -263,7 +491,14 @@ public class PawnMover : MonoBehaviour
                     ? _baseMoveSpeed * (1f + _stats.Athletics / 100f) * weightCorrection * sfxMult
                     : moveSpeed) * _mobilityMult;
 
-                move += (to / dist) * effectiveSpeed;
+                Vector3 desired = to / dist;
+                Vector3 steer   = Steer(pos, desired);
+
+                // 회피/비켜서기로 방향이 틀어졌으니 공허 검사도 실제 진행 방향으로 다시 한다
+                if (_localPath == null && IsVoidAhead(pos, steer)) steer = desired;
+
+                move += steer * effectiveSpeed;
+                TrackProgress(pos, desired, effectiveSpeed);
 
                 if (_stats != null)
                     _stats.GrowStat(StatName.Athletics, athleticsGrowthRate * Time.deltaTime * CombatXp.Sol(_stats.Athletics));

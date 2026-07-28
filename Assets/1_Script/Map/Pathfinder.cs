@@ -12,8 +12,9 @@ public static class Pathfinder
             : new List<Vector3> { to };
 
     // 유닛 중심 로컬 정밀 경로. Instance 없으면 null (호출측에서 직선 폴백).
-    public static List<Vector3> FindLocalPath(Vector3 from, Vector3 target)
+    // self를 주면 그 폰을 제외한 다른 폰들을 장애물로 넣어 경로를 뽑는다(폰이 만든 막힘 우회).
+    public static List<Vector3> FindLocalPath(Vector3 from, Vector3 target, PawnMover self = null)
         => HierarchicalPathfinder.Instance != null
-            ? HierarchicalPathfinder.Instance.FindLocalPath(from, target)
+            ? HierarchicalPathfinder.Instance.FindLocalPath(from, target, self)
             : null;
 }

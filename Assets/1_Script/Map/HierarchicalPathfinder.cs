@@ -146,8 +146,19 @@ public class HierarchicalPathfinder : MonoBehaviour
             return;
         }
 
-        // 에이전트 반경만큼 부풀려 좁은 틈은 막고 벽에서 거리를 둔다.
-        float half = tileSize * 0.45f + agentRadius;
+        // 건물 점유 — 셀이 덮는 타일이 **전부** 막혔을 때만 차단(관대한 판정).
+        // 부분 점유는 L1(1m 윈도우)이 정밀하게 처리한다. 얇은 벽까지 여기서 막으면
+        // 한 칸짜리 통로가 코스 단계에서 사라져 경로 자체를 못 찾는다.
+        if (floorGate && AllOccupiedInCell(worldCenter, tileSize))
+        {
+            grid.SetWalkable(x, y, false);
+            return;
+        }
+
+        // 셀 범위 안의 장애물만 본다. 반경 부풀림은 **셀 반쪽보다 큰 에이전트**에만 적용 —
+        // 코스 단계에서 벽 주변까지 통째로 막으면 좁은 통로가 사라져 경로 자체가 안 나온다
+        // (정밀 차단은 L1 몫이라는 기존 원칙과 같은 방향).
+        float half = tileSize * 0.45f + Mathf.Max(0f, agentRadius - tileSize * 0.5f);
         var halfBox = new Vector3(half, 2f, half);
         bool blocked = Physics.CheckBox(worldCenter, halfBox, Quaternion.identity, obstacleLayer);
         grid.SetWalkable(x, y, !blocked);
@@ -167,6 +178,22 @@ public class HierarchicalPathfinder : MonoBehaviour
         for (int tz = z0; tz <= z1; tz++)
             if (map.IsFloored(new Vector2Int(tx, tz))) return true;
         return false;
+    }
+
+    // 셀 범위와 겹치는 맵 타일이 전부 건물에 점유돼 있는가.
+    static bool AllOccupiedInCell(Vector3 cellCenter, float tileSize)
+    {
+        var map = MapManager.Instance;
+        if (map == null) return false;
+
+        int x0 = Mathf.FloorToInt(cellCenter.x - tileSize * 0.5f);
+        int z0 = Mathf.FloorToInt(cellCenter.z - tileSize * 0.5f);
+        int x1 = Mathf.CeilToInt (cellCenter.x + tileSize * 0.5f) - 1;
+        int z1 = Mathf.CeilToInt (cellCenter.z + tileSize * 0.5f) - 1;
+        for (int tx = x0; tx <= x1; tx++)
+        for (int tz = z0; tz <= z1; tz++)
+            if (map.GetTile(tx, tz).IsPassable) return false;
+        return true;
     }
 
     // ── 공개 길찾기 API ────────────────────────────────────────────────
@@ -206,8 +233,8 @@ public class HierarchicalPathfinder : MonoBehaviour
 
     // 로컬 정밀 경로: 유닛 위치 중심 윈도우를 즉석 베이크해 target까지 Theta*.
     // 에이전트 반경만큼 장애물을 부풀려 좁은 틈 끼임을 방지한다.
-    public List<Vector3> FindLocalPath(Vector3 unitPos, Vector3 target)
-        => _l1.FindWindowPath(unitPos, target, localWindowSize, agentRadius);
+    public List<Vector3> FindLocalPath(Vector3 unitPos, Vector3 target, PawnMover self = null)
+        => _l1.FindWindowPath(unitPos, target, localWindowSize, agentRadius, self);
 
     public int LocalWindowSize => localWindowSize;
 
