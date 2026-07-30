@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6cb687f535fe41943a2ffd8751be048f, type: 3}
+  m_Name: Rec_Bronze
+  m_EditorClassIdentifier: Assembly-CSharp::RecipeData
+  RecipeName: "\uCCAD\uB3D9 \uC8FC\uAD34"
+  Ingredients:
+  - Item: {fileID: 11400000, guid: 073809f00dafd854b85cc88e4e4ac474, type: 2}
+    Amount: 3
+  - Item: {fileID: 11400000, guid: 2ed52ec9057b4924db2afade0eedbb07, type: 2}
+    Amount: 1
+  - Item: {fileID: 11400000, guid: 7f78a163531853440bcf98dcb4b2a71d, type: 2}
+    Amount: 1
+  Result: {fileID: 11400000, guid: a958c72b5d727c14c9b1e996e6da83df, type: 2}
+  ResultAmount: 1
+  CraftTime: 8
+  Category: 7
+  RequiredSkillType: 6
+  RequiredSkillLevel: 2
+  SkillGrowthAmount: 0.5
+  RequiredResearch: {fileID: 0}

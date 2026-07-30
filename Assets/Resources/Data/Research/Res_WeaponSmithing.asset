@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_WeaponSmithing
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  ResearchName: "\uBB34\uAE30 \uC81C\uC791"
+  Description: "\uC4F8 \uB9CC\uD55C \uBB34\uAE30\uB97C \uBCBC\uB9B0\uB2E4."
+  Ingredients:
+  - Item: {fileID: 11400000, guid: 904f5016b1a6dea47b6c4c14277cff0a, type: 2}
+    Amount: 10
+  ResearchTime: 60
+  SkillGrowthAmount: 1
+  Prerequisite: {fileID: 0}
+  UnlockedRecipes:
+  - {fileID: 11400000, guid: 2a2fec8fd0fd03c49896c33f36261385, type: 2}

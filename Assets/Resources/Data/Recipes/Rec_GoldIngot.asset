@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6cb687f535fe41943a2ffd8751be048f, type: 3}
+  m_Name: Rec_GoldIngot
+  m_EditorClassIdentifier: Assembly-CSharp::RecipeData
+  RecipeName: "\uAE08 \uC8FC\uAD34"
+  Ingredients:
+  - Item: {fileID: 11400000, guid: dd650f428a5c33344bf6516f7d2a56a8, type: 2}
+    Amount: 3
+  - Item: {fileID: 11400000, guid: 7f78a163531853440bcf98dcb4b2a71d, type: 2}
+    Amount: 2
+  Result: {fileID: 11400000, guid: 99bff93aafd46f84f95072636401371f, type: 2}
+  ResultAmount: 1
+  CraftTime: 14
+  Category: 7
+  RequiredSkillType: 6
+  RequiredSkillLevel: 26
+  SkillGrowthAmount: 0.5
+  RequiredResearch: {fileID: 0}

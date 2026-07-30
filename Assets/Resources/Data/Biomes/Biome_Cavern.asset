@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 115dbe91c61366d49b98f9804b36febe, type: 3}
+  m_Name: Biome_Cavern
+  m_EditorClassIdentifier: Assembly-CSharp::BiomeContentData
+  Biome: 6
+  ResourceNodes:
+  - {fileID: 11400000, guid: 27a84ee90742b0b41b010fe3bf898a2f, type: 2}
+  - {fileID: 11400000, guid: 39a8731ba5d24bc459fe9082bf24c0b1, type: 2}
+  - {fileID: 11400000, guid: 90733d28cb172e4409b97be212605345, type: 2}
+  - {fileID: 11400000, guid: 9feeaec4f94b64349b43f7470513e993, type: 2}
+  Deposits:
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Chance: 1
+    MinAmount: 80
+    MaxAmount: 160
+  - Item: {fileID: 11400000, guid: 904f5016b1a6dea47b6c4c14277cff0a, type: 2}
+    Chance: 0.8
+    MinAmount: 40
+    MaxAmount: 90
+  - Item: {fileID: 11400000, guid: f4a7523e974a1454c9091626f374fef7, type: 2}
+    Chance: 0.4
+    MinAmount: 15
+    MaxAmount: 40
+  - Item: {fileID: 11400000, guid: e51b417dfdd4fc34f8a76bca2d883d5e, type: 2}
+    Chance: 0.25
+    MinAmount: 5
+    MaxAmount: 14
+  - Item: {fileID: 11400000, guid: 3e0e8c872f81d01449fea7782c438917, type: 2}
+    Chance: 0.5
+    MinAmount: 15
+    MaxAmount: 35
+  SummonableMinions: []
+  UnlockableResearch: []

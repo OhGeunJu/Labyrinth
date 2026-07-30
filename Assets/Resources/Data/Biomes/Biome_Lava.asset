@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 115dbe91c61366d49b98f9804b36febe, type: 3}
+  m_Name: Biome_Lava
+  m_EditorClassIdentifier: Assembly-CSharp::BiomeContentData
+  Biome: 5
+  ResourceNodes:
+  - {fileID: 11400000, guid: 754faaa069edfe34485eb4c172d41d54, type: 2}
+  - {fileID: 11400000, guid: 39a8731ba5d24bc459fe9082bf24c0b1, type: 2}
+  - {fileID: 11400000, guid: 5eaa4edc0f8e0ba41a74ebd2835a88ee, type: 2}
+  - {fileID: 11400000, guid: dba0691ce0d24894abd54064d1b8e0d3, type: 2}
+  Deposits:
+  - Item: {fileID: 11400000, guid: 7f78a163531853440bcf98dcb4b2a71d, type: 2}
+    Chance: 1
+    MinAmount: 60
+    MaxAmount: 130
+  - Item: {fileID: 11400000, guid: 904f5016b1a6dea47b6c4c14277cff0a, type: 2}
+    Chance: 0.7
+    MinAmount: 30
+    MaxAmount: 70
+  - Item: {fileID: 11400000, guid: 5301690effe025d42aa5ec1e4692cd10, type: 2}
+    Chance: 0.3
+    MinAmount: 6
+    MaxAmount: 16
+  - Item: {fileID: 11400000, guid: 85dbd5da091957f409c79793765de787, type: 2}
+    Chance: 0.35
+    MinAmount: 8
+    MaxAmount: 20
+  SummonableMinions: []
+  UnlockableResearch: []

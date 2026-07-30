@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 115dbe91c61366d49b98f9804b36febe, type: 3}
+  m_Name: Biome_Desert
+  m_EditorClassIdentifier: Assembly-CSharp::BiomeContentData
+  Biome: 3
+  ResourceNodes:
+  - {fileID: 11400000, guid: 27a84ee90742b0b41b010fe3bf898a2f, type: 2}
+  - {fileID: 11400000, guid: 8f6173b255818e143bb960e04493266f, type: 2}
+  - {fileID: 11400000, guid: d5fe950009b9e114c8776c1e42936fd5, type: 2}
+  Deposits:
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Chance: 1
+    MinAmount: 60
+    MaxAmount: 120
+  - Item: {fileID: 11400000, guid: 2ed52ec9057b4924db2afade0eedbb07, type: 2}
+    Chance: 0.6
+    MinAmount: 25
+    MaxAmount: 55
+  - Item: {fileID: 11400000, guid: dd650f428a5c33344bf6516f7d2a56a8, type: 2}
+    Chance: 0.25
+    MinAmount: 10
+    MaxAmount: 25
+  SummonableMinions: []
+  UnlockableResearch: []
