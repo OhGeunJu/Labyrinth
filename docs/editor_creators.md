@@ -283,7 +283,12 @@ Content
 | ColonyPanel | `ColonyPanel` | 중앙 표 패널(P키). **행·열 라벨은 런타임 생성**(작업 카테고리에서 파생) |
 | UnitStats_Panel · GradeUpNotification | `UnitStatsUI` · `GradeUpNotificationUI` | 스탯 패널(C키) / 등급 승급 알림 |
 | Canvas/WorldUI/WorldMenuPanel | `WorldMenuPanel` | 월드맵 도착 메뉴(M&B식). **화면 왼쪽 고정**(오른쪽은 지도가 보이게). 필드와 **같은 캔버스**, `WorldUI` 묶음 직속. 선택지 줄은 씬의 `OptionTemplate`을 복제해 채운다 — 머리표는 글자가 아니라 **색 막대 `Image`**인 `Marker` 자식이고 코드가 안 건드린다 |
+| Expedition_UI/ExpeditionPanel | `ExpeditionPanel` · `ExpeditionRowUI` | 원정대 편성(G키). 폰 체크 목록 + `적재 +N` + 요약. 행은 씬의 `RowTemplate` 복제 |
+| Time_UI/TimeBar | `TimeHUD` | 상단 가운데 `일차 / 시각 / 낮·밤` + 배속 버튼 4개(정지·1배·3배·10배). 스페이스 = 일시정지 |
 | Settlement_0 | (루트 GameObject) | 필드 오브젝트 전체의 부모. `SettlementManager.settlements[0]`에 연결됨(WorldNode (8,8)). 정착지 전환이 이 루트를 켜고 끈다 |
+| 3_Prefab/CraftingTable_{Weapon,Smelt,Cook} · ResearchTable | — | 씬에만 있던 작업대/연구대를 프리팹으로 뜬 것. **작업대는 `tableType` 때문에 종류마다 프리팹이 하나씩** 필요하다 |
+
+**UI 이름 규약(2026-07-31 일괄 정리)**: 제목 바는 전부 **`TitleBar`**(옛 `TopBar`·`Header` 통일), 닫기 버튼은 **`CloseButton`**(옛 `CloseBtn`). 제목 바에는 `DraggablePanel`(target=패널), 닫기 버튼에는 공용 `CloseButton` 스크립트(target=패널)가 붙어 있다. 단, `ItemInfoPanel/Header`는 툴팁 안의 **섹션 헤더**라 제외했다 — 제목 바 판정은 이름이 아니라 **깊이**(`Canvas > *_UI > *Panel > 바`)로 한다.
 
 ## 남아 있는 도구
 

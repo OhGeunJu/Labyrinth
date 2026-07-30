@@ -23,8 +23,17 @@
 - 이미 있는 프리팹/데이터는 **덮어쓰지 않는다**(인스펙터에서 손봤을 수 있다).
 - 전부 `OccupiesTile = true` — 유닛이 통과하지 못하는 실체 건물.
 
+### 3. 마무리 — 커밋 후 생성기 정리
+07-29부터 쌓인 279개 변경을 두 커밋으로 나눴다(기능/씬/문서 · 데이터 에셋). **커밋 뒤에** 역할을 마친 일회성 생성기 6개를 삭제했다 — 커밋 전에 지우면 미추적 파일이라 git에서 못 꺼낸다.
+
+- 지움: `DataScaffoldCreator` · `DataCleanup` · `BuildContentCreator` · `TimeHudCreator` · `ExpeditionPanelCreator` · `UiConventionSweep` (전부 씬에서 산출물 확인 후)
+- 남김: `World Map Editor`(상시 저작) · `Setup World Map Scene`(복구) · `Create Biome Content Assets`(바이옴 추가 시) · `Toggle Movement Diagnostics`(검증 중)
+
 ### 미결
 - **Terrain 활성화 여부는 사용자 검토 중** — 던전 구성(바닥 시스템)이면 그대로 두고 `HierarchicalPathfinder`의 경고 문구를 바꾸는 게 낫다.
+- **채집기지 전체 루프가 아직 미검증** — 데이터가 다 찼고 시계·배속도 생겼으니 이제 확인 가능하다.
+  편성 → 도착 → 탐험 → 자동 건설 → (10배로) 하루 → 비축분 싣기 → 거점 입고.
+- 07-30 (3)의 **지형 검증**(맵이 한 장으로 이어져 보이는지, 여러 칸 산맥이 나오는지)도 아직.
 
 ---
 
