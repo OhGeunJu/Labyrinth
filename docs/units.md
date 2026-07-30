@@ -165,7 +165,7 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 
 **반격은 관계와 무관** — `UnitBlackboard.LastAttacker`(+`RetaliationMemory` 15초). `BodyPartSystem.TakeDamage`가 `DamageInfo.Source`를 기록하고(아군 오사는 제외), `DetectNode`는 주변 탐색보다 **반격 대상을 우선**한다. `NpcFleeNode`도 때린 상대를 위협으로 본다. → 중립 세력을 선공하면 그쪽이 대응한다.
 
-**스타터 에셋**: `DungeonColony → Create Starter Factions` → `Assets/5_Data/Faction/`에 플레이어/고블린/산적/마을사람 4종 생성 + 관계 기입(고블린은 기본 적대·산적만 예외, 산적→마을사람 일방 적대). 이미 있는 에셋은 건드리지 않음. 생성 후 각 유닛 프리팹의 `Faction.Data`에 연결할 것.
+**스타터 에셋**: `Assets/5_Data/Faction/`에 플레이어/고블린/산적/마을사람 4종 + 관계 기입(고블린은 기본 적대·산적만 예외, 산적→마을사람 일방 적대). 각 유닛 프리팹의 `Faction.Data`에 연결해 쓴다.
 
 ### AI 프로필 (`AiProfileData` SO)
 
@@ -181,7 +181,7 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 - 전투 필드: `FleeDistance`(15, 한 번에 물러나는 거리), `FleeDetectRange`(0 = 유닛 `DetectRange` 또는 NPC `FleeDetectRange`).
 - 유휴 필드: `Wander`(배회 on/off), `WanderRadius`(0 = 타입 기본), `PauseMin/Max`(도착 후 대기 2~6초).
 - **프로필이 비면 역할별 기본값**: 일반 유닛·경비 = 교전+배회 / NPC 주민 = 도주+배회 / 상점 상인 = 도주+제자리. → 기존 프리팹은 안 건드려도 동작 그대로.
-- **스타터 에셋**: `DungeonColony → Create Starter AI Profiles` → `Assets/5_Data/AiProfile/`에 겁쟁이 민간인 / 전투원 / 신중한 전투원(다치면 후퇴) / 보초(제자리) 4종.
+- **스타터 에셋**: `Assets/5_Data/AiProfile/`에 겁쟁이 민간인 / 전투원 / 신중한 전투원(다치면 후퇴) / 보초(제자리) 4종.
 - 트리 조립은 `UnitBrain.AddCombatBranch(root, fallback, fleeRange)` + `AddWanderBranch(root, defaultRadius, defaultOn)` — 적/경비/주민/상인 트리가 공유한다.
 
 **성향 우선순위**: 런타임 오버라이드 > AI 프로필 > 역할 기본값. 성향은 **매 틱 읽으므로** 런타임 변경이 즉시 반영된다(BT 재조립 불필요).

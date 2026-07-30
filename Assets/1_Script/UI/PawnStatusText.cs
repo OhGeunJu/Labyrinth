@@ -21,6 +21,7 @@ public static class PawnStatusText
         var mover = brain.GetComponent<PawnMover>();
         if (mover != null && mover.IsSleeping) return "휴식";
 
+        if (bb.HoldPosition) return "집결 대기";
         if (bb.ManualMove) return "이동";
 
         if (bb.AssignedNode != null)

@@ -93,6 +93,10 @@ public class ManualOrderNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
     {
+        // 제자리 대기 명령(원정 집결 등)은 목적지가 없어도 계속 붙든다.
+        // 아래 자동 해제만 있으면 "도착했지만 계속 대기"를 표현할 수 없다 — 도착하는 순간 일하러 간다.
+        if (bb.HoldPosition) return BTStatus.Running;
+
         if (!bb.ManualMove) return BTStatus.Failure;
 
         // 도착했거나(목표 소진) 길찾기가 포기해 멈췄으면 명령 종료 → 평소 행동으로 복귀.

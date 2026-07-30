@@ -252,6 +252,12 @@ public class BuildModeManager : MonoBehaviour
         GUI.color = Color.white;
     }
 
+    // 외부에서 건설 모드를 강제 종료 (월드맵 전환 등 — 고스트/미리보기가 남지 않게).
+    public void Deactivate()
+    {
+        if (_active) SetActive(false);
+    }
+
     void SetActive(bool active)
     {
         _active = active;

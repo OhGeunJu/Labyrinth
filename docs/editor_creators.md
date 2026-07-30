@@ -129,6 +129,8 @@ ApplyFont(cTMP);
 >
 > **규칙 2:** 닫기 버튼 텍스트는 반드시 `"X"` 사용. `"✕"` 특수문자는 NanumGothic SDF 폰트와 호환되지 않아 렌더링이 깨진다. 닫기 버튼 배경색은 **#802626 고정**.
 >
+> **닫기 버튼만의 얘기가 아니다 — UI 텍스트 전반에 특수문자를 쓰지 말 것.** NanumGothic SDF는 한글+ASCII 위주라 도형·화살표 글리프가 대부분 없고, 없으면 조용히 `□`로 떨어진다(콘솔에 `The character with Unicode value \uXXXX was not found` 경고). 확인된 사례: `✕`(U+2715), `▸`(U+25B8). **머리표·아이콘 같은 장식은 글자 대신 `Image`(색 막대/사각형)로 만들 것** — 폰트 커버리지와 무관해진다. 굳이 글자를 써야 하면 ASCII로.
+>
 > **규칙 3:** 닫기 동작은 공용 `CloseButton` 컴포넌트(`Assets/1_Script/UI/CloseButton.cs`)로 처리한다. 닫기 버튼 GameObject에 컴포넌트를 붙이고 `target`에 닫을 패널을 연결할 것. 패널 스크립트에 별도 close 메서드/리스너를 만들지 말 것.
 >
 > ```csharp
@@ -256,7 +258,15 @@ Content
 - 편집 중 생성물은 씬 폰트 상속이 안 되므로 생성기가 `ApplyFont`로 한글 폰트를 직접 박을 것.
 - 프리팹 대신 씬 안 템플릿을 쓰는 이유: 그 패널에서만 쓰는 행이라 에셋으로 분리할 이유가 없고, 씬에서 바로 보면서 고칠 수 있다.
 
-## 생성된 UI 목록
+## 생성기의 수명 — 다 쓰면 지운다
+
+생성기는 **씬을 한 번 짓기 위한 일회성 도구**다. 산출물이 씬/에셋에 자리를 잡으면 스크립트는 지운다. 남겨두면 `DungeonColony` 메뉴만 불어나고, 실제 모양은 씬에 있는데 코드가 정본인 것처럼 보여 헷갈린다(→ "모양은 씬이, 코드는 데이터만").
+
+- 이후 수정은 **인스펙터에서** 한다. 그러라고 헤더·스크롤·행 템플릿까지 씬 오브젝트로 만들어 두는 것이다.
+- 다시 지어야 하면 git 이력에서 꺼내거나, 없으면 다시 쓴다. 산출물(씬·에셋)이 정본이므로 생성기가 사라져도 잃는 건 없다.
+- 아래 "지어진 UI" 표는 **무엇이 어떤 컴포넌트로 씬에 있는지의 기록**이지, 지금 쓸 수 있는 메뉴 목록이 아니다.
+
+### 지어진 UI (기록)
 
 | UI | 컴포넌트 | 비고 |
 |---|---|---|
@@ -266,9 +276,26 @@ Content
 | PatrolZonePanel | `PatrolZoneUI` | 순찰 구역 |
 | EventNotificationPanel | `EventNotificationUI` | 이벤트 알림 |
 | MerchantUI | `MerchantUI` | 상인 재고(구매), PawnInventoryPanel 연동 |
-| PawnInventoryPanel | `PawnInventoryPanel` | 인벤토리+장착슬롯+액션바(판매/옮기기). `Create Pawn Inventory UI` |
-| CorpseInventoryPanel | `CorpseInventoryPanel` | 시체 루팅, PawnInventoryPanel 연동 |
-| CorpseInventoryPanel EquipRow | `CorpseInventoryPanel` 하위 추가 | `Add Corpse Equip Row`. 6개 EquipSlotUI 생성 후 패널 필드에 직접 연결 |
-| ResourceNode_Panel | `ResourceNodePanel` | `Create Resource Node Panel`. 우측 패널, 상단 #0D0D0D 헤더+CloseButton, 재고/배정/이송/운반임계값 |
-| PawnRoster_Panel | `PawnRosterPanel` | `Create Pawn Roster UI`. 우측 하단 세로 명부(340×760). 헤더·스크롤·**행 템플릿(`RowTemplate`)까지 씬 오브젝트로** 만든다 — 런타임엔 템플릿을 숨기고 복제해 목록을 채운다. 모양 수정은 인스펙터에서, 코드 수정 불필요. "Portrait" 레이어 자동 생성 |
-| ColonyPanel | `ColonyPanel` | `Create Colony Panel`. 중앙 표 패널(P키). **행·열 라벨은 런타임 생성**(작업 카테고리에서 파생) — 생성기는 헤더/열제목 행/스크롤/하단 안내만 만든다. 구버전 `Priority_UI`·`PriorityManager` 오브젝트 자동 제거 |
+| PawnInventoryPanel | `PawnInventoryPanel` | 인벤토리+장착슬롯+액션바(판매/옮기기) |
+| CorpseInventoryPanel | `CorpseInventoryPanel` | 시체 루팅(+EquipRow 6슬롯), PawnInventoryPanel 연동 |
+| ResourceNode_Panel | `ResourceNodePanel` | 우측 패널, 상단 #0D0D0D 헤더+CloseButton, 재고/배정/이송/운반임계값 |
+| PawnRoster_Panel | `PawnRosterPanel` | 우측 하단 세로 명부(340×760). 행은 씬의 **`RowTemplate`을 복제**해 채운다 — 모양 수정은 인스펙터에서, 코드 수정 불필요 |
+| ColonyPanel | `ColonyPanel` | 중앙 표 패널(P키). **행·열 라벨은 런타임 생성**(작업 카테고리에서 파생) |
+| UnitStats_Panel · GradeUpNotification | `UnitStatsUI` · `GradeUpNotificationUI` | 스탯 패널(C키) / 등급 승급 알림 |
+| Canvas/WorldUI/WorldMenuPanel | `WorldMenuPanel` | 월드맵 도착 메뉴(M&B식). **화면 왼쪽 고정**(오른쪽은 지도가 보이게). 필드와 **같은 캔버스**, `WorldUI` 묶음 직속. 선택지 줄은 씬의 `OptionTemplate`을 복제해 채운다 — 머리표는 글자가 아니라 **색 막대 `Image`**인 `Marker` 자식이고 코드가 안 건드린다 |
+| Settlement_0 | (루트 GameObject) | 필드 오브젝트 전체의 부모. `SettlementManager.settlements[0]`에 연결됨(WorldNode (8,8)). 정착지 전환이 이 루트를 켜고 끈다 |
+
+## 남아 있는 도구
+
+| 메뉴 | 하는 일 | 왜 남겼나 |
+|---|---|---|
+| `World Map Editor` | 월드맵(`WorldMapData`)을 격자에 칠해 저작하는 `EditorWindow`. 브러시 3종(바이옴/내용물/시작 노드), 드래그 페인트 1회 = Undo 1덩어리, 크기 변경 시 내용 보존, [새로 만들기]/[씬에 연결]. 여기서 칠하는 건 **논리 정보뿐** — 지형(높이·생김새)은 씬에 직접 만들어 붙인다. **절차 생성 없음.** | 일회성이 아니라 **상시 저작 도구** |
+| `Setup World Map Scene` | 월드맵에 필요한 오브젝트/컴포넌트를 **없는 것만 채우고 참조만 잇는다**(WorldMap·SettlementManager·GameModeManager·WorldMapView·MapRoot·WorldCamera·WorldMapGrid + 에셋 배선). **아무것도 지우지 않는다** — MapRoot 아래 지형과 손으로 맞춘 카메라가 살아남아야 하므로. 여러 번 실행해도 안전. | 배선이 끊길 때마다 다시 돌리는 **복구 도구** |
+| `Create Biome Content Assets` | `Resources/Data/Biomes/`에 바이옴별 `BiomeContentData` 스캐폴드 생성. 이미 있으면 건너뛴다. | 실행됨(에셋 7종 생성). 바이옴을 늘리면 다시 돌린다 |
+| `Toggle Movement Diagnostics` | 이동 계측 on/off. | 이동 개편 Play Mode 검증이 아직 안 끝났다 |
+
+**저작 창의 색은 구역 표시색이지 지형색이 아니다** — 게임 화면의 지형은 저작한 Terrain의 텍스처가 갖는다. `BiomeExt.Color()` / `WorldNodeContentExt.Color()`는 저작 격자와 (프리팹 없는) 기본 마커가 공유하는 단일 출처.
+
+**씬을 훑을 땐 `FindObjectsInactive.Include`를 기본으로** — 이 씬은 필드 오브젝트가 `Settlement_0` 아래에 있고 그중 상당수(`ResearchTable` · `CraftingTable` · `Terrain` · 적 유닛 등)가 **꺼진 채로 저장돼 있다.** `FindFirstObjectByType<T>()`는 비활성을 제외하므로 "씬에 없습니다"라고 잘못 판단한다. 2026-07-31에 이걸로 연구대를 못 찾은 채 연구 에셋을 지워 목록에 빈 항목을 남겼다. 배선·정리 도구는 예외 없이 비활성을 포함해 찾고, **여러 개일 수 있으니 `FindObjectsByType`으로 전부 처리**할 것.
+
+**분류는 전역 화이트리스트로** — `SettlementRootCreator.GlobalTypes`에 없는 루트는 전부 필드로 본다. 새로 만드는 씬 오브젝트는 대개 필드 것이라 이 기본값이 맞고, 전역 매니저를 추가했다면 그 목록에 넣어야 한다. 자동 분류를 그냥 믿지 않도록 **이동/유지 목록을 로그로 출력**하고 `Undo`를 지원한다.

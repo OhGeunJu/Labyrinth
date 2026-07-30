@@ -46,6 +46,11 @@ public class UnitBlackboard
     // 조작이 안 먹는 것처럼 느껴진다. 도착하거나 이동이 끝나면 자동 해제(ManualOrderNode).
     public bool ManualMove;
 
+    // 명령으로 **제자리에 붙들려 있는가**. 원정 편성 중 집결 지점에 먼저 도착한 폰이
+    // 다시 일하러 가버리지 않게 잡아둔다 — `ManualMove`는 목적지가 소진되면 자동 해제되므로
+    // "도착했지만 계속 대기"를 표현할 수 없다. 푸는 건 명령을 건 쪽의 몫이다.
+    public bool HoldPosition;
+
     // 상태
     public bool IsDrafted;
     public bool IsUnarmed  = true;

@@ -56,8 +56,9 @@ public static class DataManager
         return null;
     }
 
-    public static IReadOnlyDictionary<string, ItemData>   AllItems   => _items;
-    public static IReadOnlyDictionary<string, RecipeData> AllRecipes => _recipes;
+    public static IReadOnlyDictionary<string, ItemData>     AllItems    => _items;
+    public static IReadOnlyDictionary<string, RecipeData>   AllRecipes  => _recipes;
+    public static IReadOnlyDictionary<string, ResearchData> AllResearch => _research;
 
     // ── 로딩 ──────────────────────────────────────────────────────────────
 

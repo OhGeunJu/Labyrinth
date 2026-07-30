@@ -11,6 +11,9 @@ using TMPro;
 //
 // 행 순서는 **고정**(방랑자 → 하수인, 이름순)이다. 상태별로 묶으면 일하는 폰이 계속
 // 자리를 옮겨 다녀 클릭하기 어렵다 — 상태는 자리 이동 대신 텍스트·색으로 보여준다.
+//
+// **여기 있는 건 지금 이 거점에 있는 폰뿐이다.** 원정 나간 폰은 목록에서 빠지고 돌아오면 다시 붙는다
+// (나가 있는 동안은 선택도 명령도 안 되므로 남겨두면 죽은 줄이 된다). 밖에 나간 팀은 월드맵에서 본다.
 public class PawnRosterPanel : MonoBehaviour
 {
     [Header("씬 참조 (생성기가 연결)")]
@@ -117,19 +120,31 @@ public class PawnRosterPanel : MonoBehaviour
 
     void RefreshAll()
     {
-        List<UnitBrain> dead = null;
+        List<UnitBrain> gone = null;
         foreach (var kv in _rows)
         {
-            if (kv.Key == null || kv.Value == null) { (dead ??= new()).Add(kv.Key); continue; }
+            // **원정 나간 폰은 명부에서 뺀다.** 나간 폰은 GameObject가 꺼져 있어(`ExpeditionFormation`)
+            // 클릭해도 선택·명령이 안 된다 — 남겨두면 죽은 줄이 되고, 상태 표시도 떠날 때 그대로 멈춘다.
+            // 돌아오면 아래 재탐색이 다시 붙인다.
+            if (kv.Key == null || kv.Value == null || !kv.Key.gameObject.activeInHierarchy)
+            { (gone ??= new()).Add(kv.Key); continue; }
+
             kv.Value.Refresh(IsSelected(kv.Key));
         }
 
-        if (dead != null)
-            foreach (var brain in dead)
+        if (gone != null)
+            foreach (var brain in gone)
             {
                 if (_rows.TryGetValue(brain, out var row) && row != null) Destroy(row.gameObject);
                 _rows.Remove(brain);
             }
+
+        // 원정에서 **돌아온 폰**을 다시 줍는다. `OnUnitSpawned`는 최초 스폰 때만 오므로
+        // 복귀는 이 재탐색이 아니면 잡히지 않는다(비활성은 기본적으로 검색에서 빠진다).
+        bool added = false;
+        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+            if (AddRow(brain)) added = true;
+        if (added) SortRows();
 
         UpdateTitle();
     }

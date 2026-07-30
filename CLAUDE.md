@@ -50,7 +50,7 @@ Guidance for Claude Code in this repository.
 
 ### 팩션 (세력 관계)
 
-`FactionData` (SO) — 세력 1개. `PlayerControlled` / `DefaultStance` / `Relations[{Other, Stance}]`. **관계는 방향별**(`StanceTo`): A→B 적대여도 B→A 중립 가능. `Faction` 컴포넌트가 SO를 들고 `IsPlayer`/`IsHostileTo`/`IsAllyOf` 제공, **SO 미연결 시 레거시 `FactionType{Player,Enemy}` 폴백**(기존 씬 무영향). 반격은 관계와 무관 — `UnitBlackboard.LastAttacker`(15초). AI 역할은 `UnitBrain.UsesEnemyAi`(NPC/하수인 아님 && !IsPlayer). **적을 만났을 때의 반응 + 유휴 배회는 `AiProfileData`(SO)** — 유닛 프리팹의 `UnitBrain.aiProfile`에 연결(새 컴포넌트 부착 불필요, 프로필을 여러 프리팹이 공유). 세 축 분리: 종족(`UnitData`)=스탯 / 세력(`FactionData`)=누가 적인가 / 역할(`AiProfileData`)=어떻게 반응하는가. 비우면 타입별 기본값(일반·경비=교전+배회 / NPC 주민=도주+배회 / 상점상인=도주+제자리). 트리 조립은 `UnitBrain.AddCombatBranch` / `AddWanderBranch` 공용. 스타터 에셋: `DungeonColony → Create Starter AI Profiles`. 스타터 에셋: `DungeonColony → Create Starter Factions`. 상세 `docs/units.md`.
+`FactionData` (SO) — 세력 1개. `PlayerControlled` / `DefaultStance` / `Relations[{Other, Stance}]`. **관계는 방향별**(`StanceTo`): A→B 적대여도 B→A 중립 가능. `Faction` 컴포넌트가 SO를 들고 `IsPlayer`/`IsHostileTo`/`IsAllyOf` 제공, **SO 미연결 시 레거시 `FactionType{Player,Enemy}` 폴백**(기존 씬 무영향). 반격은 관계와 무관 — `UnitBlackboard.LastAttacker`(15초). AI 역할은 `UnitBrain.UsesEnemyAi`(NPC/하수인 아님 && !IsPlayer). **적을 만났을 때의 반응 + 유휴 배회는 `AiProfileData`(SO)** — 유닛 프리팹의 `UnitBrain.aiProfile`에 연결(새 컴포넌트 부착 불필요, 프로필을 여러 프리팹이 공유). 세 축 분리: 종족(`UnitData`)=스탯 / 세력(`FactionData`)=누가 적인가 / 역할(`AiProfileData`)=어떻게 반응하는가. 비우면 타입별 기본값(일반·경비=교전+배회 / NPC 주민=도주+배회 / 상점상인=도주+제자리). 트리 조립은 `UnitBrain.AddCombatBranch` / `AddWanderBranch` 공용. 스타터 에셋은 `Assets/5_Data/AiProfile/`(4종) · `Assets/5_Data/Faction/`(4종)에 생성돼 있다. 상세 `docs/units.md`.
 
 - `MoveController` — 방랑자만 우클릭 명령 (`!(brain.Data is MinionData)`)
 - `MinionData.AllowedJobs` — 하수인 작업 설정의 **초기값**(이후 조정은 `WorkSettings`로 개체별)
@@ -68,6 +68,12 @@ Guidance for Claude Code in this repository.
 | `HierarchicalPathfinder` | 씬에 배치 필요. `ComputeCoarseRoute(from,to)`(메소/L2) + `FindLocalPath(pos,target,self)`(유닛 중심 Theta* 윈도우) / `RebakeObstacleAt`. `obstacleLayer`=Wall만. **통행 판정은 타일 단위** — 반경 부풀림은 타일보다 큰 에이전트에만. 상세 `docs/world.md` |
 | `ResearchManager` | `IsUnlocked(recipe)` / `CanResearch(data)` / `Complete(data)` |
 | `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill(CraftSkill)` / `AllItems` / `AllRecipes` |
+| `GameModeManager` | **화면·입력**이 필드냐 월드냐의 단일 소유자. `Current` / `IsField` / `IsWorld` / `SwitchTo(GameMode)` / `Toggle()` / `OnModeChanged`. 월드 전환 = 필드 UI·입력·카메라 off + 월드 UI/루트/카메라 on. **UI 캔버스는 하나** — 캔버스가 아니라 그 **직속 자식들**을 다루고 월드 전용 묶음(`Canvas/WorldUI`)만 반대로 켠다(월드 UI를 캔버스째 끄지 않으려고). 필드 UI는 **떠날 때 열려 있던 상태를 기억했다 복원**(`ApplyFieldUi`) — 일괄로 켜면 닫아 뒀던 패널까지 따라 열린다. **정착지 루트는 안 건드린다 — 거점 시뮬은 월드맵을 보는 동안에도 계속 돈다**(2026-07-30 결정, 07-29의 "필드 통째 정지"를 되돌림). `EventManager`도 계속 돈다(원정 중 습격 → M키로 복귀해 대응, 추상 방어 판정 불필요) |
+| `OutpostManager` | **채집기지**(`WorldNodeContent.Outpost`)의 단일 소유자. `Build(node)` / `At(node)` / `LoadInto(outpost, party)` / `CanAfford` / `CostSummary` / `OnChanged`. **필드맵을 만들지 않는 추상 시설** — 매일(`OnDayChanged`) 남은 매장에서 골고루 캐 기지에 쌓고, **원정대가 들러 등짐으로 실어와야** 창고에 들어간다(본거지 순간이동 없음). 건설 비용 `buildCost`(비우면 무료)는 활성 거점 창고에서 빠진다 |
+| `ExpeditionFormation` | 원정 편성의 **집결** 단계. `Begin(members)` / `Cancel()` / `IsGathering` / `ArrivedCount` / `OnChanged`. 핵 앞으로 걸어와 **전원 도착 시 일괄 출발** → `WorldMapView.AddMembers` + 월드맵 전환. 도착한 폰은 `UnitBlackboard.HoldPosition`으로 붙들어 둔다(`ManualMove`는 목적지 소진 시 자동 해제돼 못 잡는다) |
+| `ExpeditionParty` | 월드맵 원정대(논리 데이터). `Members` / `CurrentNode` / **`Cargo`**(등짐) / `Capacity`(멤버 근력 합 × 5 — **필드 폰 적재와 같은 식**) / `TryAdd`(실제 받은 개수 반환) / `ClearCargo`. 자원 채집물이 여기 쌓이고 거점 진입 시 창고로 비워진다 |
+| `SettlementManager` | 정착지 전환형. `Active` / `SwitchTo` / `SwitchToNode` / `RegisterAt` / `ActiveBiome`. **루트 활성화의 소유자** — 한 번에 하나만 시뮬되는 건 모드가 아니라 "활성 정착지는 하나"라는 규칙 때문. 시뮬 안 되는(= 지금 안 보는 다른) 정착지는 매일 오프라인 추상 생산 |
+| `WorldMap` | 추상 바둑판 월드맵. `GetTile` / `SetContent` / `RegisterSettlement` / `Neighbors` / `Distance` / `OnNodeChanged`. **매장 자원**: 칸마다 무엇이 얼마나 묻혔는지는 `WorldDeposits.At(node, tile, seed)` — 종류는 `BiomeContentData.Deposits`(바이옴), 수량은 **칸 좌표+시드 해시로 결정적**. 값은 항상 같고 **조사(`IsSurveyed`/`MarkSurveyed`)해야 보인다**(안개 아님 — 가려지는 건 세부 수치뿐). `ResourceSite` 칸은 ×2.5. **저작한다, 절차 생성하지 않는다** — `mapData`(`WorldMapData` SO)를 연결하면 그대로 싣고 크기·시작 노드도 데이터가 이긴다. 없으면 빈 맵 + 경고. 칸이 갖는 건 **바이옴(콘텐츠 게이팅) · 내용물**뿐 — 높이·생김새는 저작한 지형 몫이다. 저작은 `DungeonColony → World Map Editor`(브러시 3종). **안개 없음**(2026-06-20 결정) |
 
 ### Storage API (자주 사용)
 
@@ -162,8 +168,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
   - 아이템 단클릭 → 선택 + 버튼 활성, 더블클릭 → 즉시 판매, 드래그 → MerchantUI 위에 드롭 판매
 - `ItemInfoPanel` — 아이템 hover 시 공용 툴팁 (등급 컬러, 스탯, 설명, 상점가/판매가/가치)
 
-**에디터 스크립트**: `DungeonColony → Create Merchant UI` 실행
-→ `ItemInfoPanel` + `MerchantUI` 씬 생성 + `MerchantStockEntry.prefab` / `SellItemEntry.prefab` 저장
+**씬 구성**: `ItemInfoPanel` + `MerchantUI`는 씬에 있고, 항목 행은 `MerchantStockEntry.prefab` / `SellItemEntry.prefab`을 복제해 채운다. 모양 수정은 인스펙터에서(생성기는 역할을 마쳐 제거됨 — `docs/editor_creators.md` "생성기의 수명").
 
 **마을별 가격 설정 예시**:
 ```
@@ -186,7 +191,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 - `placeableBuildings: BuildingData[]` 단일 배열. `UsesBlueprint=true` → 2단계 건설, `false` → 즉시 배치
 - 설계 원칙: `BuildingData`는 배치 방법만 담당. 각 컴포넌트(Storage, SubCore, FarmPlot 등)가 동작 데이터를 프리팹 SerializeField로 직접 보유
 - `OnActiveChanged` — 건설 모드 토글 시 다른 UI 자동 닫힘
-- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장(타일 → **바닥 윗면 Y**). 건물 배치 높이는 `SurfaceHeight` + `BuildModeManager.SpawnOnSurface` — 프리팹 루트 `localPosition.y`가 양수면 **저작 부양 높이**로 보고 그만큼 띄우고(서브코어 등), 아니면 `SnapOnSurface`가 렌더러 바닥면을 표면에 맞춘다(피벗 중앙 프리팹 파묻힘 방지, 올리기만 함). 즉시 배치/청사진/고스트/자유 배치 동일 규칙. 메인 핵은 `DungeonCore._hoverOffset`(Start에서 캡처)로 이전 후에도 부양 유지. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에디터: `Create Floor Prefab + Data`(placeable) / `Create Dungeon Starter Floor`(코어바닥 20×20 저작 + requireFloor 자동 켬). 공허 이동 차단 3중: 길찾기(L1/메소)가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지 선정은 `MapManager.IsStandable` 검사.
+- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장(타일 → **바닥 윗면 Y**). 건물 배치 높이는 `SurfaceHeight` + `BuildModeManager.SpawnOnSurface` — 프리팹 루트 `localPosition.y`가 양수면 **저작 부양 높이**로 보고 그만큼 띄우고(서브코어 등), 아니면 `SnapOnSurface`가 렌더러 바닥면을 표면에 맞춘다(피벗 중앙 프리팹 파묻힘 방지, 올리기만 함). 즉시 배치/청사진/고스트/자유 배치 동일 규칙. 메인 핵은 `DungeonCore._hoverOffset`(Start에서 캡처)로 이전 후에도 부양 유지. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에셋: `Floor.prefab` + `Floor.asset`(placeable) / 씬의 `[DungeonStarterFloor]`(코어바닥 20×20 저작, `requireFloor` 켜짐). 공허 이동 차단 3중: 길찾기(L1/메소)가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지 선정은 `MapManager.IsStandable` 검사.
 - **핵 영역(크립) / 건물 휴면**: 점유는 절대좌표 희소 저장이라 핵 이동에도 유지. 영역(핵 union) 밖 건물은 `BuildingDormancy`가 휴면(작동 정지+회색 틴트, 철거 X), 복구 시 재가동. **휴면 = 전면 사용 불가**: 창고 집계 제외(`Storage.IsActive`), 침대·농지·작업대·연구대·우물 컴포넌트 `enabled=false`, 클릭해도 패널 안 열림(`SelectionManager` 게이트), 매달린 일감은 `JobBase.IsSiteUsable`로 배정 보류(취소 아님 → 복구 시 재개). 외부 판정은 `BuildingDormancy.IsDormantAt(Component)`. 런타임 배치 시 `BuildingDormancy.Ensure`로 자동 부착(씬 사전 배치 건물은 수동 부착 필요). **핵 이전**: `DungeonCoreUI`의 [핵 이전] 버튼 → `CoreRelocator`(좌클릭 확정 / 우클릭·Esc 취소, 타일 유효성 + 새 영역 원 + 휴면·재가동 예정 수 미리보기) → `RelocateTo`. 설계: `docs/design_core_creep.md` (step 1~5 완료)
 
 ### Input & Camera
@@ -198,8 +203,12 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 | `PawnInventoryPanel` | I키 | 인벤토리/장비 패널 |
 | `UnitStatsUI` | C키 | 스탯 패널 토글 |
 | `ColonyPanel` | P키 | 무리 관리(작업 on/off + 전투 성향, 폰 전체) |
+| `ExpeditionPanel` | G키 | 원정대 편성 — 폰 체크 + 적재량 요약. [출발] 시 **바로 사라지지 않고** 핵 앞으로 집결(`ExpeditionFormation`), 전원 도착 후 함께 떠남 |
+| `WorldMenuPanel` | 월드맵에서 칸에 **도착**(빈 야생 포함) | 마운트앤블레이드식 도착 메뉴(화면 왼쪽 고정, 좌 그림 / 우 선택지). **선택지 구성은 `WorldMapView.OpenMenu`가 정한다** — `탐험한다`(매장 조사) 동작, `여기에 전초기지를 세운다`·마을·소굴은 "준비 중" |
 | `BuildModeUI` | B키 | 건설 모드 |
 | `CameraController` | WASD/중클/스크롤 | 카메라 |
+| `CameraController` (월드) | WASD/중클/스크롤 | 월드맵 카메라 — 필드와 같은 컴포넌트. `GameModeManager`가 **월드 카메라에 붙은 것은 월드 측**으로 보고 필드와 반대로 켠다 |
+| `WorldMapView` | M키 | 필드↔월드 **모드 전환**(`GameModeManager`에 위임 — 반대편은 통째로 꺼진다). **원정대는 여럿**. 나가 있는 팀마다 토큰이 서고, 없으면 토큰도 없다. **선택 조작은 필드맵과 동일** — 좌클릭=단일 선택 / 드래그=사각 다중 선택 / 빈 곳=해제. **우클릭=선택한 팀만 이동**. **내용물 있는 칸에 도착하면 `WorldMenuPanel` 자동 오픈**(M&B식 — 멀리서 클릭해선 안 열린다), Enter=한 팀만 선택했을 때 그 메뉴 재진입. 토큰에 콜라이더가 있어 `RaycastAll` 거리순으로 "토큰인 첫 충돌"(선택) / "토큰 아닌 첫 충돌"(이동)을 가른다. 월드에서 **자유 실시간 이동**(우클릭한 지점으로 직진, 지형 표면을 탄다 — 격자 스냅 없음). 지형은 `WorldMapTerrain`이 저작 격자를 재료로 **맵 전체를 메시 한 장**으로 짓는다(바이옴 성격을 이웃끼리 보간 → 칸 경계 없음). 컴포넌트를 빼면 직접 만든 지형을 쓴다. `WorldMapGrid`는 좌표 변환 + 격자선 + 오브젝트 배치 |
 
 ## Stat Grade System (`StatGrade.cs`, `CombatXp.cs`)
 

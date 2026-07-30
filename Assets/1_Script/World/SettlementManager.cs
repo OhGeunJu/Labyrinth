@@ -71,7 +71,9 @@ public class SettlementManager : MonoBehaviour
 
     void OnDestroy() { if (Instance == this) Instance = null; }
 
-    // 다른 정착지로 전환. 현재 비활성 → 대상 활성 → 싱글톤 재지정.
+    // 다른 정착지로 전환. 이전 거점 끄기 → 대상 켜기 → 싱글톤 재지정.
+    // **루트 활성화는 이 클래스의 몫**이다 — 게임 모드는 루트를 건드리지 않는다(월드맵을 봐도 거점은 돈다).
+    // 한 번에 하나만 시뮬되는 이유는 모드가 아니라 **"활성 정착지는 하나"**라는 규칙이다.
     public void SwitchTo(Settlement target)
     {
         if (target == null || target == Active) return;
@@ -139,14 +141,16 @@ public class SettlementManager : MonoBehaviour
     }
 
     // ── step 5: 오프라인 추상 생산 ─────────────────────────────────────────────
-    // 비활성 정착지는 시뮬되지 않으므로, 매일 데이터로 지정된 자원을 그 정착지 창고에 누적.
-    // 활성 정착지는 실제 노동으로 생산하므로 제외. 창고 필터/격자 여유가 없으면 그만큼만 입고.
+    // 시뮬되지 않는 정착지는 매일 데이터로 지정된 자원을 그 정착지 창고에 누적.
+    // 겨냥 대상은 **지금 안 보고 있는 다른 거점**이다 — 활성 거점은 월드맵을 보는 동안에도
+    // 실제로 시뮬되므로 여기 걸리지 않는다(`Root.activeSelf`가 걸러낸다).
+    // 창고 필터/격자 여유가 없으면 그만큼만 입고.
     void TickOfflineProduction()
     {
         foreach (var s in settlements)
         {
-            if (s == null || s == Active || s.Root == null) continue;
-            if (s.Root.activeSelf) continue;   // 활성 상태면 스킵(실제 시뮬됨)
+            if (s == null || s.Root == null) continue;
+            if (s.Root.activeSelf) continue;   // 실제로 시뮬 중이면 스킵
             ProduceOffline(s);
         }
     }

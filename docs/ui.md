@@ -20,11 +20,15 @@
 | `ColonyPanel` | P키 | **무리 관리** — 폰 전체를 한 표에서. 행=폰, 열=작업 on/off + 현재 배정 + 전투 성향 |
 | `BuildModeUI` | B키 | 화면 하단 건설 바. 왼쪽 카테고리, 오른쪽 건물 목록 |
 | `NodeInfoPanel` | ResourceNode 클릭 | 자원 노드 정보. haulThreshold +5/-5 버튼 |
-| `PawnRosterPanel` | 항상 표시 | **우측 하단 세로 명부**(340×760, 모서리에 딱 붙임). 한 줄 = 초상화+이름+현재 상태(`PawnStatusText`). 초상화·글자는 `rowHeight`(52)에 비례. 넘치면 스크롤, 행 클릭 = 선택(선택 행 배경 강조). 건설 모드에선 숨김 |
+| `PawnRosterPanel` | 항상 표시 (원정 나간 폰은 목록에서 빠짐 — 돌아오면 재탐색으로 다시 붙음) | **우측 하단 세로 명부**(340×760, 모서리에 딱 붙임). 한 줄 = 초상화+이름+현재 상태(`PawnStatusText`). 초상화·글자는 `rowHeight`(52)에 비례. 넘치면 스크롤, 행 클릭 = 선택(선택 행 배경 강조). 건설 모드에선 숨김 |
 | `EventNotificationUI` | 이벤트 발동 | 화면 상단 팝업. 5초 자동 닫힘 |
 | `DungeonCoreUI` | 코어 선택 | 던전 코어 정보/소환 |
+| `ExpeditionPanel` | G키 (필드에서만) | 원정대 편성 — 폰 체크박스 목록 + 줄마다 `적재 +N`(근력 × 5) + `선택 N명 · 적재 M` 요약. [출발] 시 즉시 사라지지 않고 **핵 앞 집결**, 집결 중엔 목록 잠금 + `모이는 중 2/3`. 행은 씬의 `RowTemplate` 복제 |
+| `WorldMenuPanel` | **월드맵**에서 내용물 있는 칸에 **도착** | 마운트앤블레이드(배너로드)식 도착 메뉴. **화면 왼쪽 고정**(오른쪽은 지도가 보이게), 왼쪽 지역 그림 + 오른쪽 지역명·정보·세로 선택지. 멀리서 클릭해선 안 열린다 — 가봐야 안다. 캔버스는 필드와 **같은 것**을 쓰고 `Canvas/WorldUI` 묶음 아래에 있어야 한다. 선택지 목록은 `WorldMapView.OpenMenu`가 만들어 넘기고 패널은 그리기만 |
 
 **공통 패턴:**
+- **캔버스는 하나** — 필드 UI와 월드 UI가 같은 Canvas 아래 형제로 산다. 모드 전환(`GameModeManager`)은 캔버스가 아니라 **캔버스의 직속 자식들**을 다루고, 월드 전용 묶음(`WorldUI`)만 반대로 켠다. 그래서 **월드 전용 UI는 반드시 `Canvas/WorldUI` 바로 아래**에 둘 것 — 더 깊이 넣거나 밖에 두면 필드 UI와 같이 꺼진다
+- **필드 UI는 "일괄 on/off"가 아니라 상태 복원** — 월드로 나갈 때 열려 있던 패널을 기억했다가 돌아올 때 그대로 되돌린다(`GameModeManager.ApplyFieldUi`). 일괄로 켜면 **닫아 뒀던 인벤토리·상점 패널까지 따라 열린다**
 - `BuildModeManager.OnActiveChanged` — 건설 모드 열릴 때 대부분 UI 자동 닫힘
 - `CloseButton` — `Target` RectTransform 연결 시 클릭으로 비활성화
 - ESC 키 — 대부분 패널이 `Update()`에서 `escapeKey.wasPressedThisFrame` 체크로 닫힘
@@ -88,23 +92,13 @@
 - `ResearchEntryUI` — 완료(초록) / 잠김(회색) / 재료부족(빨강) 색상 구분
 - `BuildingItemUI` — background/icon/nameLabel/costLabel SerializeField. 자원 부족 시 빨간색, 선택 중 파란색
 
-## 에디터 자동 생성 메뉴 (`DungeonColony →`)
+## UI를 고치는 방법
 
-| 메뉴 | 생성 대상 |
-|---|---|
-| Create Bed UI | BedUI 패널 Canvas 자동 생성 및 연결 |
-| Create PatrolZone UI | PatrolZoneUI 패널 자동 생성 |
-| Create Event Notification UI | EventNotificationUI 팝업 자동 생성 |
-| Create Unit Stats UI | UnitStatsUI 패널 자동 생성 (우측 상단, 스크롤 뷰 + 한글 폰트) |
-| Create Grade Up Notification UI | GradeUpNotificationUI GameObject 생성 + 폰트 연결 |
-| Create FarmPlot Prefab | 갈색 납작 큐브 + FarmPlot 컴포넌트 |
-| Create WaterSource Prefab | 원통 우물 외형 + WaterSource 컴포넌트 |
-| Create FarmPlot UI | FarmPlotUI 패널 자동 생성 |
-| Create Tree Prefab | 줄기+수관 나무 + ResourceNode(Wood) |
-| Create Merchant UI | MerchantUI + ItemInfoPanel 씬 생성, MerchantStockEntry/SellItemEntry 프리팹 저장 |
-| Create Pawn Inventory UI | PawnInventoryPanel 전체 UI 재생성 (그리드+장착슬롯+액션바) |
-| Add Corpse Equip Row | CorpseInventoryPanel에 장착 슬롯 행 추가 |
-| Create Colony Panel | ColonyPanel(무리 관리, P키) 생성 + 구버전 Priority_UI/PriorityManager 오브젝트 제거 |
+**UI 생성기는 남아 있지 않다.** 패널·프리팹은 이미 씬/에셋에 지어져 있고, **모양 수정은 인스펙터에서** 한다(생성기의 수명과 판단 기준은 `docs/editor_creators.md` "생성기의 수명 — 다 쓰면 지운다").
+
+- 반복 항목(명부 행, 상점 재고 행 등)은 **씬 템플릿 또는 프리팹을 복제**해 채운다 — 여백·폰트·색·크기는 그 오브젝트가 갖고 코드는 데이터만 넣는다.
+- 처음부터 다시 지어야 하면 git 이력에서 해당 생성기를 꺼내 쓴다.
+- 지금 남아 있는 에디터 도구 목록은 `docs/editor_creators.md`의 "남아 있는 도구" 절.
 
 ## Inventory 클래스
 
