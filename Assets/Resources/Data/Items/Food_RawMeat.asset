@@ -9,9 +9,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b1847081748f8454084058359ebce611, type: 3}
+  m_Script: {fileID: 11500000, guid: ce038ab1c0bede24eb058cfa829b051f, type: 3}
   m_Name: Food_RawMeat
-  m_EditorClassIdentifier: Assembly-CSharp::ItemData
+  m_EditorClassIdentifier: Assembly-CSharp::FoodData
   ItemName: "\uC0DD\uACE0\uAE30"
   Description: "\uC775\uD788\uC9C0 \uC54A\uC740 \uACE0\uAE30. \uAD6C\uC6CC\uC57C
     \uD55C\uB2E4."
@@ -21,3 +21,5 @@ MonoBehaviour:
   Width: 1
   Height: 1
   BaseValue: 12
+  NutritionValue: 25
+  EatTime: 2.5
