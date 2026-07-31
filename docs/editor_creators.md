@@ -307,11 +307,6 @@ Content
 | `Setup World Map Scene` | 월드맵에 필요한 오브젝트/컴포넌트를 **없는 것만 채우고 참조만 잇는다**(WorldMap·SettlementManager·GameModeManager·WorldMapView·MapRoot·WorldCamera·WorldMapGrid + 에셋 배선). **아무것도 지우지 않는다** — MapRoot 아래 지형과 손으로 맞춘 카메라가 살아남아야 하므로. 여러 번 실행해도 안전. | 배선이 끊길 때마다 다시 돌리는 **복구 도구** |
 | `Create Biome Content Assets` | `Resources/Data/Biomes/`에 바이옴별 `BiomeContentData` 스캐폴드 생성. 이미 있으면 건너뛴다. | 실행됨(에셋 7종 생성). 바이옴을 늘리면 다시 돌린다 |
 | `Toggle Movement Diagnostics` | 이동 계측 on/off. | 이동 개편 Play Mode 검증이 아직 안 끝났다 |
-| `Add Research Progress Bar` | 연구대 패널 하단에 진행 게이지 부착 + `ResearchTableUI` 배선. | **일회성 — 실행 확인 후 삭제할 것**(2026-07-31 (8)) |
-| `Build Out Resource Nodes` | `Node_*` 10종의 머티리얼·프리팹·`BuildingData` 생성 + `ResourceNodeData.Prefab` 채우기 + 건설 목록 등록. | 〃 |
-| `Build Out Crafting Tables` | 작업대 5종(방어구·석재·목공·연금·보석) 프리팹·`BuildingData` 생성 + 건설 목록 등록. | 〃 |
-| `Remodel Legacy Prefabs` | 맨 큐브로 남아 있던 옛 프리팹 10종(돌·나무·무기제작대·용광로·조리대·연구대·침대·창고·밭·우물)의 모양을 조각 모델로 다시 만든다. **덮어쓴다.** | 〃 |
-| `Create Drop Bundle Model` | 바닥에 떨어진 아이템의 공용 모델(`Resources/DropBundle.prefab`). `ItemData.WorldModel`이 빈 아이템 전부가 이걸 쓰고, 런타임에 등급 색으로 물든다. | 〃 |
 
 **씬을 건드리는 생성기는 씬을 직접 저장해야 한다.** `AssetDatabase.SaveAssets()`는 **에셋만** 저장한다 — 씬 컴포넌트를 고치고 `EditorUtility.SetDirty`만 부르면 씬이 더티로 표시되지 않아 저장 대상에서 빠지고, Unity를 닫는 순간 작업이 통째로 날아간다. 2026-07-31에 건설 목록 등록 15건과 연구 게이지 배선이 이렇게 사라졌다.
 ```csharp
