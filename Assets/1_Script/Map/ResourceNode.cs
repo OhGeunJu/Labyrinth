@@ -27,7 +27,14 @@ public class ResourceNode : MonoBehaviour
 
     public void Assign(UnitBrain brain)
     {
-        if (_assigned.Contains(brain)) return;
+        if (brain == null || _assigned.Contains(brain)) return;
+
+        // 다른 노드에 배정돼 있었으면 **거기서 먼저 뗀다.** 폰이 들고 있는
+        // `Blackboard.AssignedNode`는 하나뿐이라, 안 떼면 이전 노드의 목록에만
+        // 유령 항목이 남는다 — 그 폰은 실제로는 여기서 일하는데 저쪽 패널엔 계속 보인다.
+        var prev = brain.Blackboard.AssignedNode;
+        if (prev != null && prev != this) prev.Unassign(brain);
+
         _assigned.Add(brain);
         brain.Blackboard.AssignedNode = this;
         OnAssignmentChanged?.Invoke(this);
@@ -81,11 +88,18 @@ public class ResourceNode : MonoBehaviour
     public void Init(ResourceNodeData nodeData) => data = nodeData;
 
     // 매 작업 틱마다 호출. 게이지가 차면 아이템 1회 드롭.
-    public void Work(float power)
+    //
+    // `deltaTime`을 **호출자가 반드시 넘겨야 한다.** 예전엔 `Work(skill)`로 틱마다
+    // 스킬 수치를 그대로 더했는데, BT는 tickInterval(0.1초)마다 도므로 실제 채굴 속도가
+    // 초당 skill×10이 돼 버렸다(스킬 10이 돌 노드에서 초당 33개). 프레임/틱 수가
+    // 속도를 좌우하면 배속·프레임레이트에 따라 산출이 달라진다.
+    // 인자로 받는 이유: 호출부가 BT 노드(bb.TickDelta)와 Job(별도 틱)으로 갈려 있어
+    // 여기서 Time.deltaTime을 쓸 수 없다 — 시그니처로 강제해 빠뜨리지 못하게 한다.
+    public void Work(float power, float deltaTime)
     {
         if (data == null) return;
 
-        _gauge += power;
+        _gauge += power * deltaTime;
 
         if (_gauge >= data.GaugeRequired)
         {

@@ -156,7 +156,34 @@ public class WorldMapView : MonoBehaviour
     void SelectSingle()
     {
         ClearSelection();
-        if (TryPickParty(out var pt)) Select(pt);
+        if (TryPickParty(out var pt)) { Select(pt); return; }
+
+        // 팀이 아니라 땅을 눌렀다 — **내 지역이면 원정대 없이도 정보를 연다.**
+        // 채집기지에 얼마나 쌓였는지 보려고 매번 팀을 보낼 순 없다.
+        // 남의 땅·야생은 예전대로 가봐야 안다(M&B식 "도착해야 열린다").
+        if (grid == null || !TryPickTerrain(out var hit) || !grid.TryNodeAt(hit, out var node))
+        {
+            CloseMenu();
+            return;
+        }
+
+        var tile = WorldMap.Instance.GetTile(node);
+        if (tile.Content != WorldNodeContent.MySettlement && tile.Content != WorldNodeContent.Outpost)
+        {
+            CloseMenu();
+            return;
+        }
+
+        // 그 칸에 서 있는 팀이 있으면 그 팀의 메뉴로 — 없으면 파티 없이(정보만).
+        OpenMenu(PartyAt(node), node);
+    }
+
+    // 그 칸에 멈춰 있는 팀 하나. 이동 중인 팀은 "거기 있다"고 보지 않는다.
+    PartyToken PartyAt(Vector2Int node)
+    {
+        foreach (var p in _parties)
+            if (!p.Moving && p.Party.CurrentNode == node) return p;
+        return null;
     }
 
     void SelectByRect()
@@ -335,9 +362,12 @@ public class WorldMapView : MonoBehaviour
 
     // **선택지의 내용과 가능 여부를 정하는 건 여기다** — 메뉴는 받은 목록을 그리기만 한다.
     // **모든 칸에서 열린다.** 빈 야생이라도 조사하고 자리를 잡을 수 있어야 하므로 할 일이 있다.
+    //
+    // `pt`가 null이면 **원정대 없이 들여다보는 것**(내 정착지·채집기지를 클릭한 경우).
+    // 행동은 전부 막히고 정보만 보인다 — 기지에 얼마나 쌓였는지 보러 매번 팀을 보낼 순 없다.
     void OpenMenu(PartyToken pt, Vector2Int node)
     {
-        if (menuPanel == null || pt == null) return;
+        if (menuPanel == null) return;
 
         _menuParty  = pt;
         var wm      = WorldMap.Instance;
@@ -347,8 +377,11 @@ public class WorldMapView : MonoBehaviour
         switch (tile.Content)
         {
             case WorldNodeContent.MySettlement:
-                options.Add(WorldMenuOption.Ready("거점으로 들어간다",
-                    () => { var p = _menuParty; CloseMenu(); EnterSettlement(p, node); }));
+                if (pt == null)
+                    options.Add(WorldMenuOption.Blocked("거점으로 들어간다", "여기 온 원정대가 없다"));
+                else
+                    options.Add(WorldMenuOption.Ready("거점으로 들어간다",
+                        () => { var p = _menuParty; CloseMenu(); EnterSettlement(p, node); }));
                 break;
 
             case WorldNodeContent.Town:
@@ -366,8 +399,11 @@ public class WorldMapView : MonoBehaviour
                 break;
         }
 
-        // 내 것이 아닌 칸이라면 어디든 조사하고 자리를 잡을 수 있다.
-        if (tile.Content != WorldNodeContent.MySettlement && tile.Content != WorldNodeContent.Outpost)
+        // 조사하고 자리를 잡는 건 **임자 없는 야생에서만**.
+        // 예전엔 "내 것이 아니면 전부"였는데, 그러면 남의 마을과 적 소굴에서도
+        // `탐험한다` · `여기에 채집기지를 세운다`가 떴다 — 남의 땅에 기지를 박는 얘기가 된다.
+        // 늘어나는 건 `WorldNodeContent`뿐이므로 **넣을 곳을 나열**한다(빼는 목록이 아니라).
+        if (IsWildland(tile.Content))
         {
             options.Add(SurveyOption(pt, node));
             options.Add(BuildEntryOption(pt, node));
@@ -385,6 +421,11 @@ public class WorldMapView : MonoBehaviour
             options);
     }
 
+    // 임자 없는 땅 = 조사·기지 건설이 가능한 칸.
+    // 마을(Town)·소굴(EnemyLair)은 남의 땅이고, 내 정착지·채집기지는 이미 자리를 잡은 곳이다.
+    static bool IsWildland(WorldNodeContent c) =>
+        c == WorldNodeContent.Empty || c == WorldNodeContent.ResourceSite;
+
     static string TitleFor(WorldTile tile) =>
         tile.Content == WorldNodeContent.Empty
             ? tile.Biome.DisplayName()                    // 빈 야생은 "빈 지역"보다 바이옴 이름이 낫다
@@ -396,8 +437,11 @@ public class WorldMapView : MonoBehaviour
         var wm = WorldMap.Instance;
         var sb = new System.Text.StringBuilder();
 
-        sb.Append($"{tile.Biome.DisplayName()} · ({node.x}, {node.y}) · ")
-          .Append($"{pt.Party.Members.Count}명 · 등짐 {pt.Party.Carried}/{Mathf.FloorToInt(pt.Party.Capacity)}");
+        sb.Append($"{tile.Biome.DisplayName()} · ({node.x}, {node.y}) · ");
+        // 원정대 없이 들여다보는 중이면 인원·등짐 대신 그 사실을 적는다.
+        sb.Append(pt == null
+            ? "<color=#FFFFFF80>원정대 없음</color>"
+            : $"{pt.Party.Members.Count}명 · 등짐 {pt.Party.Carried}/{Mathf.FloorToInt(pt.Party.Capacity)}");
 
         if (tile.Content == WorldNodeContent.MySettlement) return sb.ToString();
 
@@ -456,7 +500,7 @@ public class WorldMapView : MonoBehaviour
         if (WorldMap.Instance.IsSurveyed(node))
             return WorldMenuOption.Blocked("탐험한다", "이미 조사함");
 
-        if (pt.Party.Members.Count == 0)
+        if (pt == null || pt.Party.Members.Count == 0)
             return WorldMenuOption.Blocked("탐험한다", "동행 없음");
 
         return WorldMenuOption.Ready("탐험한다", () =>
@@ -481,7 +525,8 @@ public class WorldMapView : MonoBehaviour
     {
         var wm = WorldMap.Instance;
 
-        if (!wm.IsSurveyed(node))          return WorldMenuOption.Blocked(BuildLabel, "먼저 탐험해야");
+        if (pt == null)                     return WorldMenuOption.Blocked(BuildLabel, "여기 온 원정대가 없다");
+        if (!wm.IsSurveyed(node))           return WorldMenuOption.Blocked(BuildLabel, "먼저 탐험해야");
         if (wm.DepositsAt(node).Count == 0) return WorldMenuOption.Blocked(BuildLabel, "캘 것이 없다");
         if (OutpostManager.Instance == null) return WorldMenuOption.Blocked(BuildLabel, "OutpostManager 없음");
 
@@ -536,6 +581,7 @@ public class WorldMapView : MonoBehaviour
         var outpost = OutpostManager.Instance?.At(node);
         if (outpost == null)          return WorldMenuOption.Blocked("비축분을 싣는다", "기지 정보 없음");
         if (outpost.StockCount == 0)  return WorldMenuOption.Blocked("비축분을 싣는다", "아직 쌓인 게 없다");
+        if (pt == null)               return WorldMenuOption.Blocked("비축분을 싣는다", "여기 온 원정대가 없다");
         if (pt.Party.Members.Count == 0) return WorldMenuOption.Blocked("비축분을 싣는다", "동행 없음");
         if (!pt.Party.HasRoom)        return WorldMenuOption.Blocked("비축분을 싣는다", "등짐 가득");
 
@@ -570,7 +616,13 @@ public class WorldMapView : MonoBehaviour
     // 채집기지에 쌓인 것을 실으면 여기 담기고, 거점에 들어가면 창고로 비워진다.
     // **본거지로 순간이동하지 않는다** — 실어 나르는 것이 원정대의 일이다.
 
-    // 등짐을 거점 창고로 비운다. 받아줄 창고가 없으면 **등짐에 남긴다**(조용히 증발시키지 않는다).
+    // 등짐을 거점에 푼다. **어떤 경우에도 사라지지 않게** 세 단계로 받아낸다:
+    //   ① 창고  ② 돌아온 폰들의 인벤토리  ③ 핵 앞 바닥에 드롭
+    //
+    // 예전엔 창고가 못 받은 양을 `party.Cargo`에 되돌려 놓았는데, 호출자가 바로 뒤에서
+    // `RemoveParty`로 그 파티를 버렸다 — "조용히 증발시키지 않는다"는 의도가 끝까지 이어지지
+    // 않아 실제로는 통째로 사라졌다. 창고가 없거나 가득하거나 **필터가 그 아이템을 안 받으면**
+    // 바로 걸리는 길이다(새로 만든 자원 아이템이 기존 창고 필터에 없을 수 있다).
     void UnloadCargo(ExpeditionParty party)
     {
         if (party == null || party.Cargo.Count == 0) return;
@@ -586,28 +638,54 @@ public class WorldMapView : MonoBehaviour
         storages.Sort((a, b) => Vector3.SqrMagnitude(a.transform.position - at)
                         .CompareTo(Vector3.SqrMagnitude(b.transform.position - at)));
 
-        var leftover = new Dictionary<ItemData, int>();
-        int moved = 0;
+        int moved = 0, toPawns = 0, dropped = 0;
+        Vector3 dropAt = core != null ? core.GetSpawnPosition() : at;
 
         foreach (var kv in party.Cargo)
         {
             int remaining = kv.Value;
+
+            // ① 창고 — 필터(CanAccept)와 남은 칸은 여기서 걸린다.
             foreach (var s in storages)
             {
                 if (remaining <= 0) break;
-                int added = s.TryAdd(kv.Key, remaining);   // 필터(CanAccept)는 여기서 걸린다
+                int added = s.TryAdd(kv.Key, remaining);
                 remaining -= added;
                 moved     += added;
             }
-            if (remaining > 0) leftover[kv.Key] = remaining;
+
+            // ② 돌아온 폰들의 인벤토리 — 창고 필터에 없는 새 아이템이 여기서 살아남는다.
+            //    실제로 지고 온 사람들이므로 손에 남는 게 자연스럽다.
+            foreach (var m in party.Members)
+            {
+                if (remaining <= 0) break;
+                var inv = m != null ? m.Inventory : null;
+                if (inv == null) continue;
+                int added = inv.TryAdd(kv.Key, remaining);
+                remaining -= added;
+                toPawns   += added;
+            }
+
+            // ③ 그래도 남으면 핵 앞에 떨군다. 운반 작업이 알아서 주워 간다 —
+            //    제작 취소 환불(`CraftJob`/`ResearchJob`)이 쓰는 것과 같은 마지막 안전망.
+            if (remaining > 0)
+            {
+                DroppedItem.Spawn(kv.Key, remaining, dropAt + Vector3.up * 0.3f);
+                dropped += remaining;
+            }
         }
 
-        party.ClearCargo();
-        foreach (var kv in leftover) party.Cargo[kv.Key] = kv.Value;
+        party.ClearCargo();   // 전량이 셋 중 하나로 갔다 — 이제 비워도 잃는 것이 없다
 
-        if (moved > 0) Debug.Log($"[WorldMap] 등짐 {moved}개를 창고에 넣었습니다.");
-        if (leftover.Count > 0)
-            Debug.LogWarning($"[WorldMap] 창고가 받지 못한 {party.Carried}개는 등짐에 남았습니다(공간/필터 확인).");
+        var sb = new System.Text.StringBuilder("[WorldMap] 등짐 하역 —");
+        if (moved   > 0) sb.Append($" 창고 {moved}개");
+        if (toPawns > 0) sb.Append($" · 인벤토리 {toPawns}개");
+        if (dropped > 0) sb.Append($" · 바닥 {dropped}개");
+        Debug.Log(sb.ToString());
+
+        if (dropped > 0)
+            Debug.LogWarning($"[WorldMap] {dropped}개가 창고·인벤토리에 들어가지 못해 핵 앞에 떨어졌습니다 " +
+                             "(창고 공간이나 아이템 필터를 확인하세요).");
     }
 
     Sprite MenuArtFor(WorldTile tile)
@@ -720,10 +798,12 @@ public class WorldMapView : MonoBehaviour
             m.gameObject.SetActive(true);
             if (core != null) m.transform.position = core.GetSpawnPosition();
         }
-        pt.Party.Members.Clear();
 
-        // 밖에서 실어온 것을 창고에 푼다 — **멤버를 되살린 뒤**라야 창고가 레지스트리에 올라 있다.
+        // 밖에서 실어온 것을 푼다. 순서가 둘 다 중요하다 —
+        //   · **멤버를 되살린 뒤**라야 창고가 레지스트리에 올라 있고,
+        //   · **멤버를 비우기 전**이라야 창고가 안 받는 것을 폰 인벤토리로 넘길 수 있다.
         UnloadCargo(pt.Party);
+        pt.Party.Members.Clear();
 
         // 돌아온 팀은 더 이상 지도 위에 없다 → 토큰도 사라진다.
         RemoveParty(pt);

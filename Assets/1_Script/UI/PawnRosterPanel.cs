@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using TMPro;
 
 // 폰 명부 — 화면 우측 하단 세로 목록. 한 줄에 [초상화][이름][현재 상태].
@@ -66,6 +67,8 @@ public class PawnRosterPanel : MonoBehaviour
     {
         if (panel == null || !panel.activeSelf) return;
 
+        EndDragIfMouseReleased();
+
         _timer += Time.deltaTime;
         if (_timer < refreshInterval) return;
         _timer = 0f;
@@ -95,7 +98,11 @@ public class PawnRosterPanel : MonoBehaviour
         var row = Instantiate(rowTemplate, content);
         row.gameObject.name = $"Row_{brain.UnitName}";
         row.gameObject.SetActive(true);
-        row.Bind(brain, SelectPawn);
+        row.Bind(brain);
+
+        row.RowPointerDown  += OnRowDown;
+        row.RowPointerEnter += OnRowEnter;
+        row.RowPointerUp    += OnRowUp;
 
         _rows[brain] = row;
         return true;
@@ -162,9 +169,74 @@ public class PawnRosterPanel : MonoBehaviour
         if (titleText != null) titleText.text = $"무리 ({_rows.Count})";
     }
 
-    void SelectPawn(UnitBrain brain)
+    // ── 선택 (단일 / Ctrl 추가 / 드래그 범위) ─────────────────────────────
+    // 목록에서 여러 폰을 한 번에 잡을 수 있어야 명령을 묶어 내린다.
+    //  · 그냥 클릭      → 그 폰만
+    //  · Ctrl+클릭      → 하나씩 더하거나 뺀다
+    //  · 눌러서 드래그  → 시작 행부터 지금 행까지 **범위**
+    //
+    // 범위를 "지나간 행을 계속 더하기"가 아니라 **앵커~현재 구간**으로 잡는 이유:
+    // 그래야 드래그를 되돌렸을 때 선택도 같이 줄어든다(더하기만 하면 못 되돌린다).
+    PawnRosterRowUI _dragAnchor;
+    bool            _dragging;
+
+    void OnRowDown(PawnRosterRowUI row, bool ctrl)
     {
-        var mover = brain != null ? brain.GetComponent<PawnMover>() : null;
-        if (mover != null && selectionManager != null) selectionManager.SelectPawn(mover);
+        if (row == null || row.Brain == null || selectionManager == null) return;
+
+        if (ctrl)
+        {
+            var m = row.Brain.GetComponent<PawnMover>();
+            if (m != null) selectionManager.TogglePawn(m);
+            _dragging   = false;      // Ctrl은 한 번에 하나 — 드래그로 이어지지 않는다
+            _dragAnchor = null;
+        }
+        else
+        {
+            _dragging   = true;
+            _dragAnchor = row;
+            SelectRange(row, row);
+        }
+        RefreshAll();
+    }
+
+    void OnRowEnter(PawnRosterRowUI row)
+    {
+        if (!_dragging || _dragAnchor == null || row == null) return;
+        SelectRange(_dragAnchor, row);
+        RefreshAll();
+    }
+
+    void OnRowUp()
+    {
+        _dragging   = false;
+        _dragAnchor = null;
+    }
+
+    // 마우스를 목록 밖에서 떼면 행의 PointerUp이 안 온다 — 버튼 상태로 직접 끊는다.
+    void EndDragIfMouseReleased()
+    {
+        if (_dragging && Mouse.current != null && !Mouse.current.leftButton.isPressed)
+            OnRowUp();
+    }
+
+    // 화면에 보이는 순서(형제 순서)가 곧 목록 순서다.
+    void SelectRange(PawnRosterRowUI a, PawnRosterRowUI b)
+    {
+        if (selectionManager == null) return;
+
+        int lo = Mathf.Min(a.transform.GetSiblingIndex(), b.transform.GetSiblingIndex());
+        int hi = Mathf.Max(a.transform.GetSiblingIndex(), b.transform.GetSiblingIndex());
+
+        var picked = new List<PawnMover>();
+        foreach (var row in _rows.Values)
+        {
+            if (row == null || row.Brain == null) continue;
+            int i = row.transform.GetSiblingIndex();
+            if (i < lo || i > hi) continue;
+            var m = row.Brain.GetComponent<PawnMover>();
+            if (m != null) picked.Add(m);
+        }
+        selectionManager.SelectOnly(picked);
     }
 }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 
@@ -15,6 +16,9 @@ public class ResourceNodePanel : MonoBehaviour
 
     [Tooltip("(선택) 게이지 진행도 텍스트")]
     [SerializeField] TextMeshProUGUI gaugeText;
+
+    [Tooltip("채굴 진행 막대. Image Type=Filled, Fill Method=Horizontal 로 설정.")]
+    [SerializeField] Image gaugeFill;
 
     [Header("재고 표시")]
     [Tooltip("드롭 아이템 아이콘이 표시될 Image")]
@@ -87,12 +91,32 @@ public class ResourceNodePanel : MonoBehaviour
         if (node == _current) RefreshAssigned();
     }
 
-    void OnBuildModeChanged(bool active) { if (active && panel != null) panel.SetActive(false); }
+    void OnBuildModeChanged(bool active) { if (active) Close(); }
 
     void Update()
     {
-        if (_current != null && gaugeText != null)
-            gaugeText.text = $"{_current.GaugeProgress * 100f:F0}%";
+        if (panel == null || !panel.activeSelf) return;
+
+        // 다른 패널들과 같은 규칙 — ESC로 닫는다.
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            Close();
+            return;
+        }
+
+        if (_current == null) return;
+
+        float p = Mathf.Clamp01(_current.GaugeProgress);
+        if (gaugeText != null) gaugeText.text = $"{p * 100f:F0}%";
+        // 숫자만으론 "차오르고 있다"가 잘 안 읽힌다 — 막대가 움직이는 게 훨씬 빠르다.
+        if (gaugeFill != null) gaugeFill.fillAmount = p;
+    }
+
+    public void Close()
+    {
+        Unsubscribe();
+        _current = null;
+        if (panel != null) panel.SetActive(false);
     }
 
     void OnNodeSelected(ResourceNode node)

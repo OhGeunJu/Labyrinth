@@ -129,6 +129,15 @@ ApplyFont(cTMP);
 >
 > **규칙 2:** 닫기 버튼 텍스트는 반드시 `"X"` 사용. `"✕"` 특수문자는 NanumGothic SDF 폰트와 호환되지 않아 렌더링이 깨진다. 닫기 버튼 배경색은 **#802626 고정**.
 >
+> **폰트 체인 (2026-08-01 확정)** — `Project Settings → TextMesh Pro`:
+> ```
+> Default Font Asset : NanumGothic SDF
+> Fallbacks          : [1] NanumGothic SDF   ← 한글
+>                      [2] LiberationSans SDF ← 도형·기호(█ ░ ■ 등)
+> ```
+> **폴백이 두 단계인 이유**: 기본값만 NanumGothic으로 바꾸면 이미 씬에 만들어져 LiberationSans를 쓰는 텍스트가 한글에서 □가 되고, 반대로 NanumGothic만 두면 `UnitHPUI`의 막대(`█`/`░`)가 □가 된다. 둘 다 폴백에 넣어야 양쪽이 산다.
+> 그래도 **새로 쓰는 UI 텍스트에는 특수문자를 쓰지 말 것** — 폴백은 이미 있는 것을 살리는 안전망이지 허가가 아니다. 폰트가 섞이면 자간·기준선이 어긋난다.
+>
 > **닫기 버튼만의 얘기가 아니다 — UI 텍스트 전반에 특수문자를 쓰지 말 것.** NanumGothic SDF는 한글+ASCII 위주라 도형·화살표 글리프가 대부분 없고, 없으면 조용히 `□`로 떨어진다(콘솔에 `The character with Unicode value \uXXXX was not found` 경고). 확인된 사례: `✕`(U+2715), `▸`(U+25B8). **머리표·아이콘 같은 장식은 글자 대신 `Image`(색 막대/사각형)로 만들 것** — 폰트 커버리지와 무관해진다. 굳이 글자를 써야 하면 ASCII로.
 >
 > **규칙 3:** 닫기 동작은 공용 `CloseButton` 컴포넌트(`Assets/1_Script/UI/CloseButton.cs`)로 처리한다. 닫기 버튼 GameObject에 컴포넌트를 붙이고 `target`에 닫을 패널을 연결할 것. 패널 스크립트에 별도 close 메서드/리스너를 만들지 말 것.
@@ -298,6 +307,34 @@ Content
 | `Setup World Map Scene` | 월드맵에 필요한 오브젝트/컴포넌트를 **없는 것만 채우고 참조만 잇는다**(WorldMap·SettlementManager·GameModeManager·WorldMapView·MapRoot·WorldCamera·WorldMapGrid + 에셋 배선). **아무것도 지우지 않는다** — MapRoot 아래 지형과 손으로 맞춘 카메라가 살아남아야 하므로. 여러 번 실행해도 안전. | 배선이 끊길 때마다 다시 돌리는 **복구 도구** |
 | `Create Biome Content Assets` | `Resources/Data/Biomes/`에 바이옴별 `BiomeContentData` 스캐폴드 생성. 이미 있으면 건너뛴다. | 실행됨(에셋 7종 생성). 바이옴을 늘리면 다시 돌린다 |
 | `Toggle Movement Diagnostics` | 이동 계측 on/off. | 이동 개편 Play Mode 검증이 아직 안 끝났다 |
+| `Add Research Progress Bar` | 연구대 패널 하단에 진행 게이지 부착 + `ResearchTableUI` 배선. | **일회성 — 실행 확인 후 삭제할 것**(2026-07-31 (8)) |
+| `Build Out Resource Nodes` | `Node_*` 10종의 머티리얼·프리팹·`BuildingData` 생성 + `ResourceNodeData.Prefab` 채우기 + 건설 목록 등록. | 〃 |
+| `Build Out Crafting Tables` | 작업대 5종(방어구·석재·목공·연금·보석) 프리팹·`BuildingData` 생성 + 건설 목록 등록. | 〃 |
+| `Remodel Legacy Prefabs` | 맨 큐브로 남아 있던 옛 프리팹 10종(돌·나무·무기제작대·용광로·조리대·연구대·침대·창고·밭·우물)의 모양을 조각 모델로 다시 만든다. **덮어쓴다.** | 〃 |
+| `Create Drop Bundle Model` | 바닥에 떨어진 아이템의 공용 모델(`Resources/DropBundle.prefab`). `ItemData.WorldModel`이 빈 아이템 전부가 이걸 쓰고, 런타임에 등급 색으로 물든다. | 〃 |
+
+**씬을 건드리는 생성기는 씬을 직접 저장해야 한다.** `AssetDatabase.SaveAssets()`는 **에셋만** 저장한다 — 씬 컴포넌트를 고치고 `EditorUtility.SetDirty`만 부르면 씬이 더티로 표시되지 않아 저장 대상에서 빠지고, Unity를 닫는 순간 작업이 통째로 날아간다. 2026-07-31에 건설 목록 등록 15건과 연구 게이지 배선이 이렇게 사라졌다.
+```csharp
+EditorSceneManager.MarkSceneDirty(comp.gameObject.scene);
+EditorSceneManager.SaveOpenScenes();
+```
+프리팹·SO는 에셋이라 `SaveAssets()`로 남는다 — **씬에 사는 것만** 이 처리가 필요하다(`BuildModeManager.placeableBuildings`, UI 배선 등).
+
+**기존 프리팹의 모양을 고칠 땐 반드시 제자리 수정** — `PrefabUtility.LoadPrefabContents` → 내용 교체 → `SaveAsPrefabAsset`(같은 경로) → `UnloadPrefabContents`.
+`BuildingData`·`ResourceNodeData`가 프리팹을 **`guid` + 루트 GameObject의 `fileID`**로 물고 있어서, 같은 경로에 새로 저장하면 GUID가 같아도 **루트 fileID가 바뀌어 참조가 끊긴다.** 제자리 수정이면 루트와 그 위의 컴포넌트(`ResourceNode`·`CraftingTable`·`Bed`…)가 살아남는다.
+
+**프리팹 기본 위치를 바꾸기 전엔 씬 인스턴스의 오버라이드를 확인할 것.** 인스턴스가 `m_LocalPosition`을 오버라이드하고 있으면 프리팹 기본값을 바꿔도 안 움직이지만, 안 하고 있으면 씬의 오브젝트가 전부 따라 움직인다. 확인법:
+```
+grep "m_SourcePrefab: {fileID: 100100000, guid: <프리팹guid>" Scene1.unity   # 인스턴스 수
+그 블록의 m_Modifications 에 propertyPath: m_LocalPosition.y 가 있는지
+```
+
+**건설 가능한 것을 늘리는 생성기의 규약** — 셋 다 이렇게 짰다:
+- **없는 것만 만든다.** 이미 있는 프리팹/에셋은 손대지 않는다(인스펙터에서 모양·값을 손봤을 수 있다). 여러 번 실행해도 안전.
+- 건설 목록(`BuildModeManager.placeableBuildings`) 등록은 **중복을 걸러 덧붙이기만** 한다. 배열을 통째로 갈아치우면 손으로 넣은 항목이 날아간다.
+- 씬 오브젝트는 `FindObjectsInactive.Include`로 찾는다.
+- **프리팹 루트 `localPosition.y`는 0.** 양수면 `BuildModeManager`가 "저작 부양 높이"로 해석해 그만큼 띄운다 — 조각이 여럿인 모델은 높이가 제각각이라 맞지 않는다. 0으로 두면 `SnapOnSurface`가 렌더러 바닥면을 표면에 맞춰 준다.
+- **콜라이더는 루트에 하나.** 조각마다 달면 `SelectionManager`의 단일 레이캐스트 라우팅이 지저분해진다(조각을 맞고 건물을 못 찾는다).
 
 **저작 창의 색은 구역 표시색이지 지형색이 아니다** — 게임 화면의 지형은 저작한 Terrain의 텍스처가 갖는다. `BiomeExt.Color()` / `WorldNodeContentExt.Color()`는 저작 격자와 (프리팹 없는) 기본 마커가 공유하는 단일 출처.
 

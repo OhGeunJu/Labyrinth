@@ -152,14 +152,7 @@ public class ItemInfoPanel : MonoBehaviour
         if (show) txt.text = value;
     }
 
-    public static Color QualityColor(ItemQuality q) => q switch
-    {
-        ItemQuality.Common    => new Color(0.80f, 0.80f, 0.80f),
-        ItemQuality.Uncommon  => new Color(0.20f, 0.80f, 0.20f),
-        ItemQuality.Rare      => new Color(0.20f, 0.55f, 1.00f),
-        ItemQuality.Unique    => new Color(0.65f, 0.20f, 0.90f),
-        ItemQuality.Epic      => new Color(1.00f, 0.50f, 0.10f),
-        ItemQuality.Legendary => new Color(1.00f, 0.85f, 0.00f),
-        _                     => Color.white,
-    };
+    // 색 자체는 `ItemQualityExt.Color()`가 정본 — 바닥에 떨어진 아이템도 같은 색을 쓴다.
+    // 이 메서드는 기존 호출부를 위해 남긴다.
+    public static Color QualityColor(ItemQuality q) => q.Color();
 }

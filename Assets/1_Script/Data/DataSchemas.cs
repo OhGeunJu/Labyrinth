@@ -8,6 +8,9 @@ using UnityEngine;
 [Serializable]
 public class ItemSchema
 {
+    // 식별자. **모드는 이걸 쓸 것** — 비우면 itemName이 식별자가 되는데, 그건 번역 대상이라
+    // 언젠가 끊긴다. 기존 콘텐츠 호환을 위해 비워도 동작은 한다.
+    public string id;
     public string itemName;
     public string description;
     public string iconPath;      // "Icons/iron_sword" → Resources.Load<Sprite>
@@ -51,16 +54,25 @@ public class ResourceItemSchema : ItemSchema
 [Serializable]
 public class IngredientSchema
 {
+    // `itemId`를 쓸 것. `itemName`은 표시명 조회(레거시)라 번역하면 끊긴다.
+    public string itemId;
     public string itemName;
     public int    amount;
+
+    public string Key => !string.IsNullOrWhiteSpace(itemId) ? itemId : itemName;
 }
 
 [Serializable]
 public class RecipeSchema
 {
+    public string             id;            // 비우면 recipeName이 식별자 (레거시)
     public string             recipeName;
     public IngredientSchema[] ingredients;
+    public string             resultItemId;  // 비우면 resultItemName (레거시)
     public string             resultItemName;
+
+    public string ResultKey =>
+        !string.IsNullOrWhiteSpace(resultItemId) ? resultItemId : resultItemName;
     public int                resultAmount      = 1;
     public float              craftTime         = 5f;
     public string             requiredSkillType = "Labor";

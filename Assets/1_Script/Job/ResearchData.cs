@@ -13,6 +13,8 @@ public class ResearchData : ScriptableObject
     }
 
     [Header("기본 정보")]
+    [Tooltip("식별자. 비우면 에셋 파일명을 쓴다(권장). 표시명과 달리 번역되지 않는다.")]
+    public string           Id;
     public string           ResearchName;
     [TextArea]
     public string           Description;

@@ -90,7 +90,7 @@ public class SelectionManager : MonoBehaviour
             var core = hit.collider.GetComponent<DungeonCore>();
             if (core != null)
             {
-                ClearSelection();
+                // 핵도 선택을 유지한다 — 소환·핵 이전을 고른 폰과 함께 다루게 된다.
                 OnNodeSelected?.Invoke(null);
                 core.Select();
                 return;
@@ -99,7 +99,10 @@ public class SelectionManager : MonoBehaviour
             var node = hit.collider.GetComponent<ResourceNode>();
             if (node != null)
             {
-                ClearSelection();
+                // **폰 선택을 유지한 채** 노드 패널을 연다 — "폰을 고른다 → 노드를 클릭한다
+                // → [배정]"이 자연스러운 순서인데, 여기서 선택을 지우면 배정 버튼이 항상
+                // 빈 목록을 받는다(`ResourceNodePanel.AssignSelected`가 Selected를 읽는다).
+                // 시체 클릭도 같은 이유로 선택을 유지한다.
                 OnNodeSelected?.Invoke(node);
                 return;
             }
@@ -134,11 +137,14 @@ public class SelectionManager : MonoBehaviour
             }
 
             // 클릭 가능한 건물(창고/침대/농지/상인/작업대/연구대/순찰구역) — 단일 레이캐스트로 라우팅.
-            // 유닛/노드/코어 선택은 해제하고 건물 자신의 선택 이벤트를 발동한다(기존 개별 레이캐스트 동작 대체).
+            //
+            // **폰 선택은 유지한다.** 이 건물들의 패널은 대개 선택한 폰을 상대로 뭔가를 한다 —
+            // 창고에 폰 인벤토리의 물건을 옮기고, 상인에게 팔고, 침대를 배정한다.
+            // 클릭할 때마다 선택이 풀리면 "폰 고르기 → 건물 열기"를 매번 반대로 해야 한다.
+            // (노드·시체도 같은 이유로 유지한다.)
             var clickable = hit.collider.GetComponent<IWorldClickable>();
             if (clickable != null)
             {
-                ClearSelection();
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
@@ -179,6 +185,7 @@ public class SelectionManager : MonoBehaviour
 
     void AddToSelection(PawnMover pawn)
     {
+        if (pawn == null || _selected.Contains(pawn)) return;   // 중복 선택 방지
         _selected.Add(pawn);
         OnSelectionChanged?.Invoke(pawn, true);
     }
@@ -188,6 +195,31 @@ public class SelectionManager : MonoBehaviour
         ClearSelection();
         AddToSelection(pawn);
     }
+
+    // ── 로스터(목록 UI)용 진입점 ──────────────────────────────────────────
+    // 월드 클릭과 달리 목록에서는 Ctrl로 하나씩 더하고 드래그로 범위를 잡는다.
+    // 선택 상태의 주인은 여기 하나뿐이므로 목록도 이 메서드들을 거쳐야 한다 —
+    // UI가 제 목록을 따로 들면 월드 선택과 어긋난다.
+
+    public void AddPawn(PawnMover pawn) => AddToSelection(pawn);
+
+    // Ctrl+클릭: 이미 있으면 빼고 없으면 더한다.
+    public void TogglePawn(PawnMover pawn)
+    {
+        if (pawn == null) return;
+        if (_selected.Remove(pawn)) OnSelectionChanged?.Invoke(pawn, false);
+        else                        AddToSelection(pawn);
+    }
+
+    // 드래그 범위: 넘긴 것들'만' 선택된 상태로 만든다.
+    public void SelectOnly(IEnumerable<PawnMover> pawns)
+    {
+        ClearSelection();
+        if (pawns == null) return;
+        foreach (var p in pawns) AddToSelection(p);
+    }
+
+    public void ClearPawnSelection() => ClearSelection();
 
     void ClearSelection()
     {

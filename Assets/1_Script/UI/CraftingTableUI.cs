@@ -79,7 +79,7 @@ public class CraftingTableUI : MonoBehaviour
 
             var entry = Instantiate(recipeEntryPrefab, recipeContainer);
             entry.Setup(recipe, unlocked);
-            if (unlocked) entry.OnSelected += SelectRecipe;
+            entry.OnSelected += SelectRecipe;   // 잠겨도 눌러서 내용은 볼 수 있게
         }
     }
 
@@ -98,9 +98,24 @@ public class CraftingTableUI : MonoBehaviour
             resultIcon.sprite = recipe.Result?.Icon;
             resultIcon.color  = recipe.Result?.Icon != null ? Color.white : new Color(1,1,1,0);
         }
-        if (resultNameText  != null) resultNameText.text  = recipe.Result?.ItemName ?? recipe.RecipeName;
-        if (descriptionText != null) descriptionText.text = recipe.Result?.Description ?? "";
-        if (craftTimeText   != null) craftTimeText.text   = $"제작 시간: {recipe.CraftTime}s";
+        if (resultNameText != null) resultNameText.text = recipe.Result?.ItemName ?? recipe.RecipeName;
+        if (craftTimeText  != null) craftTimeText.text  = $"제작 시간: {recipe.CraftTime}s";
+
+        // 잠긴 레시피는 **왜 잠겼는지**를 설명 맨 위에 붙인다.
+        // 목록에서 `[잠김]`만 보면 무슨 연구를 해야 하는지 알 수 없다.
+        bool locked = ResearchManager.Instance != null && !ResearchManager.Instance.IsUnlocked(recipe);
+        if (descriptionText != null)
+        {
+            var sb = new StringBuilder();
+            if (locked)
+            {
+                var need = ResearchManager.Instance.GetRequiredResearch(recipe);
+                sb.AppendLine($"<color=#FF9060>[잠김] {(need != null ? need.ResearchName : "연구")} 연구가 필요합니다.</color>");
+                sb.AppendLine();
+            }
+            sb.Append(recipe.Result?.Description ?? "");
+            descriptionText.text = sb.ToString();
+        }
 
         RefreshIngredients(recipe);
 
@@ -108,7 +123,8 @@ public class CraftingTableUI : MonoBehaviour
         {
             craftButton.onClick.RemoveAllListeners();
             craftButton.onClick.AddListener(() => OnCraftClicked(recipe));
-            craftButton.interactable = _currentTable != null && _currentTable.CanCraft(recipe);
+            // 잠겼으면 재료가 충분해도 주문할 수 없다.
+            craftButton.interactable = !locked && _currentTable != null && _currentTable.CanCraft(recipe);
         }
     }
 

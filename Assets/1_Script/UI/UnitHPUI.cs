@@ -13,6 +13,11 @@ public class UnitHPUI : MonoBehaviour
     // 조작 불가 유닛(적/NPC)을 클릭했을 때의 조사 대상. 선택 유닛이 있으면 그쪽이 우선.
     UnitBrain _inspected;
 
+    // 건설 모드 동안 숨김. **플래그로 들고 있어야 한다** — 이 패널은 선택만 있으면
+    // 매 프레임 스스로 다시 켜지므로(Refresh가 패널을 켜는 역할까지 겸한다),
+    // 건설 진입 때 한 번 끄는 것만으로는 다음 프레임에 되살아난다.
+    bool _buildMode;
+
     void Awake()
     {
         if (panel != null) panel.SetActive(false);
@@ -35,9 +40,11 @@ public class UnitHPUI : MonoBehaviour
 
     void OnBuildModeChanged(bool active)
     {
-        if (!active) return;
-        _inspected = null;
-        if (panel != null) panel.SetActive(false);
+        _buildMode = active;
+        // 조사(적/NPC 클릭)는 일회성이라 건설에 들어가면 버린다. 선택은 지속 상태라
+        // 그대로 두고, 건설을 빠져나오면 Refresh가 알아서 패널을 되살린다.
+        if (active) _inspected = null;
+        Refresh();
     }
 
     void Update()
@@ -47,6 +54,8 @@ public class UnitHPUI : MonoBehaviour
 
     void Refresh()
     {
+        if (_buildMode) { panel?.SetActive(false); return; }
+
         // 내 유닛 선택이 우선, 없으면 클릭으로 조사 중인 유닛
         UnitBrain brain = null;
         if (selectionManager.Selected.Count > 0)

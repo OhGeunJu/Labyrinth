@@ -163,8 +163,10 @@ public partial class UnitBrain : MonoBehaviour
             _mover.SetSleeping(false);
     }
 
-    const float BaseHungerDecayRate = 0.5f; // 초당 감소량 (100 기준 약 3.3분에 고갈)
-    const float StarveBloodPerSec   = 2f;   // 허기 0 시 초당 혈액 손실 (아사)
+    // 하루(1800초)에 두 끼. 100 → 0 이 900초이므로 식사 임계(60)까지는 360초 걸린다.
+    // 하루 길이를 바꾸면 여기도 같이 바꿔야 한다 — 기준은 `GameTimeManager.dayDuration`.
+    const float BaseHungerDecayRate = 0.111f; // 초당 감소량 (100 기준 900초에 고갈 = 하루 2끼)
+    const float StarveBloodPerSec   = 2f;     // 허기 0 시 초당 혈액 손실 (아사)
 
     void UpdateHunger()
     {

@@ -18,7 +18,11 @@ public class BuildModeManager : MonoBehaviour
 
     [Header("배치")]
     [SerializeField] GameObject    fallbackPrefab;
+
+    [Tooltip("비우면 Resources/Data/Buildings 의 **전부**를 쓴다(기본). " +
+             "채우면 그게 이긴다 — 특정 씬에서 일부만 짓게 하고 싶을 때의 큐레이션용.")]
     [SerializeField] BuildingData[] placeableBuildings;
+
     [SerializeField] LayerMask     groundMask = ~0;
 
     [Header("회전")]
@@ -48,14 +52,30 @@ public class BuildModeManager : MonoBehaviour
     GameObject _ghostSourcePrefab;
     float      _ghostHover;   // 현재 고스트 프리팹의 저작 부양 높이
 
-    int TotalCount => placeableBuildings != null ? placeableBuildings.Length : 0;
+    // ── 건설 목록 ─────────────────────────────────────────────────────────────
+    // **목록은 레지스트리에서 끌어온다.** 예전엔 이 씬 배열이 정본이었는데 두 가지가 나빴다:
+    //   ① 씬에 사는 목록이라 에디터 도구가 등록해도 **씬을 저장 안 하면 조용히 날아갔다**
+    //      (2026-07-31에 15건이 그렇게 사라졌다).
+    //   ② 모드가 건물을 추가할 진입점이 없었다.
+    // `Resources/Data/Buildings/`에 에셋을 두면 그것만으로 목록에 오른다.
+    //
+    // 인스펙터 배열을 채우면 그게 이긴다 — `ResearchTable.availableResearch`와 같은
+    // "데이터가 없으면 기본 동작" 관례(큐레이션용 오버라이드).
+    IReadOnlyList<BuildingData> Buildings =>
+        (placeableBuildings != null && placeableBuildings.Length > 0)
+            ? placeableBuildings
+            : DataManager.AllBuildings;
+
+    int TotalCount => Buildings.Count;
 
     // ── UI용 공개 API ─────────────────────────────────────────────────────────
     public int          TotalBuildingCount => TotalCount;
     public int          SelectedIndex      => _selectedIndex;
-    public BuildingData GetBuilding(int i) =>
-        (placeableBuildings != null && i >= 0 && i < placeableBuildings.Length)
-            ? placeableBuildings[i] : null;
+    public BuildingData GetBuilding(int i)
+    {
+        var list = Buildings;
+        return (i >= 0 && i < list.Count) ? list[i] : null;
+    }
 
     public void SelectBuilding(int index)
     {

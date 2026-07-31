@@ -29,6 +29,25 @@ public class ResearchTable : MonoBehaviour, IWorldClickable
     // 매번 새 리스트를 만들면 UI가 열릴 때마다 쓰레기가 생긴다 — 한 벌만 돌려 쓴다.
     readonly List<ResearchData> _fallback = new();
 
+    // ── 진행 중인 연구 ────────────────────────────────────────────────────
+    // 폰이 실제로 연구대에 붙어 타이머를 돌리기 시작한 작업 하나. 큐에 쌓인 예약은
+    // 여기 안 잡힌다 — UI 게이지는 "지금 진행 중"만 보여야 하기 때문이다.
+    ResearchJob _activeJob;
+
+    public ResearchData ActiveResearch =>
+        _activeJob != null && _activeJob.IsRunning ? _activeJob.Data : null;
+
+    public float ActiveProgress =>
+        _activeJob != null && _activeJob.IsRunning ? _activeJob.Progress : 0f;
+
+    public void SetActiveJob(ResearchJob job) => _activeJob = job;
+
+    // 완료·취소 모두 여기로 온다. 다른 작업이 이미 자리를 차지했으면 건드리지 않는다.
+    public void ClearActiveJob(ResearchJob job)
+    {
+        if (_activeJob == job) _activeJob = null;
+    }
+
     public static event Action<ResearchTable> OnSelected;
 
     // SelectionManager의 단일 레이캐스트가 이 연구대를 클릭 판정 시 호출.

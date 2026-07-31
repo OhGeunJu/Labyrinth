@@ -22,6 +22,9 @@ public class RecipeEntryUI : MonoBehaviour
         le.minHeight       = preferredHeight;
     }
 
+    // 잠긴 레시피도 **누를 수 있다.** 무엇을 만들 수 있게 되는지 미리 봐야
+    // 그 연구를 할지 정한다 — 눌러지지도 않으면 이름만 보고 짐작해야 한다.
+    // 잠김은 흐린 글씨와 `[잠김]` 표시로 알리고, 실제 제작만 디테일 쪽에서 막는다.
     public void Setup(RecipeData recipe, bool unlocked = true)
     {
         _recipe = recipe;
@@ -34,12 +37,12 @@ public class RecipeEntryUI : MonoBehaviour
         if (btn != null)
         {
             btn.onClick.RemoveAllListeners();
-            btn.interactable = unlocked;
-            if (unlocked) btn.onClick.AddListener(() => OnSelected?.Invoke(_recipe));
+            btn.interactable = true;                     // 잠겨도 눌러서 볼 수 있게
+            btn.onClick.AddListener(() => OnSelected?.Invoke(_recipe));
         }
 
         if (unlocked) Refresh();
-        else if (nameText != null) nameText.color = new Color(0.4f, 0.4f, 0.4f, 1f);
+        else if (nameText != null) nameText.color = new Color(0.45f, 0.45f, 0.48f, 1f);
     }
 
     public void Refresh()

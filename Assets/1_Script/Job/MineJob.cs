@@ -30,6 +30,7 @@ public class MineJob : JobBase
             Status = JobStatus.Done;
             return;
         }
-        _node.Work(unit.Stats.Mining);
+        // Job.Tick은 BT 틱에서 불리므로 프레임 델타가 아니라 틱 델타를 넘긴다.
+        _node.Work(unit.Stats.Mining, unit.Blackboard.TickDelta);
     }
 }

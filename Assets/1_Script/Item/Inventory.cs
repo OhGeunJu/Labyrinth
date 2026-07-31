@@ -17,6 +17,19 @@ public class Inventory : MonoBehaviour
     public int Width  => width;
     public int Height => height;
     public IReadOnlyList<ItemInstance> Items => _items;
+
+    // 차지한 **칸** 수. 격자 인벤토리라 한계는 개수가 아니라 칸이다 —
+    // 큰 아이템 하나가 여러 칸을 먹으므로 `Items.Count`로는 남은 자리를 알 수 없다.
+    public int UsedCellCount
+    {
+        get
+        {
+            int n = 0;
+            foreach (var inst in _items)
+                n += inst.EffectiveWidth * inst.EffectiveHeight;
+            return n;
+        }
+    }
     public event Action OnChanged;
 
     void Awake()

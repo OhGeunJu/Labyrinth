@@ -28,6 +28,12 @@ public class ExpeditionFormation : MonoBehaviour
     // 편성 상태가 바뀔 때(시작/도착/취소/출발) — UI 갱신용.
     public static event Action OnChanged;
 
+    // 실제로 떠나는 순간. **모드 전환 전에** 쏜다 —
+    // `GameModeManager.ApplyFieldUi`가 필드를 떠날 때 "그때 열려 있던 패널"을 기억했다가
+    // 돌아올 때 그대로 되살리므로, 전환 뒤에 닫아 봐야 기억에는 '열림'으로 남아 다시 열린다.
+    // (게다가 전환이 패널 루트를 꺼버려 `OnDisable`로 구독이 끊기면 알림 자체가 안 간다.)
+    public static event Action OnDeparted;
+
     readonly List<UnitBrain> _gathering = new();
     readonly Dictionary<UnitBrain, Vector3> _spots = new();
     readonly HashSet<UnitBrain> _arrived = new();
@@ -221,6 +227,9 @@ public class ExpeditionFormation : MonoBehaviour
         // 돌아왔을 때 대기 상태로 굳어 있지 않게 여기서 푼다 — 필드에 되살아나면 바로 일해야 한다.
         foreach (var m in members) Release(m);
         Reset();
+
+        // UI가 스스로 정리할 기회 — **모드 전환 전에** 줘야 한다(위 OnDeparted 주석 참고).
+        OnDeparted?.Invoke();
 
         view.AddMembers(members);          // 여기서 필드맵에서 빠진다(SetActive(false))
         GameModeManager.Instance?.SwitchTo(GameMode.World);

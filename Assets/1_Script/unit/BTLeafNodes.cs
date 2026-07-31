@@ -148,6 +148,26 @@ public class FightNode : BTNode
 // 작업
 public class WorkNode : BTNode
 {
+    // ── 못 가는 일감을 놓는 장치 ──────────────────────────────────────────
+    // 일감 지점까지 **길이 없으면** 폰은 도착 판정(2.0m)에 영영 안 걸리고, 그 자리에서 얼어붙는다.
+    // 로스터에는 "운반"이라 떠 있는데 아무 일도 일어나지 않고, 그 일감은 예약된 채라
+    // **다른 폰도 못 가져간다** — 한 명이 멈추는 게 아니라 그 일감이 통째로 죽는다.
+    //
+    // 길이 막히는 이유는 여러 가지다(노드가 사방으로 둘러싸임, 바닥 밖, 철거로 지형 변화…).
+    // 원인을 다 막기보다 **진행이 없으면 놓는다**로 처리한다 —
+    // `ExpeditionFormation.NudgeStragglers`가 집결에서 쓰는 것과 같은 모양.
+    const float StuckSeconds  = 6f;     // 이만큼 가까워지지 않으면 포기
+    const float ProgressEpsilon = 0.35f; // 이보다 줄어야 "가고 있다"고 본다
+
+    float _stuckTimer;
+    float _bestDist = float.MaxValue;
+
+    void ResetProgress()
+    {
+        _stuckTimer = 0f;
+        _bestDist   = float.MaxValue;
+    }
+
     public override BTStatus Tick(UnitBlackboard bb)
     {
         // 배정된 노드가 있으면 우선 처리
@@ -171,6 +191,7 @@ public class WorkNode : BTNode
                 return BTStatus.Failure;
             }
             bb.Mover.SetMoveTarget(TileToWorld(job.TileCoord, bb));
+            ResetProgress();   // 새 일감 — 진행 측정을 처음부터
         }
 
         var currentJob = bb.CurrentJob;
@@ -186,9 +207,29 @@ public class WorkNode : BTNode
             // 이동 중이 아닐 때만 목표 재설정 (이미 이동 중이면 기다림)
             if (!bb.Mover.HasTarget())
                 bb.Mover.SetMoveTarget(TileToWorld(currentJob.TileCoord, bb));
+
+            // 가까워지고 있나? 아니면 얼마나 오래 제자리인가.
+            if (dist < _bestDist - ProgressEpsilon) { _bestDist = dist; _stuckTimer = 0f; }
+            else                                     _stuckTimer += bb.TickDelta;
+
+            if (_stuckTimer >= StuckSeconds)
+            {
+                Debug.LogWarning($"[Work] {bb.Self.name}: '{JobCategoryInfo.DisplayName(currentJob.Category)}' " +
+                                 $"일감 지점 {currentJob.TileCoord}까지 갈 수 없어 놓습니다 " +
+                                 "(길이 막혔거나 바닥 밖일 수 있습니다).");
+
+                // 놓는 건 **취소**로 한다 — 각 Job이 OnCancelled에 "들고 있던 것 되돌리기"를
+                // 이미 구현해 두었다(운반 짐 드롭·제작 재료 환불). 예약만 풀면 그게 안 돈다.
+                if (JobManager.Instance != null) JobManager.Instance.CancelJob(currentJob);
+                bb.CurrentJob = null;
+                bb.Mover.StopMovement();
+                ResetProgress();
+                return BTStatus.Failure;   // 이번 틱은 다른 걸 하게
+            }
         }
         else
         {
+            ResetProgress();
             bb.Mover.StopMovement();
             currentJob.Tick(bb.Self.GetComponent<UnitBrain>());
             if (currentJob.IsComplete())
@@ -229,7 +270,7 @@ public class WorkNode : BTNode
             bool isCutting = node.Data != null && node.Data.ResourceType == ResourceType.Wood;
             StatName workStat = isCutting ? StatName.Cutting : StatName.Mining;
             float skill = brain.Stats.GetStat(workStat);
-            node.Work(skill);
+            node.Work(skill, bb.TickDelta);
 
             float required = node.Data != null ? node.Data.RequiredSkill : 0f;
             float xp = 0.05f * bb.TickDelta

@@ -35,6 +35,7 @@ public class ExpeditionPanel : MonoBehaviour
     void OnEnable()
     {
         ExpeditionFormation.OnChanged    += Refresh;
+        ExpeditionFormation.OnDeparted   += Close;
         UnitBrain.OnUnitSpawned          += OnRosterChanged;
         UnitBrain.OnUnitDied             += OnRosterChanged;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
@@ -44,6 +45,7 @@ public class ExpeditionPanel : MonoBehaviour
     void OnDisable()
     {
         ExpeditionFormation.OnChanged    -= Refresh;
+        ExpeditionFormation.OnDeparted   -= Close;
         UnitBrain.OnUnitSpawned          -= OnRosterChanged;
         UnitBrain.OnUnitDied             -= OnRosterChanged;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;

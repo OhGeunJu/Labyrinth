@@ -64,10 +64,10 @@ Guidance for Claude Code in this repository.
 | `JobManager` | `RegisterJob` / `RequestJob(unit)`(방랑자·하수인 공통 — 폰의 `WorkSettings`로 필터) |
 | `DungeonCore` | `Summon(MinionData, pos)` / `IsWithinAnyRangeWorld(Vector3)`(메인+서브 union) / `RegisterSubCore` / `RelocateTo(pos)`(핵 이전, UI 진입점=`CoreRelocator`) / `WouldBeInRangeAt(corePos, worldPos)`(이전 미리보기용 영역 판정) / `OnTerritoryChanged` static event(영역 변경 → `BuildingDormancy` 재평가) |
 | `EventManager` | `checkInterval`(기본 300초) 주기 랜덤 이벤트 발동. `OnEventTriggered` static event |
-| `GameTimeManager` | 낮30분+밤30분=1일. `NormalizedTime`(0-1) / `IsDay` / `CurrentDay` / `OnDayChanged` / `OnTimeChanged(float)` |
+| `GameTimeManager` | **낮 20분 + 밤 10분 = 1일**(`dayDuration` 1800초 × `dayFraction` 2/3). 밤이 짧은 건 폰이 일하는 시간이 낮이라서다. **모든 지속시간 데이터의 기준 축** — 하루 길이를 바꾸면 허기·작물·연구·제작·채굴을 같이 옮겨야 한다(`docs/data.md` "시간 축"). 시계는 선형이라 낮 06:00~22:00. `NormalizedTime`(0-1) / `IsDay` / `CurrentDay` / `Speed` / `SetSpeed` / `OnDayChanged` / `OnTimeChanged(float)` |
 | `HierarchicalPathfinder` | 씬에 배치 필요. `ComputeCoarseRoute(from,to)`(메소/L2) + `FindLocalPath(pos,target,self)`(유닛 중심 Theta* 윈도우) / `RebakeObstacleAt`. `obstacleLayer`=Wall만. **통행 판정은 타일 단위** — 반경 부풀림은 타일보다 큰 에이전트에만. 상세 `docs/world.md` |
-| `ResearchManager` | `IsUnlocked(recipe)` / `CanResearch(data)` / `Complete(data)` |
-| `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill(CraftSkill)` / `AllItems` / `AllRecipes` |
+| `ResearchManager` | `IsUnlocked(recipe)` / `GetRequiredResearch(recipe)` / `CanResearch(data)` / `Complete(data)`. 진행률은 `ResearchTable.ActiveResearch` / `ActiveProgress`(폰이 연구대에 붙어 타이머가 도는 동안만 — 큐 예약은 안 잡힘). **잠금은 양방향 어느 쪽으로 적어도 걸린다** — `ResearchData.UnlockedRecipes`(큐레이션, 역인덱스를 Awake에서 생성) ∥ `RecipeData.RequiredResearch`(개별 지정). 둘 다 비면 처음부터 열린 레시피 |
+| `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill(CraftSkill)` / `GetBuilding(name)` / `AllItems` / `AllRecipes` / `AllResearch` / **`AllBuildings`**(Category→SortOrder→이름 순 정렬) |
 | `GameModeManager` | **화면·입력**이 필드냐 월드냐의 단일 소유자. `Current` / `IsField` / `IsWorld` / `SwitchTo(GameMode)` / `Toggle()` / `OnModeChanged`. 월드 전환 = 필드 UI·입력·카메라 off + 월드 UI/루트/카메라 on. **UI 캔버스는 하나** — 캔버스가 아니라 그 **직속 자식들**을 다루고 월드 전용 묶음(`Canvas/WorldUI`)만 반대로 켠다(월드 UI를 캔버스째 끄지 않으려고). 필드 UI는 **떠날 때 열려 있던 상태를 기억했다 복원**(`ApplyFieldUi`) — 일괄로 켜면 닫아 뒀던 패널까지 따라 열린다. **정착지 루트는 안 건드린다 — 거점 시뮬은 월드맵을 보는 동안에도 계속 돈다**(2026-07-30 결정, 07-29의 "필드 통째 정지"를 되돌림). `EventManager`도 계속 돈다(원정 중 습격 → M키로 복귀해 대응, 추상 방어 판정 불필요) |
 | `OutpostManager` | **채집기지**(`WorldNodeContent.Outpost`)의 단일 소유자. `Build(node)` / `At(node)` / `LoadInto(outpost, party)` / `CanAfford` / `CostSummary` / `OnChanged`. **필드맵을 만들지 않는 추상 시설** — 매일(`OnDayChanged`) 남은 매장에서 골고루 캐 기지에 쌓고, **원정대가 들러 등짐으로 실어와야** 창고에 들어간다(본거지 순간이동 없음). 건설 비용 `buildCost`(비우면 무료)는 활성 거점 창고에서 빠진다 |
 | `ExpeditionFormation` | 원정 편성의 **집결** 단계. `Begin(members)` / `Cancel()` / `IsGathering` / `ArrivedCount` / `OnChanged`. 핵 앞으로 걸어와 **전원 도착 시 일괄 출발** → `WorldMapView.AddMembers` + 월드맵 전환. 도착한 폰은 `UnitBlackboard.HoldPosition`으로 붙들어 둔다(`ManualMove`는 목적지 소진 시 자동 해제돼 못 잡는다) |
@@ -188,7 +188,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 ### BuildMode
 
-- `placeableBuildings: BuildingData[]` 단일 배열. `UsesBlueprint=true` → 2단계 건설, `false` → 즉시 배치
+- **건설 목록은 레지스트리에서 온다** — `Assets/Resources/Data/Buildings/`에 `BuildingData` 에셋을 두면 그것만으로 목록에 오른다(`DataManager.AllBuildings`, `Category`→`SortOrder`→이름 순). 씬의 `placeableBuildings`는 **비워 두는 게 기본**이고, 채우면 그게 이기는 큐레이션 오버라이드다(`ResearchTable.availableResearch`와 같은 관례). `UsesBlueprint=true` → 2단계 건설, `false` → 즉시 배치
 - 설계 원칙: `BuildingData`는 배치 방법만 담당. 각 컴포넌트(Storage, SubCore, FarmPlot 등)가 동작 데이터를 프리팹 SerializeField로 직접 보유
 - `OnActiveChanged` — 건설 모드 토글 시 다른 UI 자동 닫힘
 - **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장(타일 → **바닥 윗면 Y**). 건물 배치 높이는 `SurfaceHeight` + `BuildModeManager.SpawnOnSurface` — 프리팹 루트 `localPosition.y`가 양수면 **저작 부양 높이**로 보고 그만큼 띄우고(서브코어 등), 아니면 `SnapOnSurface`가 렌더러 바닥면을 표면에 맞춘다(피벗 중앙 프리팹 파묻힘 방지, 올리기만 함). 즉시 배치/청사진/고스트/자유 배치 동일 규칙. 메인 핵은 `DungeonCore._hoverOffset`(Start에서 캡처)로 이전 후에도 부양 유지. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에셋: `Floor.prefab` + `Floor.asset`(placeable) / 씬의 `[DungeonStarterFloor]`(코어바닥 20×20 저작, `requireFloor` 켜짐). 공허 이동 차단 3중: 길찾기(L1/메소)가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지 선정은 `MapManager.IsStandable` 검사.
@@ -227,7 +227,9 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 - **BT 노드에서 `Time.deltaTime` 금지**: BT는 `tickInterval`(0.1초)마다 돌므로 프레임 델타를 누적하면 시간이 6배 이상 느려진다. `UnitBlackboard.TickDelta`를 쓸 것 (2026-07-27 전수 교체).
 
-- **한글 폰트**: `AddComponent<TextMeshProUGUI>` 시 기본 폰트(LiberationSans SDF) 한글 미지원(□). `UIHelper.MakeLabel/MakeButton`은 `ApplyKoreanFont`로 TMP 기본 폰트 → 씬의 기존 TMP 폰트를 자동 상속하지만, **직접 `AddComponent`할 땐 수동 지정 필요**. 근본 해결은 `Project Settings → TextMesh Pro → Default Font Asset`을 `Assets/NanumGothic SDF.asset`으로 설정(이 폰트는 Resources 밖이라 `Resources.Load` 불가).
+- **BT 노드에서 델타 곱하기를 빼먹는 것도 같은 사고**: 반대 방향으로 틀린다. `ResourceNode.Work(skill)`이 틱마다 스킬 수치를 그대로 더해 채굴 속도가 **초당 skill×10**이 됐었다(2026-07-31 수정 — `Work(power, deltaTime)`로 시그니처를 바꿔 호출자가 델타를 빠뜨릴 수 없게 했다). **틱마다 누적하는 값은 전부 델타를 곱할 것** — 안 그러면 배속·프레임레이트가 게임 밸런스를 바꾼다.
+
+- **한글 폰트**: 해소됨(2026-08-01). `TMP Settings`의 Default Font Asset = **NanumGothic SDF**, Fallbacks = **[NanumGothic SDF, LiberationSans SDF]**. 폴백이 두 단계인 이유 — NanumGothic만 두면 `UnitHPUI`의 막대(`█`/`░`)가 □가 되고, LiberationSans만 두면 한글이 □가 된다. 이제 `AddComponent<TextMeshProUGUI>`도 그냥 한글이 나온다. **그래도 새 UI 텍스트에 특수문자는 쓰지 말 것** — 폴백은 안전망이지 허가가 아니며, 폰트가 섞이면 자간·기준선이 어긋난다(`docs/editor_creators.md` "폰트 체인").
 - **핵 이동 시 빌드존 리셋**: 해소됨. 점유는 `HashSet` 절대좌표 희소 저장이라 이동에도 유지되고, 영역 밖 건물은 `BuildingDormancy`가 휴면 처리(`docs/design_core_creep.md` step 1~5 완료).
 - **Blueprint 반투명 머티리얼**: URP에서 코드 생성 투명 머티리얼(`BuildingBlueprint.CreateBlueprintMaterial`)이 불투명 렌더될 수 있음. 에디터에서 직접 제작 후 연결 권장.
 - **DataManager**: `Resources.LoadAll<RecipeData>("Data/Recipes")` + JSON 스키마(`DataSchemas`) 경로 둘 다 지원. SO는 `Assets/Resources/Data/{Items,Recipes,Research}/`에 있어야 인식.

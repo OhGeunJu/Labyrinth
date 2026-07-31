@@ -12,6 +12,10 @@ public class RecipeData : ScriptableObject
         public int      Amount;
     }
 
+    [Tooltip("식별자. 비우면 에셋 파일명을 쓴다(권장). 표시명과 달리 번역되지 않는다.")]
+    public string           Id;
+
+    [Tooltip("화면에 보이는 이름. 번역 대상이므로 **식별자로 쓰지 말 것**.")]
     public string           RecipeName;
     public List<Ingredient> Ingredients  = new();
     public ItemData         Result;

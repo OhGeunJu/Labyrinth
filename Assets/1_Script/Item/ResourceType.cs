@@ -35,8 +35,63 @@ public enum ResourceType
     Gold,
 }
 
+// 자원 분류. 창고 필터가 22종을 낱개로 늘어놓으면 못 쓰므로 묶음 단위로 다룬다.
+// **묶음의 단일 출처는 여기다** — 위 enum의 주석 구분(석재/원석/보석/주괴/목재/화폐)과 같게 유지할 것.
+public enum ResourceGroup { Stone, Ore, Gem, Ingot, Wood, Currency }
+
+public static class ResourceGroupExt
+{
+    public static readonly ResourceGroup[] All =
+    {
+        ResourceGroup.Stone, ResourceGroup.Ore, ResourceGroup.Gem,
+        ResourceGroup.Ingot, ResourceGroup.Wood, ResourceGroup.Currency,
+    };
+
+    public static string DisplayName(this ResourceGroup g) => g switch
+    {
+        ResourceGroup.Stone    => "석재",
+        ResourceGroup.Ore      => "원석",
+        ResourceGroup.Gem      => "보석",
+        ResourceGroup.Ingot    => "주괴",
+        ResourceGroup.Wood     => "목재",
+        ResourceGroup.Currency => "화폐",
+        _                      => g.ToString(),
+    };
+}
+
 public static class ResourceTypeExt
 {
+    public static ResourceGroup Group(this ResourceType t) => t switch
+    {
+        ResourceType.Stone or ResourceType.CutStone => ResourceGroup.Stone,
+
+        ResourceType.CopperOre or ResourceType.TinOre     or ResourceType.IronOre   or
+        ResourceType.Coal      or ResourceType.SilverOre  or ResourceType.GoldOre   or
+        ResourceType.MagicStone or ResourceType.Etherstone or ResourceType.Voidstone
+            => ResourceGroup.Ore,
+
+        ResourceType.Ruby or ResourceType.Sapphire or
+        ResourceType.Topaz or ResourceType.Emerald => ResourceGroup.Gem,
+
+        ResourceType.Bronze or ResourceType.Steel or
+        ResourceType.SilverIngot or ResourceType.GoldIngot => ResourceGroup.Ingot,
+
+        ResourceType.Wood or ResourceType.Lumber => ResourceGroup.Wood,
+
+        ResourceType.Gold => ResourceGroup.Currency,
+
+        _ => ResourceGroup.Stone,
+    };
+
+    // 그 묶음에 속한 자원 전부. 필터를 묶음 단위로 켜고 끌 때 쓴다.
+    public static System.Collections.Generic.List<ResourceType> TypesIn(ResourceGroup g)
+    {
+        var list = new System.Collections.Generic.List<ResourceType>();
+        foreach (ResourceType t in System.Enum.GetValues(typeof(ResourceType)))
+            if (t.Group() == g) list.Add(t);
+        return list;
+    }
+
     public static string DisplayName(this ResourceType t) => t switch
     {
         ResourceType.Stone       => "돌",

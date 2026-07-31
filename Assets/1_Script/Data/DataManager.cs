@@ -14,9 +14,25 @@ public static class DataManager
 {
     static bool _initialized;
 
-    static readonly Dictionary<string, ItemData>    _items    = new(StringComparer.OrdinalIgnoreCase);
-    static readonly Dictionary<string, RecipeData>  _recipes  = new(StringComparer.OrdinalIgnoreCase);
+    // ── 식별자는 `Id`(비면 에셋 파일명) ───────────────────────────────────
+    // 표시명을 키로 쓰던 시절의 부채를 갚는 중이다. 표시명은 번역 대상이고 모드끼리
+    // 겹치면 조용히 덮어쓴다 — 자세한 근거는 `DataId`.
+    static readonly Dictionary<string, ItemData>     _items    = new(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, RecipeData>   _recipes  = new(StringComparer.OrdinalIgnoreCase);
     static readonly Dictionary<string, ResearchData> _research = new(StringComparer.OrdinalIgnoreCase);
+
+    // 표시명 → 데이터. **레거시 조회용 보조 색인**이다.
+    // 기존 JSON과 저작물이 `"itemName": "철검"`처럼 표시명으로 가리키고 있어서,
+    // 이걸 없애면 그 전부가 한꺼번에 끊긴다. 조회는 **Id 먼저, 없으면 표시명** 순으로 하고
+    // 표시명으로 찾혔을 때 한 번만 경고한다(언젠가 지울 길을 보이게 남겨 둔다).
+    static readonly Dictionary<string, ItemData>   _itemsByName   = new(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, RecipeData> _recipesByName = new(StringComparer.OrdinalIgnoreCase);
+    static readonly HashSet<string> _warnedLegacyKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    // 건설 가능한 것들. **정렬된 리스트로 들고 있다** — 건설 메뉴의 순서가 곧 이 순서라
+    // Dictionary의 임의 순서를 그대로 쓰면 실행마다 메뉴가 뒤바뀐다.
+    static readonly Dictionary<string, BuildingData> _buildings = new(StringComparer.OrdinalIgnoreCase);
+    static readonly List<BuildingData>               _buildingOrder = new();
 
     // 에디터에서 Play 재시작 시 static 상태 초기화
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -26,6 +42,11 @@ public static class DataManager
         _items.Clear();
         _recipes.Clear();
         _research.Clear();
+        _buildings.Clear();
+        _buildingOrder.Clear();
+        _itemsByName.Clear();
+        _recipesByName.Clear();
+        _warnedLegacyKeys.Clear();
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -38,9 +59,33 @@ public static class DataManager
 
     // ── 공개 API ──────────────────────────────────────────────────────────
 
-    public static ItemData     GetItem(string name)     => _items.TryGetValue(name, out var v) ? v : null;
-    public static RecipeData   GetRecipe(string name)   => _recipes.TryGetValue(name, out var v) ? v : null;
-    public static ResearchData GetResearch(string name) => _research.TryGetValue(name, out var v) ? v : null;
+    // 조회는 **Id 먼저, 없으면 표시명**. 표시명으로 찾히면 한 번만 경고한다 —
+    // 그 참조는 번역하는 순간 깨질 것이므로 미리 고칠 기회를 준다.
+    public static ItemData GetItem(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        if (_items.TryGetValue(key, out var v)) return v;
+        if (_itemsByName.TryGetValue(key, out v)) { WarnLegacy("아이템", key, v.Id, v.name); return v; }
+        return null;
+    }
+
+    public static RecipeData GetRecipe(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        if (_recipes.TryGetValue(key, out var v)) return v;
+        if (_recipesByName.TryGetValue(key, out v)) { WarnLegacy("레시피", key, v.Id, v.name); return v; }
+        return null;
+    }
+
+    public static ResearchData GetResearch(string key) =>
+        !string.IsNullOrEmpty(key) && _research.TryGetValue(key, out var v) ? v : null;
+
+    static void WarnLegacy(string kind, string key, string id, string assetName)
+    {
+        if (!_warnedLegacyKeys.Add(key)) return;
+        Debug.LogWarning($"[DataManager] {kind} '{key}'을(를) **표시명**으로 찾았습니다. " +
+                         $"표시명은 번역 대상이라 곧 끊깁니다 — 식별자 '{DataId.Resolve(null, id) ?? assetName}'로 바꾸세요.");
+    }
 
     public static IEnumerable<RecipeData> GetRecipesBySkill(CraftSkill skill)
     {
@@ -60,19 +105,30 @@ public static class DataManager
     public static IReadOnlyDictionary<string, RecipeData>   AllRecipes  => _recipes;
     public static IReadOnlyDictionary<string, ResearchData> AllResearch => _research;
 
+    // 건설 목록. **이 순서 그대로 메뉴에 뜬다**(Category → SortOrder → 이름).
+    public static IReadOnlyList<BuildingData> AllBuildings => _buildingOrder;
+
+    public static BuildingData GetBuilding(string name) =>
+        _buildings.TryGetValue(name, out var v) ? v : null;
+
     // ── 로딩 ──────────────────────────────────────────────────────────────
 
     static void LoadAll()
     {
-        // 1) Resources 폴더의 기존 SO 에셋
+        // 1) Resources 폴더의 SO 에셋 — 키는 `Id`(비면 에셋 파일명)
         foreach (var item in Resources.LoadAll<ItemData>("Data/Items"))
-            if (!string.IsNullOrEmpty(item.ItemName)) _items[item.ItemName] = item;
+            RegisterItem(item);
 
         foreach (var recipe in Resources.LoadAll<RecipeData>("Data/Recipes"))
-            if (!string.IsNullOrEmpty(recipe.RecipeName)) _recipes[recipe.RecipeName] = recipe;
+            RegisterRecipe(recipe);
 
         foreach (var r in Resources.LoadAll<ResearchData>("Data/Research"))
-            if (r != null) _research[r.name] = r;
+            if (r != null) _research[DataId.Resolve(r, r.Id)] = r;
+
+        foreach (var b in Resources.LoadAll<BuildingData>("Data/Buildings"))
+            if (b != null) _buildings[DataId.Resolve(b, b.Id)] = b;
+
+        SortBuildings();
 
         // 2) StreamingAssets JSON
         string dataRoot = Path.Combine(Application.streamingAssetsPath, "Data");
@@ -91,7 +147,54 @@ public static class DataManager
                 LoadJsonRecipes( Path.Combine(modDir, "recipes"));
             }
 
-        Debug.Log($"[DataManager] 로드 완료: 아이템 {_items.Count}개, 레시피 {_recipes.Count}개, 연구 {_research.Count}개");
+        Debug.Log($"[DataManager] 로드 완료: 아이템 {_items.Count}개, 레시피 {_recipes.Count}개, " +
+                  $"연구 {_research.Count}개, 건물 {_buildings.Count}개");
+    }
+
+    // ── 등록 ──────────────────────────────────────────────────────────────
+    // Id로 넣고 표시명 색인에도 함께 올린다. **Id 충돌은 시끄럽게 알린다** —
+    // 조용히 덮어쓰면 모드 둘이 겹쳤을 때 무엇이 사라졌는지 알 길이 없다.
+    static void RegisterItem(ItemData item)
+    {
+        if (item == null) return;
+        string id = DataId.Resolve(item, item.Id);
+        if (string.IsNullOrEmpty(id)) return;
+
+        if (_items.TryGetValue(id, out var prev) && prev != item)
+            Debug.LogWarning($"[DataManager] 아이템 Id 충돌 '{id}' — '{prev.name}'을(를) '{item.name}'이(가) 덮어씁니다.");
+
+        _items[id] = item;
+        if (!string.IsNullOrEmpty(item.ItemName)) _itemsByName[item.ItemName] = item;
+    }
+
+    static void RegisterRecipe(RecipeData recipe)
+    {
+        if (recipe == null) return;
+        string id = DataId.Resolve(recipe, recipe.Id);
+        if (string.IsNullOrEmpty(id)) return;
+
+        if (_recipes.TryGetValue(id, out var prev) && prev != recipe)
+            Debug.LogWarning($"[DataManager] 레시피 Id 충돌 '{id}' — '{prev.name}'을(를) '{recipe.name}'이(가) 덮어씁니다.");
+
+        _recipes[id] = recipe;
+        if (!string.IsNullOrEmpty(recipe.RecipeName)) _recipesByName[recipe.RecipeName] = recipe;
+    }
+
+    // 건설 메뉴 순서 = 탭(Category) → 저작한 SortOrder → 이름.
+    // `Resources.LoadAll`은 순서를 보장하지 않으므로 여기서 못 박지 않으면
+    // 실행할 때마다 메뉴 배치가 달라진다.
+    static void SortBuildings()
+    {
+        _buildingOrder.Clear();
+        _buildingOrder.AddRange(_buildings.Values);
+        _buildingOrder.Sort((a, b) =>
+        {
+            int c = a.Category.CompareTo(b.Category);
+            if (c != 0) return c;
+            c = a.SortOrder.CompareTo(b.SortOrder);
+            if (c != 0) return c;
+            return string.Compare(a.BuildingName, b.BuildingName, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     // ── 아이템 JSON ────────────────────────────────────────────────────────
@@ -113,8 +216,7 @@ public static class DataManager
                     "food"     => BuildFood(    JsonUtility.FromJson<FoodSchema>(json)),
                     _          => BuildItem(    JsonUtility.FromJson<ItemSchema>(json)),
                 };
-                if (item != null && !string.IsNullOrEmpty(item.ItemName))
-                    _items[item.ItemName] = item;
+                RegisterItem(item);   // Id 색인 + 표시명 보조 색인 + 충돌 경고
             }
             catch (Exception e)
             {
@@ -139,6 +241,10 @@ public static class DataManager
                 if (schema == null || string.IsNullOrEmpty(schema.recipeName)) continue;
 
                 var recipe = ScriptableObject.CreateInstance<RecipeData>();
+                // JSON 레시피도 `.name`이 비어 있어 파일명 폴백이 안 통한다 — Id를 못 박는다.
+                recipe.Id                 = !string.IsNullOrWhiteSpace(schema.id)
+                                          ? schema.id.Trim() : schema.recipeName;
+                recipe.name               = recipe.Id;
                 recipe.RecipeName         = schema.recipeName;
                 recipe.CraftTime          = schema.craftTime;
                 recipe.ResultAmount       = schema.resultAmount;
@@ -149,7 +255,7 @@ public static class DataManager
                     recipe.RequiredSkillType = skill;
 
                 _pending.Add((recipe, schema));
-                _recipes[recipe.RecipeName] = recipe;
+                RegisterRecipe(recipe);   // Id 색인 + 표시명 보조 색인 + 충돌 경고
             }
             catch (Exception e)
             {
@@ -163,19 +269,22 @@ public static class DataManager
     {
         foreach (var (recipe, schema) in _pending)
         {
-            recipe.Result = GetItem(schema.resultItemName);
-            if (recipe.Result == null && !string.IsNullOrEmpty(schema.resultItemName))
-                Debug.LogWarning($"[DataManager] 레시피 '{recipe.RecipeName}': 결과 아이템 '{schema.resultItemName}' 없음");
+            // `resultItemId`/`itemId`가 있으면 그걸, 없으면 예전처럼 표시명을 쓴다.
+            string resultKey = schema.ResultKey;
+            recipe.Result = GetItem(resultKey);
+            if (recipe.Result == null && !string.IsNullOrEmpty(resultKey))
+                Debug.LogWarning($"[DataManager] 레시피 '{recipe.RecipeName}': 결과 아이템 '{resultKey}' 없음");
 
             recipe.Ingredients.Clear();
             if (schema.ingredients != null)
                 foreach (var ing in schema.ingredients)
                 {
-                    var item = GetItem(ing.itemName);
+                    string key  = ing.Key;
+                    var    item = GetItem(key);
                     if (item != null)
                         recipe.Ingredients.Add(new RecipeData.Ingredient { Item = item, Amount = ing.amount });
                     else
-                        Debug.LogWarning($"[DataManager] 레시피 '{recipe.RecipeName}': 재료 '{ing.itemName}' 없음");
+                        Debug.LogWarning($"[DataManager] 레시피 '{recipe.RecipeName}': 재료 '{key}' 없음");
                 }
 
             if (!string.IsNullOrEmpty(schema.requiredResearchId))
@@ -188,6 +297,11 @@ public static class DataManager
 
     static void ApplyBase(ItemData item, ItemSchema s)
     {
+        // JSON 아이템은 에셋 파일이 아니라 `.name`이 비어 있다 —
+        // `DataId.Resolve`의 파일명 폴백이 통하지 않으므로 여기서 Id를 못 박는다.
+        // `id`가 없으면 예전처럼 표시명이 식별자가 된다(기존 콘텐츠 호환).
+        item.Id          = !string.IsNullOrWhiteSpace(s.id) ? s.id.Trim() : s.itemName;
+        item.name        = item.Id;   // 로그·인스펙터에서 알아볼 수 있게
         item.ItemName    = s.itemName;
         item.Description = s.description;
         item.Weight      = s.weight;

@@ -3,6 +3,10 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "DungeonColony/ItemData")]
 public class ItemData : ScriptableObject
 {
+    [Tooltip("식별자. 비우면 에셋 파일명을 쓴다(권장). 표시명과 달리 번역되지 않고 바뀌지 않아야 한다.")]
+    public string Id;
+
+    [Tooltip("화면에 보이는 이름. 번역 대상이므로 **식별자로 쓰지 말 것** — Id를 쓴다.")]
     public string ItemName;
     [TextArea(2, 5)] public string Description;
     public Sprite Icon;

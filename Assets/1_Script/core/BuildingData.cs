@@ -1,10 +1,23 @@
 using UnityEngine;
 
+// **레지스트리 데이터다.** `Assets/Resources/Data/Buildings/` 에 두면 `DataManager`가 자동으로
+// 집어 건설 목록에 올린다 — 씬 배열에 손으로 등록할 필요가 없다.
+// (2026-08-01 이전에는 `5_Data/Building` + `BuildModeManager.placeableBuildings` 씬 배열이었다.
+//  씬에 사는 목록이라 에디터 도구가 등록해도 씬을 저장 안 하면 조용히 날아갔고, 모드가
+//  건물을 추가할 진입점도 없었다. `docs/data.md` "테이블은 레지스트리에서 끌어온다"와 같은 이유.)
 [CreateAssetMenu(menuName = "DungeonColony/BuildingData")]
 public class BuildingData : ScriptableObject
 {
+    [Tooltip("식별자. 비우면 에셋 파일명을 쓴다(권장). 표시명과 달리 번역되지 않는다.")]
+    public string           Id;
+
+    [Tooltip("화면에 보이는 이름. 번역 대상이므로 **식별자로 쓰지 말 것**.")]
     public string           BuildingName  = "건물";
     public BuildCategory    Category      = BuildCategory.Building;
+
+    [Tooltip("건설 목록 안에서의 순서. 작을수록 앞. 같으면 이름순. " +
+             "폴더 스캔은 순서를 보장하지 않으므로 이 값이 메뉴 순서의 유일한 근거다.")]
+    public int              SortOrder     = 0;
     public ResourceType     CostType;
     public int              CostAmount;
     public GameObject       Prefab;
