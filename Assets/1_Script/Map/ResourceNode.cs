@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ResourceNode : MonoBehaviour
+public class ResourceNode : MonoBehaviour, IHaulSource
 {
     // 배정/해제 통보 — 노드 패널·무리 관리 패널이 즉시 갱신하도록.
     // 해제는 패널 밖(이동 명령·사망)에서도 일어나므로, 폴링만으로는 목록이 낡은 채로 남는다.
@@ -58,30 +58,63 @@ public class ResourceNode : MonoBehaviour
         _assigned.Clear();
         if (had) OnAssignmentChanged?.Invoke(this);
 
-        // Awake에서 막아둔 점유 타일 해제 — 노드 소멸 자리가 영구 건설 불가로 남는 것 방지
-        if (_tileBlocked && MapManager.Instance != null)
-            MapManager.Instance.SetTile(_blockedTile, TileData.MakePassable());
+        // Awake에서 막아둔 점유 타일 해제 — 노드 소멸 자리가 영구 건설 불가로 남는 것 방지.
+        // 막을 때와 **같은 목록**으로 푼다(그동안 노드가 움직였어도 어긋나지 않는다).
+        if (MapManager.Instance != null)
+            foreach (var tile in _blockedTiles)
+                MapManager.Instance.SetTile(tile, TileData.MakePassable());
+        _blockedTiles.Clear();
     }
 
     // 월드 위치에서 타일 좌표 자동 파생
     public Vector2Int TileCoord =>
         MapManager.Instance.WorldToTile(transform.position);
 
+    [Tooltip("차지하는 타일 수 (가로×세로). 모델이 이 크기에 맞게 만들어져 있어야 한다.")]
+    [SerializeField] Vector2Int size = Vector2Int.one;
+
     float _gauge;
     int _totalYielded;
     bool _haulJobPending;
-    bool _tileBlocked;
-    Vector2Int _blockedTile;
+    readonly List<Vector2Int> _blockedTiles = new();
+
+    // 차지하는 칸들.
+    //
+    // **월드 중심에서 되짚는다** — `TileCoord`(위치를 floor한 칸)에서 퍼뜨리면 안 된다.
+    // 짝수 크기 건물은 배치할 때 칸 **경계**에 놓이므로(`BuildModeManager.FootprintCenter`),
+    // floor한 칸은 실제 왼쪽 끝보다 한 칸 오른쪽이다. 그대로 퍼뜨리면 배치가 등록한 칸과
+    // 한 칸 어긋나고, 둘의 합집합이 막혀 **2×1 광맥이 3칸을 막는다**(실제로 그랬다).
+    //
+    // 타일 중심은 `tile + 0.5`이므로(`MapManager.TileToWorld`), 맨 왼쪽 칸 중심은
+    // `중심 - (w-1)/2`이고 그 칸 번호는 그것을 floor한 값이다.
+    public IEnumerable<Vector2Int> Footprint
+    {
+        get
+        {
+            int w = Mathf.Max(1, size.x), h = Mathf.Max(1, size.y);
+            var pos = transform.position;
+
+            int minX = Mathf.FloorToInt(pos.x - (w - 1) * 0.5f);
+            int minY = Mathf.FloorToInt(pos.z - (h - 1) * 0.5f);
+
+            for (int x = 0; x < w; x++)
+            for (int y = 0; y < h; y++)
+                yield return new Vector2Int(minX + x, minY + y);
+        }
+    }
 
     void Awake()
     {
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
+
         // 빌드존 안일 때만 타일 막힘 표시 (시각화용). 실제 이동 차단은 콜라이더+NavMesh 담당.
-        if (MapManager.Instance != null && MapManager.Instance.IsInBuildZone(TileCoord))
+        // **차지한 칸 전부**를 막는다 — 한 칸만 막으면 큰 광맥의 나머지 칸에 건물이 겹쳐 지어진다.
+        if (MapManager.Instance == null) return;
+        foreach (var tile in Footprint)
         {
-            _blockedTile = TileCoord;
-            _tileBlocked = true;
-            MapManager.Instance.SetTile(_blockedTile, TileData.MakeImpassable());
+            if (!MapManager.Instance.IsInBuildZone(tile)) continue;
+            _blockedTiles.Add(tile);
+            MapManager.Instance.SetTile(tile, TileData.MakeImpassable());
         }
     }
 

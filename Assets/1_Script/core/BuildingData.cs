@@ -18,6 +18,10 @@ public class BuildingData : ScriptableObject
     [Tooltip("건설 목록 안에서의 순서. 작을수록 앞. 같으면 이름순. " +
              "폴더 스캔은 순서를 보장하지 않으므로 이 값이 메뉴 순서의 유일한 근거다.")]
     public int              SortOrder     = 0;
+    [Tooltip("차지하는 타일 수 (가로×세로). 회전하면 축이 바뀐다. " +
+             "모델이 이 크기에 맞게 만들어져 있어야 한다 — 코드는 칸만 잡고 모양은 안 건드린다.")]
+    public Vector2Int       Size = Vector2Int.one;
+
     public ResourceType     CostType;
     public int              CostAmount;
     public GameObject       Prefab;

@@ -7,7 +7,8 @@ public class HaulJob : JobBase
 
     enum Phase { GoToSource, GoToStorage }
 
-    ResourceNode _source;
+    // 출처는 **`IHaulSource`** — 자원 노드든 작업대 산출물이든 운반 규칙은 같다.
+    IHaulSource  _source;
     ItemData     _itemData;
     int          _amount;
     Storage      _storage;
@@ -15,7 +16,7 @@ public class HaulJob : JobBase
     Action       _onDone;
     UnitBrain    _carrier;   // 짐을 들고 있는 폰 (취소 시 내려놓기용)
 
-    public HaulJob(ResourceNode source, ItemData itemData, int amount, Storage storage, Action onDone = null)
+    public HaulJob(IHaulSource source, ItemData itemData, int amount, Storage storage, Action onDone = null)
     {
         _source   = source;
         _itemData = itemData;

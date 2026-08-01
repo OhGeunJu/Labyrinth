@@ -13,7 +13,17 @@ public class ItemSchema
     public string id;
     public string itemName;
     public string description;
-    public string iconPath;      // "Icons/iron_sword" → Resources.Load<Sprite>
+
+    // 그림. **자기 폴더 기준 상대 경로**를 쓸 것 — `"icons/iron_sword.png"`.
+    // 확장자는 생략해도 되고(PNG/JPG), 없으면 에셋 번들 → Resources 순으로도 찾는다(`ModAssets`).
+    public string iconPath;
+
+    // 바닥에 떨어질 때 쓰는 3D 모델. **`.obj`를 자기 폴더에 넣고 가리키면 된다** —
+    // 같은 폴더의 `.mtl`과 텍스처까지 같이 읽는다(`ObjModel`). `.fbx`는 런타임에 해석이 안 된다.
+    // 에셋 번들 안의 프리팹 이름도 받는다(뼈대·애니메이션이 필요할 때).
+    // 비우면 공용 꾸러미 모델로 폴백.
+    public string modelPath;
+
     public float  weight;
     public int    width  = 1;
     public int    height = 1;

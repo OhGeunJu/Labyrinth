@@ -34,28 +34,83 @@ public class CraftJob : JobBase
     readonly CraftingTable _table;
     readonly RecipeData    _recipe;
     float _craftEndTime;
+    float _startTime;
+    float _carriedSeconds;   // 이번에 붙기 전까지 이미 만들어 둔 몫
     bool  _timerStarted; // 유닛이 작업대에 도착해 실제 제작을 시작했는지
     bool  _consumed;   // 재료 차감됨 + 아직 완성 전 → 취소 시 환불 대상
 
+    // 실제로 만들고 있던 폰. **`Cancel()`이 `ReservedBy`를 먼저 비우므로** `OnCancelled`에서는
+    // 예약을 읽을 수 없다 — 여기에 붙들어 둔다(`HaulJob._carrier`와 같은 이유).
+    UnitBrain _crafter;
+
+    // 등급이 있는 결과물(무기·방어구)은 **만들던 폰이 이어서** 해야 한다.
+    bool IsEquipment => _recipe != null && (_recipe.Result is WeaponData || _recipe.Result is ArmorData);
+
+    float ElapsedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) : 0f;
+
     public override JobCategory Category => _recipe?.Category ?? JobCategory.Crafting;
 
+    // ── 진행 상황 (UI 게이지용) — `ResearchJob`과 같은 모양 ────────────────
+    public RecipeData Recipe => _recipe;
+
+    // 폰이 작업대에 붙어 타이머가 도는 동안에만 true. 걸어오는 중엔 false.
+    public bool IsRunning => _timerStarted && Status == JobStatus.InProgress;
+
+    // 이전에 만들어 둔 몫을 포함한다 — 이어서 하는 것이므로 게이지가 0부터 다시 차면 안 된다.
+    public float Progress
+    {
+        get
+        {
+            if (_recipe == null) return 0f;
+            float total = Mathf.Max(0.01f, _recipe.CraftTime);
+            return Mathf.Clamp01((_carriedSeconds + ElapsedThisSession) / total);
+        }
+    }
+
+    // 준비는 됐는데 **이 폰은 안 되는** 경우들.
+    public override bool CanAssignTo(UnitBrain unit)
+    {
+        if (_table == null || _recipe == null) return true;
+
+        // ① 플레이어가 지정한 제작자
+        var assigned = _table.GetAssignedCrafter(_recipe);
+        if (assigned != null && assigned != unit) return false;
+
+        // ② 이미 만들다 만 장비 — 그 폰만 이어받는다(등급이 만든 사람의 솜씨이므로).
+        //    만들던 폰이 죽었으면 `GetPartialOwner`가 진행을 버리고 null을 준다.
+        var owner = _table.GetPartialOwner(_recipe);
+        if (owner != null && owner != unit) return false;
+
+        return true;
+    }
+
     // 재료가 다 있어야 배정 — 없으면 큐에서 대기(주문 유지), 재료 입고 시 자동 재개.
-    public override bool IsReady => _table != null && _recipe != null && _table.CanCraft(_recipe);
+    //
+    // **연료도 같은 게이트에 넣는다.** 전에는 연료 없이도 배정돼서, 폰이 작업대에 붙은 뒤
+    // `Execute`의 연료 검사에 걸려 영원히 서 있었다. 폰이 하나뿐이면 그 폰이 연료를 채우러
+    // 갈 수 없으므로 **교착**이다 — 여기서 막으면 폰은 연료 보충 작업을 먼저 집어 간다.
+    public override bool IsReady =>
+        _table != null && _recipe != null && _table.CanCraft(_recipe) && _table.HasFuel;
 
     public CraftJob(CraftingTable table, RecipeData recipe)
     {
         _table  = table;
         _recipe = recipe;
         Priority = 1;
-        SetSite(table);
-
-        if (MapManager.Instance != null)
-            TileCoord = MapManager.Instance.WorldToTile(table.transform.position);
+        SetSite(table);   // 목표 칸(WorkSpot)도 여기서 정해진다
     }
 
     protected override void OnStart()
     {
         if (_recipe == null || _table == null) { Status = JobStatus.Done; return; }
+
+        // **이어서 하는 제작은 재료를 다시 받지 않는다.** 재료는 처음 시작할 때 한 번만 들어간다 —
+        // 아니면 중단·재개를 반복하는 것만으로 재료가 계속 빨려 들어간다(연구와 같은 정책).
+        if (_table.GetPartialSeconds(_recipe) > 0f)
+        {
+            Debug.Log($"[CraftJob] 이어서 제작 — {_recipe.RecipeName}");
+            return;
+        }
 
         // 재료 재확인 후 즉시 소비 (예약 개념).
         // IsReady 게이트로 거르지만, 예약~시작 사이 타 제작자가 소진했을 수 있어 여기서 한 번 더 확인.
@@ -65,6 +120,7 @@ public class CraftJob : JobBase
             if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
             {
                 Debug.Log($"[CraftJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요, 주문 대기열로 반환");
+                _table.OrderFinished();       // 이 인스턴스는 끝 — 바로 아래 재등록이 다시 +1
                 _table.QueueOrder(_recipe);   // 동등 주문 재등록 (IsReady 게이트로 대기)
                 Status = JobStatus.Done;      // 이 잡 인스턴스는 종료 → 유닛이 놓음
                 return;
@@ -81,14 +137,21 @@ public class CraftJob : JobBase
     protected override void Execute(UnitBrain unit)
     {
         if (_recipe == null || _table == null) { Status = JobStatus.Done; return; }
+        _crafter = unit;
 
         // 연료 없으면 대기 (FuelJob이 채워줄 때까지)
         if (!_table.HasFuel) return;
 
         if (!_timerStarted)
         {
-            _timerStarted = true;
-            _craftEndTime = Time.time + _recipe.CraftTime;
+            _timerStarted   = true;
+            _startTime      = Time.time;
+            _carriedSeconds = _table.GetPartialSeconds(_recipe);
+
+            // **남은 만큼만** 잰다. 매 틱 누적하지 않는 이유는 BT가 `tickInterval`마다 돌아
+            // 프레임 델타를 더하면 시간이 6배 이상 느려지기 때문이다(알려진 이슈).
+            _craftEndTime = Time.time + Mathf.Max(0.01f, _recipe.CraftTime - _carriedSeconds);
+            _table.SetActiveJob(this);   // 이때부터 패널 게이지가 이 잡을 읽는다
         }
         if (Time.time < _craftEndTime) return;
 
@@ -97,7 +160,7 @@ public class CraftJob : JobBase
         bool  skilled  = skill >= required;
 
         // ── 장비(무기/방어구)는 등급 판정, 나머지는 수량 배율 ─────────────────
-        bool isEquip = _recipe.Result is WeaponData || _recipe.Result is ArmorData;
+        bool isEquip = IsEquipment;
 
         int         finalAmount;
         ItemQuality quality;
@@ -118,9 +181,20 @@ public class CraftJob : JobBase
         // 완성품 생성 시점 — 재료는 결과물로 전환됨, 환불 대상 아님
         _consumed = false;
 
-        // ── 인벤토리 입고 / 드롭 ──────────────────────────────────────────────
-        int added    = unit.Inventory.TryAdd(_recipe.Result, finalAmount, quality);
-        int leftover = finalAmount - added;
+        // ── 산출물 입고 ───────────────────────────────────────────────────────
+        // **작업대 산출물 칸이 먼저다.** 폰 인벤토리에 바로 넣으면 그 폰이 완성품을 들고
+        // 돌아다니게 되고(다음 일감을 하러 가 버린다), 넘치는 만큼은 바닥에 떨어져
+        // 어디로 갔는지 알 수 없다. 산출물은 작업대에서 기다리다 운반으로 창고에 간다.
+        int toTable  = _table.Inventory != null ? _table.Inventory.TryAdd(_recipe.Result, finalAmount, quality) : 0;
+        int leftover = finalAmount - toTable;
+
+        // 산출물 칸이 꽉 찼을 때만 폰이 받고, 그마저 안 되면 바닥에 떨군다(증발 방지).
+        int toUnit = 0;
+        if (leftover > 0)
+        {
+            toUnit    = unit.Inventory.TryAdd(_recipe.Result, leftover, quality);
+            leftover -= toUnit;
+        }
         if (leftover > 0)
             DroppedItem.Spawn(_recipe.Result, leftover, _table.transform.position + Vector3.up * 0.3f, quality);
 
@@ -134,12 +208,17 @@ public class CraftJob : JobBase
         }
 
         // ── 로그 ──────────────────────────────────────────────────────────────
-        string dest      = added > 0 && leftover == 0 ? "인벤토리"
-                         : added > 0                   ? $"인벤토리 {added} + 드롭 {leftover}"
-                         :                               "드롭";
+        var parts = new System.Collections.Generic.List<string>(3);
+        if (toTable  > 0) parts.Add($"산출물 {toTable}");
+        if (toUnit   > 0) parts.Add($"인벤토리 {toUnit}");
+        if (leftover > 0) parts.Add($"드롭 {leftover}");
+        string dest = string.Join(" + ", parts);
         string qualLabel = isEquip ? $" [{quality.DisplayName()}]" : "";
         string penalty   = !skilled ? " (스킬 미달 -50%)" : "";
         Debug.Log($"[CraftJob] 제작 완료 — {_recipe.RecipeName}{qualLabel} ×{finalAmount}{penalty} → {dest}  ({_recipe.RequiredSkillType} {skill:F0})");
+        _table.ClearActiveJob(this);
+        _table.ClearPartial(_recipe);   // 완성됐으니 부분 진행은 지운다
+        _table.OrderFinished();
         Status = JobStatus.Done;
     }
 
@@ -147,9 +226,20 @@ public class CraftJob : JobBase
     // 운반 작업이 창고로 회수 → 재료 손실 방지.
     protected override void OnCancelled()
     {
+        _table?.ClearActiveJob(this);   // 게이지가 완료되지 않은 채 남아 있지 않게
+        _table?.OrderFinished();        // 아래 QueueOrder가 다시 +1 한다 → 합계는 유지
         if (_recipe == null) return;
 
-        if (_consumed)
+        // **만들던 것을 버리지 않는다.** 폰이 밥을 먹으러 가거나 죽거나 이동 명령을 받아도
+        // 진행이 남는다 — 그러지 않으면 긴 제작은 한 번도 안 끊길 수가 없어 영영 못 끝낸다.
+        // 장비는 `Owner`를 함께 저장해 **만들던 폰만 이어받게** 한다(등급이 그 폰의 솜씨이므로).
+        float done = _carriedSeconds + ElapsedThisSession;
+        if (done > 0f && _table != null)
+            _table.SavePartial(_recipe, done, IsEquipment ? _crafter : null);
+
+        // 진행이 있었으면 재료는 돌려주지 않는다 — 이미 물건에 들어갔고,
+        // 돌려주면서 진행까지 남기면 중단·재개로 재료를 복사할 수 있다(연구와 같은 정책).
+        if (_consumed && done <= 0f)
         {
             _consumed = false;
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
@@ -158,8 +248,6 @@ public class CraftJob : JobBase
         }
 
         // 주문 자체는 잃지 않는다 — 큐에 되돌려 다른 폰(또는 나중에 이 폰)이 이어받게 한다.
-        // 재료 부족 경로와 같은 정책. 취소가 사망뿐 아니라 **플레이어 이동 명령**으로도
-        // 일어나게 됐으므로, 주문이 조용히 사라지면 안 된다.
         _table?.QueueOrder(_recipe);
     }
 }

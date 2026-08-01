@@ -52,7 +52,11 @@ public class ResearchEntryUI : MonoBehaviour
         if (btn != null)
         {
             btn.onClick.RemoveAllListeners();
-            btn.interactable = !completed && canResearch;
+
+            // **잠겨도 눌러진다.** 무엇이 열리는지 봐야 그 연구를 할지 정하는데, 버튼을 죽여 두면
+            // 이름만 보고 짐작해야 한다(제작 레시피에 08-01에 한 것과 같은 처리).
+            // 실제 착수만 막는다 — 디테일 창의 [연구] 버튼이 잠금을 다시 검사한다.
+            btn.interactable = !completed;
             if (btn.interactable) btn.onClick.AddListener(() => OnSelected?.Invoke(_data));
         }
     }

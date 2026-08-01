@@ -55,6 +55,13 @@ public class JobManager : MonoBehaviour
 
         JobBase best      = null;
         int     bestScore = -1;
+        float   bestDist  = float.MaxValue;
+
+        // 동점일 때 **가까운 것**을 고른다.
+        // 전에는 점수만 봤는데 같은 카테고리·같은 Priority면 점수가 **완전히 같아서**
+        // 항상 `_jobs`에 먼저 들어간 것이 이겼다. 그래서 계속 일감을 뿜는 노드 하나가
+        // 뒤에 등록된 노드의 운반을 영구히 굶겼다 — 폰을 늘려도 전부 같은 곳으로 갔다.
+        Vector3 from = unit != null ? unit.transform.position : Vector3.zero;
 
         foreach (var job in _jobs)
         {
@@ -67,9 +74,19 @@ public class JobManager : MonoBehaviour
             if (weight <= 0) continue;
 
             if (settings != null && !settings.IsEnabled(job.Category)) continue;
+            if (!job.CanAssignTo(unit)) continue;   // 지정 제작자 / 만들던 사람만 이어받는 장비
 
-            int score = weight * 100 + job.Priority;
-            if (score > bestScore) { bestScore = score; best = job; }
+            int   score = weight * 100 + job.Priority;
+            float dist  = MapManager.Instance != null
+                        ? Vector3.SqrMagnitude(MapManager.Instance.TileToWorld(job.TileCoord) - from)
+                        : 0f;
+
+            if (score > bestScore || (score == bestScore && dist < bestDist))
+            {
+                bestScore = score;
+                bestDist  = dist;
+                best      = job;
+            }
         }
 
         if (best != null && best.Reserve(unit))

@@ -289,18 +289,11 @@ public class WorkNode : BTNode
         return new Vector3(world.x, bb.Self.transform.position.y, world.z);
     }
 
-    Vector2Int GetAdjacentPassable(Vector2Int tile)
-    {
-        Vector2Int[] dirs = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
-        foreach (var dir in dirs)
-        {
-            var neighbor = tile + dir;
-            if (MapManager.Instance.GetTile(neighbor.x, neighbor.y).IsPassable
-                && MapManager.Instance.IsStandable(neighbor))   // 공허 게이트: 바닥 밖 접근 타일 제외
-                return neighbor;
-        }
-        return tile;
-    }
+    // 목표 칸이 이미 설 수 있으면 그대로 간다(`WorkSpot`이 정해 준 자리가 대개 그렇다).
+    // 아니면 **대각선과 반경 2까지** 넓혀 찾는다 — 상하좌우 4칸만 보면 건물이 몰린 곳에서
+    // 전부 막혀 "막힌 칸 자신"을 목적지로 돌려주고, 그러면 폰이 영영 도착하지 못한다.
+    Vector2Int GetAdjacentPassable(Vector2Int tile) =>
+        MapManager.Instance.FindWorkableNear(tile);
 }
 
 // 순찰: 배정된 PatrolZone이 있으면 웨이포인트 또는 구역 내 랜덤 이동

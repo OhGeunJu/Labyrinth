@@ -26,7 +26,8 @@
 {
   "type": "weapon",
   "itemName": "철검",
-  "iconPath": "Icons/iron_sword",
+  "iconPath": "icons/iron_sword.png",
+  "modelPath": "IronSword",
   "weight": 2.0,
   "weaponType": "OneHandSword",
   "isBladed": true,
@@ -70,9 +71,63 @@
 - `resourceType`: `Stone`, `CutStone`, `IronOre`, `CopperOre`, `TinOre`, `Coal`, `SilverOre`, `GoldOre`, `MagicStone`, `Ruby`, `Sapphire`, `Topaz`, `Emerald`, `Etherstone`, `Voidstone`, `Bronze`, `Steel`, `SilverIngot`, `GoldIngot`, `Wood`, `Lumber`
 - `requiredSkillType`: `Labor`, `WeaponCrafting`, `ArmorCrafting`, `Cooking`, `Alchemy`, `Research`, `Smelting`, `Stonecutting`, `Woodworking`, `Gemcutting`
 
-**아이콘**: `iconPath`는 `Resources/` 기준 경로 (확장자 제외). 스프라이트를 `Assets/Resources/Icons/`에 위치.
-
 **미구현 JSON 타입** (향후 추가 예정): UnitData/MinionData, SubCoreData (프리팹 참조 문제), ResearchData
+
+## 모드가 그림·모델을 들고 온다 (`ModAssets`, 2026-08-01)
+
+전에는 `iconPath`가 `Resources.Load` 하나였다 — **빌드에 이미 들어 있는 것만** 가리킬 수 있었으니 모드가 새 PNG를 넣을 자리가 없었고, 모델은 경로 필드조차 없었다. 그래서 "숫자만 바꾸는 모드"까지만 가능했다.
+
+`ModAssets.LoadSprite(path, root)` / `LoadPrefab(path, root)`가 **경로 하나를 세 곳에서 차례로 찾는다**:
+
+| 순서 | 어디서 | 무엇에 쓰이나 |
+|---|---|---|
+| 1 | **그 콘텐츠 폴더 안의 파일** — `icons/x.png`, `models/x.obj` | **모드 구조의 본체.** 그림(PNG/JPG)과 모델(OBJ). 확장자 생략 가능 |
+| 2 | **에셋 번들** — 모드 폴더의 `*.bundle`(하위 폴더 포함) 안 에셋 이름 | OBJ로 표현 못 하는 것(프리팹·뼈대·애니메이션) |
+| 3 | **Resources** | 예전 동작. 기본 콘텐츠 호환용 폴백 |
+
+- `root`(콘텐츠 폴더)는 `DataManager`가 로딩 내내 들고 다닌다 — 그래서 **폴더를 통째로 넣고 빼면 콘텐츠가 통째로 들어오고 나간다.**
+- **폴더 밖(`../`)은 해석하지 않는다.** 모드가 남의 파일을 읽을 이유가 없다.
+- 캐시 키는 `루트|경로`이고 **실패(null)도 캐시한다** — 100개가 같은 그림을 가리켜도 파일은 한 번만 읽고, 없는 경로를 매번 다시 훑지 않는다.
+- 만든 텍스처·스프라이트는 `Reset`(Play 재시작)에서 직접 지운다. **에셋 번들도 반드시 내린다** — 안 내리면 다음 Play에서 같은 파일을 못 열어 그 모드의 모델이 통째로 사라진다.
+
+### 모델은 OBJ로 넣는다 (`ObjModel`)
+
+**번들만으로는 모드 구조가 성립하지 않는다.** 번들을 구우려면 모드 제작자가 유니티를 설치하고 **정확히 같은 버전**으로 구워야 한다 — "폴더를 넣으면 된다"가 모델에서만 깨진다.
+
+`.fbx`는 런타임에 해석할 방법이 없지만 **`.obj`는 순수 텍스트라 읽을 수 있고 모든 3D 툴이 내보낸다.** 그래서 `ObjModel`이 OBJ/MTL을 직접 파싱한다 — 텍스처는 이미 있는 PNG 로더가 받는다.
+
+| 읽는 것 | |
+|---|---|
+| OBJ | `v` · `vt` · `vn` · `f`(n각형 부채꼴 삼각화) · `usemtl`(재료별 서브메시) · `mtllib` |
+| MTL | `newmtl` · `Kd`(기본색) · `d`/`Tr`(투명) · `map_Kd`(텍스처) |
+| 안 함 | 뼈대·애니메이션·PBR 맵 — 그건 에셋 번들 몫 |
+
+구현에서 틀리기 쉬운 지점:
+- **좌표계.** OBJ는 오른손(Y 위, −Z 앞), 유니티는 왼손. **Z를 뒤집고 삼각형 감는 방향도 뒤집는다** — 축만 뒤집으면 거울상이 되고, 감는 방향만 뒤집으면 앞뒤가 뒤집혀 안쪽만 보인다.
+- **정점 펼치기.** OBJ는 위치·UV·법선을 따로 색인하지만 유니티 메시는 정점 하나에 셋이 함께 붙는다. `v/vt/vn` 조합마다 정점을 하나씩 만들어야 한다.
+- **색인은 1부터, 음수는 끝에서 센다**(−1 = 마지막). 음수 색인을 빠뜨리면 그걸 쓰는 도구가 뽑은 파일이 통째로 깨진다.
+- **`InvariantCulture`로 파싱한다.** 한국어 윈도우 기본 문화권으로 읽으면 소수점 해석이 달라져 좌표가 통째로 어긋난다.
+- **정점 65535개를 넘으면 `IndexFormat.UInt32`.** 안 올리면 조용히 잘린다.
+- **법선이 하나라도 비면 통째로 다시 계산한다.** 섞으면 그 면만 새까맣게 나온다.
+
+런타임에 만든 모델을 `Instantiate` 원본으로 쓰는 데도 함정이 있다. 원본이 그냥 씬에 있으면 원점에 모델이 하나 떠 있고, 원본을 끄면 **사본도 꺼진 채로 나와 떨어진 아이템이 안 보인다.** → **부모만 끄고 원본은 켜 둔다**(`[ModAssets Templates]`). 사본은 부모 없이 태어나므로 정상이다.
+
+### 에셋 번들 (보조 경로)
+
+OBJ로 표현 못 하는 것 — 프리팹, 뼈대, 애니메이션 — 만 번들로 간다.
+
+```
+에디터: 모델·프리팹 선택 → DungeonColony → Build Mod AssetBundle → 모드 폴더 지정
+JSON:   "modelPath": "<번들 안의 에셋 이름>"
+```
+
+번들 이름은 **모드 폴더 이름**이라 모드마다 하나씩 생기고, 다시 구우면 덮어써 쌓이지 않는다. 압축은 청크(LZ4) — `LoadFromFile`은 기본 LZMA면 통째로 풀어야 해서 느려진다. **번들은 유니티 버전·플랫폼마다 다르다**(다른 버전에서 구운 것은 안 열린다).
+
+`.fbx`를 그냥 폴더에 넣는 흔한 실수는 `ModAssets`가 파일 이름으로 알아채 "OBJ로 내보내라"고 알려 준다. 그냥 "못 찾음"이라고만 하면 파일이 눈앞에 있으니 원인을 못 찾는다.
+
+### 예시 모드
+
+`StreamingAssets/Mods/ExampleMod/` — 아이템 1 + 레시피 1 + 아이콘 PNG + OBJ/MTL/텍스처. **유니티 없이 이것만으로 실린다.** `용광로`에서 구리 광석 1개로 `예시 부적`을 만들 수 있고, 목록에서 고르면 결과 그림에 모드의 PNG가, 바닥에 버리면 줄무늬 팔면체가 나온다. **검증용이므로 지워도 된다**(지우면 안의 콘텐츠도 함께 사라진다). 폴더 구조와 규칙은 그 안의 `README.txt`.
 
 ## ScriptableObject Assets (`Assets/Resources/Data/`)
 

@@ -307,6 +307,14 @@ Content
 | `Setup World Map Scene` | 월드맵에 필요한 오브젝트/컴포넌트를 **없는 것만 채우고 참조만 잇는다**(WorldMap·SettlementManager·GameModeManager·WorldMapView·MapRoot·WorldCamera·WorldMapGrid + 에셋 배선). **아무것도 지우지 않는다** — MapRoot 아래 지형과 손으로 맞춘 카메라가 살아남아야 하므로. 여러 번 실행해도 안전. | 배선이 끊길 때마다 다시 돌리는 **복구 도구** |
 | `Create Biome Content Assets` | `Resources/Data/Biomes/`에 바이옴별 `BiomeContentData` 스캐폴드 생성. 이미 있으면 건너뛴다. | 실행됨(에셋 7종 생성). 바이옴을 늘리면 다시 돌린다 |
 | `Toggle Movement Diagnostics` | 이동 계측 on/off. | 이동 개편 Play Mode 검증이 아직 안 끝났다 |
+| `Relayout Research Detail Panel` | 연구대 디테일 패널의 칸을 다시 나눈다(제목·시간·설명·선행/해금·재료를 위에서 쌓고, 게이지·[연구] 버튼은 바닥 고정). **아무것도 만들거나 지우지 않고** RectTransform만 다시 잡으므로 여러 번 실행해도 안전하다. 글자 줄바꿈·자동 축소도 같이 못 박는다 — 칸만 넓히면 자동 축소가 꺼져 있어 여전히 잘린다 | 칸이 어긋날 때 다시 돌리는 **복구 도구** |
+| `Create Research Assets` | `Resources/Data/Research/`에 연구 에셋 생성(연금술·원소 공학). **없는 것만 만든다.** `UnlockedRecipes`는 비워 둔다 — JSON 레시피가 `requiredResearchId`로 자기를 가리키므로, 양쪽에 적으면 목록이 어긋났을 때 어느 쪽이 맞는지 알 수 없다 | 연구를 늘릴 때 다시 돌리는 **저작 도구** |
+| `Create New Buildings` | `3_Prefab` 프리팹 + `Resources/Data/Buildings` 데이터를 한 쌍으로 생성(벽·큰 창고). **없는 것만 만든다.** 레지스트리 방식이라 씬은 안 건드린다 | 건물을 늘릴 때 다시 돌리는 **저작 도구** |
+| `Resize Buildings And Rebuild Models` | `BuildingData.Size`를 정하고 **모델을 그 크기로 다시 짓는다**(작업대 8종·연구대·침대·창고). 기존 모델은 조각마다 회전이 있어 부모를 비균등 스케일하면 찌그러진다 — 늘리는 대신 파라미터로 다시 조립한다. **`WorkSpot`은 안 지우고** 새 크기의 앞 가장자리로 옮긴다. 제자리 수정이라 `BuildingData.Prefab` 참조가 유지된다 | 크기를 바꿀 때마다 다시 돌리는 **저작 도구** |
+| `Setup Work Spots` | `3_Prefab`의 작업대·연구대 프리팹에 **작업 자리(`WorkSpot`)** 를 붙인다(건물 앞 1칸, 반투명 표식 포함). **이미 있으면 건너뛴다.** 프리팹은 **제자리 수정**(`LoadPrefabContents` → `SaveAsPrefabAsset` 같은 경로)이라 `BuildingData.Prefab` 참조가 안 끊긴다 | 작업대를 늘릴 때 다시 돌리는 **배선 도구** |
+| `Upgrade Crafting Table Panel` | 작업대 패널에 연료 게이지·산출물 그리드·운반 허용 버튼을 붙이고 `CraftingTableUI`에 배선. 새 구역을 **패널 아래에 매달아** 기존 자식 좌표를 안 건드린다. 다시 실행하면 이전 구역을 지우고 새로 짓는다 | 산출물/연료 배치를 다시 만들 때 쓰는 **재생성 도구** |
+| `Migrate Minion Prefabs` | 씬의 `DungeonCore.minionEntries` 배선을 레지스트리로 이전 — 씬 오브젝트를 `3_Prefab/Minion_*.prefab`으로 뜨고(**있으면 안 만듦**) `MinionData.Prefab`에 연결한 뒤 `minionEntries`를 비운다. **전부 성공했을 때만** 비운다(대체물 없이 지우면 소환이 죽는다). 뜰 때 **루트를 켠다** — 씬 템플릿이 꺼져 있어 그대로 뜨면 소환된 하수인이 꺼진 채 나온다 | 하수인 종류를 늘릴 때 다시 돌리는 **이전 도구** |
+| `Build Mod AssetBundle` | 프로젝트 창에서 고른 모델·프리팹·텍스처를 에셋 번들로 구워 모드 폴더에 넣는다. 번들 이름 = **모드 폴더 이름**(모드마다 하나, 다시 구우면 덮어씀). 읽는 쪽은 `ModAssets`. | **유니티가 런타임에 .fbx/.obj를 못 읽어서** 모드가 모델을 넣으려면 번들이 유일한 길이다. 모드를 만들 때마다 쓰는 **상시 도구** |
 
 **씬을 건드리는 생성기는 씬을 직접 저장해야 한다.** `AssetDatabase.SaveAssets()`는 **에셋만** 저장한다 — 씬 컴포넌트를 고치고 `EditorUtility.SetDirty`만 부르면 씬이 더티로 표시되지 않아 저장 대상에서 빠지고, Unity를 닫는 순간 작업이 통째로 날아간다. 2026-07-31에 건설 목록 등록 15건과 연구 게이지 배선이 이렇게 사라졌다.
 ```csharp

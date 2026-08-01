@@ -10,6 +10,10 @@ using UnityEngine;
 //   1. Resources/Data/Items, Recipes, Research  ← 기존 SO 에셋 (Assets/Resources/Data/ 폴더에 위치해야 함)
 //   2. StreamingAssets/Data/items, recipes      ← 기본 JSON 콘텐츠 (덮어쓰기 + 신규)
 //   3. StreamingAssets/Mods/*/items, recipes    ← 모드 JSON (덮어쓰기 + 신규)
+//
+// 2·3의 **그림·모델은 그 폴더 안에서 찾는다**(`ModAssets`) — 그래서 폴더를 통째로 넣고 빼면
+// 콘텐츠가 통째로 들어오고 나간다. 어느 폴더에서 왔는지(`contentRoot`)를 로딩 내내 들고 다니는
+// 이유가 이것이다. 빌드에 들어 있는 것만 가리키던 `Resources.Load`는 마지막 폴백으로 남았다.
 public static class DataManager
 {
     static bool _initialized;
@@ -34,6 +38,13 @@ public static class DataManager
     static readonly Dictionary<string, BuildingData> _buildings = new(StringComparer.OrdinalIgnoreCase);
     static readonly List<BuildingData>               _buildingOrder = new();
 
+    // 종족. `UnitData`로 담으므로 `MinionData`·`NpcData`까지 한 번에 들어온다
+    // (`Resources.LoadAll<UnitData>`가 파생 타입을 함께 준다).
+    static readonly Dictionary<string, UnitData> _units = new(StringComparer.OrdinalIgnoreCase);
+
+    // 소환 목록도 순서가 곧 메뉴 순서라 정렬된 리스트로 따로 둔다(건설 목록과 같은 이유).
+    static readonly List<MinionData> _minionOrder = new();
+
     // 에디터에서 Play 재시작 시 static 상태 초기화
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void Reset()
@@ -44,6 +55,8 @@ public static class DataManager
         _research.Clear();
         _buildings.Clear();
         _buildingOrder.Clear();
+        _units.Clear();
+        _minionOrder.Clear();
         _itemsByName.Clear();
         _recipesByName.Clear();
         _warnedLegacyKeys.Clear();
@@ -111,6 +124,15 @@ public static class DataManager
     public static BuildingData GetBuilding(string name) =>
         _buildings.TryGetValue(name, out var v) ? v : null;
 
+    // 종족 — 방랑자·하수인·NPC 전부. 적/NPC 스폰을 데이터로 옮길 때도 이 색인을 쓴다.
+    public static IReadOnlyDictionary<string, UnitData> AllUnits => _units;
+
+    public static UnitData GetUnit(string key) =>
+        !string.IsNullOrEmpty(key) && _units.TryGetValue(key, out var v) ? v : null;
+
+    // 소환 목록. **이 순서 그대로 던전 핵 메뉴에 뜬다**(SortOrder → 이름).
+    public static IReadOnlyList<MinionData> AllMinions => _minionOrder;
+
     // ── 로딩 ──────────────────────────────────────────────────────────────
 
     static void LoadAll()
@@ -128,27 +150,32 @@ public static class DataManager
         foreach (var b in Resources.LoadAll<BuildingData>("Data/Buildings"))
             if (b != null) _buildings[DataId.Resolve(b, b.Id)] = b;
 
+        foreach (var u in Resources.LoadAll<UnitData>("Data/Units"))
+            RegisterUnit(u);
+
         SortBuildings();
+        SortMinions();
 
         // 2) StreamingAssets JSON
         string dataRoot = Path.Combine(Application.streamingAssetsPath, "Data");
         if (Directory.Exists(dataRoot))
         {
-            LoadJsonItems(   Path.Combine(dataRoot, "items"));
+            LoadJsonItems(   Path.Combine(dataRoot, "items"), dataRoot);
             LoadJsonRecipes( Path.Combine(dataRoot, "recipes"));
         }
 
-        // 3) 모드
+        // 3) 모드 — 폴더 하나가 모드 하나다. **그림·모델도 그 폴더에서 찾는다**(두 번째 인자).
         string modsRoot = Path.Combine(Application.streamingAssetsPath, "Mods");
         if (Directory.Exists(modsRoot))
             foreach (var modDir in Directory.GetDirectories(modsRoot))
             {
-                LoadJsonItems(   Path.Combine(modDir, "items"));
+                LoadJsonItems(   Path.Combine(modDir, "items"), modDir);
                 LoadJsonRecipes( Path.Combine(modDir, "recipes"));
             }
 
         Debug.Log($"[DataManager] 로드 완료: 아이템 {_items.Count}개, 레시피 {_recipes.Count}개, " +
-                  $"연구 {_research.Count}개, 건물 {_buildings.Count}개");
+                  $"연구 {_research.Count}개, 건물 {_buildings.Count}개, " +
+                  $"종족 {_units.Count}개(소환 가능 {_minionOrder.Count}개)");
     }
 
     // ── 등록 ──────────────────────────────────────────────────────────────
@@ -180,6 +207,30 @@ public static class DataManager
         if (!string.IsNullOrEmpty(recipe.RecipeName)) _recipesByName[recipe.RecipeName] = recipe;
     }
 
+    static void RegisterUnit(UnitData unit)
+    {
+        if (unit == null) return;
+        string id = DataId.Resolve(unit, unit.Id);
+        if (string.IsNullOrEmpty(id)) return;
+
+        if (_units.TryGetValue(id, out var prev) && prev != unit)
+            Debug.LogWarning($"[DataManager] 종족 Id 충돌 '{id}' — '{prev.name}'을(를) '{unit.name}'이(가) 덮어씁니다.");
+
+        _units[id] = unit;
+        if (unit is MinionData m && !_minionOrder.Contains(m)) _minionOrder.Add(m);
+    }
+
+    // 소환 메뉴 순서 = 저작한 SortOrder → 이름. 건설 목록과 같은 이유로 여기서 못 박는다.
+    static void SortMinions()
+    {
+        _minionOrder.Sort((a, b) =>
+        {
+            int c = a.SortOrder.CompareTo(b.SortOrder);
+            if (c != 0) return c;
+            return string.Compare(a.RaceName, b.RaceName, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
     // 건설 메뉴 순서 = 탭(Category) → 저작한 SortOrder → 이름.
     // `Resources.LoadAll`은 순서를 보장하지 않으므로 여기서 못 박지 않으면
     // 실행할 때마다 메뉴 배치가 달라진다.
@@ -199,7 +250,9 @@ public static class DataManager
 
     // ── 아이템 JSON ────────────────────────────────────────────────────────
 
-    static void LoadJsonItems(string folder)
+    // `contentRoot` = 이 JSON이 속한 콘텐츠 폴더(모드 폴더 또는 StreamingAssets/Data).
+    // 그림·모델 경로를 여기 기준으로 푼다 — 없으면 Resources만 본다(예전 동작).
+    static void LoadJsonItems(string folder, string contentRoot)
     {
         if (!Directory.Exists(folder)) return;
         foreach (var file in Directory.GetFiles(folder, "*.json", SearchOption.AllDirectories))
@@ -210,11 +263,11 @@ public static class DataManager
                 var hint = JsonUtility.FromJson<ItemTypeHint>(json);
                 ItemData item = hint?.type?.ToLower() switch
                 {
-                    "weapon"   => BuildWeapon(  JsonUtility.FromJson<WeaponSchema>(json)),
-                    "armor"    => BuildArmor(   JsonUtility.FromJson<ArmorSchema>(json)),
-                    "resource" => BuildResource(JsonUtility.FromJson<ResourceItemSchema>(json)),
-                    "food"     => BuildFood(    JsonUtility.FromJson<FoodSchema>(json)),
-                    _          => BuildItem(    JsonUtility.FromJson<ItemSchema>(json)),
+                    "weapon"   => BuildWeapon(  JsonUtility.FromJson<WeaponSchema>(json),       contentRoot),
+                    "armor"    => BuildArmor(   JsonUtility.FromJson<ArmorSchema>(json),        contentRoot),
+                    "resource" => BuildResource(JsonUtility.FromJson<ResourceItemSchema>(json), contentRoot),
+                    "food"     => BuildFood(    JsonUtility.FromJson<FoodSchema>(json),         contentRoot),
+                    _          => BuildItem(    JsonUtility.FromJson<ItemSchema>(json),         contentRoot),
                 };
                 RegisterItem(item);   // Id 색인 + 표시명 보조 색인 + 충돌 경고
             }
@@ -295,7 +348,7 @@ public static class DataManager
 
     // ── SO 생성 헬퍼 ──────────────────────────────────────────────────────
 
-    static void ApplyBase(ItemData item, ItemSchema s)
+    static void ApplyBase(ItemData item, ItemSchema s, string root)
     {
         // JSON 아이템은 에셋 파일이 아니라 `.name`이 비어 있다 —
         // `DataId.Resolve`의 파일명 폴백이 통하지 않으므로 여기서 Id를 못 박는다.
@@ -307,21 +360,27 @@ public static class DataManager
         item.Weight      = s.weight;
         item.Width       = Mathf.Max(1, s.width);
         item.Height      = Mathf.Max(1, s.height);
+
+        // 그림·모델은 **이 콘텐츠가 온 폴더 안에서** 먼저 찾는다(`ModAssets`).
+        // 그래야 모드가 자기 PNG를 들고 올 수 있다 — 예전엔 `Resources.Load`뿐이라
+        // 빌드에 이미 들어 있는 것만 가리킬 수 있었다.
         if (!string.IsNullOrEmpty(s.iconPath))
-            item.Icon = Resources.Load<Sprite>(s.iconPath);
+            item.Icon = ModAssets.LoadSprite(s.iconPath, root);
+        if (!string.IsNullOrEmpty(s.modelPath))
+            item.WorldModel = ModAssets.LoadPrefab(s.modelPath, root);
     }
 
-    static ItemData BuildItem(ItemSchema s)
+    static ItemData BuildItem(ItemSchema s, string root)
     {
         var item = ScriptableObject.CreateInstance<ItemData>();
-        ApplyBase(item, s);
+        ApplyBase(item, s, root);
         return item;
     }
 
-    static WeaponData BuildWeapon(WeaponSchema s)
+    static WeaponData BuildWeapon(WeaponSchema s, string root)
     {
         var w = ScriptableObject.CreateInstance<WeaponData>();
-        ApplyBase(w, s);
+        ApplyBase(w, s, root);
         if (Enum.TryParse<WeaponType>(    s.weaponType,     ignoreCase: true, out var wt)) w.Type           = wt;
         if (Enum.TryParse<DamageCategory>(s.damageCategory, ignoreCase: true, out var dc)) w.DamageCategory = dc;
         if (Enum.TryParse<PhysicalType>(  s.physicalType,   ignoreCase: true, out var pt)) w.PhysicalType   = pt;
@@ -338,28 +397,28 @@ public static class DataManager
         return w;
     }
 
-    static ArmorData BuildArmor(ArmorSchema s)
+    static ArmorData BuildArmor(ArmorSchema s, string root)
     {
         var a = ScriptableObject.CreateInstance<ArmorData>();
-        ApplyBase(a, s);
+        ApplyBase(a, s, root);
         if (Enum.TryParse<ArmorSlot>(s.armorSlot, ignoreCase: true, out var slot)) a.Slot = slot;
         a.DamageReduction = s.damageReduction;
         return a;
     }
 
-    static ResourceItemData BuildResource(ResourceItemSchema s)
+    static ResourceItemData BuildResource(ResourceItemSchema s, string root)
     {
         var r = ScriptableObject.CreateInstance<ResourceItemData>();
-        ApplyBase(r, s);
+        ApplyBase(r, s, root);
         if (Enum.TryParse<ResourceType>(s.resourceType, ignoreCase: true, out var rt)) r.ResourceType = rt;
         r.Stack = s.maxStack;
         return r;
     }
 
-    static FoodData BuildFood(FoodSchema s)
+    static FoodData BuildFood(FoodSchema s, string root)
     {
         var f = ScriptableObject.CreateInstance<FoodData>();
-        ApplyBase(f, s);
+        ApplyBase(f, s, root);
         f.NutritionValue = s.nutritionValue;
         f.EatTime        = s.eatTime;
         return f;

@@ -19,10 +19,7 @@ public class FuelJob : JobBase
         _table    = table;
         _fuel     = fuel;
         Priority  = 3;
-        SetSite(table);
-        TileCoord = MapManager.Instance != null
-            ? MapManager.Instance.WorldToTile(table.transform.position)
-            : Vector2Int.zero;
+        SetSite(table);   // 목표 칸(WorkSpot)도 여기서 정해진다
     }
 
     protected override void OnStart()

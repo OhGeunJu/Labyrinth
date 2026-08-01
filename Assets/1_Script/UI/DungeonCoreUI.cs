@@ -91,11 +91,12 @@ public class DungeonCoreUI : MonoBehaviour
         foreach (Transform child in minionContainer)
             Destroy(child.gameObject);
 
-        foreach (var entry in _core.MinionEntries)
+        // 목록의 출처는 `DungeonCore.Minions` — 씬 배열이 비면 레지스트리다.
+        foreach (var data in _core.Minions)
         {
-            if (entry.Data == null) continue;
+            if (data == null) continue;
             var ui = Instantiate(minionEntryPrefab, minionContainer);
-            ui.Setup(entry.Data);
+            ui.Setup(data);
             ui.OnSummon += OnSummonClicked;
         }
     }

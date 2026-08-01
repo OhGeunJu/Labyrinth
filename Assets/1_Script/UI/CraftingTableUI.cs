@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -21,6 +22,39 @@ public class CraftingTableUI : MonoBehaviour
     [SerializeField] TextMeshProUGUI craftTimeText;
     [SerializeField] Button          craftButton;
 
+    [Header("제작자 지정 (디테일 패널)")]
+    [SerializeField] Button          crafterButton;
+    [SerializeField] TextMeshProUGUI crafterText;
+
+    [Header("제작자 고르기 패널")]
+    // 목록은 씬의 `RowTemplate`을 복제해 채운다 — 모양은 씬이, 코드는 데이터만.
+    [SerializeField] GameObject      crafterPickerPanel;
+    [SerializeField] Transform       crafterPickerContent;
+    [SerializeField] GameObject      crafterRowTemplate;
+
+    [Header("제작 진행")]
+    [SerializeField] GameObject      progressRow;
+    [SerializeField] TextMeshProUGUI progressText;
+    [SerializeField] Image           progressFill;
+
+    [Header("연료 (연료를 쓰는 작업대에서만 보임)")]
+    [SerializeField] GameObject      fuelRow;
+    [SerializeField] TextMeshProUGUI fuelText;
+    [SerializeField] Image           fuelFill;
+
+    [Header("산출물")]
+    // 씬에는 빈 컨테이너만 두고 `InventoryGridUI`는 런타임에 붙인다(`StorageBuildingUI`와 같은 방식).
+    [SerializeField] RectTransform   outputGridContainer;
+    [SerializeField] Button          haulToggleButton;
+    [SerializeField] TextMeshProUGUI haulToggleText;
+
+    InventoryGridUI _outputGrid;
+
+    // 게이지 색 — 넉넉/부족/바닥. 숫자를 안 읽어도 상태가 보이게.
+    static readonly Color FuelOk  = new Color(0.35f, 0.75f, 0.35f);
+    static readonly Color FuelLow = new Color(0.85f, 0.7f,  0.25f);
+    static readonly Color FuelOut = new Color(0.8f,  0.3f,  0.3f);
+
     CraftingTable _currentTable;
     RecipeData    _selectedRecipe;
 
@@ -29,22 +63,95 @@ public class CraftingTableUI : MonoBehaviour
         if (panel != null) panel.SetActive(false);
         if (detailPanel != null) detailPanel.SetActive(false);
         CraftingTable.OnSelected         += Open;
+        CraftingTable.OnChanged          += OnTableChanged;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
+
+        if (haulToggleButton != null)
+            haulToggleButton.onClick.AddListener(ToggleHaulOut);
+        if (crafterButton != null)
+            crafterButton.onClick.AddListener(OpenCrafterPicker);
+        if (crafterPickerPanel != null)
+            crafterPickerPanel.SetActive(false);
     }
 
     void OnDestroy()
     {
         CraftingTable.OnSelected         -= Open;
+        CraftingTable.OnChanged          -= OnTableChanged;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+    }
+
+    // 연료·산출물이 바뀐 작업대가 **지금 열려 있는 그것일 때만** 갱신한다.
+    void OnTableChanged(CraftingTable table)
+    {
+        if (table != _currentTable) return;
+        RefreshFuel();
+        RefreshOutput();
     }
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }
 
     void Update()
     {
-        if (panel != null && panel.activeSelf &&
-            Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
-            Close();
+        if (panel == null || !panel.activeSelf) return;
+
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            // 고르는 패널이 열려 있으면 그것부터 닫는다 — 한 번에 하나씩 물러난다.
+            if (crafterPickerPanel != null && crafterPickerPanel.activeSelf) CloseCrafterPicker();
+            else                                                            Close();
+            return;
+        }
+
+        // 연료·제작 진행은 **시간에 따라 계속 변하는 값**이라 매 프레임 읽는다.
+        // 이벤트만 쓰면 게이지가 시작·끝에만 툭 움직여 "돌고 있다"가 안 읽힌다.
+        if (_currentTable == null) return;
+        if (_currentTable.RequiresFuel) RefreshFuel();
+        RefreshProgress();
+    }
+
+    // ── 제작 진행 ─────────────────────────────────────────────────────────
+    // 폰이 작업대에 **붙어 있는 동안만** 잡힌다. 걸어오는 중이거나 대기 중이면 줄이 사라진다 —
+    // 그 자체가 "지금 아무도 안 만들고 있다"는 정보다.
+    void RefreshProgress()
+    {
+        if (_currentTable == null)
+        {
+            if (progressRow != null) progressRow.SetActive(false);
+            return;
+        }
+
+        // ① 폰이 붙어 지금 만드는 중
+        var recipe = _currentTable.ActiveRecipe;
+        if (recipe != null)
+        {
+            float p = _currentTable.ActiveProgress;
+            if (progressRow  != null) progressRow.SetActive(true);
+            if (progressFill != null) progressFill.fillAmount = p;
+            if (progressText != null) progressText.text = $"제작 중  {recipe.RecipeName}  {p * 100f:F0}%";
+            return;
+        }
+
+        // ② 아무도 안 붙어 있지만 **만들다 만 것**이 있는 상태.
+        //    폰이 밥 먹으러 간 동안 "저거 80%까지 왔는데" 를 볼 수 있어야 한다.
+        if (_selectedRecipe != null)
+        {
+            float done = _currentTable.GetPartialSeconds(_selectedRecipe);
+            if (done > 0f)
+            {
+                float p     = Mathf.Clamp01(done / Mathf.Max(0.01f, _selectedRecipe.CraftTime));
+                var   owner = _currentTable.GetPartialOwner(_selectedRecipe);
+                string who  = owner != null ? $" · {owner.UnitName}" : "";
+
+                if (progressRow  != null) progressRow.SetActive(true);
+                if (progressFill != null) progressFill.fillAmount = p;
+                if (progressText != null)
+                    progressText.text = $"{_selectedRecipe.RecipeName}  {p * 100f:F0}% <color=#FFAA55>(멈춤{who})</color>";
+                return;
+            }
+        }
+
+        if (progressRow != null) progressRow.SetActive(false);
     }
 
     void Open(CraftingTable table)
@@ -55,12 +162,169 @@ public class CraftingTableUI : MonoBehaviour
         if (detailPanel != null) detailPanel.SetActive(false);
         if (tableTitleText != null) tableTitleText.text = table.TableType.DisplayName();
         RebuildList();
+        RefreshFuel();
+        RefreshOutput();
+        RefreshProgress();
     }
 
     public void Close()
     {
+        CloseCrafterPicker();
         _currentTable = null;
+        if (_outputGrid != null) _outputGrid.Bind(null);   // 닫힌 패널이 남의 인벤토리를 붙들지 않게
         if (panel != null) panel.SetActive(false);
+    }
+
+    // ── 연료 ──────────────────────────────────────────────────────────────
+    // 연료를 쓰는 작업대는 8종 중 용광로 하나뿐이라, 나머지에서는 줄 자체를 숨긴다.
+    void RefreshFuel()
+    {
+        bool uses = _currentTable != null && _currentTable.RequiresFuel;
+        if (fuelRow != null) fuelRow.SetActive(uses);
+        if (!uses) return;
+
+        float amount   = _currentTable.FuelAmount;
+        float capacity = Mathf.Max(1f, _currentTable.FuelCapacity);
+        float ratio    = Mathf.Clamp01(amount / capacity);
+
+        if (fuelFill != null)
+        {
+            fuelFill.fillAmount = ratio;
+            fuelFill.color      = amount <= 0f ? FuelOut : ratio < 0.3f ? FuelLow : FuelOk;
+        }
+
+        if (fuelText == null) return;
+
+        // 무엇을 넣어야 하는지까지 적는다 — "연료 0"만 보면 뭘 채워야 할지 알 수 없다.
+        string fuelName = null;
+        foreach (var entry in _currentTable.AcceptedFuels)
+            if (entry.Item != null) { fuelName = entry.Item.ItemName; break; }
+
+        string label = fuelName != null ? $"연료 ({fuelName})" : "연료";
+        fuelText.text = amount <= 0f
+            ? $"{label}  <color=#FF6666>없음 — 창고에 보충하세요</color>"
+            : $"{label}  {amount:F0} / {capacity:F0}";
+    }
+
+    // ── 산출물 ────────────────────────────────────────────────────────────
+    void RefreshOutput()
+    {
+        if (outputGridContainer != null && _currentTable != null)
+        {
+            if (_outputGrid == null)
+                _outputGrid = outputGridContainer.GetComponent<InventoryGridUI>()
+                           ?? outputGridContainer.gameObject.AddComponent<InventoryGridUI>();
+            _outputGrid.Bind(_currentTable.Inventory);
+        }
+
+        if (haulToggleText == null) return;
+
+        bool on = _currentTable != null && _currentTable.AllowHaulOut;
+        haulToggleText.text = on
+            ? "<color=#88FF88>운반 켜짐</color>  창고로 옮김"
+            : "<color=#FFAA55>운반 꺼짐</color>  여기 쌓아 둠";
+    }
+
+    void ToggleHaulOut()
+    {
+        if (_currentTable == null) return;
+        _currentTable.SetAllowHaulOut(!_currentTable.AllowHaulOut);
+        RefreshOutput();
+    }
+
+    // ── 제작자 지정 ───────────────────────────────────────────────────────
+    // 목록을 띄우는 대신 **버튼 하나를 눌러 돌린다**(아무나 → 폰1 → 폰2 → … → 아무나).
+    // 폰이 몇 명뿐이라 목록 UI를 새로 짓는 것보다 이쪽이 빠르고, 씬에 붙일 것도 버튼 하나뿐이다.
+    static List<UnitBrain> EligibleCrafters()
+    {
+        var list = new List<UnitBrain>();
+        foreach (var brain in Object.FindObjectsByType<UnitBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            var faction = brain.GetComponent<Faction>();
+            if (faction == null || !faction.IsPlayer) continue;
+            if (brain.Work != null && !brain.Work.IsEnabled(JobCategory.Crafting)) continue;
+            list.Add(brain);
+        }
+        // 실행마다 순서가 달라지면 같은 버튼이 다른 폰을 가리킨다 — 이름으로 못 박는다.
+        list.Sort((a, b) => string.Compare(a.UnitName, b.UnitName, System.StringComparison.OrdinalIgnoreCase));
+        return list;
+    }
+
+    // 버튼을 누르면 **고르는 패널**이 열린다. 돌려 가며 맞추는 방식은 폰이 늘면
+    // 원하는 사람을 지나쳐 다시 한 바퀴 돌아야 해서, 누가 후보인지도 안 보인다.
+    void OpenCrafterPicker()
+    {
+        if (crafterPickerPanel == null || crafterPickerContent == null || crafterRowTemplate == null) return;
+        if (_currentTable == null || _selectedRecipe == null) return;
+
+        // 만들다 만 장비는 그 폰으로 고정이라 고를 것이 없다.
+        if (_currentTable.GetPartialOwner(_selectedRecipe) != null) return;
+
+        crafterRowTemplate.SetActive(false);
+        foreach (Transform child in crafterPickerContent)
+            if (child.gameObject != crafterRowTemplate) Destroy(child.gameObject);
+
+        var current = _currentTable.GetAssignedCrafter(_selectedRecipe);
+
+        AddCrafterRow("아무나", current == null, null);
+        foreach (var pawn in EligibleCrafters())
+        {
+            // 스킬을 함께 보여준다 — 등급 있는 장비는 이 숫자가 결과를 정하므로 고르는 유일한 근거다.
+            float skill = pawn.Stats != null ? pawn.Stats.GetCraftSkill(_selectedRecipe.RequiredSkillType) : 0f;
+            AddCrafterRow($"{pawn.UnitName}   {_selectedRecipe.RequiredSkillType.DisplayName()} {skill:F0}",
+                          current == pawn, pawn);
+        }
+
+        crafterPickerPanel.SetActive(true);
+    }
+
+    void AddCrafterRow(string label, bool selected, UnitBrain pawn)
+    {
+        var row = Instantiate(crafterRowTemplate, crafterPickerContent);
+        row.SetActive(true);
+
+        var text = row.GetComponentInChildren<TextMeshProUGUI>();
+        if (text != null)
+            text.text = selected ? $"<color=#88FF88>{label}</color>" : label;
+
+        var btn = row.GetComponent<Button>();
+        if (btn != null)
+        {
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(() => ChooseCrafter(pawn));
+        }
+    }
+
+    void ChooseCrafter(UnitBrain pawn)
+    {
+        if (_currentTable != null && _selectedRecipe != null)
+            _currentTable.SetAssignedCrafter(_selectedRecipe, pawn);
+
+        CloseCrafterPicker();
+        RefreshCrafter();
+    }
+
+    void CloseCrafterPicker()
+    {
+        if (crafterPickerPanel != null) crafterPickerPanel.SetActive(false);
+    }
+
+    void RefreshCrafter()
+    {
+        if (crafterText == null) return;
+
+        if (_currentTable == null || _selectedRecipe == null) { crafterText.text = "제작자: —"; return; }
+
+        var assigned = _currentTable.GetAssignedCrafter(_selectedRecipe);
+        var owner    = _currentTable.GetPartialOwner(_selectedRecipe);
+
+        // 만들다 만 장비가 있으면 **그 폰으로 고정**이라는 사실이 지정보다 우선해서 보여야 한다.
+        if (owner != null)
+        {
+            crafterText.text = $"제작자: {owner.UnitName} <color=#FFAA55>(만들던 중)</color>";
+            return;
+        }
+        crafterText.text = assigned == null ? "제작자: 아무나" : $"제작자: {assigned.UnitName}";
     }
 
     void RebuildList()
@@ -86,6 +350,7 @@ public class CraftingTableUI : MonoBehaviour
     void SelectRecipe(RecipeData recipe)
     {
         _selectedRecipe = recipe;
+        CloseCrafterPicker();   // 다른 레시피를 고르면 이전 레시피용 목록은 의미가 없다
         ShowDetail(recipe);
     }
 
@@ -118,6 +383,7 @@ public class CraftingTableUI : MonoBehaviour
         }
 
         RefreshIngredients(recipe);
+        RefreshCrafter();
 
         if (craftButton != null)
         {

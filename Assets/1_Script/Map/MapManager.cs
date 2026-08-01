@@ -151,6 +151,42 @@ public class MapManager : MonoBehaviour
     public bool IsStandable(Vector2Int tile) => !FloorRequired || _floored.ContainsKey(tile);
     public bool IsStandable(Vector3 world)   => IsStandable(WorldToTile(world));
 
+    // 폰이 **실제로 설 수 있는** 칸인가 — 통행 가능 + 바닥 있음.
+    public bool IsWorkable(Vector2Int tile) => GetTile(tile.x, tile.y).IsPassable && IsStandable(tile);
+
+    // `center` 주변에서 설 수 있는 가장 가까운 칸을 찾는다. 못 찾으면 `center` 자신.
+    //
+    // **왜 반경을 넓혀야 하나**: 예전엔 상하좌우 4칸만 봤다. 건물·자원 노드가 몰려 있으면
+    // 네 칸이 전부 막히는 일이 흔한데, 그때 막힌 칸 자신을 목적지로 돌려주면 폰은
+    // **영영 도착 판정에 못 걸린다**(6초 뒤 일감을 놓고, 다시 집고, 또 놓는다).
+    // 대각선과 반경 2까지 보면 대부분 살아난다.
+    public Vector2Int FindWorkableNear(Vector2Int center, int maxRadius = 2)
+    {
+        if (IsWorkable(center)) return center;
+
+        for (int r = 1; r <= maxRadius; r++)
+        {
+            Vector2Int best = center;
+            float bestDist = float.MaxValue;
+
+            for (int dx = -r; dx <= r; dx++)
+            for (int dy = -r; dy <= r; dy++)
+            {
+                // 이번 고리(껍질)만 본다 — 안쪽은 앞선 반경에서 이미 봤다.
+                if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+
+                var t = new Vector2Int(center.x + dx, center.y + dy);
+                if (!IsWorkable(t)) continue;
+
+                float d = dx * dx + dy * dy;      // 같은 고리 안에서는 대각선보다 직선이 가깝다
+                if (d < bestDist) { bestDist = d; best = t; }
+            }
+
+            if (bestDist < float.MaxValue) return best;
+        }
+        return center;
+    }
+
     // surfaceY = 바닥 윗면 월드 Y. 같은 타일에 여러 바닥이 겹치면 더 높은 면을 채택(건물이 위에 얹히도록).
     public void RegisterFloor(Vector2Int tile, float surfaceY = 0f)
     {

@@ -368,6 +368,23 @@ public class BuildModeManager : MonoBehaviour
             if (b != null) DestroyImmediate(b);
         foreach (var c in model.GetComponentsInChildren<Collider>(true))
             c.enabled = false;
+
+        ShowWorkSpotOnGhost(model);
+    }
+
+    // 고스트에서도 **작업 자리 화살표**를 보여준다.
+    //
+    // 스크립트를 다 떼기 때문에 `WorkSpot`이 스스로 켤 수 없다 — 그런데 정작 표식이 제일
+    // 필요한 순간이 **놓기 직전**이다. 완성된 건물에서만 보이면 "막고 나서 알게 되는" 것과 같다.
+    // 그래서 이름으로 찾아 직접 켠다(컴포넌트가 없어도 계층은 그대로 남아 있다).
+    static void ShowWorkSpotOnGhost(GameObject model)
+    {
+        foreach (var t in model.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name != "WorkSpot") continue;
+            t.gameObject.SetActive(true);
+            foreach (Transform child in t) child.gameObject.SetActive(true);
+        }
     }
 
     void HideGhost()
@@ -425,7 +442,8 @@ public class BuildModeManager : MonoBehaviour
             gridRenderer.ShowPreview(fp, IsBuildableGrid(fp));
         }
 
-        var snapWorld = MapManager.Instance.TileToGround(tile);
+        // 고스트도 차지한 칸 전체의 중앙에 — 미리보기 격자와 모델이 같은 자리를 가리켜야 한다.
+        var snapWorld = FootprintCenter(GetFootprint(tile));
         ShowGhost(snapWorld, Quaternion.Euler(0, _gridYaw, 0));
 
         // 바닥은 드래그 페인트(좌클릭 유지로 연속 배치) — 이미 깔린 타일은 CanPlaceFloor가 거름.
@@ -516,7 +534,7 @@ public class BuildModeManager : MonoBehaviour
         var footprint = GetFootprint(tile);
         if (!IsBuildableGrid(footprint)) return;
 
-        Place(MapManager.Instance.TileToGround(tile), Quaternion.Euler(0, _gridYaw, 0));
+        Place(FootprintCenter(footprint), Quaternion.Euler(0, _gridYaw, 0), footprint);
         _previewShown = false;
     }
 
@@ -526,7 +544,8 @@ public class BuildModeManager : MonoBehaviour
         _previewShown = false;
     }
 
-    void Place(Vector3 pos, Quaternion rot)
+    // `footprint`는 격자 배치일 때만 온다(자유 배치는 칸 개념이 없어 중심 한 칸을 쓴다).
+    void Place(Vector3 pos, Quaternion rot, List<Vector2Int> footprint = null)
     {
         var data = SelectedBuilding;
         if (data == null) return;
@@ -572,7 +591,9 @@ public class BuildModeManager : MonoBehaviour
         var placed = PlacedBuilding.Attach(instance, data);
         // 타일 점유(통행 차단) 건물이면 footprint를 통행 불가로 등록 (철거 시 대칭 해제)
         if (data.OccupiesTile && MapManager.Instance != null)
-            placed.OccupyTiles(new[] { MapManager.Instance.WorldToTile(pos) });
+            placed.OccupyTiles(footprint != null
+                ? footprint.ToArray()
+                : new[] { MapManager.Instance.WorldToTile(pos) });
         // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
         Debug.Log($"[Build] 배치 완료 — {data.BuildingName}");
@@ -584,9 +605,50 @@ public class BuildModeManager : MonoBehaviour
         return (bd != null && bd.Prefab != null) ? bd.Prefab : fallbackPrefab;
     }
 
-    List<Vector2Int> GetFootprint(Vector2Int center)
+    // 차지할 칸 목록. **회전하면 가로·세로가 바뀐다.**
+    // 홀수 크기는 기준 칸을 중앙에 두고, 짝수 크기는 +방향으로 치우친다(어느 쪽이든 하나로 정해야
+    // 미리보기와 실제 배치가 어긋나지 않는다).
+    List<Vector2Int> GetFootprint(Vector2Int anchor)
     {
-        _footprint[0] = center;
+        var size = FootprintSize();
+
+        _footprint.Clear();
+        int ox = (size.x - 1) / 2;
+        int oy = (size.y - 1) / 2;
+        for (int x = 0; x < size.x; x++)
+        for (int y = 0; y < size.y; y++)
+            _footprint.Add(new Vector2Int(anchor.x - ox + x, anchor.y - oy + y));
+
         return _footprint;
+    }
+
+    Vector2Int FootprintSize()
+    {
+        var s = SelectedBuilding != null ? SelectedBuilding.Size : Vector2Int.one;
+        s = new Vector2Int(Mathf.Max(1, s.x), Mathf.Max(1, s.y));
+
+        // 90°/270° 회전이면 축이 바뀐다.
+        int quarter = Mathf.RoundToInt(_gridYaw / 90f) & 3;
+        return (quarter % 2 == 1) ? new Vector2Int(s.y, s.x) : s;
+    }
+
+    // 모델은 **차지한 칸 전체의 중앙**에 놓는다. 기준 칸에 그냥 두면 짝수 크기 건물이
+    // 반 칸씩 삐져나온다(미리보기 격자와 모델이 어긋나 보인다).
+    Vector3 FootprintCenter(List<Vector2Int> footprint)
+    {
+        var map = MapManager.Instance;
+        if (map == null || footprint.Count == 0) return Vector3.zero;
+
+        var min = footprint[0];
+        var max = footprint[0];
+        foreach (var t in footprint)
+        {
+            min = Vector2Int.Min(min, t);
+            max = Vector2Int.Max(max, t);
+        }
+
+        var a = map.TileToGround(min);
+        var b = map.TileToGround(max);
+        return new Vector3((a.x + b.x) * 0.5f, Mathf.Max(a.y, b.y), (a.z + b.z) * 0.5f);
     }
 }

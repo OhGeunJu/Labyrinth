@@ -32,6 +32,18 @@ public class Inventory : MonoBehaviour
     }
     public event Action OnChanged;
 
+    // 격자 크기를 다시 잡는다. **비어 있을 때만** — 아이템이 든 채로 줄이면 밖으로 밀려난 것이 증발한다.
+    // 런타임에 `AddComponent`로 붙이는 쪽(작업대 산출물 등)은 `Awake` 전에 값을 넣을 방법이 없어 필요하다.
+    public bool Resize(int w, int h)
+    {
+        if (_items.Count > 0) return false;
+        width  = Mathf.Max(1, w);
+        height = Mathf.Max(1, h);
+        _cells = new ItemInstance[width, height];
+        OnChanged?.Invoke();
+        return true;
+    }
+
     void Awake()
     {
         _cells = new ItemInstance[width, height];

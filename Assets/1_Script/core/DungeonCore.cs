@@ -137,9 +137,37 @@ public class DungeonCore : MonoBehaviour
     }
 
     [Header("소환 가능한 하수인 목록")]
+    [Tooltip("비워 두는 게 기본 — 그러면 Resources/Data/Units/ 의 MinionData가 그대로 목록이 된다. " +
+             "채우면 그게 이기는 큐레이션 오버라이드(BuildModeManager.placeableBuildings와 같은 관례).")]
     [SerializeField] MinionEntry[] minionEntries;
 
-    public MinionEntry[] MinionEntries => minionEntries;
+    // 소환 목록. **씬 배열이 비면 레지스트리**를 쓴다 — 건설 목록과 같은 관례다.
+    // 씬에 사는 목록은 저장을 빠뜨리면 조용히 날아가고, 무엇보다 **모드가 종족을 추가할 진입점이 없다.**
+    readonly List<MinionData> _minionCache = new();
+
+    public IReadOnlyList<MinionData> Minions
+    {
+        get
+        {
+            if (minionEntries == null || minionEntries.Length == 0) return DataManager.AllMinions;
+
+            _minionCache.Clear();
+            foreach (var entry in minionEntries)
+                if (entry.Data != null) _minionCache.Add(entry.Data);
+            return _minionCache;
+        }
+    }
+
+    // 프리팹 찾기 — **씬 배열이 이긴다.** 에셋(`MinionData.Prefab`)은 씬 오브젝트를 참조할 수 없어서,
+    // 씬 오브젝트를 원본으로 쓰던 기존 배선은 오버라이드로만 표현된다.
+    GameObject FindPrefab(MinionData data)
+    {
+        if (minionEntries != null)
+            foreach (var entry in minionEntries)
+                if (entry.Data == data && entry.Prefab != null) return entry.Prefab;
+
+        return data.Prefab;
+    }
 
     // 하수인 소환 — 캡 확인 → 자원 소비 → 프리팹 스폰
     public bool Summon(MinionData minionData, Vector3 spawnPosition)
@@ -152,13 +180,13 @@ public class DungeonCore : MonoBehaviour
             return false;
         }
 
-        GameObject prefab = null;
-        foreach (var entry in minionEntries)
-            if (entry.Data == minionData) { prefab = entry.Prefab; break; }
+        GameObject prefab = FindPrefab(minionData);
 
         if (prefab == null)
         {
-            Debug.LogWarning($"[DungeonCore] {minionData.RaceName}에 연결된 프리팹이 없습니다.");
+            Debug.LogWarning($"[DungeonCore] {minionData.RaceName}에 연결된 프리팹이 없습니다 — " +
+                             $"'{minionData.name}' 에셋의 Prefab 칸을 채우거나 " +
+                             "씬의 DungeonCore.minionEntries에 등록하세요.");
             return false;
         }
 
@@ -176,7 +204,12 @@ public class DungeonCore : MonoBehaviour
             return false;
         }
 
-        Instantiate(prefab, spawnPosition, Quaternion.identity);
+        // **반드시 켜서 내보낸다.** `Instantiate`는 원본의 활성 상태를 그대로 복제하는데,
+        // 씬에 꺼진 채로 둔 템플릿(또는 모드가 꺼진 채로 구운 프리팹)을 원본으로 쓰면
+        // 소환된 하수인이 꺼진 채 나와 `Awake`조차 안 돈다 — 아무 일도 안 일어난 것처럼 보인다.
+        var spawned = Instantiate(prefab, spawnPosition, Quaternion.identity);
+        spawned.SetActive(true);
+
         Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 ({_currentMinionCount + 1}/{TotalMinionCap})");
         return true;
     }

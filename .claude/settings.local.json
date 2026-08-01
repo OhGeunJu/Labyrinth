@@ -20,7 +20,12 @@
       "Bash(ls Assets/5_Data/Building/Floor.asset)",
       "Bash(python3 -)",
       "Bash(git add *)",
-      "Bash(git commit -m '전체 코드 리뷰 버그 수정 1차: 자원/아이템 증발, 시체 타겟팅, 상인 거래 손실 등 *)"
+      "Bash(git commit -m '전체 코드 리뷰 버그 수정 1차: 자원/아이템 증발, 시체 타겟팅, 상인 거래 손실 등 *)",
+      "Bash(git -C /c/unity/Labyrinth status --short)",
+      "Bash(git -C /c/unity/Labyrinth diff --stat)",
+      "Skill(schedule)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch *)",
+      "Bash(git stash *)"
     ]
   }
 }
