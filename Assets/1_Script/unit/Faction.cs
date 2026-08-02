@@ -20,6 +20,10 @@ public class Faction : MonoBehaviour
     // 살아있는 Faction 전체 (플레이어 세력 조회 등에 사용)
     static readonly List<Faction> _all = new();
 
+    // 세력을 가진 것 전부. 폰을 훑어야 할 때 `FindObjectsByType`을 매번 도는 대신 쓴다
+    // (`MaterialPool`이 플레이어 폰의 배낭을 셀 때).
+    public static IReadOnlyList<Faction> All => _all;
+
     void OnEnable()  => _all.Add(this);
     void OnDisable() => _all.Remove(this);
 

@@ -19,6 +19,11 @@ public class SeedJob : JobBase
         SetSite(plot);
     }
 
+    // 씨앗을 **이 폰이** 댈 수 있어야 배정한다(배낭 또는 창고).
+    // 남이 들고 있는 씨앗으로는 이 폰이 심을 수 없다.
+    public override bool CanAssignTo(UnitBrain unit)
+        => _seed == null || MaterialPool.Available(_seed, unit) > 0;
+
     protected override void OnStart()
     {
         if (_plot == null || _seed == null)
@@ -28,11 +33,21 @@ public class SeedJob : JobBase
             return;
         }
 
-        if (Storage.GetTotalByItem(_seed) <= 0)
+        if (MaterialPool.Available(_seed, ReservedBy) <= 0)
         {
             Debug.Log($"[SeedJob] 씨앗 없음 — {_seed.ItemName}");
             Status = JobStatus.Done;
             _plot.OnSeedJobCancelled();
+            return;
+        }
+
+        // **이미 들고 있으면 창고에 안 들른다.** 배낭에 씨앗이 있는데 창고까지 다녀오면
+        // 사 오자마자 심으려던 동작이 먼 길이 된다.
+        if (ReservedBy != null && ReservedBy.Inventory != null &&
+            ReservedBy.Inventory.GetTotalQuantity(_seed) > 0)
+        {
+            _phase    = Phase.GoToPlot;
+            TileCoord = WorkSpot.TileFor(_plot);
             return;
         }
 
@@ -47,7 +62,7 @@ public class SeedJob : JobBase
 
         if (_phase == Phase.GoToStorage)
         {
-            if (!Storage.ConsumeByItem(_seed, 1))
+            if (!MaterialPool.Consume(_seed, 1, unit))
             {
                 Debug.Log($"[SeedJob] 씨앗 소비 실패 — {_seed.ItemName}");
                 _plot.OnSeedJobCancelled();
@@ -55,8 +70,12 @@ public class SeedJob : JobBase
                 return;
             }
 
-            _phase    = Phase.GoToPlot;
-            TileCoord = _plot.TileCoord;
+            _phase = Phase.GoToPlot;
+
+            // **밭 타일이 아니라 작업 자리로 간다.** 밭 자기 타일은 설 수 없을 수 있어
+            // 도착 판정에 안 걸리고, 그러면 BT의 '못 감' 타이머가 일감을 놓았다가
+            // 다시 등록하기를 반복한다 — 겉보기엔 "농사를 안 짓는다"가 된다.
+            TileCoord = WorkSpot.TileFor(_plot);
         }
         else
         {

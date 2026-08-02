@@ -22,6 +22,12 @@ public class ItemData : ScriptableObject
     [Tooltip("기준 가격 (G). 상인 풀에서 BasePrice가 0이면 이 값 사용. 인벤토리 툴팁에도 표시.")]
     [Min(0)] public int BaseValue = 0;
 
-    // 기본은 1칸 1개. 스택 가능한 자원/소비품은 ResourceItemData에서 오버라이드.
-    public virtual int MaxStack => 1;
+    [Tooltip("한 칸에 몇 개까지 쌓이는가. 1이면 한 칸에 하나(무기·방어구). " +
+             "**자원만의 속성이 아니다** — 밀·빵·씨앗도 쌓여야 한다.")]
+    [Min(1)] public int Stack = 1;
+
+    // 예전엔 `ResourceItemData`만 스택을 들고 있어서, `ItemData`·`FoodData`인 밀·빵·고기는
+    // **한 칸에 하나씩** 들어갔다(창고에 `밀 밀 밀 밀`이 늘어서던 원인). 스택은 자원만의
+    // 성질이 아니므로 여기로 올렸다. 파생 클래스가 다르게 정하고 싶으면 오버라이드한다.
+    public virtual int MaxStack => Mathf.Max(1, Stack);
 }

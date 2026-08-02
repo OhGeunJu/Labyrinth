@@ -212,8 +212,13 @@ public partial class UnitBrain : MonoBehaviour
 
         OnUnitDied?.Invoke(this);
 
-        // 적 AI 유닛은 약탈 가능한 시체로 남는다(플레이어 유닛/NPC는 기존대로 제거).
-        if (UsesEnemyAi)
+        // **플레이어 세력이 아니면 시체로 남는다.**
+        // 예전엔 `UsesEnemyAi`로 갈랐는데 그건 **AI 역할**(어떻게 싸우나)을 묻는 축이라
+        // NpcData·MinionData를 통째로 제외했다. 그래서 상인이나 마을 사람을 죽이면
+        // 시체도 유품도 없이 사라졌다 — 이제 중립을 공격할 수 있으니 그건 맞지 않는다.
+        // 약탈 가능 여부는 역할이 아니라 **세력**이 정해야 한다.
+        var faction = GetComponent<Faction>();
+        if (faction != null && !faction.IsPlayer)
         {
             BecomeCorpse();
             return;

@@ -553,9 +553,17 @@ public class BuildModeManager : MonoBehaviour
         var prefab = data.Prefab != null ? data.Prefab : fallbackPrefab;
         if (prefab == null) return;
 
-        if (data.CostAmount > 0 && !Storage.Consume(data.CostType, data.CostAmount))
+        // UI에서 걸러도 **여기서 한 번 더 막는다** — 목록이 갱신되기 전에 연구가 풀리기 전
+        // 상태로 배치가 들어올 수 있고, 배치 경로가 UI 하나뿐이라는 보장도 없다.
+        if (!data.IsUnlocked)
         {
-            Debug.Log($"[Build] 자원 부족 — {data.CostType} ×{data.CostAmount}");
+            Debug.Log($"[Build] 연구가 필요합니다 — {data.RequiredResearch?.ResearchName}");
+            return;
+        }
+
+        if (data.CostAmount > 0 && !Storage.ConsumeByItem(data.CostItem, data.CostAmount))
+        {
+            Debug.Log($"[Build] 자원 부족 — {data.CostItem?.ItemName} ×{data.CostAmount}");
             return;
         }
 

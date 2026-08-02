@@ -111,6 +111,37 @@ public class ManualOrderNode : BTNode
     }
 }
 
+// 따라가기 — 지정한 대상 곁에 머문다. 우클릭 메뉴의 [따라가기]가 켠다.
+//
+// **`ManualOrderNode` 바로 아래**에 둔다. 위에 두면 새 이동 명령이 안 먹고(따라가기가 계속 이김),
+// 전투·작업보다 아래에 두면 따라가는 도중에 일하러 새 버린다.
+public class FollowNode : BTNode
+{
+    readonly float _stopDistance;
+
+    public FollowNode(float stopDistance = 2.5f) => _stopDistance = stopDistance;
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        // 대상이 파괴되면 유니티의 `== null`이 잡는다. **여기서 꺼 주지 않으면**
+        // 죽은 대상을 향해 영영 Running을 돌려 폰이 아무것도 안 하게 된다.
+        if (bb.FollowTarget == null)
+        {
+            bb.FollowTarget = null;
+            return BTStatus.Failure;
+        }
+
+        Vector3 to = bb.FollowTarget.position;
+        float dist = Vector3.Distance(bb.Self.transform.position, to);
+
+        // 매 틱 같은 목표를 다시 넣어도 `PawnMover`가 근접 재지정을 스로틀한다.
+        if (dist > _stopDistance) bb.Mover.SetMoveTarget(to);
+        else                      bb.Mover.StopMovement();
+
+        return BTStatus.Running;
+    }
+}
+
 // 전투
 public class FightNode : BTNode
 {
@@ -197,6 +228,19 @@ public class WorkNode : BTNode
         var currentJob = bb.CurrentJob;
         if (currentJob == null) return BTStatus.Failure;
 
+        // **밖에서 취소된 일감을 계속 붙들고 있으면 폰이 그 자리에서 언다.**
+        // `JobBase.Tick`은 InProgress일 때만 돌고 `IsComplete()`는 Done일 때만 참이라,
+        // 취소된 작업은 어느 쪽에도 안 걸려 영원히 손에 남는다 — 도착해서 아무것도 안 하고
+        // 서 있게 된다. 연구를 다른 것으로 갈아타면 실제로 이 경로가 만들어진다.
+        // 되돌리기(`OnCancelled`)는 취소한 쪽에서 이미 돌았으므로 여기선 놓기만 한다.
+        if (currentJob.Status == JobStatus.Cancelled)
+        {
+            bb.CurrentJob = null;
+            bb.Mover.StopMovement();
+            ResetProgress();
+            return BTStatus.Failure;
+        }
+
         var jobCenter = MapManager.Instance.TileToWorld(currentJob.TileCoord);
         var pos       = bb.Self.transform.position;
         float dist    = Vector2.Distance(new Vector2(pos.x, pos.z),
@@ -267,7 +311,7 @@ public class WorkNode : BTNode
         {
             bb.Mover.StopMovement();
             var brain = bb.Self.GetComponent<UnitBrain>();
-            bool isCutting = node.Data != null && node.Data.ResourceType == ResourceType.Wood;
+            bool isCutting = node.Data != null && node.Data.IsTree;
             StatName workStat = isCutting ? StatName.Cutting : StatName.Mining;
             float skill = brain.Stats.GetStat(workStat);
             node.Work(skill, bb.TickDelta);

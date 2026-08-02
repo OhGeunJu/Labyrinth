@@ -9,6 +9,13 @@ public class ResearchJob : JobBase
     float _carriedSeconds;   // 이번에 붙기 전까지 이미 해 둔 몫
     bool  _consumed;
     bool  _timerStarted;
+    bool  _requeueOnCancel = true;
+
+    // **취소에는 두 종류가 있다.**
+    //   ① 폰이 밥 먹으러 가거나 죽어서 끊긴 것 — 다시 큐에 올려야 알아서 이어서 한다.
+    //   ② 플레이어가 다른 연구로 갈아탄 것 — 되돌리면 갈아타지지가 않는다.
+    // 진행도는 어느 쪽이든 저장되므로, ②로 접어 둔 연구도 나중에 다시 고르면 이어서 한다.
+    public void SuppressRequeue() => _requeueOnCancel = false;
 
     public override JobCategory Category => JobCategory.Research;
 
@@ -52,9 +59,10 @@ public class ResearchJob : JobBase
 
         if (!resuming)
         {
+            // 재료는 **창고 + 이 폰의 배낭**에서 센다(`MaterialPool`).
             foreach (var ing in _data.Ingredients)
             {
-                if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
+                if (MaterialPool.Available(ing.Item, ReservedBy) < ing.Amount)
                 {
                     Debug.Log($"[ResearchJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요");
                     Status = JobStatus.Done;
@@ -63,7 +71,7 @@ public class ResearchJob : JobBase
             }
 
             foreach (var ing in _data.Ingredients)
-                Storage.ConsumeByItem(ing.Item, ing.Amount);
+                MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy);   // 배낭 먼저
             _consumed = true;
         }
 
@@ -94,7 +102,7 @@ public class ResearchJob : JobBase
                 DroppedItem.Spawn(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
         }
 
-        _table?.QueueResearch(_data);
+        if (_requeueOnCancel) _table?.QueueResearch(_data);
     }
 
     protected override void Execute(UnitBrain unit)

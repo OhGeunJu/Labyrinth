@@ -39,6 +39,11 @@ public class Equipment : MonoBehaviour
     public bool Equip(WeaponData weapon)
     {
         if (weapon == null) return false;
+
+        // **방패는 주손에 들지 않는다.** 주손 칸에 떨어뜨려도 보조손으로 보낸다 —
+        // 방패를 들고 때릴 수는 없는데, 막지 않으면 주손에 끼워 무기를 못 드는 상태가 된다.
+        if (weapon.Type == WeaponType.Shield) return EquipOffHand(weapon);
+
         var inst = FindInInventory(weapon);
         // 찾은 인스턴스를 정확히 소모 — Remove(data)는 다른 등급 인스턴스를 뺄 수 있음
         if (inst == null || !_inventory.RemoveOne(inst)) return false;

@@ -27,6 +27,14 @@ public class ItemSchema
     public float  weight;
     public int    width  = 1;
     public int    height = 1;
+
+    // 기준 가격(G). 상인 진열가·판매가·툴팁의 "가치"가 전부 여기서 온다.
+    // 안 적으면 0이고, 그러면 상인이 기본값 10G로 팔아 값이 뒤죽박죽이 된다.
+    public int    baseValue;
+
+    // 한 칸에 몇 개까지 쌓이는가. **자원만의 속성이 아니다** — 밀·빵·씨앗도 쌓여야 한다.
+    // 안 적으면 1(무기·방어구처럼 한 칸에 하나).
+    public int    maxStack = 1;
 }
 
 [Serializable]
@@ -57,8 +65,13 @@ public class ArmorSchema : ItemSchema
 [Serializable]
 public class ResourceItemSchema : ItemSchema
 {
-    public string resourceType = "Stone";
-    public int    maxStack     = 999;
+    // 묶음(Stone/Ore/Gem/Ingot/Wood/Currency). **자원의 종류가 아니라 분류다** —
+    // 종류는 이 아이템 자신(`id`)이다. 창고 필터와 UI가 이 값으로 자원을 갈라 놓는다.
+    public string resourceGroup = "Stone";
+
+    // 2026-08-02 이전 스키마. 자원 하나하나를 가리키던 이름("IronOre")이 들어온다.
+    // 그 시절 이름을 묶음으로 옮겨 주므로 옛 JSON도 그대로 실린다(`ResourceGroupOf`).
+    public string resourceType;
 }
 
 [Serializable]

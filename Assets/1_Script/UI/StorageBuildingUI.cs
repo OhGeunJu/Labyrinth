@@ -6,8 +6,10 @@ using TMPro;
 
 // 창고 패널 — 내용물 그리드 + 용량 + 입고 필터.
 //
-// 필터는 `ResourceType` 22종을 낱개로 늘어놓지 않고 **묶음(석재/원석/보석/주괴/목재/화폐)** 단위로
-// 다룬다. 낱개로 두면 버튼이 22개라 아무도 안 쓴다. 묶음의 정의는 `ResourceTypeExt.Group`이 정본.
+// 필터는 **묶음(석재/원석/보석/주괴/목재/화폐)** 단위다. 자원을 낱개로 늘어놓으면 버튼이
+// 스무 개를 넘어 아무도 안 쓴다. 묶음은 `ResourceItemData.Group`이 직접 들고 있다 —
+// 2026-08-02 전에는 `ResourceType` enum을 훑어 묶음을 되짚었는데, 그러면 **모드가 넣은 자원이
+// 어느 묶음에도 안 들어갔다**(enum에 없으니까). 이제 아이템이 자기 묶음을 말하므로 그냥 딸려 온다.
 //
 // 필터 버튼은 **씬의 `filterTemplate`을 복제**해 채운다 — 모양은 씬이, 코드는 데이터만
 // (`docs/editor_creators.md`). 코드가 색·여백을 만들면 편집 화면과 게임 화면이 어긋난다.
@@ -143,26 +145,26 @@ public class StorageBuildingUI : MonoBehaviour
     {
         if (_current == null) return;
 
-        bool allowAll = _current.AllowedTypes.Count == 0;
+        bool allowAll = _current.AllowsEverything;
         bool on       = allowAll || GroupEnabled(group);
 
         if (on && allowAll)
         {
             // 전부 허용 상태에서 하나를 끄는 중 → 나머지를 명시적으로 켠다.
-            foreach (ResourceType t in System.Enum.GetValues(typeof(ResourceType)))
-                if (t.Group() != group) _current.AddFilter(t);
+            // 그냥 하나를 빼려 하면 안 된다("빈 목록 = 전부 허용"이라 뺄 것이 없다).
+            foreach (var g in ResourceGroupExt.All)
+                if (g != group) _current.AddFilter(g);
         }
         else if (on)
         {
-            foreach (var t in ResourceTypeExt.TypesIn(group)) _current.RemoveFilter(t);
+            _current.RemoveFilter(group);
             // 전부 꺼졌으면 "빈 목록 = 전부 허용"으로 돌아가 버린다 → 그건 의도와 반대다.
             // 하나도 안 남으면 방금 끈 묶음만 되살려 "최소 하나는 켜짐"을 유지한다.
-            if (_current.AllowedTypes.Count == 0)
-                foreach (var t in ResourceTypeExt.TypesIn(group)) _current.AddFilter(t);
+            if (_current.AllowsEverything) _current.AddFilter(group);
         }
         else
         {
-            foreach (var t in ResourceTypeExt.TypesIn(group)) _current.AddFilter(t);
+            _current.AddFilter(group);
             // 전부 켜졌으면 목록을 비워 "전부 허용"의 정규형으로 되돌린다.
             if (AllGroupsEnabled()) _current.SetAllowAll();
         }
@@ -175,10 +177,8 @@ public class StorageBuildingUI : MonoBehaviour
     bool GroupEnabled(ResourceGroup group)
     {
         if (_current == null) return false;
-        if (_current.AllowedTypes.Count == 0) return true;   // 빈 목록 = 전부 허용
-        foreach (var t in ResourceTypeExt.TypesIn(group))
-            if (_current.HasFilter(t)) return true;
-        return false;
+        if (_current.AllowsEverything) return true;   // 빈 목록 = 전부 허용
+        return _current.HasFilter(group);
     }
 
     bool AllGroupsEnabled()

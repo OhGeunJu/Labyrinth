@@ -3,8 +3,14 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "DungeonColony/ResourceNodeData")]
 public class ResourceNodeData : ScriptableObject
 {
-    public ResourceType ResourceType = ResourceType.Stone;
+    [Tooltip("이 노드가 내놓는 자원 아이템. **이것이 노드의 정체성이다** — " +
+             "예전엔 ResourceType enum이 옆에 같이 있었는데, 이 필드와 늘 같은 것을 가리켜서 지웠다.")]
     public ItemData DropItem;
+
+    // 목재 묶음을 내놓는 노드 = 나무. 채굴이 아니라 **벌목**이고, UI 문구도 스킬도 갈린다.
+    // 예전엔 `ResourceType == Wood`로 봤는데, 그러면 모드가 넣은 나무는 영영 벌목이 안 된다.
+    // 묶음으로 보면 `"resourceGroup": "Wood"` 자원을 내놓는 것은 무엇이든 나무로 취급된다.
+    public bool IsTree => DropItem is ResourceItemData r && r.Group == ResourceGroup.Wood;
 
     [Tooltip("배치 시 사용할 프리팹. 비어있으면 BuildModeManager의 기본 프리팹 사용")]
     public GameObject Prefab;

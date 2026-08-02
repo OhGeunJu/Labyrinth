@@ -19,7 +19,11 @@ public class EquipSlotUI : MonoBehaviour,
 
     static readonly string[] KindLabels = { "주손", "보조", "머리", "몸통", "손", "다리" };
 
-    SlotKind  _kind;
+    // **반드시 직렬화한다.** 예전엔 private 필드였고 `Init()`을 부르는 곳도 없어서
+    // 6칸 전부 기본값(`MainHand`)으로 남았다 — 그래서 어느 칸을 봐도 주손 아이템이 떴다
+    // ("인벤토리 모든 칸에 착용한 것처럼 보인다"의 정체).
+    [Tooltip("이 칸이 맡는 부위. 씬에서 칸마다 다르게 지정해야 한다.")]
+    [SerializeField] SlotKind _kind;
     Equipment _equipment;
 
     public void Init(SlotKind kind)

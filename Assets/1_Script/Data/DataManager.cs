@@ -106,14 +106,6 @@ public static class DataManager
             if (r.RequiredSkillType == skill) yield return r;
     }
 
-    // ResourceType → 해당 ResourceItemData (건설 환불 등). 없으면 null.
-    public static ResourceItemData GetResourceItem(ResourceType type)
-    {
-        foreach (var v in _items.Values)
-            if (v is ResourceItemData r && r.ResourceType == type) return r;
-        return null;
-    }
-
     public static IReadOnlyDictionary<string, ItemData>     AllItems    => _items;
     public static IReadOnlyDictionary<string, RecipeData>   AllRecipes  => _recipes;
     public static IReadOnlyDictionary<string, ResearchData> AllResearch => _research;
@@ -191,7 +183,11 @@ public static class DataManager
             Debug.LogWarning($"[DataManager] 아이템 Id 충돌 '{id}' — '{prev.name}'을(를) '{item.name}'이(가) 덮어씁니다.");
 
         _items[id] = item;
-        if (!string.IsNullOrEmpty(item.ItemName)) _itemsByName[item.ItemName] = item;
+        if (!string.IsNullOrEmpty(item.ItemName))
+        {
+            WarnDuplicateName("아이템", item.ItemName, _itemsByName, item, item.Id);
+            _itemsByName[item.ItemName] = item;
+        }
     }
 
     static void RegisterRecipe(RecipeData recipe)
@@ -204,7 +200,24 @@ public static class DataManager
             Debug.LogWarning($"[DataManager] 레시피 Id 충돌 '{id}' — '{prev.name}'을(를) '{recipe.name}'이(가) 덮어씁니다.");
 
         _recipes[id] = recipe;
-        if (!string.IsNullOrEmpty(recipe.RecipeName)) _recipesByName[recipe.RecipeName] = recipe;
+        if (!string.IsNullOrEmpty(recipe.RecipeName))
+        {
+            WarnDuplicateName("레시피", recipe.RecipeName, _recipesByName, recipe, recipe.Id);
+            _recipesByName[recipe.RecipeName] = recipe;
+        }
+    }
+
+    // **표시명이 겹치면 알린다.** Id가 다르면 둘 다 살아 있으므로 게임은 굴러가지만,
+    // 표시명으로 가리키는 레거시 참조는 **둘 중 나중에 등록된 것**을 집는다 — 조용히 하나가 그림자에
+    // 들어가는 것이야말로 Id를 도입한 이유다. 화면에 같은 이름이 둘 뜨는 것도 그 자체로 저작 실수다.
+    static void WarnDuplicateName<T>(string kind, string displayName,
+                                     Dictionary<string, T> byName, T current, string currentId)
+        where T : ScriptableObject
+    {
+        if (!byName.TryGetValue(displayName, out var prev) || ReferenceEquals(prev, current)) return;
+        Debug.LogWarning($"[DataManager] {kind} 표시명 중복 '{displayName}' — " +
+                         $"'{prev.name}'와(과) '{DataId.Resolve(current, currentId)}'. " +
+                         $"표시명으로 가리키는 참조는 뒤엣것을 집습니다.");
     }
 
     static void RegisterUnit(UnitData unit)
@@ -360,6 +373,8 @@ public static class DataManager
         item.Weight      = s.weight;
         item.Width       = Mathf.Max(1, s.width);
         item.Height      = Mathf.Max(1, s.height);
+        item.BaseValue   = Mathf.Max(0, s.baseValue);
+        item.Stack       = Mathf.Max(1, s.maxStack);
 
         // 그림·모델은 **이 콘텐츠가 온 폴더 안에서** 먼저 찾는다(`ModAssets`).
         // 그래야 모드가 자기 PNG를 들고 올 수 있다 — 예전엔 `Resources.Load`뿐이라
@@ -410,9 +425,37 @@ public static class DataManager
     {
         var r = ScriptableObject.CreateInstance<ResourceItemData>();
         ApplyBase(r, s, root);
-        if (Enum.TryParse<ResourceType>(s.resourceType, ignoreCase: true, out var rt)) r.ResourceType = rt;
-        r.Stack = s.maxStack;
+        r.Group = ResolveGroup(s);
         return r;
+    }
+
+    // 묶음은 `resourceGroup`이 정본. **옛 `resourceType`(자원 낱개 이름)도 받아 준다** —
+    // 그 이름들은 08-02에 사라졌지만, 그것만 적힌 JSON을 조용히 Stone으로 떨어뜨리면
+    // 창고 필터에서 엉뚱한 칸에 들어가 원인을 찾기 어렵다.
+    static ResourceGroup ResolveGroup(ResourceItemSchema s)
+    {
+        if (!string.IsNullOrWhiteSpace(s.resourceGroup) &&
+            Enum.TryParse<ResourceGroup>(s.resourceGroup, ignoreCase: true, out var g))
+            return g;
+
+        if (string.IsNullOrWhiteSpace(s.resourceType)) return ResourceGroup.Stone;
+
+        var legacy = s.resourceType.Trim().ToLowerInvariant() switch
+        {
+            "stone" or "cutstone"                                     => ResourceGroup.Stone,
+            "copperore" or "tinore" or "ironore" or "coal" or
+            "silverore" or "goldore" or "magicstone" or
+            "etherstone" or "voidstone"                               => ResourceGroup.Ore,
+            "ruby" or "sapphire" or "topaz" or "emerald"              => ResourceGroup.Gem,
+            "bronze" or "steel" or "silveringot" or "goldingot"       => ResourceGroup.Ingot,
+            "wood" or "lumber"                                        => ResourceGroup.Wood,
+            "gold"                                                    => ResourceGroup.Currency,
+            _                                                         => ResourceGroup.Stone,
+        };
+
+        Debug.LogWarning($"[DataManager] '{s.itemName}': `resourceType`은 08-02에 없어졌습니다. " +
+                         $"`\"resourceGroup\": \"{legacy}\"`로 바꾸세요 — 자원의 종류는 이제 `id`가 말합니다.");
+        return legacy;
     }
 
     static FoodData BuildFood(FoodSchema s, string root)

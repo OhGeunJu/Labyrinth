@@ -130,7 +130,7 @@ public class ResourceNodePanel : MonoBehaviour
         panel.SetActive(true);
 
         if (nameText != null && node.Data != null)
-            nameText.text = node.Data.ResourceType.DisplayName();
+            nameText.text = node.Data.DropItem != null ? node.Data.DropItem.ItemName : "자원";
 
         if (node.Inventory != null)
             node.Inventory.OnChanged += RefreshStock;

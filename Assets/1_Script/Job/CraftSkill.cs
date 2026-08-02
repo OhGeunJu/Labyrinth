@@ -26,6 +26,9 @@ public static class CraftSkillExt
         CraftSkill.Stonecutting   => "석재 가공대",
         CraftSkill.Woodworking    => "제재소",
         CraftSkill.Gemcutting     => "보석 연마대",
-        _                         => "제작대",
+        // 건물 표시명(`CraftingTable_Labor.asset`)과 같은 말을 쓴다 — 예전엔 기본값 "제작대"로
+        // 떨어져서, 지어 놓은 건물과 그 패널이 서로 다른 이름을 달고 있었다.
+        CraftSkill.Labor          => "작업대",
+        _                         => "작업대",
     };
 }

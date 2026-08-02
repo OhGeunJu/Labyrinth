@@ -57,7 +57,7 @@ public static class NewBuildingCreator
         col.size   = new Vector3(0.96f, 2.0f, 0.96f);
 
         var prefab = SavePrefab(root, name);
-        MakeData(name, "벽", prefab, BuildCategory.Building, ResourceType.Stone, 5,
+        MakeData(name, "벽", prefab, BuildCategory.Building, "Res_Stone", 5,
                  Vector2Int.one, occupies: true, sortOrder: 15);
         return true;
     }
@@ -105,7 +105,7 @@ public static class NewBuildingCreator
         root.AddComponent<Storage>();
 
         var prefab = SavePrefab(root, name);
-        MakeData(name, "큰 창고", prefab, BuildCategory.Building, ResourceType.Wood, 40,
+        MakeData(name, "큰 창고", prefab, BuildCategory.Building, "Res_Wood", 40,
                  new Vector2Int(3, 2), occupies: false, sortOrder: 25);
         return true;
     }
@@ -123,7 +123,7 @@ public static class NewBuildingCreator
     }
 
     static void MakeData(string assetName, string display, GameObject prefab,
-                         BuildCategory category, ResourceType costType, int costAmount,
+                         BuildCategory category, string costItemId, int costAmount,
                          Vector2Int size, bool occupies, int sortOrder)
     {
         Directory.CreateDirectory(DataDir);
@@ -131,7 +131,7 @@ public static class NewBuildingCreator
         data.BuildingName = display;
         data.Category     = category;
         data.SortOrder    = sortOrder;
-        data.CostType     = costType;
+        data.CostItem     = LoadItem(costItemId);
         data.CostAmount   = costAmount;
         data.Prefab       = prefab;
         data.Size         = size;
@@ -139,6 +139,16 @@ public static class NewBuildingCreator
         // Id는 비워 둔다 — `DataId.Resolve`가 에셋 파일명을 쓴다(프로젝트 관례).
 
         AssetDatabase.CreateAsset(data, $"{DataDir}/{assetName}.asset");
+    }
+
+    // 비용 자원을 **에셋 파일명(= 식별자)** 으로 찾는다. 예전엔 `ResourceType` enum이라
+    // 컴파일러가 잡아 줬는데, 이제 참조라 없는 이름을 적으면 조용히 비용 없는 건물이 된다 — 알린다.
+    static ItemData LoadItem(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        var item = AssetDatabase.LoadAssetAtPath<ItemData>($"Assets/Resources/Data/Items/{id}.asset");
+        if (item == null) Debug.LogWarning($"[NewBuildingCreator] 비용 자원 '{id}'를 못 찾았습니다 — 비용 없이 만듭니다.");
+        return item;
     }
 
     static Material EnsureMaterial(Color color)

@@ -27,6 +27,12 @@ public class SelectionManager : MonoBehaviour
     // 다른 것을 클릭하거나 빈 곳을 클릭하면 null로 해제된다.
     public static event Action<UnitBrain> OnPawnInspected;
 
+    // 좌클릭 경로 **밖에서** 같은 패널을 열어야 할 때 쓰는 통로(우클릭 선택지 창 등).
+    // 이벤트는 선언한 클래스에서만 발행할 수 있어서 이렇게 문을 내야 한다 —
+    // 부르는 쪽이 자기 이벤트를 따로 만들면 패널을 여는 길이 둘이 되어 어긋난다.
+    public static void InspectNode(ResourceNode node)   => OnNodeSelected?.Invoke(node);
+    public static void InspectCorpse(Corpse corpse)     => OnCorpseSelected?.Invoke(corpse);
+
     void Awake()
     {
         _cam = Camera.main;
@@ -126,6 +132,19 @@ public class SelectionManager : MonoBehaviour
                 return;
             }
 
+            // **유닛이면서 클릭 대상이기도 한 것**(상인)은 그쪽이 이긴다.
+            // 상인이 제대로 된 NPC 폰이 되면서 아래 `PawnMover` 분기에 먼저 걸려,
+            // 좌클릭하면 상점 대신 유닛 정보가 떴다 — 상점을 열 방법이 없어진 것이다.
+            // 유닛으로서의 정보는 우클릭 메뉴와 상점 창에서 볼 수 있다.
+            if (pawn != null && hit.collider.GetComponent<IWorldClickable>() is { } pawnClickable)
+            {
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                pawnClickable.OnWorldClick();
+                return;
+            }
+
             // 조작 불가 유닛(적/NPC) — 선택(명령)은 안 되지만 정보 패널은 띄운다.
             if (pawn != null)
             {
@@ -172,15 +191,24 @@ public class SelectionManager : MonoBehaviour
         Rect screenRect = GetScreenRect(_dragStart, end);
         ClearSelection();
 
+        UnitBrain inspected = null;   // 우리 폰이 하나도 안 잡혔을 때 대신 보여줄 유닛
+
         foreach (var pawn in FindObjectsByType<PawnMover>(FindObjectsSortMode.None))
         {
-            var faction = pawn.GetComponent<Faction>();
-            if (faction == null || !faction.IsPlayer) continue;
-
             Vector3 screenPos = _cam.WorldToScreenPoint(pawn.transform.position);
-            if (screenPos.z > 0f && screenRect.Contains((Vector2)screenPos, true))
-                AddToSelection(pawn);
+            if (screenPos.z <= 0f || !screenRect.Contains((Vector2)screenPos, true)) continue;
+
+            var faction = pawn.GetComponent<Faction>();
+            if (faction != null && faction.IsPlayer) { AddToSelection(pawn); continue; }
+
+            if (inspected == null) inspected = pawn.GetComponent<UnitBrain>();
         }
+
+        // **드래그로 남의 유닛을 훑으면 스탯을 보여준다.**
+        // 좌클릭은 상인에게서 상점을 여는 데 쓰이므로(그쪽이 더 자주 하는 일),
+        // 유닛으로서의 정보를 볼 길이 드래그에 남는다. 우리 폰이 하나라도 잡혔으면
+        // 그건 명령을 위한 선택이므로 정보 패널을 띄우지 않는다.
+        OnPawnInspected?.Invoke(_selected.Count == 0 ? inspected : null);
     }
 
     void AddToSelection(PawnMover pawn)

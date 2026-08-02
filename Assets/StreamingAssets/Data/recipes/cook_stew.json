@@ -1,9 +1,9 @@
 {
-  "recipeName": "스튜 끓이기",
+  "id": "cook_stew", "recipeName": "스튜 끓이기",
   "ingredients": [
-    { "itemName": "생고기", "amount": 1 },
-    { "itemName": "채소", "amount": 2 }
+    { "itemId": "Food_RawMeat", "amount": 1 },
+    { "itemId": "vegetables", "amount": 2 }
   ],
-  "resultItemName": "스튜", "resultAmount": 1,
+  "resultItemId": "food_stew", "resultAmount": 1,
   "craftTime": 12.0, "requiredResearchId": "Res_Cooking", "requiredSkillType": "Cooking", "requiredSkillLevel": 15, "skillGrowthAmount": 0.4
 }

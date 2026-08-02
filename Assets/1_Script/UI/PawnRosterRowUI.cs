@@ -42,11 +42,43 @@ public class PawnRosterRowUI : MonoBehaviour,
     public event Action<PawnRosterRowUI>       RowPointerEnter;
     public event Action                        RowPointerUp;
 
+    // 더블클릭 판정을 **직접 잰다.** `PointerEventData.clickCount`는 입력 모듈에 따라
+    // 안 올라오는 경우가 있어(New Input System UI 모듈) 믿을 수 없었다.
+    // 행 단위가 아니라 **정적**으로 들고 있어야 한다 — 다른 행을 연달아 눌렀을 때
+    // 더블클릭으로 오인하지 않으려면 "직전에 누른 행"까지 같이 봐야 하기 때문이다.
+    const float DoubleClickSeconds = 0.35f;
+    static PawnRosterRowUI _lastClicked;
+    static float           _lastClickTime;
+
     public void OnPointerDown(PointerEventData e)
     {
+        bool doubleClick = _lastClicked == this &&
+                           Time.unscaledTime - _lastClickTime <= DoubleClickSeconds;
+        _lastClicked   = this;
+        _lastClickTime = Time.unscaledTime;
+
+        // **더블클릭 = 그 폰을 화면에 비춘다.** 목록에서 골라도 화면 밖에 있으면
+        // 어디 있는지 알 수가 없다. 첫 클릭은 평소대로 선택되므로 "고르면서 찾아간다"가 된다.
+        if (doubleClick) { FocusCamera(); return; }
+
         bool ctrl = Keyboard.current != null &&
                     (Keyboard.current.leftCtrlKey.isPressed || Keyboard.current.rightCtrlKey.isPressed);
         RowPointerDown?.Invoke(this, ctrl);
+    }
+
+    void FocusCamera()
+    {
+        if (_brain == null) return;
+
+        // 켜져 있는 카메라를 고른다 — 씬에 필드·월드 둘이 있다.
+        var cam = CameraController.Active;
+        if (cam == null)
+        {
+            // 조용히 아무 일도 안 일어나면 "더블클릭이 안 먹는다"로 보인다 — 이유를 남긴다.
+            Debug.LogWarning("[PawnRoster] 켜져 있는 CameraController가 없어 폰을 비추지 못했습니다.");
+            return;
+        }
+        cam.FocusOn(_brain.transform.position);
     }
 
     public void OnPointerEnter(PointerEventData e) => RowPointerEnter?.Invoke(this);

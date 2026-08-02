@@ -198,9 +198,10 @@ public class DungeonCore : MonoBehaviour
             return false;
         }
 
-        if (!Storage.Consume(minionData.SummonCostType, minionData.SummonCostAmount))
+        if (minionData.SummonCostAmount > 0 &&
+            !Storage.ConsumeByItem(minionData.SummonCostItem, minionData.SummonCostAmount))
         {
-            Debug.Log($"[DungeonCore] 자원 부족 — {minionData.SummonCostType} ×{minionData.SummonCostAmount} 필요");
+            Debug.Log($"[DungeonCore] 자원 부족 — {minionData.SummonCostItem?.ItemName} ×{minionData.SummonCostAmount} 필요");
             return false;
         }
 

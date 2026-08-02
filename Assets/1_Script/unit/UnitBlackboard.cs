@@ -51,6 +51,12 @@ public class UnitBlackboard
     // "도착했지만 계속 대기"를 표현할 수 없다. 푸는 건 명령을 건 쪽의 몫이다.
     public bool HoldPosition;
 
+    // 따라갈 대상. 우클릭 메뉴의 [따라가기]가 켜고, 다른 명령(이동·공격)이 끄거나
+    // 대상이 사라지면 `FollowNode`가 스스로 끈다.
+    // **`ManualMove`와 다른 축이다** — 저건 "정해진 지점까지 가고 끝"이라 목적지가 소진되면
+    // 자동 해제되므로, 계속 쫓아다니는 상태를 표현할 수 없다(`HoldPosition`을 따로 둔 것과 같은 이유).
+    public Transform FollowTarget;
+
     // 상태
     public bool IsDrafted;
     public bool IsUnarmed  = true;

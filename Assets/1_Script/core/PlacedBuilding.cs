@@ -82,8 +82,8 @@ public class PlacedBuilding : MonoBehaviour
         int refund = Mathf.FloorToInt(data.CostAmount * refundRatio);
         if (refund <= 0) return;
 
-        var item = DataManager.GetResourceItem(data.CostType);
-        if (item == null) return; // 해당 자원 ItemData 없음 → 환불 생략
+        var item = data.CostItem;
+        if (item == null) return; // 비용 아이템이 없는 건물(무료) → 환불할 것도 없다
 
         // 철거 위치에 드랍 → 자동으로 가장 가까운 창고로 운반.
         DroppedItem.Spawn(item, refund, transform.position);

@@ -32,6 +32,43 @@ public class CameraController : MonoBehaviour
 
     void Awake() => _cam = GetComponent<Camera>();
 
+    // ── 특정 지점 비추기 ─────────────────────────────────────────────────
+    // 목록에서 폰을 더블클릭했을 때처럼 **화면 밖에 있는 것을 보여줘야** 할 때 쓴다.
+    //
+    // **높이와 각도는 안 건드린다.** 지금 보고 있는 시점을 그대로 두고 XZ만 옮긴다 —
+    // 줌·기울기를 같이 바꾸면 "어디로 튀었지"가 되어 오히려 위치를 잃는다.
+    public void FocusOn(Vector3 worldPoint)
+    {
+        // 카메라가 기울어 있으므로 지금 화면 한가운데가 가리키는 지면과의 **차이**만큼 민다.
+        // 그래야 대상이 화면 정중앙에 온다(그냥 대상 좌표로 가면 화면 위쪽에 걸린다).
+        Vector3 look = GroundUnderCenter();
+        Vector3 delta = new Vector3(worldPoint.x - look.x, 0f, worldPoint.z - look.z);
+        transform.position += delta;
+    }
+
+    // 화면 한가운데 광선이 y=대상높이 평면과 만나는 곳. 지형 콜라이더에 기대지 않는다
+    // (지형이 없는 던전 씬에서도 동작해야 한다).
+    Vector3 GroundUnderCenter()
+    {
+        var cam = _cam != null ? _cam : GetComponent<Camera>();
+        if (cam == null) return transform.position;
+
+        Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        var plane = new Plane(Vector3.up, Vector3.zero);
+        return plane.Raycast(ray, out float d) ? ray.GetPoint(d) : transform.position;
+    }
+
+    // 씬에 여럿(필드·월드)이 있으므로 **켜져 있는 것**을 고른다.
+    public static CameraController Active
+    {
+        get
+        {
+            foreach (var c in FindObjectsByType<CameraController>(FindObjectsSortMode.None))
+                if (c != null && c.isActiveAndEnabled) return c;
+            return null;
+        }
+    }
+
     void Start()
     {
         Vector3 euler = transform.eulerAngles;

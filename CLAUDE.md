@@ -66,7 +66,7 @@ Guidance for Claude Code in this repository.
 | `EventManager` | `checkInterval`(기본 300초) 주기 랜덤 이벤트 발동. `OnEventTriggered` static event |
 | `GameTimeManager` | **낮 20분 + 밤 10분 = 1일**(`dayDuration` 1800초 × `dayFraction` 2/3). 밤이 짧은 건 폰이 일하는 시간이 낮이라서다. **모든 지속시간 데이터의 기준 축** — 하루 길이를 바꾸면 허기·작물·연구·제작·채굴을 같이 옮겨야 한다(`docs/data.md` "시간 축"). 시계는 선형이라 낮 06:00~22:00. `NormalizedTime`(0-1) / `IsDay` / `CurrentDay` / `Speed` / `SetSpeed` / `OnDayChanged` / `OnTimeChanged(float)` |
 | `HierarchicalPathfinder` | 씬에 배치 필요. `ComputeCoarseRoute(from,to)`(메소/L2) + `FindLocalPath(pos,target,self)`(유닛 중심 Theta* 윈도우) / `RebakeObstacleAt`. `obstacleLayer`=Wall만. **통행 판정은 타일 단위** — 반경 부풀림은 타일보다 큰 에이전트에만. 상세 `docs/world.md` |
-| `ResearchManager` | `IsUnlocked(recipe)` / `GetRequiredResearch(recipe)` / `CanResearch(data)` / `Complete(data)`. 진행률은 `ResearchTable.ActiveResearch` / `ActiveProgress`(폰이 연구대에 붙어 타이머가 도는 동안만 — 큐 예약은 안 잡힘). **잠금은 양방향 어느 쪽으로 적어도 걸린다** — `ResearchData.UnlockedRecipes`(큐레이션, 역인덱스를 Awake에서 생성) ∥ `RecipeData.RequiredResearch`(개별 지정). 둘 다 비면 처음부터 열린 레시피 |
+| `ResearchManager` | `IsUnlocked(recipe)` / `GetRequiredResearch(recipe)` / `CanResearch(data)` / `Complete(data)`. 진행률은 `ResearchTable.ActiveResearch` / `ActiveProgress`(폰이 연구대에 붙어 타이머가 도는 동안만 — 큐 예약은 안 잡힘) / `PendingResearch`(폰이 안 왔어도 맡은 것 — UI가 버튼/게이지를 가르는 기준). **한 연구대는 한 번에 하나만 맡는다** — `StartResearch(data)`가 하던 것을 접고 갈아탄다(진행도는 남아 다시 고르면 이어서 한다). UI의 [연구] 버튼과 진행 게이지는 **같은 칸을 번갈아 쓴다**(`ResearchTableUI.PrepareSlot`이 런타임에 게이지를 버튼 자리로 옮긴다 — 씬 수정 불필요). **잠금은 양방향 어느 쪽으로 적어도 걸린다** — `ResearchData.UnlockedRecipes`(큐레이션, 역인덱스를 Awake에서 생성) ∥ `RecipeData.RequiredResearch`(개별 지정). 둘 다 비면 처음부터 열린 레시피 |
 | `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill(CraftSkill)` / `GetBuilding(name)` / `GetUnit(id)` / `AllItems` / `AllRecipes` / `AllResearch` / **`AllBuildings`**(Category→SortOrder→이름 순) / **`AllUnits`**(`Resources/Data/Units/` 스캔 — `MinionData`·`NpcData` 포함) / **`AllMinions`**(SortOrder→이름 순, 소환 메뉴 순서) |
 | `GameModeManager` | **화면·입력**이 필드냐 월드냐의 단일 소유자. `Current` / `IsField` / `IsWorld` / `SwitchTo(GameMode)` / `Toggle()` / `OnModeChanged`. 월드 전환 = 필드 UI·입력·카메라 off + 월드 UI/루트/카메라 on. **UI 캔버스는 하나** — 캔버스가 아니라 그 **직속 자식들**을 다루고 월드 전용 묶음(`Canvas/WorldUI`)만 반대로 켠다(월드 UI를 캔버스째 끄지 않으려고). 필드 UI는 **떠날 때 열려 있던 상태를 기억했다 복원**(`ApplyFieldUi`) — 일괄로 켜면 닫아 뒀던 패널까지 따라 열린다. **정착지 루트는 안 건드린다 — 거점 시뮬은 월드맵을 보는 동안에도 계속 돈다**(2026-07-30 결정, 07-29의 "필드 통째 정지"를 되돌림). `EventManager`도 계속 돈다(원정 중 습격 → M키로 복귀해 대응, 추상 방어 판정 불필요) |
 | `OutpostManager` | **채집기지**(`WorldNodeContent.Outpost`)의 단일 소유자. `Build(node)` / `At(node)` / `LoadInto(outpost, party)` / `CanAfford` / `CostSummary` / `OnChanged`. **필드맵을 만들지 않는 추상 시설** — 매일(`OnDayChanged`) 남은 매장에서 골고루 캐 기지에 쌓고, **원정대가 들러 등짐으로 실어와야** 창고에 들어간다(본거지 순간이동 없음). 건설 비용 `buildCost`(비우면 무료)는 활성 거점 창고에서 빠진다 |
@@ -83,16 +83,30 @@ Guidance for Claude Code in this repository.
 
 완성품은 **폰이 아니라 작업대에 쌓인다** — `CraftingTable.Inventory`(기본 8×3). 순서는 **산출물 → (꽉 차면) 폰 인벤 → (그것도 안 되면) 드롭**. `allowHaulOut`이 켜져 있으면 폰이 창고로 실어 간다(끄면 작업대에 쌓아 둠). 운반 출처는 **`IHaulSource`**(인벤토리+타일좌표+transform) — `ResourceNode`와 `CraftingTable`이 같은 `HaulJob`을 쓴다. 연료는 **용광로만** 요구(`_requiresFuel`), 없으면 `CraftJob.Execute`가 대기하므로 UI에 게이지+보충 안내가 뜬다. `Inventory.Resize(w,h)`는 **비어 있을 때만** 통한다.
 
+### 재료는 `MaterialPool`로 센다 (창고만 보지 말 것)
+
+상점 구매가 폰 배낭으로 들어가면서 **창고만 세면 손에 든 재료가 없는 것이 된다.**
+
+```csharp
+MaterialPool.Available(item, carrier)      // 창고 + 그 폰의 배낭 — 배정·소비 판정용
+MaterialPool.AvailableAnywhere(item)       // 창고 + 플레이어 폰 전부 — 일감 등록 판정용
+MaterialPool.Consume(item, amount, carrier)// 배낭 먼저, 그다음 창고
+```
+
+**남의 배낭은 안 센다** — B를 조작하는데 A의 짐이 줄면 설명할 수 없다. 등록 시점엔 누가 할지 모르므로 `AvailableAnywhere`로 넓게 보고, `JobBase.CanAssignTo(unit)`가 폰별로 다시 거른다(`IsReady`와 다른 축). 적용처: `SeedJob` · `CraftJob` · `ResearchJob`.
+
 ### Storage API (자주 사용)
 
 ```csharp
-Storage.GetTotal(ResourceType)           // ResourceType 기반 집계
-Storage.GetTotalByItem(ItemData)         // ItemData 기반 집계 (제작 재료용)
-Storage.Consume(ResourceType, amount)
+Storage.GetTotalByItem(ItemData)         // 집계는 아이템 기준 하나뿐 (ResourceType판은 삭제)
 Storage.ConsumeByItem(ItemData, amount)
 Storage.FindNearest(position, item)      // 해당 아이템을 받는 가장 가까운 창고
+Storage.FindStorageWithItem(ItemData)    // 그 아이템이 실제로 들어 있는 창고 (건설 자재 수거)
 storage.CanAccept(ItemData)              // 필터 통과 여부
 storage.TryAdd(item, amount)             // 필터 통과 시에만 입고
+storage.AllowsEverything                 // 필터 둘 다 비었나 (= 전부 허용 정규형)
+storage.AddFilter(ResourceGroup)         // 묶음 단위 허용 — 창고 패널 버튼이 다루는 것
+storage.AddItemFilter(ItemData)          // 묶음과 별개로 콕 집어 허용 ("석탄 전용 창고")
 ```
 
 ### Job Categories & 배정 모델
@@ -115,18 +129,16 @@ PhysicalType:   Slash / Pierce / Blunt          (Physical일 때)
 DamageElement:  None / Fire / Ice / Lightning / Poison  (비Physical일 때)
 ```
 
-### ResourceType
+### 자원 — 종류는 아이템, 묶음만 enum (`ResourceGroup`)
 
-| 분류 | 값 |
-|---|---|
-| 석재 | Stone, CutStone |
-| 원석 | CopperOre, TinOre, IronOre, Coal, SilverOre, GoldOre, MagicStone |
-| 보석 | Ruby(화염), Sapphire(냉기), Topaz(번개), Emerald(독), Etherstone(신성), Voidstone(암흑) |
-| 주괴 | Bronze, Steel, SilverIngot, GoldIngot |
-| 목재 | Wood, Lumber |
-| 화폐 | Gold |
+**`ResourceType` enum은 없다**(2026-08-02 삭제). 그 22개 값은 `ResourceItemData` 에셋과 정확히 1:1이라 한 자원에 이름이 셋(에셋 Id · enum 값 · 표시명) 있는 꼴이었고, 표시명 테이블도 두 벌이었다.
 
-`ResourceTypeExt.DisplayName()` — 한글 표시명 반환
+- **무슨 자원인가** = `ItemData` 참조. `BuildingData.CostItem` / `MinionData.SummonCostItem` / `ResourceNodeData.DropItem` / `SettlementManager.OfflineYieldEntry.Item`.
+- **어느 묶음인가** = `ResourceGroup { Stone, Ore, Gem, Ingot, Wood, Currency }` — `ResourceItemData.Group`이 직접 들고 있다. 창고 필터·UI 분류 전용이고 **콘텐츠가 아니라 화면을 나누는 축**이라 enum으로 남겼다.
+- 표시명은 `ItemName` 한 곳. `ResourceGroupExt.DisplayName()`은 묶음 이름만 답한다.
+- `ResourceGroupExt.ItemsIn(group)` — 그 묶음의 자원 전부를 **레지스트리에서** 훑는다(모드가 넣은 자원도 딸려 온다).
+- `ResourceNodeData.IsTree` — 목재 묶음을 내놓는 노드 = 벌목(채굴 아님). 예전 `ResourceType == Wood` 검사를 대체.
+- 모드가 새 자원을 넣는 법: 아이템 JSON에 `"type": "resource", "resourceGroup": "Ore"`. 옛 `resourceType`도 받아 묶음으로 옮기고 경고한다.
 
 ### CraftSkill 타입
 
@@ -143,12 +155,12 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 **골드**: `ResourceItemData` SO (`ResourceType.Gold`, Stack=9999). Storage에 보관, `GetTotalByItem` / `ConsumeByItem`으로 집계.
 
-**ItemData.BaseValue**: 아이템 기준 가격(G). 인벤토리 툴팁에 "가치" 표시 + 상점 판매가 계산 기준.
+**ItemData.BaseValue**: 아이템 기준 가격(G). 인벤토리 툴팁에 "가치" 표시 + 상점 판매가 계산 기준. JSON은 `"baseValue"`. **안 적으면 0이고, 그러면 상인이 기본값 10G로 판다** — 허브도 철검도 10G가 된다.
 
 **MerchantData** (SO, `Create → DungeonColony → MerchantData`):
 - `MerchantType`: General / Weapon / Armor
 - `DailySlotCount`: 하루 진열 종류 수
-- `ItemPool`: 후보 목록 (`Item` + `BasePrice`(0이면 Item.BaseValue) + `MinStock` + `MaxStock` + `Weight` + `Quality`)
+- `ItemPool`: 후보 목록 (`Item` **또는 `ItemId`** + `BasePrice`(0이면 아이템 BaseValue) + `MinStock` + `MaxStock` + `Weight` + `Quality`). **`ItemId`는 JSON·모드 아이템용** — 그것들은 런타임 생성이라 에셋 참조로 못 가리킨다. 읽을 땐 반드시 `entry.Resolve()`(에셋 먼저 → 없으면 레지스트리 Id)
 - `GoldItem`: Gold ItemData 연결
 - `PriceMultiplier`: 마을 전체 구매가 배율 (기본 1.0)
 - `ItemOverrides`: 아이템별 개별 배율 (특정 아이템만 비싸게/싸게)
@@ -206,8 +218,9 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 | Script | 트리거 | 동작 |
 |---|---|---|
-| `SelectionManager` | 좌클릭/드래그 | Player 팩션 유닛 선택. 적/NPC 클릭 = `OnPawnInspected`(정보만, 명령 대상 아님) |
-| `MoveController` | 우클릭 | 방랑자 이동/타겟 설정 |
+| `SelectionManager` | 좌클릭/드래그 | Player 팩션 유닛 선택. 적/NPC 클릭 = `OnPawnInspected`(정보만, 명령 대상 아님). **폰이면서 `IWorldClickable`이기도 하면 클릭 대상이 이긴다**(상인 = 상점이 열린다) |
+| `MoveController` | 우클릭 | 방랑자 이동/타겟 설정. **적대 세력 = 즉시 공격**(뜻이 하나뿐), **중립·아군 유닛 = `PawnContextMenu`**(거래/따라간다/공격한다). 선택지 구성은 `MoveController`가 정한다 |
+| `PawnContextMenu` | 우클릭(적대 유닛·맨바닥 제외) | 우클릭한 **월드 지점에 고정**되는 팝업(카메라를 움직여도 그 자리 — `LateUpdate`에서 매 프레임 화면 좌표로 푼다). 제목 바·닫기 버튼 없음(고르거나 딴 데 누르면 닫힘). 줄은 씬의 `OptionTemplate` 복제. 대상별 선택지: 유닛=거래(상인)/따라간다/공격, 노드=캔다·벤다(배정)/살펴본다, 시체=뒤진다, 핵·건물=연다, **어디든 마지막에 [여기로 이동]**. **맨바닥은 창 없이 즉시 이동**(선택지가 하나뿐인 창은 클릭만 늘린다). 따라가기 = `UnitBlackboard.FollowTarget` + `FollowNode`(방랑자 트리에서 `ManualOrderNode` 바로 아래) |
 | `PawnInventoryPanel` | I키 | 인벤토리/장비 패널 |
 | `UnitStatsUI` | C키 | 스탯 패널 토글 |
 | `ColonyPanel` | P키 | 무리 관리(작업 on/off + 전투 성향, 폰 전체) |
@@ -237,8 +250,14 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 - **BT 노드에서 델타 곱하기를 빼먹는 것도 같은 사고**: 반대 방향으로 틀린다. `ResourceNode.Work(skill)`이 틱마다 스킬 수치를 그대로 더해 채굴 속도가 **초당 skill×10**이 됐었다(2026-07-31 수정 — `Work(power, deltaTime)`로 시그니처를 바꿔 호출자가 델타를 빠뜨릴 수 없게 했다). **틱마다 누적하는 값은 전부 델타를 곱할 것** — 안 그러면 배속·프레임레이트가 게임 밸런스를 바꾼다.
 
+- **일감을 밖에서 취소하면 들고 있는 폰에게도 놓는 길을 내야 한다**: `JobBase.Tick`은 `InProgress`일 때만 돌고 `IsComplete()`는 `Done`일 때만 참이라, **밖에서 취소된 작업은 어느 쪽에도 안 걸려 폰 손에 영원히 남는다**(도착해서 아무것도 안 하고 서 있는다). `BTLeafNodes`가 `Status == Cancelled`면 놓는다(2026-08-02, 연구 갈아타기에서 드러남).
+
 - **한글 폰트**: 해소됨(2026-08-01). `TMP Settings`의 Default Font Asset = **NanumGothic SDF**, Fallbacks = **[NanumGothic SDF, LiberationSans SDF]**. 폴백이 두 단계인 이유 — NanumGothic만 두면 `UnitHPUI`의 막대(`█`/`░`)가 □가 되고, LiberationSans만 두면 한글이 □가 된다. 이제 `AddComponent<TextMeshProUGUI>`도 그냥 한글이 나온다. **그래도 새 UI 텍스트에 특수문자는 쓰지 말 것** — 폴백은 안전망이지 허가가 아니며, 폰트가 섞이면 자간·기준선이 어긋난다(`docs/editor_creators.md` "폰트 체인").
 - **핵 이동 시 빌드존 리셋**: 해소됨. 점유는 `HashSet` 절대좌표 희소 저장이라 이동에도 유지되고, 영역 밖 건물은 `BuildingDormancy`가 휴면 처리(`docs/design_core_creep.md` step 1~5 완료).
 - **Blueprint 반투명 머티리얼**: URP에서 코드 생성 투명 머티리얼(`BuildingBlueprint.CreateBlueprintMaterial`)이 불투명 렌더될 수 있음. 에디터에서 직접 제작 후 연결 권장.
 - **DataManager**: `Resources.LoadAll<RecipeData>("Data/Recipes")` + JSON 스키마(`DataSchemas`) 경로 둘 다 지원. SO는 `Assets/Resources/Data/{Items,Recipes,Research}/`에 있어야 인식.
+
+**SO냐 JSON이냐 — 기준은 "다른 에셋이 GUID로 가리켜야 하는가"다.** JSON 아이템은 런타임 생성이라 프리팹·SO가 **가리킬 방법이 없다**(그래서 상인 재고에 `ItemId` 문자열 경로를 따로 뒀다).
+- **SO여야 하는 것**: `ResourceNodeData.DropItem` · `BuildingData.CostItem` · `MinionData.SummonCostItem` · `SeedData.HarvestItem` · SO 레시피의 재료/결과처럼 **에셋이 가리키는** 아이템.
+- **JSON이 나은 것**: 레시피로만 만들고 쓰는 것(무기·방어구 대부분). 모드가 고치거나 덮어쓸 수 있다. 2026-08-02에 옛 장비 16종을 이 기준으로 JSON에 옮겼다(참조 0건 실측 후).
 - **모드 자산(`ModAssets`)**: JSON의 `iconPath`/`modelPath`를 **그 콘텐츠 폴더 → 에셋 번들 → Resources** 순으로 찾는다. **1번이 본체** — 그림은 PNG/JPG, 모델은 **`.obj`(+`.mtl`+텍스처)** 를 폴더에 넣기만 하면 실린다(`ObjModel`이 직접 파싱). `.fbx`는 런타임 해석 불가 → 그렇게 알려 준다. 번들은 OBJ로 표현 못 하는 것(프리팹·뼈대·애니메이션)용 보조 경로(`DungeonColony → Build Mod AssetBundle`). 폴더 밖(`../`) 경로는 무시. 예시는 `StreamingAssets/Mods/ExampleMod/`. 상세 `docs/data.md`.

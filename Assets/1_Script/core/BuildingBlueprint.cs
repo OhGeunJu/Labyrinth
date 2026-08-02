@@ -7,24 +7,24 @@ public class BuildingBlueprint : MonoBehaviour
     public static readonly List<BuildingBlueprint> All = new();
 
     BuildingData _data;
-    ResourceType _costType;
+    ItemData     _costItem;
     int          _costRequired;
     int          _costDelivered;
     bool         _jobPending;
 
     Material _ghostMat;
 
-    public bool         IsComplete => _costDelivered >= _costRequired;
-    public int          Remaining  => Mathf.Max(0, _costRequired - _costDelivered);
-    public ResourceType CostType   => _costType;
+    public bool     IsComplete => _costDelivered >= _costRequired;
+    public int      Remaining  => Mathf.Max(0, _costRequired - _costDelivered);
+    public ItemData CostItem   => _costItem;
 
     public void Init(BuildingData data)
     {
         _data         = data;
-        _costType     = data.CostType;
+        _costItem     = data.CostItem;
         _costRequired = data.CostAmount;
         BuildGhostVisual();
-        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.BuildingName} ({_costType} ×{_costRequired} 필요)");
+        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.BuildingName} ({_costItem?.ItemName} ×{_costRequired} 필요)");
     }
 
     void BuildGhostVisual()
@@ -93,13 +93,13 @@ public class BuildingBlueprint : MonoBehaviour
 
     void TryRegisterJob()
     {
-        if (_jobPending || IsComplete || JobManager.Instance == null) return;
-        int available = Storage.GetTotal(_costType);
+        if (_jobPending || IsComplete || JobManager.Instance == null || _costItem == null) return;
+        int available = Storage.GetTotalByItem(_costItem);
         if (available <= 0) return;
 
         _jobPending = true;
         JobManager.Instance.RegisterJob(
-            new ConstructionJob(this, _costType, Mathf.Min(Remaining, available)));
+            new ConstructionJob(this, _costItem, Mathf.Min(Remaining, available)));
     }
 
     public void OnJobEnded()
@@ -108,11 +108,11 @@ public class BuildingBlueprint : MonoBehaviour
         TryRegisterJob();
     }
 
-    public void Deliver(ResourceType type, int amount)
+    public void Deliver(ItemData item, int amount)
     {
-        if (type != _costType || amount <= 0) return;
+        if (item != _costItem || amount <= 0) return;
         _costDelivered = Mathf.Min(_costRequired, _costDelivered + amount);
-        Debug.Log($"[Blueprint] 자재 입고 — {type} {_costDelivered}/{_costRequired}");
+        Debug.Log($"[Blueprint] 자재 입고 — {item?.ItemName} {_costDelivered}/{_costRequired}");
         if (IsComplete) Complete();
     }
 

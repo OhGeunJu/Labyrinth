@@ -18,7 +18,8 @@ public class MinionData : UnitData
     public int SortOrder = 0;
 
     [Header("소환 비용")]
-    public ResourceType SummonCostType;
+    [Tooltip("소환 비용으로 쓰는 자원 아이템. 비우면 무료.")]
+    public ItemData SummonCostItem;
     public int SummonCostAmount = 10;
 
     [Header("허용 작업 (비어있으면 모두 허용)")]

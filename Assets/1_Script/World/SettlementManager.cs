@@ -23,7 +23,7 @@ public class SettlementManager : MonoBehaviour
     [Serializable]
     public class OfflineYieldEntry
     {
-        public ResourceType Type;
+        public ItemData Item;
         [Min(0)] public int PerDay = 1;
     }
 
@@ -166,7 +166,7 @@ public class SettlementManager : MonoBehaviour
         foreach (var y in s.OfflineYield)
         {
             if (y == null || y.PerDay <= 0) continue;
-            var item = DataManager.GetResourceItem(y.Type);
+            var item = y.Item;
             if (item == null) continue;
 
             int remaining = y.PerDay;

@@ -39,13 +39,17 @@ public class MinionEntryUI : MonoBehaviour
     public void Refresh()
     {
         if (_data == null) return;
-        int have    = Storage.GetTotal(_data.SummonCostType);
-        bool canAfford = have >= _data.SummonCostAmount;
+        var  cost      = _data.SummonCostItem;
+        int  have      = Storage.GetTotalByItem(cost);
+        bool canAfford = _data.SummonCostAmount <= 0 || have >= _data.SummonCostAmount;
 
         if (costText != null)
         {
+            // 비용 이름이 **한글로 나온다.** 예전엔 enum 값이 그대로 찍혀 "IronOre"가 보였다.
             string col = canAfford ? "#88FF88" : "#FF6666";
-            costText.text = $"<color={col}>{_data.SummonCostType}  {have} / {_data.SummonCostAmount}</color>";
+            costText.text = cost == null
+                ? "무료"
+                : $"<color={col}>{cost.ItemName}  {have} / {_data.SummonCostAmount}</color>";
         }
 
         if (summonButton != null)

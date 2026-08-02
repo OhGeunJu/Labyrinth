@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -19,9 +20,11 @@ public class ResearchTableUI : MonoBehaviour
     [SerializeField] TextMeshProUGUI researchTimeText;
     [SerializeField] TextMeshProUGUI prerequisiteText;
     [SerializeField] Button          researchButton;
+    [Tooltip("비우면 버튼의 자식 텍스트를 자동으로 찾는다")]
+    [SerializeField] TextMeshProUGUI researchButtonLabel;
 
     [Header("진행 게이지")]
-    [Tooltip("진행 중일 때만 켜지는 묶음 (게이지 + 텍스트의 부모)")]
+    [Tooltip("진행 중일 때만 켜지는 묶음 (게이지 + 텍스트의 부모). 런타임에 [연구] 버튼 자리로 옮겨진다")]
     [SerializeField] GameObject      progressRoot;
     [Tooltip("Image Type=Filled, Fill Method=Horizontal 로 설정된 채움 이미지")]
     [SerializeField] Image           progressFill;
@@ -31,10 +34,20 @@ public class ResearchTableUI : MonoBehaviour
     ResearchTable _currentTable;
     ResearchData  _selected;
 
+    readonly List<ResearchEntryUI> _entries = new();
+    ResearchData _markedResearch;   // 목록 표식이 가리키는 연구 — 바뀔 때만 다시 칠한다
+    bool         _slotPrepared;
+
     void Awake()
     {
         if (panel != null) panel.SetActive(false);
         if (detailPanel != null) detailPanel.SetActive(false);
+
+        // 게이지를 버튼 자리로 옮기는 건 한 번만 하면 된다. **여기서 미리 해 두는 이유**는
+        // 그러지 않으면 첫 선택 전까지 씬에 저작된 자리(패널 아래)에 그대로 떠 있기 때문이다.
+        PrepareSlot();
+        if (progressRoot != null) progressRoot.SetActive(false);
+
         ResearchTable.OnSelected         += Open;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
         ResearchManager.OnResearchCompleted += HandleResearchCompleted;
@@ -61,42 +74,143 @@ public class ResearchTableUI : MonoBehaviour
             return;
         }
 
-        RefreshProgress();
+        RefreshActionSlot();
+        RefreshEntryMarks();
     }
 
-    // 게이지는 두 가지를 보여준다:
-    //   ① 폰이 붙어 **지금 도는 중** — 실시간으로 차오른다
-    //   ② 붙어 있지 않지만 **해 둔 몫이 있는 중단 상태** — 어디까지 왔는지 그대로 보인다
-    //
-    // 전에는 ①만 있었다. 그런데 진행도가 저장되기 시작한 뒤로는 폰이 자리를 비운 동안
-    // "이 연구가 60%까지 와 있다"가 화면 어디에도 없었다 — 그게 제일 알고 싶은 순간인데.
-    void RefreshProgress()
+    // ── [연구] 버튼과 게이지는 **같은 칸을 나눠 쓴다** ─────────────────────
+    // 전에는 게이지가 패널 아래에 따로 떠서, 켜지는 순간 원래 그 자리에 있던 것들을 가렸다.
+    // 둘은 동시에 필요한 적이 없다 — 지금 이 연구를 하고 있으면 [연구] 버튼은 의미가 없고,
+    // 하고 있지 않으면 게이지가 보여줄 게 없다. 그래서 한 칸을 번갈아 쓴다.
+    void PrepareSlot()
     {
-        if (progressRoot == null) return;
+        if (_slotPrepared || progressRoot == null || researchButton == null) return;
+        _slotPrepared = true;
 
-        var active = _currentTable != null ? _currentTable.ActiveResearch : null;
-        if (active != null)
+        var btnRt = researchButton.transform as RectTransform;
+        var barRt = progressRoot.transform as RectTransform;
+        if (btnRt == null || barRt == null || btnRt.parent == null) return;
+
+        barRt.SetParent(btnRt.parent, false);
+        barRt.SetSiblingIndex(btnRt.GetSiblingIndex() + 1);
+
+        // 부모가 레이아웃 그룹이면 자리는 `LayoutElement`가, 아니면 앵커·좌표가 정한다.
+        // **어느 쪽인지 여기서 알 수 없으므로 둘 다 맞춘다** — 한쪽만 맞추면 나머지 경우에 어긋난다.
+        barRt.anchorMin        = btnRt.anchorMin;
+        barRt.anchorMax        = btnRt.anchorMax;
+        barRt.pivot            = btnRt.pivot;
+        barRt.anchoredPosition = btnRt.anchoredPosition;
+        barRt.sizeDelta        = btnRt.sizeDelta;
+
+        var barLe = progressRoot.GetComponent<LayoutElement>();
+        if (barLe == null) barLe = progressRoot.AddComponent<LayoutElement>();
+
+        var btnLe = researchButton.GetComponent<LayoutElement>();
+        if (btnLe != null)
         {
-            progressRoot.SetActive(true);
-            float p = _currentTable.ActiveProgress;
-            if (progressFill != null) progressFill.fillAmount = p;
-            if (progressText != null) progressText.text = $"{active.ResearchName}  {p * 100f:F0}%";
+            barLe.preferredWidth = btnLe.preferredWidth;
+            barLe.flexibleWidth  = btnLe.flexibleWidth;
+        }
+    }
+
+    // 게이지 높이를 버튼 높이에 맞춘다. **제 높이가 잡힐 때까지 계속 시도한다** —
+    // 레이아웃이 아직 안 돈 프레임에 재면 0이 나오고, 그 0을 그대로 박으면
+    // 레이아웃 그룹 아래에서 게이지가 납작하게 찌그러진 채 고정된다.
+    void EnsureSlotHeight()
+    {
+        if (progressRoot == null || researchButton == null) return;
+
+        var barLe = progressRoot.GetComponent<LayoutElement>();
+        if (barLe == null || barLe.preferredHeight > 0f) return;
+
+        var btnLe = researchButton.GetComponent<LayoutElement>();
+        float h = btnLe != null && btnLe.preferredHeight > 0f
+                ? btnLe.preferredHeight
+                : (researchButton.transform as RectTransform)?.rect.height ?? 0f;
+
+        if (h <= 0f) return;
+        barLe.preferredHeight = h;
+        barLe.minHeight       = h;
+    }
+
+    // 고른 연구가 **지금 이 연구대가 맡은 것**이면 게이지, 아니면 [연구] 버튼.
+    // 버튼 문구가 "시작"인지 "이어서"인지 "전환"인지까지 적는다 — 누르면 무슨 일이 일어나는지
+    // 모르면 하던 연구를 잃을까 봐 못 누른다.
+    void RefreshActionSlot()
+    {
+        if (_currentTable == null || _selected == null) return;
+        PrepareSlot();
+        EnsureSlotHeight();
+
+        var pending = _currentTable.PendingResearch;
+        bool showBar = pending != null && pending == _selected;
+
+        if (researchButton != null) researchButton.gameObject.SetActive(!showBar);
+        if (progressRoot   != null) progressRoot.SetActive(showBar);
+
+        if (showBar)
+        {
+            UpdateBar();
             return;
         }
 
-        // 고른 연구에 해 둔 몫이 있으면 그것을 보여준다(멈춰 있는 상태).
-        var mgr = ResearchManager.Instance;
-        if (_selected != null && mgr != null && mgr.GetProgressSeconds(_selected) > 0f)
-        {
-            float p = mgr.GetProgress01(_selected);
-            progressRoot.SetActive(true);
-            if (progressFill != null) progressFill.fillAmount = p;
-            if (progressText != null)
-                progressText.text = $"{_selected.ResearchName}  {p * 100f:F0}% <color=#FFAA55>(멈춤)</color>";
-            return;
-        }
+        if (researchButton == null) return;
 
-        progressRoot.SetActive(false);
+        var   mgr  = ResearchManager.Instance;
+        float done = mgr != null ? mgr.GetProgress01(_selected) : 0f;
+        bool  half = done > 0f;
+
+        string label;
+        if (mgr != null && mgr.IsCompleted(_selected))
+            label = "연구 완료";                       // 게이지가 사라진 자리에 "시작"이 뜨면 다시 할 수 있어 보인다
+        else if (pending != null)
+            label = half ? $"이 연구로 전환  (이어서 {done * 100f:F0}%)" : "이 연구로 전환";
+        else
+            label = half ? $"이어서 연구  {done * 100f:F0}%" : "연구 시작";
+
+        var text = ResolveButtonLabel();
+        if (text != null) text.text = label;
+
+        researchButton.interactable = _currentTable.CanResearch(_selected);
+    }
+
+    void UpdateBar()
+    {
+        var  mgr     = ResearchManager.Instance;
+        bool running = _currentTable.ActiveResearch == _selected;
+
+        // 폰이 붙어 도는 중이면 실시간 값을, 아직 안 왔으면 저장된 몫을 쓴다.
+        float p = running
+                ? _currentTable.ActiveProgress
+                : (mgr != null ? mgr.GetProgress01(_selected) : 0f);
+
+        if (progressFill != null) progressFill.fillAmount = p;
+        if (progressText == null) return;
+
+        // **폰을 기다리는 중이라는 것도 상태다.** 이걸 안 적으면 0%에서 안 움직이는 게이지가
+        // 고장으로 보인다 — 실제로는 아무도 연구대에 오지 않은 것이다.
+        progressText.text = running
+            ? $"{_selected.ResearchName}  {p * 100f:F0}%"
+            : $"{_selected.ResearchName}  {p * 100f:F0}% <color=#FFAA55>(폰 대기 중)</color>";
+    }
+
+    TextMeshProUGUI ResolveButtonLabel()
+    {
+        if (researchButtonLabel == null && researchButton != null)
+            researchButtonLabel = researchButton.GetComponentInChildren<TextMeshProUGUI>(true);
+        return researchButtonLabel;
+    }
+
+    // 목록의 [연구 중] 표식. **바뀔 때만** 다시 칠한다 — 매 프레임 칠하면 글자 색을
+    // 계속 덮어쓰느라 낭비고, 목록을 통째로 다시 지으면 스크롤 위치가 튄다.
+    void RefreshEntryMarks()
+    {
+        var pending = _currentTable != null ? _currentTable.PendingResearch : null;
+        if (pending == _markedResearch) return;
+        _markedResearch = pending;
+
+        foreach (var e in _entries)
+            if (e != null) e.Refresh(pending);
     }
 
     void Open(ResearchTable table)
@@ -106,7 +220,6 @@ public class ResearchTableUI : MonoBehaviour
         if (panel != null) panel.SetActive(true);
         if (detailPanel != null) detailPanel.SetActive(false);
         RebuildList();
-        RefreshProgress();   // 여는 순간 이전 연구대의 상태가 남아 보이지 않게
     }
 
     public void Close()
@@ -121,13 +234,17 @@ public class ResearchTableUI : MonoBehaviour
 
         foreach (Transform child in entryContainer)
             Destroy(child.gameObject);
+        _entries.Clear();
 
+        var pending = _currentTable.PendingResearch;
         foreach (var data in _currentTable.AllResearch)
         {
             var entry = Instantiate(entryPrefab, entryContainer);
-            entry.Setup(data);
+            entry.Setup(data, pending);
             entry.OnSelected += SelectResearch;
+            _entries.Add(entry);
         }
+        _markedResearch = pending;
     }
 
     void SelectResearch(ResearchData data)
@@ -188,6 +305,25 @@ public class ResearchTableUI : MonoBehaviour
                 sb.Append("</color>");
             }
 
+            // **건물도 연구로 열린다**(2026-08-02). 레시피만 적으면 "목공술을 하면 제재소를
+            // 지을 수 있다"가 화면 어디에도 없다 — 그게 그 연구를 하는 제일 큰 이유인데.
+            // 목록은 `BuildingData.RequiredResearch`에서 자동으로 모은다(따로 적어 둘 곳 없음).
+            var builds = ResearchManager.Instance != null
+                       ? ResearchManager.Instance.GetUnlockedBuildings(data)
+                       : null;
+
+            if (builds != null && builds.Count > 0)
+            {
+                if (sb.Length > 0) sb.AppendLine();
+                sb.Append("<color=#FFD08F>건물 — ");
+                for (int i = 0; i < builds.Count; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    sb.Append(builds[i].BuildingName);
+                }
+                sb.Append("</color>");
+            }
+
             prerequisiteText.text = sb.ToString();
 
             // **글자가 칸에 맞춰 줄어들게 한다.** 칸이 한두 줄짜리라 자르기만 하면 한두 개밖에 안 보인다 —
@@ -206,8 +342,10 @@ public class ResearchTableUI : MonoBehaviour
         {
             researchButton.onClick.RemoveAllListeners();
             researchButton.onClick.AddListener(() => OnResearchClicked(data));
-            researchButton.interactable = _currentTable != null && _currentTable.CanResearch(data);
         }
+
+        // 버튼을 켤지 게이지를 켤지, 문구가 무엇일지는 여기 한 곳에서만 정한다.
+        RefreshActionSlot();
     }
 
     void RefreshIngredients(ResearchData data)
@@ -225,10 +363,13 @@ public class ResearchTableUI : MonoBehaviour
         ingredientsText.text = sb.ToString();
     }
 
+    // 하던 연구가 있으면 **접고 갈아탄다**(`StartResearch`). 접힌 쪽의 진행도는 남으므로
+    // 다시 고르면 이어서 한다 — 그래서 갈아타는 데 아무 대가가 없다.
     void OnResearchClicked(ResearchData data)
     {
         if (_currentTable == null) return;
-        _currentTable.QueueResearch(data);
+        _currentTable.StartResearch(data);
         ShowDetail(data);
+        RefreshEntryMarks();
     }
 }

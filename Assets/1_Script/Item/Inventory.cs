@@ -32,6 +32,11 @@ public class Inventory : MonoBehaviour
     }
     public event Action OnChanged;
 
+    // 인스턴스의 `Quantity`를 **밖에서 직접 고친 뒤** 부른다(드래그로 스택을 합칠 때).
+    // 이벤트는 선언한 클래스에서만 발행할 수 있어서 통로가 필요하다 —
+    // 안 울리면 창고 집계와 다른 패널이 옛 수량을 계속 보여준다.
+    public void NotifyChanged() => OnChanged?.Invoke();
+
     // 격자 크기를 다시 잡는다. **비어 있을 때만** — 아이템이 든 채로 줄이면 밖으로 밀려난 것이 증발한다.
     // 런타임에 `AddComponent`로 붙이는 쪽(작업대 산출물 등)은 `Awake` 전에 값을 넣을 방법이 없어 필요하다.
     public bool Resize(int w, int h)
@@ -118,6 +123,39 @@ public class Inventory : MonoBehaviour
         return CanPlace(x, y, w, h, inst);
     }
 
+    // 두 아이템의 **자리를 맞바꾼다.** 겹치는 곳에 놓으려 할 때 그냥 실패시키면
+    // 좁은 배낭에서 배치를 바꿀 방법이 없다 — 한 칸씩 빼내 옮겨야 한다.
+    //
+    // **둘 다 서로의 자리에 들어갈 때만** 바꾼다. 크기가 다르면(2×4 ↔ 1×1) 한쪽이
+    // 안 들어갈 수 있는데, 그때 반만 옮기면 아이템이 사라지거나 겹친다.
+    public bool SwapItems(ItemInstance a, ItemInstance b)
+    {
+        if (a == null || b == null || a == b) return false;
+        if (!_items.Contains(a) || !_items.Contains(b)) return false;
+
+        int ax = a.GridX, ay = a.GridY; bool ar = a.Rotated;
+        int bx = b.GridX, by = b.GridY; bool br = b.Rotated;
+
+        // 서로를 비켜 놓고 판정해야 한다 — 안 그러면 상대가 자기 자리를 막고 있다고 나온다.
+        ClearCells(a); ClearCells(b);
+
+        int aw = ar ? a.Data.Height : a.Data.Width,  ah = ar ? a.Data.Width : a.Data.Height;
+        int bw = br ? b.Data.Height : b.Data.Width,  bh = br ? b.Data.Width : b.Data.Height;
+
+        bool ok = CanPlace(bx, by, aw, ah, a) && CanPlace(ax, ay, bw, bh, b);
+        if (!ok)
+        {
+            PlaceCells(a); PlaceCells(b);   // 원래대로 되돌린다
+            return false;
+        }
+
+        a.GridX = bx; a.GridY = by;
+        b.GridX = ax; b.GridY = ay;
+        PlaceCells(a); PlaceCells(b);
+        OnChanged?.Invoke();
+        return true;
+    }
+
     public bool MoveItem(ItemInstance inst, int newX, int newY, bool newRotated)
     {
         if (inst == null || !_items.Contains(inst)) return false;
@@ -177,28 +215,6 @@ public class Inventory : MonoBehaviour
         return amount - remaining;
     }
 
-    // ResourceType별 일괄 제거
-    public int RemoveByType(ResourceType type, int amount)
-    {
-        if (amount <= 0) return 0;
-        int remaining = amount;
-        for (int i = _items.Count - 1; i >= 0 && remaining > 0; i--)
-        {
-            var inst = _items[i];
-            if (inst.Data is not ResourceItemData r || r.ResourceType != type) continue;
-            int take = Math.Min(remaining, inst.Quantity);
-            inst.Quantity -= take;
-            remaining -= take;
-            if (inst.Quantity <= 0)
-            {
-                ClearCells(inst);
-                _items.RemoveAt(i);
-            }
-        }
-        if (remaining < amount) OnChanged?.Invoke();
-        return amount - remaining;
-    }
-
     public void Clear()
     {
         _items.Clear();
@@ -218,14 +234,6 @@ public class Inventory : MonoBehaviour
         int total = 0;
         foreach (var inst in _items)
             if (inst.Data == data) total += inst.Quantity;
-        return total;
-    }
-
-    public int GetTotalByType(ResourceType type)
-    {
-        int total = 0;
-        foreach (var inst in _items)
-            if (inst.Data is ResourceItemData r && r.ResourceType == type) total += inst.Quantity;
         return total;
     }
 

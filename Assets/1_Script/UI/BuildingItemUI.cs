@@ -28,7 +28,16 @@ public class BuildingItemUI : MonoBehaviour
         }
 
         var btn = GetComponent<Button>();
-        if (btn != null) btn.onClick.AddListener(() => onClick());
+        if (btn == null) return;
+
+        btn.onClick.RemoveAllListeners();
+
+        // **`onClick`이 없으면 리스너를 안 건다.** 잠긴 건물이 그렇다 —
+        // 그냥 `() => onClick()`으로 감싸면 누르는 순간 널 참조로 터진다.
+        //
+        // `interactable = false`로 막지 않는 이유: 버튼의 색 전환이 배경을 덮어써
+        // `SetColor`로 칠한 잠김 색이 안 보이게 된다. 안 눌리는 것으로 충분하다.
+        if (onClick != null) btn.onClick.AddListener(() => onClick());
     }
 
     // BuildModeUI가 매 프레임 색을 직접 설정

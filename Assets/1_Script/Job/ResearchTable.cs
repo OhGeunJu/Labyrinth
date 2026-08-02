@@ -42,6 +42,61 @@ public class ResearchTable : MonoBehaviour, IWorldClickable
 
     public void SetActiveJob(ResearchJob job) => _activeJob = job;
 
+    // ── 이 연구대가 맡은 연구 ─────────────────────────────────────────────
+    // **한 연구대는 한 번에 하나만 맡는다.** 전에는 UI가 누를 때마다 작업을 하나씩 더 쌓아서,
+    // 제련술을 하는 중에 석공술을 누르면 갈아타는 게 아니라 둘 다 큐에 남았다 — 그러면
+    // 무엇이 먼저 될지 플레이어가 알 수 없고, 화면에 뜬 게이지와도 어긋난다.
+    readonly List<ResearchJob> _jobs = new();
+
+    // 폰이 아직 안 왔어도 잡혀 있는 연구. UI가 [연구] 버튼과 게이지를 가르는 기준이다
+    // (`ActiveResearch`는 폰이 붙어 타이머가 도는 동안만 잡히므로 그것만으로는 부족하다).
+    public ResearchData PendingResearch
+    {
+        get
+        {
+            Prune();
+            return _jobs.Count > 0 ? _jobs[0].Data : null;
+        }
+    }
+
+    void Prune()
+    {
+        for (int i = _jobs.Count - 1; i >= 0; i--)
+        {
+            var j = _jobs[i];
+            if (j == null || j.Status == JobStatus.Done || j.Status == JobStatus.Cancelled)
+                _jobs.RemoveAt(i);
+        }
+    }
+
+    // UI의 [연구] 버튼이 부르는 유일한 진입점. **하던 것을 접고 이걸로 갈아탄다.**
+    // 접힌 연구의 진행도는 `ResearchJob.OnCancelled`가 저장하므로, 나중에 다시 고르면
+    // 0부터가 아니라 하던 데서 이어서 한다.
+    public void StartResearch(ResearchData data)
+    {
+        if (data == null) return;
+        Prune();
+
+        bool already = false;
+        for (int i = _jobs.Count - 1; i >= 0; i--)
+        {
+            var j = _jobs[i];
+            if (j.Data == data) { already = true; continue; }
+
+            // 되돌리지 않게 막고 접는다 — 안 막으면 `OnCancelled`가 곧바로 큐에 다시 올려
+            // 갈아타기가 무효가 된다.
+            j.SuppressRequeue();
+            JobManager.Instance?.CancelJob(j);
+            _jobs.RemoveAt(i);
+            Debug.Log($"[ResearchTable] 연구 전환 — {j.Data?.ResearchName} 접고 {data.ResearchName}(으)로");
+        }
+
+        // 하던 것을 다시 누른 경우다. 새로 걸면 진행이 초기화되는 게 아니라 작업만 둘이 된다.
+        if (already) return;
+
+        QueueResearch(data);
+    }
+
     // 완료·취소 모두 여기로 온다. 다른 작업이 이미 자리를 차지했으면 건드리지 않는다.
     public void ClearActiveJob(ResearchJob job)
     {
@@ -58,13 +113,23 @@ public class ResearchTable : MonoBehaviour, IWorldClickable
         if (data == null || JobManager.Instance == null) return;
         // 휴면(핵 영역 밖) 연구대는 사용 불가 — UI 경로가 막혀도 직접 호출 방어.
         if (BuildingDormancy.IsDormantAt(this)) { Debug.Log("[ResearchTable] 휴면 중 — 연구 불가"); return; }
-        JobManager.Instance.RegisterJob(new ResearchJob(this, data));
+
+        var job = new ResearchJob(this, data);
+        _jobs.Add(job);
+        JobManager.Instance.RegisterJob(job);
     }
 
     public bool CanResearch(ResearchData data)
     {
         if (data == null) return false;
         if (ResearchManager.Instance != null && !ResearchManager.Instance.CanResearch(data)) return false;
+
+        // **이어서 하는 연구는 재료를 다시 요구하지 않는다.** 재료는 처음 착수할 때 한 번만
+        // 들어가는데(`ResearchJob.OnStart`가 그렇게 한다), 여기서 또 검사하면 갈아탔다가
+        // 돌아온 연구는 재료가 이미 없어서 영영 재개할 수 없다 — 진행도를 저장하는 의미가 사라진다.
+        if (ResearchManager.Instance != null && ResearchManager.Instance.GetProgressSeconds(data) > 0f)
+            return true;
+
         foreach (var ing in data.Ingredients)
             if (Storage.GetTotalByItem(ing.Item) < ing.Amount) return false;
         return true;

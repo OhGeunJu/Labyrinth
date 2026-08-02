@@ -175,10 +175,23 @@ public class DraggableItem : MonoBehaviour,
         int newX = cursorCell.x - _clickCellOffset.x;
         int newY = cursorCell.y - _clickCellOffset.y;
 
-        // 같은 그리드 — 위치 이동
+        // **같은 것 위에 떨어뜨리면 합친다.** `TryAdd`는 넣을 때 알아서 병합하지만,
+        // 이미 칸에 놓인 두 뭉치를 합칠 길이 없었다 — 한 번 나뉘면 영영 나뉜 채였다.
+        // 위치 이동보다 **먼저** 본다(같은 칸이면 이동은 어차피 제자리다).
+        if (TryMerge(targetGrid, cursorCell)) return true;
+
+        // 같은 그리드 — 위치 이동, 안 되면 **자리 교환**
         if (targetGrid == _sourceGrid)
-            return _sourceGrid.Inventory != null
-                && _sourceGrid.Inventory.MoveItem(_instance, newX, newY, _dragRotated);
+        {
+            var inv = _sourceGrid.Inventory;
+            if (inv == null) return false;
+            if (inv.MoveItem(_instance, newX, newY, _dragRotated)) return true;
+
+            // 못 옮겼다면 대개 **다른 물건이 그 자리에 있어서**다(합칠 수 없는 것이거나 꽉 찬 것).
+            // 그냥 실패시키면 좁은 배낭에서 배치를 바꿀 방법이 없다 — 서로 자리를 바꾼다.
+            var other = inv.GetAt(cursorCell.x, cursorCell.y);
+            return other != null && inv.SwapItems(_instance, other);
+        }
 
         // 다른 그리드 — 컨테이너 간 이동
         var srcInv = _sourceGrid?.Inventory;
@@ -187,6 +200,44 @@ public class DraggableItem : MonoBehaviour,
         if (!targetGrid.CanReceiveItem(_instance.Data)) return false;
         if (!dstInv.TryAddAt(_instance.Data, _instance.Quantity, newX, newY, _dragRotated)) return false;
         srcInv.RemoveInstance(_instance);
+        return true;
+    }
+
+    // 커서 아래 칸의 뭉치와 합친다. 합쳤으면 true.
+    //
+    // 조건: **같은 아이템 · 같은 등급 · 자기 자신이 아닐 것.** 등급을 섞으면 어느 쪽 등급이
+    // 되는지 말할 수 없고(`Inventory.TryAdd`도 등급별로만 쌓는다), 자기 자신과 합치면 개수가
+    // 두 배가 된다.
+    bool TryMerge(InventoryGridUI targetGrid, Vector2Int cursorCell)
+    {
+        var dstInv = targetGrid.Inventory;
+        var srcInv = _sourceGrid?.Inventory;
+        if (dstInv == null || srcInv == null) return false;
+
+        var target = dstInv.GetAt(cursorCell.x, cursorCell.y);
+        if (target == null || ReferenceEquals(target, _instance)) return false;
+        if (target.Data != _instance.Data || target.Quality != _instance.Quality) return false;
+
+        int room = _instance.Data.MaxStack - target.Quantity;
+        if (room <= 0) return false;   // 이미 꽉 찼으면 합치지 말고 평소대로 이동시킨다
+
+        // 다른 창고로 합칠 때는 그 창고가 받는 물건인지 본다(필터).
+        if (targetGrid != _sourceGrid && !targetGrid.CanReceiveItem(_instance.Data)) return false;
+
+        int move = Mathf.Min(room, _instance.Quantity);
+        target.Quantity   += move;
+        _instance.Quantity -= move;
+
+        // **남으면 원래 자리에 그대로 둔다.** 다 옮겼을 때만 원본을 치운다 —
+        // 안 그러면 넘친 만큼이 증발한다.
+        if (_instance.Quantity <= 0) srcInv.RemoveInstance(_instance);   // 여기서 OnChanged가 울린다
+        else                         srcInv.NotifyChanged();
+
+        // 받는 쪽은 `Quantity`를 직접 고쳤으므로 따로 알린다(창고 집계가 옛 값을 안 쓰게).
+        if (!ReferenceEquals(dstInv, srcInv)) dstInv.NotifyChanged();
+
+        targetGrid.RefreshItems();
+        if (targetGrid != _sourceGrid) _sourceGrid.RefreshItems();
         return true;
     }
 

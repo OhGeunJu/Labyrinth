@@ -18,13 +18,23 @@ public static class MerchantTypeExt
 [Serializable]
 public class MerchantPoolEntry
 {
+    [Tooltip("팔 아이템(에셋). 비우면 아래 ItemId로 찾는다.")]
     public ItemData     Item;
-    [Tooltip("0이면 Item.BaseValue 사용")]
+
+    [Tooltip("에셋이 아닌 아이템을 팔 때 쓰는 식별자. **JSON·모드 아이템은 이쪽뿐이다** — " +
+             "그것들은 런타임에 만들어져 에셋 참조로 가리킬 방법이 없다.")]
+    public string       ItemId;
+
+    [Tooltip("0이면 아이템의 BaseValue 사용")]
     [Min(0)] public int         BasePrice = 0;
     [Min(1)] public int         MinStock  = 1;
     [Min(1)] public int         MaxStock  = 3;
     [Min(0)] public float       Weight    = 1f;
     public           ItemQuality Quality   = ItemQuality.Common;
+
+    // 실제로 팔 아이템. 에셋이 먼저고, 없으면 레지스트리에서 Id로 찾는다.
+    // **이 프로퍼티를 거치지 않고 `Item`을 직접 읽으면 JSON 아이템이 조용히 null이 된다.**
+    public ItemData Resolve() => Item != null ? Item : DataManager.GetItem(ItemId);
 }
 
 // 아이템별 가격 오버라이드 — 특정 마을에서 이 아이템만 다른 배율 적용
@@ -77,10 +87,11 @@ public class MerchantData : ScriptableObject
     // 구매가: poolEntry.BasePrice(0이면 item.BaseValue) × 아이템 배율
     public int CalcPrice(MerchantPoolEntry entry)
     {
+        var item = entry.Resolve();
         int basePrice = entry.BasePrice > 0 ? entry.BasePrice
-                      : (entry.Item != null ? entry.Item.BaseValue : 10);
+                      : (item != null ? item.BaseValue : 10);
         if (basePrice <= 0) basePrice = 10;
-        return Mathf.Max(1, Mathf.RoundToInt(basePrice * GetItemMultiplier(entry.Item)));
+        return Mathf.Max(1, Mathf.RoundToInt(basePrice * GetItemMultiplier(item)));
     }
 
     // 판매가: item.BaseValue × quality 배율 × SellMultiplier

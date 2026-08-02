@@ -22,8 +22,23 @@ public class BuildingData : ScriptableObject
              "모델이 이 크기에 맞게 만들어져 있어야 한다 — 코드는 칸만 잡고 모양은 안 건드린다.")]
     public Vector2Int       Size = Vector2Int.one;
 
-    public ResourceType     CostType;
+    [Tooltip("건설 비용으로 쓰는 자원 아이템. 비우면 무료. " +
+             "예전엔 ResourceType enum이었는데, 그 값이 자원 아이템과 1:1이라 이름만 하나 더 만드는 " +
+             "꼴이었다 — 게다가 UI에 enum 이름(IronOre)이 그대로 찍혔다.")]
+    public ItemData         CostItem;
     public int              CostAmount;
+
+    [Tooltip("이 건물을 짓기 위해 끝내야 하는 연구. 비우면 처음부터 지을 수 있다. " +
+             "**그 건물이 다루는 레시피와 같은 연구를 걸 것** — 제재소를 지을 수 있는데 " +
+             "판자를 못 만들거나 그 반대면, 지어 놓고 쓸 수 없는 건물이 생긴다.")]
+    public ResearchData     RequiredResearch;
+
+    // 지금 지을 수 있나. `ResearchManager`가 없으면(씬에 안 놓였으면) 막지 않는다 —
+    // 연구 시스템이 없는 씬에서 건설이 통째로 죽는 것보다 낫다.
+    public bool IsUnlocked =>
+        RequiredResearch == null
+        || ResearchManager.Instance == null
+        || ResearchManager.Instance.IsCompleted(RequiredResearch);
     public GameObject       Prefab;
     [Tooltip("자재 운반 후 건설 (서브 코어 등 2단계 건설)")]
     public bool             UsesBlueprint = false;

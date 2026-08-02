@@ -72,6 +72,12 @@ public class CraftJob : JobBase
     {
         if (_table == null || _recipe == null) return true;
 
+        // ⓪ 재료를 **이 폰이** 댈 수 있는가(창고 + 자기 배낭).
+        // 남의 배낭에 있는 재료로는 이 폰이 만들 수 없다 — 조작한 적 없는 폰의 짐이
+        // 줄어드는 일이 없어야 한다.
+        foreach (var ing in _recipe.Ingredients)
+            if (MaterialPool.Available(ing.Item, unit) < ing.Amount) return false;
+
         // ① 플레이어가 지정한 제작자
         var assigned = _table.GetAssignedCrafter(_recipe);
         if (assigned != null && assigned != unit) return false;
@@ -115,9 +121,11 @@ public class CraftJob : JobBase
         // 재료 재확인 후 즉시 소비 (예약 개념).
         // IsReady 게이트로 거르지만, 예약~시작 사이 타 제작자가 소진했을 수 있어 여기서 한 번 더 확인.
         // 부족하면 주문을 없애지 않고 큐에 되돌려(재등록) 재료 도착 시 자동 재개하게 한다.
+        // 재료는 **창고 + 이 폰의 배낭**에서 센다(`MaterialPool`). 들고 있는 걸 두고
+        // 창고 것만 쓰면, 방금 사 온 재료로는 아무것도 못 만든다.
         foreach (var ing in _recipe.Ingredients)
         {
-            if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
+            if (MaterialPool.Available(ing.Item, ReservedBy) < ing.Amount)
             {
                 Debug.Log($"[CraftJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요, 주문 대기열로 반환");
                 _table.OrderFinished();       // 이 인스턴스는 끝 — 바로 아래 재등록이 다시 +1
@@ -127,7 +135,7 @@ public class CraftJob : JobBase
             }
         }
         foreach (var ing in _recipe.Ingredients)
-            Storage.ConsumeByItem(ing.Item, ing.Amount);
+            MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy);   // 배낭 먼저, 그다음 창고
         _consumed = true;
 
         Debug.Log($"[CraftJob] 제작 시작 — {_recipe.RecipeName} ({_recipe.CraftTime}초)");

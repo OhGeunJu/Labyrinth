@@ -27,8 +27,7 @@ public static class PawnStatusText
         if (bb.AssignedNode != null)
         {
             var data = bb.AssignedNode.Data;
-            bool cutting = data != null && data.ResourceType == ResourceType.Wood;
-            return cutting ? "벌목" : "채굴";
+            return data != null && data.IsTree ? "벌목" : "채굴";
         }
 
         if (bb.CurrentJob != null) return JobCategoryInfo.DisplayName(bb.CurrentJob.Category);

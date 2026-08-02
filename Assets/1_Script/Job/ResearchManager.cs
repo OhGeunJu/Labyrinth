@@ -124,6 +124,20 @@ public class ResearchManager : MonoBehaviour
     // 잠금은 `ResearchData.UnlockedRecipes`(큐레이션)로도, `RecipeData.RequiredResearch`
     // (JSON의 `requiredResearchId` 포함)로도 걸린다. 한쪽만 읽으면 반대로 적힌 것이
     // 화면에서 통째로 사라진다 — 연구를 고르는 유일한 근거인데.
+    // 이 연구가 여는 **건물**. 레시피와 달리 큐레이션 목록이 없다 —
+    // `BuildingData.RequiredResearch`를 거꾸로 훑어 **자동으로** 모은다.
+    // 연구 에셋에 따로 적어 두는 방식이면 건물을 추가할 때마다 두 곳을 고쳐야 하고,
+    // 한쪽을 빠뜨리면 "연구를 끝냈는데 뭐가 열렸는지 화면에 안 나오는" 상태가 된다.
+    public List<BuildingData> GetUnlockedBuildings(ResearchData research)
+    {
+        var list = new List<BuildingData>();
+        if (research == null) return list;
+
+        foreach (var b in DataManager.AllBuildings)
+            if (b != null && b.RequiredResearch == research) list.Add(b);
+        return list;
+    }
+
     public List<RecipeData> GetUnlockedRecipes(ResearchData research)
     {
         var list = new List<RecipeData>();

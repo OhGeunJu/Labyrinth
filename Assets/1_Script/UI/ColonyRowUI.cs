@@ -161,8 +161,8 @@ public class ColonyRowUI : MonoBehaviour
         else if (bb != null && bb.AssignedNode != null)
         {
             var data     = bb.AssignedNode.Data;
-            bool cutting = data != null && data.ResourceType == ResourceType.Wood;
-            string what  = data != null ? data.ResourceType.DisplayName() : "자원";
+            bool cutting = data != null && data.IsTree;
+            string what  = data?.DropItem != null ? data.DropItem.ItemName : "자원";
             assign = $"{(cutting ? "벌목" : "채굴")}: {what}";
         }
         else if (bb != null && bb.AssignedPatrolZone != null)

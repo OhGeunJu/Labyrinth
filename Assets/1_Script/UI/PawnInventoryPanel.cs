@@ -37,6 +37,16 @@ public class PawnInventoryPanel : MonoBehaviour
     [SerializeField] TextMeshProUGUI actionButtonLabel;
     [SerializeField] Button          actionButton;
 
+    [Header("판매 수량")]
+    [Tooltip("수량 칸 + [전부] 버튼의 부모. 판매 모드에서만 켜진다")]
+    [SerializeField] GameObject      sellQuantityGroup;
+    [Tooltip("한 번에 팔 개수. 비우면 1개씩")]
+    [SerializeField] TMP_InputField  sellQuantity;
+    [Tooltip("고른 스택 개수를 수량 칸에 넣는 버튼")]
+    [SerializeField] Button          sellMaxButton;
+
+    ItemInstance _lastSellSelection;   // 고른 것이 바뀌면 수량을 1로 되돌리려고 기억한다
+
     InventoryGridUI  _gridUI;
     SelectionManager _selection;
 
@@ -74,12 +84,30 @@ public class PawnInventoryPanel : MonoBehaviour
 
     void OnBuildModeChanged(bool active) { if (active && panel != null) panel.SetActive(false); }
 
-    void Start() => _selection = FindFirstObjectByType<SelectionManager>();
+    void Start()
+    {
+        _selection = FindFirstObjectByType<SelectionManager>();
+
+        if (sellMaxButton != null)
+            sellMaxButton.onClick.AddListener(() =>
+            {
+                if (sellQuantity != null && _selectedItem != null)
+                    sellQuantity.text = _selectedItem.Quantity.ToString();
+            });
+    }
 
     void Update()
     {
         if (panel == null || Keyboard.current == null) return;
+
+        // 수량 칸에 숫자를 치는 중이면 I(토글)가 먹으면 안 된다 — 창이 닫혀 버린다.
+        if (sellQuantity != null && sellQuantity.isFocused) return;
+
         if (Keyboard.current[toggleKey].wasPressedThisFrame) Toggle();
+
+        // 상점이 어떤 길로 닫히든 [판매] 표시가 따라 사라지게 한다.
+        // 닫는 쪽마다 정리를 부르게 하면 언젠가 한 곳을 빠뜨린다 — 여기서 한 번 더 본다.
+        if (_mode == ActionMode.Sell && MerchantUI.ActiveMerchant == null) RefreshActionBar();
     }
 
     void Toggle()
@@ -204,8 +232,16 @@ public class PawnInventoryPanel : MonoBehaviour
     void ExecuteSell()
     {
         if (_merchant == null || _selectedItem == null) return;
-        if (!MerchantUI.TrySellItem(_selectedItem)) return;
-        _selectedItem = null;
+
+        // 수량은 **입력칸에 적힌 수**를 쓴다. 스택 개수를 넘지 못하게 잘라 준다.
+        int want     = MerchantUI.ReadCount(sellQuantity, _selectedItem.Quantity);
+        var instance = _selectedItem;
+        if (want <= 0) return;
+
+        if (!MerchantUI.TrySellItem(instance, want)) return;
+
+        // 스택이 남았으면 선택을 유지한다 — 열 개씩 팔 때 매번 다시 고르게 하면 안 된다.
+        if (instance.Quantity <= 0) _selectedItem = null;
         RefreshActionBar();
     }
 
@@ -237,6 +273,16 @@ public class PawnInventoryPanel : MonoBehaviour
     {
         if (actionBar == null) return;
 
+        // **판매 모드는 상점이 실제로 열려 있을 때만 성립한다.**
+        // 상점을 닫는 길이 여럿이라(X 버튼·Esc·건설 모드 진입) 한 군데서 `ClearSellMode`를
+        // 빠뜨리면 인벤토리에 [판매]가 그대로 남는다 — 팔 상대가 없는데 파는 버튼이 보인다.
+        // 상태를 복구하려 하지 말고 **매번 조건으로 확인**한다.
+        if (_mode == ActionMode.Sell && MerchantUI.ActiveMerchant == null)
+        {
+            ClearActionMode();
+            return;
+        }
+
         if (_mode == ActionMode.None)
         {
             actionBar.SetActive(false);
@@ -245,9 +291,20 @@ public class PawnInventoryPanel : MonoBehaviour
 
         actionBar.SetActive(true);
 
-        // 버튼 라벨
         if (actionButtonLabel)
             actionButtonLabel.text = _mode == ActionMode.Sell ? "판매" : "옮기기";
+
+        // 수량 칸은 **판매할 때만** 보인다. 옮기기는 스택을 통째로 다루므로 적을 것이 없다.
+        bool showQty = _mode == ActionMode.Sell;
+        if (sellQuantityGroup) sellQuantityGroup.SetActive(showQty);
+
+        // 고를 때마다 1로 되돌린다 — 앞 물건에 적었던 수가 남아 있으면
+        // 다음 물건을 그 개수만큼 팔아 버린다(되돌릴 수 없는 사고다).
+        if (showQty && sellQuantity && _selectedItem != null && _lastSellSelection != _selectedItem)
+        {
+            sellQuantity.text  = "1";
+            _lastSellSelection = _selectedItem;
+        }
 
         // 선택된 아이템 정보
         if (actionItemText)
