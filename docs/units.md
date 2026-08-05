@@ -192,7 +192,7 @@ brain.ClearStanceOverride();                              // 프로필/기본값
 brain.EffectiveStance                                     // 현재 실제 적용값
 ```
 
-**인게임 전환**: `ColonyPanel`(P키) 성향 열 — 버튼 클릭마다 자동(프로필/기본값) → 교전 → 신중 → 도주 → 자동 순환. "자동"은 오버라이드 없음(`ClearStanceOverride`) 상태.
+**인게임 전환**: `ColonyUI`(P키) 성향 열 — 버튼 클릭마다 자동(프로필/기본값) → 교전 → 신중 → 도주 → 자동 순환. "자동"은 오버라이드 없음(`ClearStanceOverride`) 상태.
 
 **직접 명령 우선**(`ManualOrderNode`, 방랑자 트리에서 소집 바로 아래): 우클릭 이동 명령은 `bb.ManualMove`를 켜고 **`bb.Target`을 지운다**(교전 이탈 + `CombatHandler.ExitCombat`). 이게 없으면 `FightNode`가 매 틱 목적지를 적 위치로 덮어써 **명령해도 다시 싸우러 간다**. 도착하거나 길찾기가 포기해 멈추면 자동 해제되어 평소 행동으로 복귀한다. 적을 우클릭한 공격 명령은 반대로 `ManualMove`를 끈다.
 

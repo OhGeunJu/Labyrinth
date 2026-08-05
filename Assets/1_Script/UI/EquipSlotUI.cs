@@ -116,10 +116,10 @@ public class EquipSlotUI : MonoBehaviour,
     public void OnPointerEnter(PointerEventData _)
     {
         var item = GetCurrentItem();
-        if (item != null) ItemInfoPanel.Show(item, ItemQuality.Common);
+        if (item != null) ItemInfoUI.Show(item, ItemQuality.Common);
     }
 
-    public void OnPointerExit(PointerEventData _) => ItemInfoPanel.Hide();
+    public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();
 
     ItemData GetCurrentItem() => _kind switch
     {

@@ -5,7 +5,7 @@ using TMPro;
 
 // I 키로 토글되는 인벤토리 패널 컨트롤러.
 // 상인 열림 → SetSellMode / 루팅 열림 → SetLootMode 로 하단 액션 버튼 전환.
-public class PawnInventoryPanel : MonoBehaviour
+public class InventoryUI : MonoBehaviour
 {
     public enum ActionMode { None, Sell, Loot }
 
@@ -16,7 +16,7 @@ public class PawnInventoryPanel : MonoBehaviour
     public static void NotifyItemDoubleAction(ItemInstance inst, InventoryGridUI sourceGrid)
         => _instance?.OnItemDoubleAction(inst, sourceGrid);
 
-    static PawnInventoryPanel _instance;
+    static InventoryUI _instance;
 
     [Header("씬 참조")]
     [SerializeField] GameObject      panel;
@@ -44,6 +44,18 @@ public class PawnInventoryPanel : MonoBehaviour
     [SerializeField] TMP_InputField  sellQuantity;
     [Tooltip("고른 스택 개수를 수량 칸에 넣는 버튼")]
     [SerializeField] Button          sellMaxButton;
+
+    [Header("적재 바 (액션 바 위 한 줄) — DungeonColony → Create Carry Bar 로 생성")]
+    [Tooltip("`무게 12/15kg`. 과적이면 붉게 물든다")]
+    [SerializeField] TextMeshProUGUI weightText;
+
+    [Tooltip("이 폰이 남는 짐을 창고로 나를까 (P키 무리 관리와 같은 설정)")]
+    [SerializeField] Button          unloadButton;
+    [SerializeField] TextMeshProUGUI unloadLabel;
+
+    [Tooltip("켜고 아이템을 누르면 그 뭉치가 잠긴다 — 자동 운반·재료·판매·버리기에서 빠진다")]
+    [SerializeField] Button          lockButton;
+    [SerializeField] TextMeshProUGUI lockLabel;
 
     ItemInstance _lastSellSelection;   // 고른 것이 바뀌면 수량을 1로 되돌리려고 기억한다
 
@@ -73,13 +85,19 @@ public class PawnInventoryPanel : MonoBehaviour
         if (panel)     panel.SetActive(false);
         if (actionBar) actionBar.SetActive(false);
         if (actionButton) actionButton.onClick.AddListener(OnActionClicked);
+        if (unloadButton) unloadButton.onClick.AddListener(ToggleUnload);
+        if (lockButton)   lockButton.onClick.AddListener(ToggleLockMode);
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
+
+        RefreshLockToggle();
+        RefreshUnloadToggle();
     }
 
     void OnDestroy()
     {
         if (_instance == this) _instance = null;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+        if (_weightInventory != null) _weightInventory.OnChanged -= RefreshWeight;
     }
 
     void OnBuildModeChanged(bool active) { if (active && panel != null) panel.SetActive(false); }
@@ -125,11 +143,129 @@ public class PawnInventoryPanel : MonoBehaviour
         {
             _gridUI.Bind(null);
             BindEquipSlots(null);
+            BindWeight(null);
             return;
         }
         var pawn = _selection.Selected[0];
         _gridUI.Bind(pawn.GetComponent<Inventory>());
         BindEquipSlots(pawn.GetComponent<Equipment>());
+        BindWeight(pawn.GetComponent<UnitBrain>());
+    }
+
+    // ── 적재 무게 · 짐내림 · 잠금 ────────────────────────────────────────────
+    // 한도를 넘겨도 **넣는 건 막지 않고 느려지게** 했으므로(자동 운반만 한도를 지킨다),
+    // 지금 얼마나 졌는지가 안 보이면 "왜 이 폰만 느리지"를 설명할 길이 없다.
+    //
+    // 셋 다 **씬 오브젝트다**(`Canvas/.../CarryBar`). 한때 런타임에 만들었는데, 그러면
+    // 편집 중에는 없는 것이 되어 자리·크기를 눈으로 맞출 수가 없고 (실제로 잠금 버튼이
+    // 화면에 안 잡혔다) 인스펙터에서 옮길 수도 없다 — "모양은 씬이, 코드는 데이터만".
+    UnitBrain _weightPawn;
+    Inventory _weightInventory;
+
+    void BindWeight(UnitBrain brain)
+    {
+        // 인벤토리가 바뀔 때만 다시 그린다 — 매 프레임 무게를 합산할 이유가 없다.
+        if (_weightInventory != null) _weightInventory.OnChanged -= RefreshWeight;
+
+        _weightPawn      = brain;
+        _weightInventory = brain != null ? brain.Inventory : null;
+        if (_weightInventory != null) _weightInventory.OnChanged += RefreshWeight;
+
+        RefreshWeight();
+    }
+
+    // ── 짐내림 토글 ──────────────────────────────────────────────────────────
+    // P키 무리 관리에도 있지만, **짐을 보면서 정하는 설정**이라 배낭 창에도 둔다.
+    // "이 폰 배낭에 뭐가 들었나"를 보다가 바로 "이건 창고로 보내라"를 정할 수 있어야 한다.
+    void ToggleUnload()
+    {
+        var work = _weightPawn != null ? _weightPawn.Work : null;
+        if (work == null) return;
+        work.Toggle(JobCategory.Unload);      // P키 패널과 **같은 설정**을 건드린다
+        RefreshUnloadToggle();
+    }
+
+    void RefreshUnloadToggle()
+    {
+        if (unloadButton == null) return;
+
+        var work = _weightPawn != null ? _weightPawn.Work : null;
+        unloadButton.gameObject.SetActive(work != null);   // 적·NPC는 작업 설정이 없다
+        if (work == null) return;
+
+        bool on = work.IsEnabled(JobCategory.Unload);
+        if (unloadLabel != null)
+            unloadLabel.color = on ? Color.white : OffLabelColor;
+        SetButtonColor(unloadButton, on ? OnBgColor : OffBgColor);
+    }
+
+    // ── 잠금 모드 ────────────────────────────────────────────────────────────
+    // **무엇을 남길지는 종류가 아니라 플레이어가 정한다.** [잠금]을 켜고 아이템을 누르면
+    // 그 뭉치가 잠긴다. 다시 누르면 풀린다.
+    //
+    // 모드로 만든 이유: 마우스 버튼 하나로는 UI 버튼을 누른 채 다른 것을 클릭할 수 없다.
+    // 켜고 → 여러 개 찍고 → 끄는 편이 한 개씩 보조키를 짚는 것보다 손이 덜 간다.
+    //
+    // 잠기면 **자동 운반·재료 집계·판매·버리기**에서 빠진다(`ItemInstance.Locked` 주석).
+    // 드래그로 옮기고 장착하는 것은 그대로 된다.
+    bool _lockMode;
+
+    static readonly Color OnBgColor      = new Color(0.20f, 0.50f, 0.28f);
+    static readonly Color LockOnBgColor  = new Color(0.55f, 0.42f, 0.16f);
+    static readonly Color OffBgColor     = new Color(0.24f, 0.24f, 0.28f);
+    static readonly Color OffLabelColor  = new Color(0.55f, 0.55f, 0.58f);
+
+    static void SetButtonColor(Button btn, Color c)
+    {
+        var img = btn != null ? btn.GetComponent<Image>() : null;
+        if (img != null) img.color = c;
+    }
+
+    void ToggleLockMode()
+    {
+        _lockMode = !_lockMode;
+        RefreshLockToggle();
+    }
+
+    void RefreshLockToggle()
+    {
+        if (lockButton == null) return;
+
+        if (lockLabel != null)
+            lockLabel.color = _lockMode ? Color.white : OffLabelColor;
+        SetButtonColor(lockButton, _lockMode ? LockOnBgColor : OffBgColor);
+    }
+
+    // 반환: 잠금을 실제로 건드렸나(= 클릭을 이 모드가 삼켰나).
+    bool ToggleItemLock(ItemInstance inst, InventoryGridUI sourceGrid)
+    {
+        if (inst == null) return false;
+
+        inst.Locked = !inst.Locked;
+
+        // 표시를 다시 그린다. `Locked`는 인벤토리가 모르는 값이라 `OnChanged`가 안 울린다 —
+        // 그리드에 직접 말해야 잠금 표시가 바뀐다.
+        sourceGrid?.RefreshItems();
+        return true;
+    }
+
+    void RefreshWeight()
+    {
+        RefreshUnloadToggle();
+        RefreshLockToggle();
+
+        if (weightText == null) return;
+
+        if (_weightPawn == null) { weightText.text = ""; return; }
+
+        float load = CarryCapacity.Load(_weightPawn);
+        float cap  = CarryCapacity.For(_weightPawn);
+
+        weightText.text  = $"무게 {load:0.#}/{cap:0.#}kg";
+        // 과적은 색으로 알린다 — 숫자만으로는 넘겼는지 눈에 안 들어온다.
+        weightText.color = load > cap
+            ? new Color(0.95f, 0.55f, 0.40f)
+            : new Color(0.82f, 0.82f, 0.86f);
     }
 
     void BindEquipSlots(Equipment eq)
@@ -207,6 +343,10 @@ public class PawnInventoryPanel : MonoBehaviour
 
     void OnItemSelected(ItemInstance inst, InventoryGridUI sourceGrid)
     {
+        // 잠금 모드에서는 클릭이 **잠금 토글**이다. 판매·루팅 선택으로 넘기지 않는다 —
+        // 한 클릭이 두 가지를 뜻하면 어느 쪽이 일어났는지 알 수 없다.
+        if (_lockMode && ToggleItemLock(inst, sourceGrid)) return;
+
         if (_mode == ActionMode.None) return;
         _selectedItem       = inst;
         _selectedSourceGrid = sourceGrid;
@@ -215,6 +355,10 @@ public class PawnInventoryPanel : MonoBehaviour
 
     void OnItemDoubleAction(ItemInstance inst, InventoryGridUI sourceGrid)
     {
+        // 더블클릭은 단클릭 두 번으로도 온다 — 잠금 모드에서 즉시 판매/루팅이 튀어나오면
+        // 잠그려다 물건을 팔아 버린다.
+        if (_lockMode) return;
+
         _selectedItem       = inst;
         _selectedSourceGrid = sourceGrid;
         if (_mode == ActionMode.Sell) ExecuteSell();
@@ -318,7 +462,7 @@ public class PawnInventoryPanel : MonoBehaviour
             else if (_mode == ActionMode.Sell)
             {
                 int price = _merchant?.GetSellPrice(_selectedItem) ?? 0;
-                string qc = ColorUtility.ToHtmlStringRGB(ItemInfoPanel.QualityColor(_selectedItem.Quality));
+                string qc = ColorUtility.ToHtmlStringRGB(ItemInfoUI.QualityColor(_selectedItem.Quality));
                 actionItemText.text =
                     $"<color=#{qc}>[{_selectedItem.Quality.DisplayName()}]</color> {_selectedItem.Data?.ItemName}" +
                     $"  →  {(price > 0 ? $"<color=#FFD94D>{price} G</color>" : "<color=#888>판매 불가</color>")}";

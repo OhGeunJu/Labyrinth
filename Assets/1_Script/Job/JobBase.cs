@@ -48,8 +48,14 @@ public abstract class JobBase
         if (Status != JobStatus.Available) return false;
         ReservedBy = unit;
         Status = JobStatus.Reserved;
+        OnReserved(unit);
         return true;
     }
+
+    // **누가 할지 정해지는 순간.** 폰마다 다른 값으로 일감을 다시 재야 할 때 쓴다 —
+    // 등록 시점엔 누가 올지 모르므로 넉넉히 잡아 두고, 여기서 그 폰에 맞춰 줄인다
+    // (운반이 실을 양을 폰의 적재 한도로 자르는 데 쓴다).
+    protected virtual void OnReserved(UnitBrain unit) { }
 
     public void ReleaseReservation()
     {

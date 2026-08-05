@@ -125,7 +125,11 @@ public partial class UnitBrain : MonoBehaviour
             if (unitData is MinionData minionData)
                 Work.InitFromAllowed(minionData.AllowedJobs);
         }
+
+        HookUnloadSignals();
     }
+
+    void OnDestroy() => UnhookUnloadSignals();
 
 
     string ResolveUnitName()
@@ -154,6 +158,8 @@ public partial class UnitBrain : MonoBehaviour
         _bb.TickDelta = _tickTimer;   // 노드가 쓸 실제 경과 시간 (한 프레임이 아니라 틱 간격)
         _tickTimer = 0f;
 
+        UpdateUnload();
+
         _bb.RestTicked = false;
         _root.Tick(_bb);
 
@@ -161,6 +167,106 @@ public partial class UnitBrain : MonoBehaviour
         // (BT 노드에는 중단 콜백이 없어 RestNode가 스스로 정리할 기회를 못 얻는다.)
         if (!_bb.RestTicked && _mover != null && _mover.IsSleeping)
             _mover.SetSleeping(false);
+    }
+
+    // ── 짐 내리기 ────────────────────────────────────────────────────────────
+    // **배낭은 잠시 들고 있는 자리지 창고가 아니다.** 상인에게 산 재료가 배낭에 갇히면
+    // 제작 화면(창고 기준)에는 안 보여서 "분명히 샀는데 못 만든다"가 된다.
+    //
+    // 일감을 폰이 **스스로** 등록한다 — 짐이 그 폰의 배낭에 있으니 남이 대신 못 한다.
+    // 큐에는 올라가되 `UnloadJob.CanAssignTo`가 주인만 통과시킨다.
+    // **주기로 훑지 않는다 — 바뀌었을 때만 본다.** 배낭이 그대로면 답도 그대로다.
+    // 다시 봐야 하는 순간은 셋뿐이다: 배낭이 바뀌었을 때(`Inventory.OnChanged`),
+    // 창고가 바뀌었을 때(자리가 없어 못 걸었던 것이 이제 걸릴 수 있다),
+    // 작업 설정이 바뀌었을 때(방금 `짐내림`을 켰다).
+    bool      _unloadDirty = true;   // 처음 한 번은 본다
+    UnloadJob _unloadJob;
+
+    void MarkUnloadDirty() => _unloadDirty = true;
+
+    // **작업 설정이 없는 폰은 구독하지 않는다.** 적·NPC는 `Work`가 아예 안 붙으므로
+    // (`Awake`의 `!UsesEnemyAi && !(unitData is NpcData)` 관문) 짐을 내릴 일이 없다 —
+    // 그런데도 전부 `Storage.OnChanged`에 매달려 있으면 창고가 바뀔 때마다 습격 온 적
+    // 스무 마리까지 깨운다. 짐내림 기본값을 켜 둘 수 있는 것도 이 관문 덕이다.
+    void HookUnloadSignals()
+    {
+        if (Work == null) return;
+
+        if (Inventory != null) Inventory.OnChanged += MarkUnloadDirty;
+        Work.OnChanged    += MarkUnloadDirty;
+        Storage.OnChanged += MarkUnloadDirty;
+    }
+
+    void UnhookUnloadSignals()
+    {
+        if (Work == null) return;
+
+        if (Inventory != null) Inventory.OnChanged -= MarkUnloadDirty;
+        Work.OnChanged    -= MarkUnloadDirty;
+        Storage.OnChanged -= MarkUnloadDirty;
+    }
+
+    // **무엇을 남길지는 종류가 아니라 플레이어가 정한다.** 한때 무기·갑옷·식량을 종류로
+    // 뺐는데, 그 규칙은 반드시 어긋난다 — 만들어 쌓아 둔 검은 창고로 가야 하고 쥐어 준
+    // 예비 검은 남아야 하는데, 둘 다 `WeaponData`다.
+    //
+    // 그래서 **뭉치 단위 잠금**(`ItemInstance.Locked`)으로 바꿨다. 배낭 창의 [잠금]을 켜고
+    // 아이템을 누르면 그 뭉치만 자동 운반에서 빠진다. 손으로 하는 일은 잠금과 무관하다.
+    void UpdateUnload()
+    {
+        if (Inventory == null || JobManager.Instance == null) return;
+
+        // 쓸모를 잃은 일감은 **치운다.** 아직 아무도 안 집었는데(`Available`) 조건이 깨졌으면
+        // (짐을 이미 썼다·창고가 찼다·짐내림을 껐다) 그냥 두면 배정되지 않는 일감이 큐에
+        // 영원히 남고, 아래 "살아 있으면 그만" 관문에 걸려 **이 폰은 다시는 짐을 못 내린다.**
+        if (_unloadJob != null)
+        {
+            bool alive = _unloadJob.Status != JobStatus.Done &&
+                         _unloadJob.Status != JobStatus.Cancelled;
+            bool stale = _unloadJob.Status == JobStatus.Available &&
+                         (!_unloadJob.IsReady || Work == null || !Work.IsEnabled(JobCategory.Unload));
+
+            if (alive && stale)
+            {
+                JobManager.Instance.CancelJob(_unloadJob);
+                _unloadJob = null;
+            }
+            else if (alive) return;   // 살아 있고 쓸모도 있다 — 겹쳐 걸지 않는다
+        }
+
+        if (Work == null || !Work.IsEnabled(JobCategory.Unload)) return;
+
+        // **일하는 중에는 짐을 안 내린다.** 운반 중인 폰의 배낭에는 지금 나르는 물건이 들어
+        // 있는데, 그걸 내려놓을 일감을 또 걸면 같은 짐을 두 일감이 다툰다.
+        if (_bb.CurrentJob != null) return;
+
+        // **바쁜 동안에는 표시를 지우지 않는다** — 위 관문들보다 뒤에서 내려야
+        // 일하느라 못 본 변경이 사라지지 않는다.
+        if (!_unloadDirty) return;
+        _unloadDirty = false;
+
+        // 받아 줄 창고가 **자리까지 있는** 첫 아이템 하나만 맡는다. 한 번에 한 종류씩이라
+        // 오가는 동안 상황이 바뀌어도 어긋난 만큼만 다시 잰다.
+        foreach (var inst in Inventory.Items)
+        {
+            var item = inst.Data;
+            if (item == null || inst.Locked) continue;
+
+            // **아이템 하나가 아니라 (아이템, 등급) 하나를 맡는다.** 등급을 안 가리면
+            // 희귀 셋과 일반 다섯이 여덟 개 한 덩어리가 되고, 그걸 안 가리고 내려놓으면
+            // 희귀가 창고에서 일반이 된다(`HaulJob`과 같은 규칙).
+            // 잠긴 뭉치는 수량에서도 뺀다 — 전체를 세어 걸면 도착해서 잠긴 것만큼 어긋난다.
+            var quality  = inst.Quality;
+            int amount   = Inventory.GetUnlockedQuantity(item, quality);
+            if (amount <= 0) continue;
+
+            var storage  = Storage.FindNearest(transform.position, item, amount, quality);
+            if (storage == null) continue;
+
+            _unloadJob = new UnloadJob(this, item, quality, amount, storage);
+            JobManager.Instance.RegisterJob(_unloadJob);
+            return;
+        }
     }
 
     // 하루(1800초)에 두 끼. 100 → 0 이 900초이므로 식사 임계(60)까지는 360초 걸린다.

@@ -107,7 +107,7 @@ public class SelectionManager : MonoBehaviour
             {
                 // **폰 선택을 유지한 채** 노드 패널을 연다 — "폰을 고른다 → 노드를 클릭한다
                 // → [배정]"이 자연스러운 순서인데, 여기서 선택을 지우면 배정 버튼이 항상
-                // 빈 목록을 받는다(`ResourceNodePanel.AssignSelected`가 Selected를 읽는다).
+                // 빈 목록을 받는다(`ResourceNodeUI.AssignSelected`가 Selected를 읽는다).
                 // 시체 클릭도 같은 이유로 선택을 유지한다.
                 OnNodeSelected?.Invoke(node);
                 return;

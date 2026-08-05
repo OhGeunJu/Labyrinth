@@ -210,7 +210,7 @@ public class GameModeManager : MonoBehaviour
     {
         if (uiCanvas == null) return null;
 
-        var menu = FindFirstObjectByType<WorldMenuPanel>(FindObjectsInactive.Include);
+        var menu = FindFirstObjectByType<WorldMenuUI>(FindObjectsInactive.Include);
         if (menu == null) return null;
 
         // 캔버스 직속 자식이 될 때까지 부모를 타고 올라간다.

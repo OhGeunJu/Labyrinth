@@ -76,6 +76,23 @@ public class Storage : MonoBehaviour, IWorldClickable
         return item is ResourceItemData r && allowedGroups.Contains(r.Group);
     }
 
+    // ── 자리 판정 ─────────────────────────────────────────────────────
+    // **필터를 통과한다고 들어갈 수 있는 건 아니다.** 만적인 창고는 `CanAccept`엔 걸리지만
+    // `TryAdd`가 0을 돌려준다 — 그 둘을 같은 것으로 보면 운반이 끝나지 않는다:
+    // 폰이 창고에 못 넣어 바닥에 떨구면 `DroppedItem.Spawn`이 **또 그 만적 창고를 가리키는**
+    // 운반 일감을 걸고, 폰이 다시 주워 와 또 떨군다. 창고는 언젠가 반드시 차므로 반드시 온다.
+    //
+    // 그래서 "받아 줄 곳"을 찾을 땐 자리까지 본다. 자리가 없으면 일감을 아예 만들지 않고
+    // 그 자리에 쌓아 둔다(작업대가 이미 그렇게 한다 — "받아 줄 창고가 없으면 그대로 쌓아 둔다").
+    //
+    // `quality`는 **`TryAdd`에 넘길 그 등급**을 준다. 스택은 같은 등급끼리만 합쳐지므로,
+    // 등급을 빠뜨리면 `일반` 스택의 여유를 `희귀` 짐이 쓸 수 있다고 잘못 답한다.
+    public bool HasRoomFor(ItemData item, int amount = 1, ItemQuality quality = ItemQuality.Common)
+    {
+        if (!CanAccept(item)) return false;
+        return Inventory != null && Inventory.CanFit(item, amount, quality);
+    }
+
     // 필터 통과 시에만 입고. 실제 입고된 수량 반환 (0=거부/만적, amount 미만=부분 입고).
     // 부분 입고 시 호출자가 남은 양을 폴백 라우팅해야 증발하지 않는다.
     public int TryAdd(ItemData item, int amount)
@@ -128,15 +145,34 @@ public class Storage : MonoBehaviour, IWorldClickable
         return null;
     }
 
-    // item을 받을 수 있는 창고 중 가장 가까운 것 반환
-    public static Storage FindNearest(Vector3 position, ItemData item = null)
+    // item을 **실제로 받아 줄** 창고 중 가장 가까운 것. 필터뿐 아니라 **자리까지** 본다 —
+    // 만적인 곳을 돌려주면 폰이 거기까지 갔다가 짐을 떨구고, 그 짐이 다시 같은 곳으로 가는
+    // 일감이 되어 줍고 떨구기를 반복한다(`HasRoomFor` 주석 참조).
+    //
+    // `amount`·`quality`는 **실제로 넣을 것**을 그대로 넘길 것. 기본값(1개·일반)으로 물으면
+    // "한 개는 들어간다"만 확인하고 27개를 지고 가게 된다.
+    //
+    // **두 번 훑는다.** 통째로 받아 줄 곳이 먼저고, 없으면 한 개라도 받는 곳으로 물러선다.
+    // 물러서지 않으면 30자리 남은 창고와 50짜리 짐 앞에서 일감이 아예 안 뜬다 —
+    // 자리가 있는데 없다고 하는 쪽이 만적인 곳을 고르는 것보다 낫다고 할 수는 없다.
+    // (부분 입고는 이미 모든 운반이 처리한다: 다른 창고 → 배낭 복귀 → 드롭 순.)
+    public static Storage FindNearest(Vector3 position, ItemData item = null, int amount = 1,
+                                      ItemQuality quality = ItemQuality.Common)
+    {
+        var full = FindNearestFitting(position, item, amount, quality);
+        if (full != null || amount <= 1) return full;
+
+        return FindNearestFitting(position, item, 1, quality);
+    }
+
+    static Storage FindNearestFitting(Vector3 position, ItemData item, int amount, ItemQuality quality)
     {
         Storage nearest = null;
         float minDist = float.MaxValue;
         foreach (var sb in All)
         {
             if (!sb.IsActive) continue;
-            if (item != null && !sb.CanAccept(item)) continue;
+            if (item != null && !sb.HasRoomFor(item, amount, quality)) continue;
             float d = Vector3.Distance(position, sb.transform.position);
             if (d < minDist) { minDist = d; nearest = sb; }
         }

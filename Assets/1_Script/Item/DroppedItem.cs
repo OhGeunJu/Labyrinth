@@ -97,20 +97,62 @@ public class DroppedItem : MonoBehaviour
         dropped.Amount  = amount;
         dropped.Quality = quality;
 
-        // 수용 가능한 창고가 있으면 운반 작업 자동 등록
-        var storage = Storage.FindNearest(position, item);
-        if (storage != null && JobManager.Instance != null)
-            JobManager.Instance.RegisterJob(new GroundHaulJob(dropped, storage));
-
+        dropped.TryRegisterHaul();
         return dropped;
     }
 
-    public void PickUp(Inventory inventory)
+    // ── 운반 일감 등록 ────────────────────────────────────────────────────────
+    // **받아 줄 자리가 있을 때만** 건다. 만적인 창고를 가리키는 일감을 걸면 폰이 거기까지
+    // 갔다가 못 넣고 짐을 떨구고, 그 짐이 다시 같은 일감이 되어 줍고 떨구기를 반복한다.
+    //
+    // 자리가 없어 못 걸었으면 짐은 그냥 바닥에 남는다 — 그래서 **주기적으로 다시 본다.**
+    // 안 그러면 창고를 비워도 그 짐은 영영 방치된다(일감을 걸어 줄 계기가 없다).
+    JobBase _haulJob;
+    float   _retryTimer;
+    const float RetryInterval = 5f;
+
+    public void TryRegisterHaul()
     {
-        int added    = inventory.TryAdd(Item, Amount, Quality);
+        if (JobManager.Instance == null || Item == null) return;
+
+        // **쌓인 만큼·이 등급으로** 물어본다. 개수를 빼먹으면 한 개 자리만 확인하고 50을
+        // 지고 가게 되고, 등급을 빼먹으면 `일반` 스택의 여유를 `희귀` 짐이 쓸 수 있다고 답한다.
+        var storage = Storage.FindNearest(transform.position, Item, Amount, Quality);
+        if (storage == null) return;      // 아직 받아 줄 곳이 없다 — 다음에 다시 본다
+
+        _haulJob = new GroundHaulJob(this, storage);
+        JobManager.Instance.RegisterJob(_haulJob);
+    }
+
+    void Update()
+    {
+        // 일감이 살아 있으면 그만이다. 끝났거나 취소됐거나 애초에 못 걸었을 때만 다시 본다.
+        if (_haulJob != null &&
+            _haulJob.Status != JobStatus.Done &&
+            _haulJob.Status != JobStatus.Cancelled) return;
+
+        _retryTimer -= Time.deltaTime;
+        if (_retryTimer > 0f) return;
+        _retryTimer = RetryInterval;
+
+        TryRegisterHaul();
+    }
+
+    public void PickUp(Inventory inventory) => PickUp(inventory, int.MaxValue);
+
+    // `max`: 이만큼까지만 줍는다(적재 한도). 남는 건 **그 자리에 다시 떨어진다** —
+    // 다시 떨어뜨리면 `Spawn`이 새 운반 일감을 걸어 주므로 방치되지 않는다.
+    // 한 개도 못 실은 경우에도 같은 길을 탄다(그래야 다른 폰이 이어받을 일감이 생긴다).
+    // 반환: 실제로 실은 수량.
+    public int PickUp(Inventory inventory, int max)
+    {
+        int want  = Mathf.Min(Amount, Mathf.Max(0, max));
+        int added = want > 0 ? inventory.TryAdd(Item, want, Quality) : 0;
+
         int leftover = Amount - added;
         if (leftover > 0)
             DroppedItem.Spawn(Item, leftover, transform.position, Quality);
         Destroy(gameObject);
+        return added;
     }
 }

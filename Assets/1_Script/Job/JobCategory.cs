@@ -9,4 +9,5 @@ public enum JobCategory
     Guard,
     Crafting,
     Research,
+    Unload,
 }

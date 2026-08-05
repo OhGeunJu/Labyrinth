@@ -39,7 +39,7 @@ public class SellItemEntryUI : MonoBehaviour,
         if (qualityText)
         {
             qualityText.text  = inst.Quality.DisplayName();
-            qualityText.color = ItemInfoPanel.QualityColor(inst.Quality);
+            qualityText.color = ItemInfoUI.QualityColor(inst.Quality);
         }
         if (sellPriceText)
         {
@@ -79,8 +79,9 @@ public class SellItemEntryUI : MonoBehaviour,
     public void OnPointerEnter(PointerEventData _)
     {
         if (_inst?.Data != null)
-            ItemInfoPanel.Show(_inst.Data, _inst.Quality, _sellPrice > 0 ? _sellPrice : -1, "판매가");
+            ItemInfoUI.Show(_inst.Data, _inst.Quality, _sellPrice > 0 ? _sellPrice : -1, "판매가",
+                               _inst.Locked);
     }
 
-    public void OnPointerExit(PointerEventData _) => ItemInfoPanel.Hide();
+    public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();
 }

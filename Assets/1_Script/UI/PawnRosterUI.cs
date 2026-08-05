@@ -15,7 +15,7 @@ using TMPro;
 //
 // **여기 있는 건 지금 이 거점에 있는 폰뿐이다.** 원정 나간 폰은 목록에서 빠지고 돌아오면 다시 붙는다
 // (나가 있는 동안은 선택도 명령도 안 되므로 남겨두면 죽은 줄이 된다). 밖에 나간 팀은 월드맵에서 본다.
-public class PawnRosterPanel : MonoBehaviour
+public class PawnRosterUI : MonoBehaviour
 {
     [Header("씬 참조 (생성기가 연결)")]
     [SerializeField] GameObject panel;

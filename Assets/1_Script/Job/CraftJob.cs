@@ -128,7 +128,7 @@ public class CraftJob : JobBase
             if (MaterialPool.Available(ing.Item, ReservedBy) < ing.Amount)
             {
                 Debug.Log($"[CraftJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요, 주문 대기열로 반환");
-                _table.OrderFinished();       // 이 인스턴스는 끝 — 바로 아래 재등록이 다시 +1
+                _table.OrderFinished(_recipe);       // 이 인스턴스는 끝 — 바로 아래 재등록이 다시 +1
                 _table.QueueOrder(_recipe);   // 동등 주문 재등록 (IsReady 게이트로 대기)
                 Status = JobStatus.Done;      // 이 잡 인스턴스는 종료 → 유닛이 놓음
                 return;
@@ -226,7 +226,7 @@ public class CraftJob : JobBase
         Debug.Log($"[CraftJob] 제작 완료 — {_recipe.RecipeName}{qualLabel} ×{finalAmount}{penalty} → {dest}  ({_recipe.RequiredSkillType} {skill:F0})");
         _table.ClearActiveJob(this);
         _table.ClearPartial(_recipe);   // 완성됐으니 부분 진행은 지운다
-        _table.OrderFinished();
+        _table.OrderFinished(_recipe);
         Status = JobStatus.Done;
     }
 
@@ -235,7 +235,7 @@ public class CraftJob : JobBase
     protected override void OnCancelled()
     {
         _table?.ClearActiveJob(this);   // 게이지가 완료되지 않은 채 남아 있지 않게
-        _table?.OrderFinished();        // 아래 QueueOrder가 다시 +1 한다 → 합계는 유지
+        _table?.OrderFinished(_recipe);        // 아래 QueueOrder가 다시 +1 한다 → 합계는 유지
         if (_recipe == null) return;
 
         // **만들던 것을 버리지 않는다.** 폰이 밥을 먹으러 가거나 죽거나 이동 명령을 받아도

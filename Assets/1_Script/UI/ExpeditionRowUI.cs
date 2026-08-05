@@ -35,9 +35,11 @@ public class ExpeditionRowUI : MonoBehaviour
             nameText.color = brain.Data is MinionData ? minionName : wandererName;
         }
 
-        // 적재는 근력에서 나온다(`Strength × 5`) — 누구를 데려갈지의 판단 근거라 줄마다 보여준다.
+        // 적재는 근력에서 나온다(`CarryCapacity`) — 누구를 데려갈지의 판단 근거라 줄마다 보여준다.
+        // **편성 화면과 실제 적재는 같은 곳에서 나와야 한다** — 여기서 따로 계산하면
+        // "15kg이라더니 50까지 받네"가 된다(실제로 그랬다).
         if (loadText != null)
-            loadText.text = brain.Stats != null ? $"적재 +{Mathf.FloorToInt(brain.Stats.Strength * 5f)}" : "";
+            loadText.text = brain.Stats != null ? $"적재 +{CarryCapacity.For(brain):0}kg" : "";
 
         if (check != null)
         {

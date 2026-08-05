@@ -277,27 +277,54 @@ Content
 
 ### 지어진 UI (기록)
 
-| UI | 컴포넌트 | 비고 |
+| 씬 오브젝트 | 컴포넌트 | 비고 |
 |---|---|---|
-| StorageBuildingPanel | `StorageBuildingUI` | 창고 필터/그리드 |
-| BedPanel | `BedUI` | 수면 배정 |
-| FarmingPanel | `FarmingUI` | 농장 관리 |
-| PatrolZonePanel | `PatrolZoneUI` | 순찰 구역 |
-| EventNotificationPanel | `EventNotificationUI` | 이벤트 알림 |
-| MerchantUI | `MerchantUI` | 상인 재고(구매), PawnInventoryPanel 연동 |
-| PawnInventoryPanel | `PawnInventoryPanel` | 인벤토리+장착슬롯+액션바(판매/옮기기) |
-| CorpseInventoryPanel | `CorpseInventoryPanel` | 시체 루팅(+EquipRow 6슬롯), PawnInventoryPanel 연동 |
-| ResourceNode_Panel | `ResourceNodePanel` | 우측 패널, 상단 #0D0D0D 헤더+CloseButton, 재고/배정/이송/운반임계값 |
-| PawnRoster_Panel | `PawnRosterPanel` | 우측 하단 세로 명부(340×760). 행은 씬의 **`RowTemplate`을 복제**해 채운다 — 모양 수정은 인스펙터에서, 코드 수정 불필요 |
-| ColonyPanel | `ColonyPanel` | 중앙 표 패널(P키). **행·열 라벨은 런타임 생성**(작업 카테고리에서 파생) |
-| UnitStats_Panel · GradeUpNotification | `UnitStatsUI` · `GradeUpNotificationUI` | 스탯 패널(C키) / 등급 승급 알림 |
-| Canvas/WorldUI/WorldMenuPanel | `WorldMenuPanel` | 월드맵 도착 메뉴(M&B식). **화면 왼쪽 고정**(오른쪽은 지도가 보이게). 필드와 **같은 캔버스**, `WorldUI` 묶음 직속. 선택지 줄은 씬의 `OptionTemplate`을 복제해 채운다 — 머리표는 글자가 아니라 **색 막대 `Image`**인 `Marker` 자식이고 코드가 안 건드린다 |
-| Expedition_UI/ExpeditionPanel | `ExpeditionPanel` · `ExpeditionRowUI` | 원정대 편성(G키). 폰 체크 목록 + `적재 +N` + 요약. 행은 씬의 `RowTemplate` 복제 |
-| Time_UI/TimeBar | `TimeHUD` | 상단 가운데 `일차 / 시각 / 낮·밤` + 배속 버튼 4개(정지·1배·3배·10배). 스페이스 = 일시정지 |
-| Settlement_0 | (루트 GameObject) | 필드 오브젝트 전체의 부모. `SettlementManager.settlements[0]`에 연결됨(WorldNode (8,8)). 정착지 전환이 이 루트를 켜고 끈다 |
-| 3_Prefab/CraftingTable_{Weapon,Smelt,Cook} · ResearchTable | — | 씬에만 있던 작업대/연구대를 프리팹으로 뜬 것. **작업대는 `tableType` 때문에 종류마다 프리팹이 하나씩** 필요하다 |
+| `Storage_UI` | `StorageUI` | 창고 필터/그리드 |
+| `Bed_UI` | `BedUI` | 수면 배정 |
+| `Farm_UI` | `FarmUI` | 농장 관리(씨앗 선택·성장·수분) |
+| `PatrolZone_UI` | `PatrolZoneUI` | 순찰 구역 |
+| `EventNotification_UI` | `EventNotificationUI` | 이벤트 알림 + **조작 거절 알림**(`Notify(title, message)`) |
+| `Merchant_UI` | `MerchantUI` | 상인 재고(구매), `InventoryUI` 연동. 목록↔격자 전환 |
+| `Inventory_UI` | `InventoryUI` | 인벤토리+장착슬롯+액션바(판매/옮기기)+`CarryBar`(무게·짐내림·잠금) |
+| `CorpseInventory_UI` | `CorpseInventoryUI` | 시체 루팅(+EquipRow 6슬롯), `InventoryUI` 연동 |
+| `ItemInfo_UI` | `ItemInfoUI` | 아이템 툴팁. **커서를 따라다니므로 부모가 캔버스와 같은 크기여야 한다** |
+| `CraftingTable_UI` | `CraftingTableUI` | 마스터-디테일 + 연료 게이지·산출물 그리드·수량 주문 |
+| `ResearchTable_UI` | `ResearchTableUI` | 마스터-디테일. [연구] 버튼과 진행 게이지가 **같은 칸을 번갈아 쓴다** |
+| `ResourceNode_UI` | `ResourceNodeUI` | 우측 패널, 상단 #0D0D0D 헤더+CloseButton, 재고/배정/이송/운반임계값 |
+| `PawnRoster_UI` | `PawnRosterUI` | 우측 하단 세로 명부(340×760). 행은 씬의 **`RowTemplate`을 복제** |
+| `Colony_UI` | `ColonyUI` · `ColonyRowUI` | 중앙 표 패널(P키). **행·열 라벨은 런타임 생성**(작업 카테고리에서 파생) |
+| `UnitStats_UI` · GradeUpNotification | `UnitStatsUI` · `GradeUpNotificationUI` | 스탯 패널(C키) / 등급 승급 알림 |
+| `UnitHP_UI` | `UnitHPUI` | 좌측 하단 HP/혈액/신체부위 |
+| `DungeonCore_UI` | `DungeonCoreUI` | 코어 정보/소환/[핵 이전] |
+| `BuildMode_UI` | `BuildModeUI` | 하단 건설 바 |
+| `PawnContextMenu_UI` | `PawnContextMenuUI` | 우클릭 선택지 팝업. 줄은 씬의 `OptionTemplate` 복제 |
+| `Expedition_UI` | `ExpeditionUI` · `ExpeditionRowUI` | 원정대 편성(G키). 행은 씬의 `RowTemplate` 복제 |
+| `Canvas/WorldUI/WorldMenu_UI` | `WorldMenuUI` | 월드맵 도착 메뉴(M&B식, 화면 왼쪽 고정). **`WorldUI`는 창이 아니라 월드 전용 UI 묶음** — `GameModeManager`가 이것만 반대로 켠다. 머리표는 글자가 아니라 색 막대 `Image`인 `Marker` 자식 |
+| `Time_UI/TimeBar` | `TimeHUD` | 상단 가운데 `일차 / 시각 / 낮·밤` + 배속 버튼 4개 |
+| MerchantStockTile | `MerchantStockEntryUI` | 격자 보기 항목(96×112). 목록 행과 **같은 컴포넌트**, 배치만 다름 |
+| Settlement_0 | (루트 GameObject) | 필드 오브젝트 전체의 부모. `SettlementManager.settlements[0]`(WorldNode 8,8) |
+| 3_Prefab/CraftingTable_{Weapon,Smelt,Cook} · ResearchTable | — | **작업대는 `tableType` 때문에 종류마다 프리팹이 하나씩** 필요하다 |
 
-**UI 이름 규약(2026-07-31 일괄 정리)**: 제목 바는 전부 **`TitleBar`**(옛 `TopBar`·`Header` 통일), 닫기 버튼은 **`CloseButton`**(옛 `CloseBtn`). 제목 바에는 `DraggablePanel`(target=패널), 닫기 버튼에는 공용 `CloseButton` 스크립트(target=패널)가 붙어 있다. 단, `ItemInfoPanel/Header`는 툴팁 안의 **섹션 헤더**라 제외했다 — 제목 바 판정은 이름이 아니라 **깊이**(`Canvas > *_UI > *Panel > 바`)로 한다.
+**창 오브젝트 이름 규약(2026-08-04 확정)** — 이름은 **컴포넌트에서 유도한다.**
+
+```
+<기준>_UI      ← 컴포넌트가 붙은, 늘 켜져 있는 부모
+<기준>_Panel   ← 보였다 사라지는 자식 (`panel` 필드가 가리키는 것)
+```
+
+기준 = 컴포넌트 클래스 이름에서 꼬리 `UI`를 뗀 것 —
+`StorageUI` → `Storage_UI`/`Storage_Panel`, `PawnContextMenuUI` → `PawnContextMenu_UI`/`PawnContextMenu_Panel`.
+**컴포넌트 접미사도 `UI` 하나로 통일했다**(옛 `XxxPanel` 8개 개명).
+
+전에는 세 갈래가 섞여 있었다: 자식에 밑줄이 있는 것(`UnitStats_Panel`), 없는 것(`BedPanel`),
+루트에 밑줄이 없는 것(`DungeonCoreUI`), 짝 이름이 아예 다른 것(`Storage_UI`↔`StorageBuildingPanel`).
+마지막 것 때문에 **이름으로는 짝을 짐작할 수 없다** — `panel` 필드가 짝을 정확히 알고 있으므로
+거기서 읽는다. 도구는 `DungeonColony → Rename UI Objects (Preview / Apply)`.
+
+이름은 `fileID` 참조에 영향을 주지 않고, 이 프로젝트에는 **창을 문자열로 찾는 코드가 없다**
+(2026-08-04 전수 확인 — `transform.Find`는 전부 창 안쪽 부품용이고 `GameObject.Find`는 0건).
+
+**UI 이름 규약(2026-07-31 일괄 정리)**: 제목 바는 전부 **`TitleBar`**(옛 `TopBar`·`Header` 통일), 닫기 버튼은 **`CloseButton`**(옛 `CloseBtn`). 제목 바에는 `DraggablePanel`(target=패널), 닫기 버튼에는 공용 `CloseButton` 스크립트(target=패널)가 붙어 있다. 단, `ItemInfoUI/Header`는 툴팁 안의 **섹션 헤더**라 제외했다 — 제목 바 판정은 이름이 아니라 **깊이**(`Canvas > *_UI > *Panel > 바`)로 한다.
 
 ## 남아 있는 도구
 
@@ -314,6 +341,9 @@ Content
 | `Setup Work Spots` | `3_Prefab`의 작업대·연구대 프리팹에 **작업 자리(`WorkSpot`)** 를 붙인다(건물 앞 1칸, 반투명 표식 포함). **이미 있으면 건너뛴다.** 프리팹은 **제자리 수정**(`LoadPrefabContents` → `SaveAsPrefabAsset` 같은 경로)이라 `BuildingData.Prefab` 참조가 안 끊긴다 | 작업대를 늘릴 때 다시 돌리는 **배선 도구** |
 | `Upgrade Crafting Table Panel` | 작업대 패널에 연료 게이지·산출물 그리드·운반 허용 버튼을 붙이고 `CraftingTableUI`에 배선. 새 구역을 **패널 아래에 매달아** 기존 자식 좌표를 안 건드린다. 다시 실행하면 이전 구역을 지우고 새로 짓는다 | 산출물/연료 배치를 다시 만들 때 쓰는 **재생성 도구** |
 | `Migrate Minion Prefabs` | 씬의 `DungeonCore.minionEntries` 배선을 레지스트리로 이전 — 씬 오브젝트를 `3_Prefab/Minion_*.prefab`으로 뜨고(**있으면 안 만듦**) `MinionData.Prefab`에 연결한 뒤 `minionEntries`를 비운다. **전부 성공했을 때만** 비운다(대체물 없이 지우면 소환이 죽는다). 뜰 때 **루트를 켠다** — 씬 템플릿이 꺼져 있어 그대로 뜨면 소환된 하수인이 꺼진 채 나온다 | 하수인 종류를 늘릴 때 다시 돌리는 **이전 도구** |
+| `Fix Window Structure` | 창 컴포넌트를 **자기 전용 `<기준>_UI` 오브젝트**로 옮기고 패널을 그 자식으로 내린다. 어긋나는 꼴 둘을 편다 — (1) 컴포넌트가 **패널 자신에** 붙은 경우(`ItemInfoUI`: 꺼진 채 저장돼 `Awake`가 안 돌아 툴팁이 한 번도 안 떴다) → 부모를 바깥에 세운다, (2) 컴포넌트가 **남의 오브젝트에 얹힌** 경우(`WorldMenuUI`가 월드 UI 묶음 `WorldUI`에) → 그 안쪽에 세운다. 컴포넌트는 **복사해 붙인다**(`ComponentUtility`) — 인스펙터 참조를 들고 가야 해서. 부모는 제 부모와 같은 크기로 펼친다(자식의 `anchoredPosition`이 뜻을 유지해야 한다). **대상은 손으로 적는다** — "이 오브젝트가 다른 역할도 하는가"는 자동으로 알 수 없다. 여러 번 실행해도 안전 | 구조가 어긋났을 때 다시 돌리는 **복구 도구** |
+| `Rename UI Objects (Preview / Apply)` | 창 오브젝트 이름을 `<기준>_UI`/`<기준>_Panel`로 통일한다. `panel` 필드에서 짝을 읽고 컴포넌트 타입에서 이름을 유도하므로 **표를 손으로 적지 않는다**. Preview는 계획만 찍고 아무것도 안 바꾼다. 프리팹 소속·구조용 묶음(`WorldUI`)은 건너뛴다 | 창을 늘릴 때 다시 돌리는 **정리 도구** |
+| `Create Carry Bar` | 배낭 창(I키) 액션 바 위에 `CarryBar` 한 줄을 세운다 — `무게 12/15kg` + [짐내림] + [잠금] — 그리고 `InventoryUI`에 배선한다. 다시 실행하면 이전 것을 지우고 새로 짓는다(자리를 손봤다면 다시 손봐야 한다). 액션 바와 **같은 부모**에 두므로 액션 바를 옮기면 따라간다 | 배낭 창 하단을 다시 지을 때 쓰는 **재생성 도구** |
 | `Build Mod AssetBundle` | 프로젝트 창에서 고른 모델·프리팹·텍스처를 에셋 번들로 구워 모드 폴더에 넣는다. 번들 이름 = **모드 폴더 이름**(모드마다 하나, 다시 구우면 덮어씀). 읽는 쪽은 `ModAssets`. | **유니티가 런타임에 .fbx/.obj를 못 읽어서** 모드가 모델을 넣으려면 번들이 유일한 길이다. 모드를 만들 때마다 쓰는 **상시 도구** |
 
 **씬을 건드리는 생성기는 씬을 직접 저장해야 한다.** `AssetDatabase.SaveAssets()`는 **에셋만** 저장한다 — 씬 컴포넌트를 고치고 `EditorUtility.SetDirty`만 부르면 씬이 더티로 표시되지 않아 저장 대상에서 빠지고, Unity를 닫는 순간 작업이 통째로 날아간다. 2026-07-31에 건설 목록 등록 15건과 연구 게이지 배선이 이렇게 사라졌다.

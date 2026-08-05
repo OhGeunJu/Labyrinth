@@ -12,11 +12,11 @@ using TMPro;
 // 중립 유닛도 우클릭하면 두들겨 팼다. 중립을 만나는 순간 우클릭은 뜻이 여러 개가 된다 —
 // 거래할 수도, 따라갈 수도, (원한다면) 칠 수도 있다. 그 갈림길을 화면에 내놓는다.
 //
-// **선택지 구성은 여는 쪽(`MoveController`)이 정한다** — 월드맵 도착 메뉴(`WorldMenuPanel`)와
+// **선택지 구성은 여는 쪽(`MoveController`)이 정한다** — 월드맵 도착 메뉴(`WorldMenuUI`)와
 // 같은 규칙이다. 여기서 대상 종류를 따지기 시작하면 판단이 두 곳으로 갈라진다.
-public class PawnContextMenu : MonoBehaviour
+public class PawnContextMenuUI : MonoBehaviour
 {
-    public static PawnContextMenu Instance { get; private set; }
+    public static PawnContextMenuUI Instance { get; private set; }
 
     [Header("씬 참조")]
     [SerializeField] GameObject      panel;

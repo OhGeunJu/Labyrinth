@@ -13,7 +13,7 @@ using TMPro;
 //
 // 필터 버튼은 **씬의 `filterTemplate`을 복제**해 채운다 — 모양은 씬이, 코드는 데이터만
 // (`docs/editor_creators.md`). 코드가 색·여백을 만들면 편집 화면과 게임 화면이 어긋난다.
-public class StorageBuildingUI : MonoBehaviour
+public class StorageUI : MonoBehaviour
 {
     [Header("씬 참조")]
     [SerializeField] GameObject      panel;

@@ -10,7 +10,7 @@ using TMPro;
 // 작업은 폰별 숫자 우선순위가 아니라 **한다/안 한다**만 정한다. 무엇을 먼저 할지는
 // JobCategoryInfo.QueueOrder(왼쪽 열이 먼저)가 전역으로 결정한다.
 // 채굴·벌목·순찰은 대상에 폰을 직접 배정하는 방식이라 토글이 아니라 상태로만 표시한다.
-public class ColonyPanel : MonoBehaviour
+public class ColonyUI : MonoBehaviour
 {
     [Header("패널 루트")]
     [SerializeField] GameObject panel;
@@ -163,12 +163,24 @@ public class ColonyPanel : MonoBehaviour
 
         MakeHeaderLabel("이름", ColonyColumns.NameX, ColonyColumns.NameW, TextAlignmentOptions.Left);
 
-        for (int i = 0; i < JobCategoryInfo.QueueOrder.Length; i++)
-            MakeHeaderLabel(JobCategoryInfo.DisplayName(JobCategoryInfo.QueueOrder[i]),
+        for (int i = 0; i < ColonyColumns.WorkColumns.Length; i++)
+            MakeHeaderLabel(JobCategoryInfo.DisplayName(ColonyColumns.WorkColumns[i]),
                             ColonyColumns.JobX(i), ColonyColumns.JobW, TextAlignmentOptions.Center);
 
         MakeHeaderLabel("배정", ColonyColumns.AssignX, ColonyColumns.AssignW, TextAlignmentOptions.Left);
         MakeHeaderLabel("성향", ColonyColumns.StanceX, ColonyColumns.StanceW, TextAlignmentOptions.Center);
+        MakeHeaderLabel("짐내림", ColonyColumns.UnloadX, ColonyColumns.UnloadW, TextAlignmentOptions.Center);
+
+        // **폭을 열 수에 맞춘다.** 씬에 적힌 고정 폭을 두면 열을 하나 더할 때마다
+        // 글자가 패널 밖으로 밀려난다(짐내림을 넣었을 때 실제로 그랬다).
+        FitPanelWidth();
+    }
+
+    void FitPanelWidth()
+    {
+        var rt = panel != null ? panel.GetComponent<RectTransform>() : null;
+        if (rt == null) return;
+        rt.sizeDelta = new Vector2(ColonyColumns.TotalWidth, rt.sizeDelta.y);
     }
 
     void MakeHeaderLabel(string text, float x, float w, TextAlignmentOptions align)

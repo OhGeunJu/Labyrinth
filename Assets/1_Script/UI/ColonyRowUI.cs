@@ -11,6 +11,10 @@ public class ColonyRowUI : MonoBehaviour
 {
     static readonly Color OnColor    = new Color(0.20f, 0.50f, 0.28f, 1f);
     static readonly Color OffColor   = new Color(0.17f, 0.17f, 0.19f, 1f);
+
+    // 직접 배정(채굴·벌목·순찰)에 묶인 폰의 큐 작업 칸. 켜져 있지만 **지금은 안 한다**.
+    static readonly Color OnHeldColor   = new Color(0.20f, 0.32f, 0.24f, 1f);
+    static readonly Color MarkHeldColor = new Color(0.55f, 0.58f, 0.55f, 1f);
     static readonly Color AutoColor  = new Color(0.55f, 0.55f, 0.58f, 1f);
     static readonly Color FightColor = new Color(0.72f, 0.84f, 0.72f, 1f);
     static readonly Color CareColor  = new Color(0.88f, 0.80f, 0.45f, 1f);
@@ -21,6 +25,8 @@ public class ColonyRowUI : MonoBehaviour
     TextMeshProUGUI _assignText;
     Button          _unassignButton;
     TextMeshProUGUI _stanceLabel;
+    Image           _unloadImage;
+    TextMeshProUGUI _unloadLabel;
 
     readonly Dictionary<JobCategory, Image>           _boxImages = new();
     readonly Dictionary<JobCategory, TextMeshProUGUI> _boxMarks  = new();
@@ -52,9 +58,9 @@ public class ColonyRowUI : MonoBehaviour
             : Color.white;                     // 방랑자
 
         // 작업 체크박스
-        for (int i = 0; i < JobCategoryInfo.QueueOrder.Length; i++)
+        for (int i = 0; i < ColonyColumns.WorkColumns.Length; i++)
         {
-            var category = JobCategoryInfo.QueueOrder[i];
+            var category = ColonyColumns.WorkColumns[i];
             var box = UIHelper.MakeButton(transform, $"Job_{category}", "", Vector2.zero,
                                           Vector2.zero, 13f);
             Place(box.GetComponent<RectTransform>(), ColonyColumns.JobX(i), ColonyColumns.JobW);
@@ -86,6 +92,16 @@ public class ColonyRowUI : MonoBehaviour
         Place(stanceBtn.GetComponent<RectTransform>(), ColonyColumns.StanceX, ColonyColumns.StanceW);
         stanceBtn.onClick.AddListener(CycleStance);
         _stanceLabel = stanceBtn.GetComponentInChildren<TextMeshProUGUI>();
+
+        // 짐내림 — 작업이 아니라 **이 폰을 어떻게 굴릴까**에 가까워 성향 옆에 둔다.
+        // 칸 안 글자는 작업 체크박스와 같은 `V`다. 무엇을 켜는 칸인지는 **열 제목**이 말한다 —
+        // 칸마다 이름을 다시 적으면 켜짐/꺼짐이 글자에 묻힌다.
+        var unloadBtn = UIHelper.MakeButton(transform, "Unload", "", Vector2.zero,
+                                            Vector2.zero, 13f);
+        Place(unloadBtn.GetComponent<RectTransform>(), ColonyColumns.UnloadX, ColonyColumns.UnloadW);
+        unloadBtn.onClick.AddListener(ToggleUnload);
+        _unloadImage = unloadBtn.GetComponent<Image>();
+        _unloadLabel = unloadBtn.GetComponentInChildren<TextMeshProUGUI>();
 
         if (_brain.Work != null) _brain.Work.OnChanged += Refresh;
 
@@ -120,6 +136,12 @@ public class ColonyRowUI : MonoBehaviour
         Refresh();
     }
 
+    void ToggleUnload()
+    {
+        _brain?.Work?.Toggle(JobCategory.Unload);
+        Refresh();
+    }
+
     void ClearAssignment()
     {
         var bb = _brain != null ? _brain.Blackboard : null;
@@ -138,21 +160,33 @@ public class ColonyRowUI : MonoBehaviour
     {
         if (_brain == null) return;
 
-        var work = _brain.Work;
-        foreach (var category in JobCategoryInfo.QueueOrder)
-        {
-            bool on = work != null && work.IsEnabled(category);
-            if (_boxImages.TryGetValue(category, out var img)) img.color = on ? OnColor : OffColor;
-            if (_boxMarks.TryGetValue(category, out var mark))
-            {
-                mark.text  = on ? "V" : "";
-                mark.color = Color.white;
-            }
-        }
-
         // 배정 상태 — 침대(휴식)가 작업을 덮으므로 먼저 표시
         var bb  = _brain.Blackboard;
         var bed = Bed.FindAssigned(_brain);
+
+        // **직접 배정은 큐 작업을 통째로 밀어낸다.** `WorkNode`는 `AssignedNode`가 있으면
+        // 거기서 끝나고(`TickAssigned`는 늘 Running), 순찰도 트리에서 작업보다 위다 —
+        // 즉 배정된 폰은 `RequestJob`을 아예 호출하지 않는다.
+        //
+        // 그런데 화면에는 "운반 V"가 멀쩡히 켜져 있어서, 광맥마다 폰을 붙여 두면
+        // **운반 켠 폰이 다섯인데 실제로 나르는 건 배정 안 된 한 명**이 된다.
+        // 체크는 남기되 흐리게 그려 "켜 뒀지만 지금은 못 한다"를 눈에 보이게 한다.
+        // (침대는 아니다 — 졸릴 때만 쓰이지 폰을 붙들지 않는다.)
+        bool held = bb != null && (bb.AssignedNode != null || bb.AssignedPatrolZone != null);
+
+        var work = _brain.Work;
+        foreach (var category in ColonyColumns.WorkColumns)
+        {
+            bool on = work != null && work.IsEnabled(category);
+            if (_boxImages.TryGetValue(category, out var img))
+                img.color = on ? (held ? OnHeldColor : OnColor) : OffColor;
+            if (_boxMarks.TryGetValue(category, out var mark))
+            {
+                mark.text  = on ? "V" : "";
+                mark.color = held ? MarkHeldColor : Color.white;
+            }
+        }
+
         string assign = "-";
         if (bed != null)
         {
@@ -160,10 +194,14 @@ public class ColonyRowUI : MonoBehaviour
         }
         else if (bb != null && bb.AssignedNode != null)
         {
-            var data     = bb.AssignedNode.Data;
+            var node     = bb.AssignedNode;
+            var data     = node.Data;
             bool cutting = data != null && data.IsTree;
             string what  = data?.DropItem != null ? data.DropItem.ItemName : "자원";
-            assign = $"{(cutting ? "벌목" : "채굴")}: {what}";
+            // 자리 수도 같이 적는다 — 여기가 "누구를 어디서 빼올까"를 정하는 화면이라,
+            // 그 노드가 이미 꽉 찼는지 아닌지가 판단에 바로 필요하다.
+            string room  = node.MaxWorkers > 0 ? $" {node.AssignedCount}/{node.MaxWorkers}" : "";
+            assign = $"{(cutting ? "벌목" : "채굴")}: {what}{room}";
         }
         else if (bb != null && bb.AssignedPatrolZone != null)
         {
@@ -176,6 +214,15 @@ public class ColonyRowUI : MonoBehaviour
         _unassignButton.GetComponent<Image>().color = assigned
             ? new Color(0.35f, 0.25f, 0.25f)
             : new Color(0.18f, 0.18f, 0.20f);
+
+        // 짐내림 — 켜짐/꺼짐만. 직접 배정에 묶여 있어도 짐은 내릴 수 있으므로 흐리게 하지 않는다.
+        bool unload = work != null && work.IsEnabled(JobCategory.Unload);
+        if (_unloadImage != null) _unloadImage.color = unload ? OnColor : OffColor;
+        if (_unloadLabel != null)
+        {
+            _unloadLabel.text  = unload ? "V" : "";
+            _unloadLabel.color = Color.white;
+        }
 
         // 전투 성향
         if (!_brain.HasStanceOverride)
@@ -220,10 +267,24 @@ public static class ColonyColumns
     public const float JobW      = 52f;
     public const float JobGap    = 4f;
 
+    // **작업 열은 `짐내림`을 뺀 것들이다.** 짐내림은 큐를 타긴 하지만 플레이어에게는
+    // "무슨 일을 시킬까"가 아니라 "이 폰이 짐을 지고 다니게 둘까"에 가깝다 —
+    // 작업 체크 사이에 끼면 남이 시킨 일과 같은 무게로 읽힌다. 그래서 성향 옆에 따로 세운다.
+    public static readonly JobCategory[] WorkColumns = BuildWorkColumns();
+
+    static JobCategory[] BuildWorkColumns()
+    {
+        var src = JobCategoryInfo.QueueOrder;
+        var list = new List<JobCategory>(src.Length);
+        foreach (var c in src)
+            if (c != JobCategory.Unload) list.Add(c);
+        return list.ToArray();
+    }
+
     public static float JobX(int index) => JobStartX + index * (JobW + JobGap);
 
     public static float AfterJobs =>
-        JobX(Mathf.Max(0, JobCategoryInfo.QueueOrder.Length - 1)) + JobW + 12f;
+        JobX(Mathf.Max(0, WorkColumns.Length - 1)) + JobW + 12f;
 
     public static float AssignX   => AfterJobs;
     public const  float AssignW   = 138f;
@@ -232,5 +293,9 @@ public static class ColonyColumns
     public static float StanceX   => UnassignX + UnassignW + 10f;
     public const  float StanceW   = 62f;
 
-    public static float TotalWidth => StanceX + StanceW + 12f;
+    // 성향 오른쪽 — 작업 무리에서 떨어뜨려 둔다.
+    public static float UnloadX   => StanceX + StanceW + 10f;
+    public const  float UnloadW   = 56f;
+
+    public static float TotalWidth => UnloadX + UnloadW + 12f;
 }

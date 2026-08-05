@@ -213,7 +213,7 @@ public class OutpostManager : MonoBehaviour
 
         if (moved > 0)
         {
-            Debug.Log($"[채집기지] 비축분 {moved}개를 실었습니다. 등짐 {party.Carried}/{Mathf.FloorToInt(party.Capacity)}");
+            Debug.Log($"[채집기지] 비축분 {moved}개를 실었습니다. 등짐 {party.CarriedWeight:0}/{party.Capacity:0}kg");
             OnChanged?.Invoke();
         }
         return moved;

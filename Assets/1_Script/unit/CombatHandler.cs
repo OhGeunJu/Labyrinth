@@ -333,10 +333,10 @@ public class CombatHandler : MonoBehaviour
         return interval / (dexBonus * strengthBonus * statusCorrection * weightCorrection) * sfxMult;
     }
 
-    // 무게 보정: 최대 수용 무게(근력×5) 초과 시 1/비율로 감소
+    // 무게 보정: 적재 한도(`CarryCapacity`) 초과 시 1/비율로 감소
     float CalcWeightCorrection()
     {
-        float maxWeight     = _stats.Strength * 5f;
+        float maxWeight     = CarryCapacity.For(_stats);
         float currentWeight = _brain.Inventory.GetTotalWeight();
         if (maxWeight <= 0f || currentWeight <= maxWeight) return 1f;
         return maxWeight / currentWeight;

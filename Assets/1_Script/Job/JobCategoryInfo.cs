@@ -20,6 +20,8 @@ public static class JobCategoryInfo
         JobCategory.Crafting,
         JobCategory.Research,
         JobCategory.Hauling,
+        // 맨 뒤 — 남의 일감이 없을 때 자기 짐을 내린다.
+        JobCategory.Unload,
     };
 
     // 큐를 타지 않고 플레이어가 대상에 폰을 직접 붙이는 카테고리.
@@ -50,6 +52,7 @@ public static class JobCategoryInfo
         JobCategory.Guard        => "경비",
         JobCategory.Crafting     => "제작",
         JobCategory.Research     => "연구",
+        JobCategory.Unload       => "짐내림",
         _                        => "-",
     };
 }

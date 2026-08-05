@@ -12,7 +12,7 @@ using UnityEngine.UI;
 // 누가 가는지가 흔들린다. [취소]는 언제든 가능하고, 아직 아무도 안 떠났으므로 되돌릴 게 없다.
 //
 // 행 모양은 씬의 `rowTemplate`이 갖는다(→ "모양은 씬이, 코드는 데이터만").
-public class ExpeditionPanel : MonoBehaviour
+public class ExpeditionUI : MonoBehaviour
 {
     [Header("씬 참조 (생성기가 연결)")]
     [SerializeField] GameObject      panel;
@@ -171,13 +171,13 @@ public class ExpeditionPanel : MonoBehaviour
         {
             if (r == null || !r.IsChecked || r.Brain == null) continue;
             picked++;
-            if (r.Brain.Stats != null) load += r.Brain.Stats.Strength * 5f;
+            load += CarryCapacity.For(r.Brain);
         }
 
         foreach (var r in _rows) if (r != null) r.SetInteractable(!gathering);
 
         if (summaryText != null)
-            summaryText.text = $"선택 {picked}명 · 적재 {Mathf.FloorToInt(load)}";
+            summaryText.text = $"선택 {picked}명 · 적재 {load:0}kg";
 
         if (statusText != null)
         {

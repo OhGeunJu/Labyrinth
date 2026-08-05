@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 
 // 마운트앤블레이드식 실시간 월드맵 뷰 (같은 씬, 모드 전환).
 // **여기는 "무엇을 하는가"만 담당한다** — 입력(M/클릭/Enter), 파티 토큰 이동, 거점 진입.
-// 원정대 편성은 `ExpeditionPanel`(G) + `ExpeditionFormation`(집결) 몫이다.
+// 원정대 편성은 `ExpeditionUI`(G) + `ExpeditionFormation`(집결) 몫이다.
 // 좌표 변환·격자선·오브젝트 배치는 `WorldMapGrid` 몫이다.
 //
 // - **지형은 씬에 직접 만들어 붙인다**(Unity Terrain이든 모델링한 메시든). 코드는 지형을 만들지 않는다.
@@ -15,7 +15,7 @@ using UnityEngine.InputSystem;
 //   좌클릭 = 단일 선택, 드래그 = 사각 다중 선택, 빈 곳 클릭 = 해제. 우클릭 = 선택한 팀만 이동.
 // - 파티 토큰은 **격자에 매이지 않고 자유롭게** 이동한다 — 우클릭한 지점으로 직진하며 지형 표면을 탄다.
 //   격자는 이동 제약이 아니라 "지금 어느 지역에 있나"(바이옴·정착지 판정)를 읽는 논리 레이어일 뿐이다.
-// - **도착 메뉴는 마운트앤블레이드식** — **어느 칸이든 도착하면** `WorldMenuPanel`이 저절로 열린다
+// - **도착 메뉴는 마운트앤블레이드식** — **어느 칸이든 도착하면** `WorldMenuUI`가 저절로 열린다
 //   (빈 야생 포함 — 아무 데나 조사하고 자리를 잡을 수 있어야 한다). Enter는 선택한 팀의 메뉴 재진입.
 // - **매장 자원은 조사해야 보인다**(안개는 없다 — 가려지는 건 세부 수치뿐).
 //   `WorldMap.IsSurveyed` / `DepositsAt`, 값 자체는 `WorldDeposits`가 칸 좌표에서 결정적으로 뽑는다.
@@ -29,7 +29,7 @@ public class WorldMapView : MonoBehaviour
     [SerializeField] Camera worldCamera;     // 월드맵 전용 카메라 (기본 비활성)
     [SerializeField] Transform mapRoot;      // 월드 측 루트 — **저작한 지형과 격자·토큰이 여기 아래**
     [SerializeField] WorldMapGrid grid;      // 비우면 mapRoot에서 탐색·부착
-    [SerializeField] WorldMenuPanel menuPanel;     // 도착 메뉴 — 비우면 씬에서 탐색
+    [SerializeField] WorldMenuUI menuPanel;     // 도착 메뉴 — 비우면 씬에서 탐색
     [SerializeField] WorldTileVisualData visuals;  // 도착 메뉴의 지역 그림 출처(선택)
     [SerializeField] float partySpeed = 5f;  // 월드유닛/초
     [SerializeField] float tokenHover = 0.4f; // 지형 표면에서 토큰을 띄우는 높이
@@ -73,7 +73,7 @@ public class WorldMapView : MonoBehaviour
         }
 
         EnsureGrid();
-        if (menuPanel == null) menuPanel = FindFirstObjectByType<WorldMenuPanel>(FindObjectsInactive.Include);
+        if (menuPanel == null) menuPanel = FindFirstObjectByType<WorldMenuUI>(FindObjectsInactive.Include);
         if (menuPanel != null) menuPanel.Closed += OnMenuClosed;
 
         grid.Build();
@@ -441,7 +441,7 @@ public class WorldMapView : MonoBehaviour
         // 원정대 없이 들여다보는 중이면 인원·등짐 대신 그 사실을 적는다.
         sb.Append(pt == null
             ? "<color=#FFFFFF80>원정대 없음</color>"
-            : $"{pt.Party.Members.Count}명 · 등짐 {pt.Party.Carried}/{Mathf.FloorToInt(pt.Party.Capacity)}");
+            : $"{pt.Party.Members.Count}명 · 등짐 {pt.Party.CarriedWeight:0}/{pt.Party.Capacity:0}kg");
 
         if (tile.Content == WorldNodeContent.MySettlement) return sb.ToString();
 
@@ -698,7 +698,7 @@ public class WorldMapView : MonoBehaviour
     }
 
     // ── 팀 생성 / 복귀 ────────────────────────────────────────────────────────
-    // **편성은 여기서 하지 않는다** — `ExpeditionPanel`(G키)에서 고르고
+    // **편성은 여기서 하지 않는다** — `ExpeditionUI`(G키)에서 고르고
     // `ExpeditionFormation`이 집결까지 마친 뒤 아래 진입점으로 넘긴다.
 
     // 집결을 마친 폰들로 **새 원정대 하나**를 만든다. 나갈 때마다 팀이 하나씩 늘어난다.

@@ -50,10 +50,10 @@ Guidance for Claude Code in this repository.
 
 ### 팩션 (세력 관계)
 
-`FactionData` (SO) — 세력 1개. `PlayerControlled` / `DefaultStance` / `Relations[{Other, Stance}]`. **관계는 방향별**(`StanceTo`): A→B 적대여도 B→A 중립 가능. `Faction` 컴포넌트가 SO를 들고 `IsPlayer`/`IsHostileTo`/`IsAllyOf` 제공, **SO 미연결 시 레거시 `FactionType{Player,Enemy}` 폴백**(기존 씬 무영향). 반격은 관계와 무관 — `UnitBlackboard.LastAttacker`(15초). AI 역할은 `UnitBrain.UsesEnemyAi`(NPC/하수인 아님 && !IsPlayer). **적을 만났을 때의 반응 + 유휴 배회는 `AiProfileData`(SO)** — 유닛 프리팹의 `UnitBrain.aiProfile`에 연결(새 컴포넌트 부착 불필요, 프로필을 여러 프리팹이 공유). 세 축 분리: 종족(`UnitData`)=스탯 / 세력(`FactionData`)=누가 적인가 / 역할(`AiProfileData`)=어떻게 반응하는가. 비우면 타입별 기본값(일반·경비=교전+배회 / NPC 주민=도주+배회 / 상점상인=도주+제자리). 트리 조립은 `UnitBrain.AddCombatBranch` / `AddWanderBranch` 공용. 스타터 에셋은 `Assets/5_Data/AiProfile/`(4종) · `Assets/5_Data/Faction/`(4종)에 생성돼 있다. 상세 `docs/units.md`.
+`FactionData` (SO) — 세력 1개. `PlayerControlled` / `DefaultStance` / `Relations[{Other, Stance}]`. **관계는 방향별**(`StanceTo`): A→B 적대여도 B→A 중립 가능. `Faction` 컴포넌트가 SO를 들고 `IsPlayer`/`IsHostileTo`/`IsAllyOf` 제공. **SO는 반드시 연결할 것** — 옛 `FactionType{Player,Enemy}` 폴백은 삭제됐고(2026-08-03), 비우면 아무와도 관계가 없어 판정이 전부 중립으로 떨어진다(`Awake`가 경고). 반격은 관계와 무관 — `UnitBlackboard.LastAttacker`(15초). AI 역할은 `UnitBrain.UsesEnemyAi`(NPC/하수인 아님 && !IsPlayer). **적을 만났을 때의 반응 + 유휴 배회는 `AiProfileData`(SO)** — 유닛 프리팹의 `UnitBrain.aiProfile`에 연결(새 컴포넌트 부착 불필요, 프로필을 여러 프리팹이 공유). 세 축 분리: 종족(`UnitData`)=스탯 / 세력(`FactionData`)=누가 적인가 / 역할(`AiProfileData`)=어떻게 반응하는가. 비우면 타입별 기본값(일반·경비=교전+배회 / NPC 주민=도주+배회 / 상점상인=도주+제자리). 트리 조립은 `UnitBrain.AddCombatBranch` / `AddWanderBranch` 공용. 스타터 에셋은 `Assets/5_Data/AiProfile/`(4종) · `Assets/5_Data/Faction/`(4종)에 생성돼 있다. 상세 `docs/units.md`.
 
 - `MoveController` — 방랑자만 우클릭 명령 (`!(brain.Data is MinionData)`)
-- `MinionData.AllowedJobs` — 하수인 작업 설정의 **초기값**(이후 조정은 `WorkSettings`로 개체별)
+- `MinionData.AllowedJobs` — 하수인 작업 설정의 **초기값**(이후 조정은 `WorkSettings`로 개체별). **큐 작업만 뜻이 있다** — 채굴·벌목·경비는 직접 배정이라 여기 적어도 켜고 꺼지지 않는다. 큐 작업이 하나도 없는 목록은 빈 목록과 같게(전부 허용) 보고 경고한다
 - `MinionData.CanProvideWater` — 우물 없이 직접 물 공급
 
 ### Key Singletons
@@ -81,7 +81,21 @@ Guidance for Claude Code in this repository.
 
 ### 작업대 산출물
 
-완성품은 **폰이 아니라 작업대에 쌓인다** — `CraftingTable.Inventory`(기본 8×3). 순서는 **산출물 → (꽉 차면) 폰 인벤 → (그것도 안 되면) 드롭**. `allowHaulOut`이 켜져 있으면 폰이 창고로 실어 간다(끄면 작업대에 쌓아 둠). 운반 출처는 **`IHaulSource`**(인벤토리+타일좌표+transform) — `ResourceNode`와 `CraftingTable`이 같은 `HaulJob`을 쓴다. 연료는 **용광로만** 요구(`_requiresFuel`), 없으면 `CraftJob.Execute`가 대기하므로 UI에 게이지+보충 안내가 뜬다. `Inventory.Resize(w,h)`는 **비어 있을 때만** 통한다.
+완성품은 **폰이 아니라 작업대에 쌓인다** — `CraftingTable.Inventory`(기본 8×3). 순서는 **산출물 → (꽉 차면) 폰 인벤 → (그것도 안 되면) 드롭**. `allowHaulOut`이 켜져 있으면 폰이 창고로 실어 간다(끄면 작업대에 쌓아 둠). 운반 출처는 **`IHaulSource`**(인벤토리+타일좌표+transform) — `ResourceNode`와 `CraftingTable`이 같은 `HaulJob`을 쓴다. 발행은 **`HaulDispatcher`** 공통. **두 숫자를 헷갈리지 말 것** — `haulThreshold`는 "이만큼 쌓이면 나른다"는 발행 **조건**이고, 실어 가는 양은 **`CarryCapacity`(폰이 질 수 있는 무게)** 가 정한다. 몫을 미리 쪼개지 않는다: 미배정 재고를 통째로 맡긴 일감 하나를 내고, 폰이 정해지는 순간(`HaulJob.OnReserved` ← `JobBase.Reserve`) 그 폰이 질 만큼만 남기고 **나머지를 즉시 놓아** 다음 일감이 되게 한다 — 몇 명이 붙을지 미리 맞힐 필요가 없다. 배낭에 실은 순간 맡음은 **전부** 놓는다(출처에서 이미 빠진 수량을 계속 맡으면 이중으로 빠진다). 주기 점검(2초)이 잔량을 다시 집어 든다. 연료는 **용광로만** 요구(`_requiresFuel`), 없으면 `CraftJob.Execute`가 대기하므로 UI에 게이지+보충 안내가 뜬다. `Inventory.Resize(w,h)`는 **비어 있을 때만** 통한다.
+
+### 적재 무게 — `CarryCapacity` (한도의 단일 출처)
+
+```
+한도(kg) = 10 + 근력 × 0.5      // 근력 10 → 15kg, 130 → 75kg
+```
+
+`CarryCapacity.For / Load / Free / RoomFor(brain, item) / TotalFor(members)`. 전에는 같은 것을 네 군데가 따로 계산했고 그중 둘이 3.3배 어긋나 있었다(`근력 × 5` vs `10 + 근력 × 0.5`). 근력 × 5는 130에서 650kg이라 무게가 아무것도 막지 못해 작은 쪽을 남겼다.
+
+- **한도는 자동 운반에만 강제된다.** `HaulJob` / `GroundHaulJob`이 `RoomFor`만큼만 싣고, `CanAssignTo`로 짐이 찬 폰에겐 일감을 주지 않는다. 못 실은 잔량은 출처에 남아 다음 발행에서 새 몫이 된다.
+- **플레이어가 배낭에 직접 넣는 건 막지 않는다** — 대신 넘긴 비율만큼 이동·공격 속도가 준다(`PawnMover` / `CombatHandler`의 무게 보정). 손으로 한 일을 거부하면 "왜 안 들어가지"가 되고, 자동이 한도를 무시하면 "왜 이 폰만 느리지"가 된다. `InventoryUI`가 `무게 12/15kg`을 띄우고 과적이면 붉게 물든다(액션 바 위 `CarryBar` — 씬 오브젝트, 생성기 `Create Carry Bar`).
+- **짐을 지고 걸으면 근력이 자란다**(켄시식) — `PawnMover.GrowStrengthFromLoad`, 한도 대비 적재 비율로 재고 25% 미만이면 안 오른다. 근력이 커질수록 같은 짐으로는 덜 자란다.
+- 원정대 등짐(`ExpeditionParty`)도 같은 한도를 쓰고 **무게로 센다**. 예전엔 kg으로 만든 수를 개수 한도로 써서 씨앗이나 철갑옷이나 한 자리였다.
+- 옛 `PartyCarry`는 삭제됐다(2026-08-04). 같은 답을 두 벌로 들고 있던 파일이고 호출자가 없었다 — 적재를 묻는 곳은 전부 `CarryCapacity`다.
 
 ### 재료는 `MaterialPool`로 센다 (창고만 보지 말 것)
 
@@ -100,7 +114,8 @@ MaterialPool.Consume(item, amount, carrier)// 배낭 먼저, 그다음 창고
 ```csharp
 Storage.GetTotalByItem(ItemData)         // 집계는 아이템 기준 하나뿐 (ResourceType판은 삭제)
 Storage.ConsumeByItem(ItemData, amount)
-Storage.FindNearest(position, item)      // 해당 아이템을 받는 가장 가까운 창고
+Storage.FindNearest(pos, item, amount, quality)  // **실제로 받아 줄**(필터+자리) 가장 가까운 창고
+storage.HasRoomFor(item, amount, quality)        // 필터 통과 + 넣을 자리 있음 (CanAccept만으로는 부족)
 Storage.FindStorageWithItem(ItemData)    // 그 아이템이 실제로 들어 있는 창고 (건설 자재 수거)
 storage.CanAccept(ItemData)              // 필터 통과 여부
 storage.TryAdd(item, amount)             // 필터 통과 시에만 입고
@@ -109,17 +124,21 @@ storage.AddFilter(ResourceGroup)         // 묶음 단위 허용 — 창고 패�
 storage.AddItemFilter(ItemData)          // 묶음과 별개로 콕 집어 허용 ("석탄 전용 창고")
 ```
 
+**필터 통과 ≠ 들어갈 수 있음.** 만적인 창고도 `CanAccept`는 참이다. 운반 목적지를 고를 땐 반드시 `FindNearest`/`HasRoomFor`(자리까지 봄)를 쓸 것 — `CanAccept`만 보면 폰이 거기까지 갔다 못 넣고 짐을 떨구고, 그 짐이 다시 같은 일감이 되어 **줍고 떨구기를 무한 반복**한다. 받아 줄 곳이 없으면 **일감을 아예 만들지 않고** 출처에 쌓아 둔다. 바닥에 남은 짐은 `DroppedItem`이 5초마다 다시 시도한다(창고를 비우면 저절로 실려 간다). **반대로 "가지러 갈 곳"은 `FindStorageWithItem`** — 거기에 `FindNearest`를 쓰면 가득 든 창고가 오히려 탈락한다.
+
+**`amount`·`quality`를 빠뜨리지 말 것.** 기본값(1개·일반)으로 물으면 "한 개는 들어간다"만 확인하고 50을 지고 간다. 등급은 더 조용히 틀린다 — 스택은 **같은 등급끼리만** 합쳐지므로(`Inventory.TryAdd`), 등급을 빼먹으면 `일반 빵 30/99`가 든 만적 창고가 `희귀 빵`도 받는다고 답하고, 폰이 거기까지 갔다 못 넣어 **줍고 떨구기가 그대로 남는다**(`Inventory.CanFit`이 `TryAdd`와 같은 등급 검사를 한다). `FindNearest`는 **두 번 훑는다** — 통째로 받아 줄 곳이 먼저, 없으면 한 개라도 받는 곳. 그래서 넉넉히 물어도 일감이 사라지지 않는다.
+
 ### Job Categories & 배정 모델
 
-`JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard, Crafting, Research
+`JobCategory` enum: None, Mining, Hauling, Farming, Logging, Construction, Guard, Crafting, Research, **Unload**(짐내림)
 
 **두 갈래** — `JobCategoryInfo`가 단일 출처.
-- **큐 작업**(`QueueOrder`: 건설 → 농사 → 제작 → 연구 → 운반): 건물/농지/작업대가 일감 등록 → 폰이 집어감. **배열 순서 = 전역 우선순위**(모든 폰 공통). `QueueOrder`에 없는 카테고리는 큐에서 배정되지 않는다.
+- **큐 작업**(`QueueOrder`: 건설 → 농사 → 제작 → 연구 → 운반 → 짐내림): 건물/농지/작업대가 일감 등록 → 폰이 집어감. **배열 순서 = 전역 우선순위**(모든 폰 공통). `QueueOrder`에 없는 카테고리는 큐에서 배정되지 않는다.
 - **직접 배정**(Mining/Logging = 자원 노드, Guard = 순찰 구역): 플레이어가 대상에 폰을 붙임(`Blackboard.AssignedNode`/`AssignedPatrolZone`). 큐를 타지 않으므로 on/off 대상이 아님. (`MineJob`은 현재 미사용 코드)
 
 Job score = `JobCategoryInfo.Weight(category) × 100 + job.Priority`.
 
-폰별 설정은 **숫자 우선순위가 아니라 on/off** — `WorkSettings`(`UnitBrain.Work`, 플레이어 세력 일꾼에만 자동 부착). UI는 `ColonyPanel`(P키). 상세 `docs/jobs.md`.
+폰별 설정은 **숫자 우선순위가 아니라 on/off** — `WorkSettings`(`UnitBrain.Work`, 플레이어 세력 일꾼에만 자동 부착). UI는 `ColonyUI`(P키). 상세 `docs/jobs.md`.
 
 ### Damage Quick Ref
 
@@ -184,11 +203,11 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 **UI 구조:**
 - `MerchantUI` ← `Merchant.OnSelected` 이벤트로 오픈. 상인 재고(구매)만 담당.
   - 아이템 클릭/더블클릭 → 구매. 단건 구매만 지원.
-- `PawnInventoryPanel` — 상인 열림 시 판매 모드 전환. 하단 액션 바에 [판매] 버튼 표시.
+- `InventoryUI` — 상인 열림 시 판매 모드 전환. 하단 액션 바에 [판매] 버튼 표시.
   - 아이템 단클릭 → 선택 + 버튼 활성, 더블클릭 → 즉시 판매, 드래그 → MerchantUI 위에 드롭 판매
-- `ItemInfoPanel` — 아이템 hover 시 공용 툴팁 (등급 컬러, 스탯, 설명, 상점가/판매가/가치)
+- `ItemInfoUI` — 아이템 hover 시 공용 툴팁 (등급 컬러, 스탯, 설명, 상점가/판매가/가치)
 
-**씬 구성**: `ItemInfoPanel` + `MerchantUI`는 씬에 있고, 항목 행은 `MerchantStockEntry.prefab` / `SellItemEntry.prefab`을 복제해 채운다. 모양 수정은 인스펙터에서(생성기는 역할을 마쳐 제거됨 — `docs/editor_creators.md` "생성기의 수명").
+**씬 구성**: `ItemInfoUI` + `MerchantUI`는 씬에 있고, 항목 행은 `MerchantStockEntry.prefab` / `SellItemEntry.prefab`을 복제해 채운다. 모양 수정은 인스펙터에서(생성기는 역할을 마쳐 제거됨 — `docs/editor_creators.md` "생성기의 수명").
 
 **마을별 가격 설정 예시**:
 ```
@@ -219,17 +238,17 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 | Script | 트리거 | 동작 |
 |---|---|---|
 | `SelectionManager` | 좌클릭/드래그 | Player 팩션 유닛 선택. 적/NPC 클릭 = `OnPawnInspected`(정보만, 명령 대상 아님). **폰이면서 `IWorldClickable`이기도 하면 클릭 대상이 이긴다**(상인 = 상점이 열린다) |
-| `MoveController` | 우클릭 | 방랑자 이동/타겟 설정. **적대 세력 = 즉시 공격**(뜻이 하나뿐), **중립·아군 유닛 = `PawnContextMenu`**(거래/따라간다/공격한다). 선택지 구성은 `MoveController`가 정한다 |
-| `PawnContextMenu` | 우클릭(적대 유닛·맨바닥 제외) | 우클릭한 **월드 지점에 고정**되는 팝업(카메라를 움직여도 그 자리 — `LateUpdate`에서 매 프레임 화면 좌표로 푼다). 제목 바·닫기 버튼 없음(고르거나 딴 데 누르면 닫힘). 줄은 씬의 `OptionTemplate` 복제. 대상별 선택지: 유닛=거래(상인)/따라간다/공격, 노드=캔다·벤다(배정)/살펴본다, 시체=뒤진다, 핵·건물=연다, **어디든 마지막에 [여기로 이동]**. **맨바닥은 창 없이 즉시 이동**(선택지가 하나뿐인 창은 클릭만 늘린다). 따라가기 = `UnitBlackboard.FollowTarget` + `FollowNode`(방랑자 트리에서 `ManualOrderNode` 바로 아래) |
-| `PawnInventoryPanel` | I키 | 인벤토리/장비 패널 |
+| `MoveController` | 우클릭 | 방랑자 이동/타겟 설정. **적대 세력 = 즉시 공격**(뜻이 하나뿐), **중립·아군 유닛 = `PawnContextMenuUI`**(거래/따라간다/공격한다). 선택지 구성은 `MoveController`가 정한다 |
+| `PawnContextMenuUI` | 우클릭(적대 유닛·맨바닥 제외) | 우클릭한 **월드 지점에 고정**되는 팝업(카메라를 움직여도 그 자리 — `LateUpdate`에서 매 프레임 화면 좌표로 푼다). 제목 바·닫기 버튼 없음(고르거나 딴 데 누르면 닫힘). 줄은 씬의 `OptionTemplate` 복제. 대상별 선택지: 유닛=거래(상인)/따라간다/공격, 노드=캔다·벤다(배정)/살펴본다, 시체=뒤진다, 핵·건물=연다, **어디든 마지막에 [여기로 이동]**. **맨바닥은 창 없이 즉시 이동**(선택지가 하나뿐인 창은 클릭만 늘린다). 따라가기 = `UnitBlackboard.FollowTarget` + `FollowNode`(방랑자 트리에서 `ManualOrderNode` 바로 아래) |
+| `InventoryUI` | I키 | 인벤토리/장비 패널 |
 | `UnitStatsUI` | C키 | 스탯 패널 토글 |
-| `ColonyPanel` | P키 | 무리 관리(작업 on/off + 전투 성향, 폰 전체) |
-| `ExpeditionPanel` | G키 | 원정대 편성 — 폰 체크 + 적재량 요약. [출발] 시 **바로 사라지지 않고** 핵 앞으로 집결(`ExpeditionFormation`), 전원 도착 후 함께 떠남 |
-| `WorldMenuPanel` | 월드맵에서 칸에 **도착**(빈 야생 포함) | 마운트앤블레이드식 도착 메뉴(화면 왼쪽 고정, 좌 그림 / 우 선택지). **선택지 구성은 `WorldMapView.OpenMenu`가 정한다** — `탐험한다`(매장 조사) 동작, `여기에 전초기지를 세운다`·마을·소굴은 "준비 중" |
+| `ColonyUI` | P키 | 무리 관리(작업 on/off + 전투 성향, 폰 전체) |
+| `ExpeditionUI` | G키 | 원정대 편성 — 폰 체크 + 적재량 요약. [출발] 시 **바로 사라지지 않고** 핵 앞으로 집결(`ExpeditionFormation`), 전원 도착 후 함께 떠남 |
+| `WorldMenuUI` | 월드맵에서 칸에 **도착**(빈 야생 포함) | 마운트앤블레이드식 도착 메뉴(화면 왼쪽 고정, 좌 그림 / 우 선택지). **선택지 구성은 `WorldMapView.OpenMenu`가 정한다** — `탐험한다`(매장 조사) 동작, `여기에 전초기지를 세운다`·마을·소굴은 "준비 중" |
 | `BuildModeUI` | B키 | 건설 모드 |
 | `CameraController` | WASD/중클/스크롤 | 카메라 |
 | `CameraController` (월드) | WASD/중클/스크롤 | 월드맵 카메라 — 필드와 같은 컴포넌트. `GameModeManager`가 **월드 카메라에 붙은 것은 월드 측**으로 보고 필드와 반대로 켠다 |
-| `WorldMapView` | M키 | 필드↔월드 **모드 전환**(`GameModeManager`에 위임 — 반대편은 통째로 꺼진다). **원정대는 여럿**. 나가 있는 팀마다 토큰이 서고, 없으면 토큰도 없다. **선택 조작은 필드맵과 동일** — 좌클릭=단일 선택 / 드래그=사각 다중 선택 / 빈 곳=해제. **우클릭=선택한 팀만 이동**. **내용물 있는 칸에 도착하면 `WorldMenuPanel` 자동 오픈**(M&B식 — 멀리서 클릭해선 안 열린다), Enter=한 팀만 선택했을 때 그 메뉴 재진입. 토큰에 콜라이더가 있어 `RaycastAll` 거리순으로 "토큰인 첫 충돌"(선택) / "토큰 아닌 첫 충돌"(이동)을 가른다. 월드에서 **자유 실시간 이동**(우클릭한 지점으로 직진, 지형 표면을 탄다 — 격자 스냅 없음). 지형은 `WorldMapTerrain`이 저작 격자를 재료로 **맵 전체를 메시 한 장**으로 짓는다(바이옴 성격을 이웃끼리 보간 → 칸 경계 없음). 컴포넌트를 빼면 직접 만든 지형을 쓴다. `WorldMapGrid`는 좌표 변환 + 격자선 + 오브젝트 배치 |
+| `WorldMapView` | M키 | 필드↔월드 **모드 전환**(`GameModeManager`에 위임 — 반대편은 통째로 꺼진다). **원정대는 여럿**. 나가 있는 팀마다 토큰이 서고, 없으면 토큰도 없다. **선택 조작은 필드맵과 동일** — 좌클릭=단일 선택 / 드래그=사각 다중 선택 / 빈 곳=해제. **우클릭=선택한 팀만 이동**. **내용물 있는 칸에 도착하면 `WorldMenuUI` 자동 오픈**(M&B식 — 멀리서 클릭해선 안 열린다), Enter=한 팀만 선택했을 때 그 메뉴 재진입. 토큰에 콜라이더가 있어 `RaycastAll` 거리순으로 "토큰인 첫 충돌"(선택) / "토큰 아닌 첫 충돌"(이동)을 가른다. 월드에서 **자유 실시간 이동**(우클릭한 지점으로 직진, 지형 표면을 탄다 — 격자 스냅 없음). 지형은 `WorldMapTerrain`이 저작 격자를 재료로 **맵 전체를 메시 한 장**으로 짓는다(바이옴 성격을 이웃끼리 보간 → 칸 경계 없음). 컴포넌트를 빼면 직접 만든 지형을 쓴다. `WorldMapGrid`는 좌표 변환 + 격자선 + 오브젝트 배치 |
 
 ## Stat Grade System (`StatGrade.cs`, `CombatXp.cs`)
 

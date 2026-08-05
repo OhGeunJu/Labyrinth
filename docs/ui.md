@@ -7,24 +7,39 @@
 | `UnitHPUI` | 유닛 선택 시 항상 | 왼쪽 하단. HP/혈액/신체부위/장착/상태이상 |
 | `UnitStatsUI` | C키 토글 | 속성/전투/마법/노동 스킬 — **등급 + 진행도%** 표시. 미니언은 "[고정]" 태그 |
 | `GradeUpNotificationUI` | 등급 승급 시 | **월드 공간** 텍스트가 유닛 머리 위에 떠올라 페이드 (2.5초). 카메라 빌보드 + 등급 색상 |
-| `PawnInventoryPanel` | I키 | 인벤토리 그리드 + 장착 슬롯 6개 + 하단 액션 바. 상인 열림 → 판매 모드(액션 바 [판매] 버튼), 시체 열림 → 옮기기 모드 |
-| `CorpseInventoryPanel` | 시체 클릭 | `SelectionManager.OnCorpseSelected` 구독. 인벤토리 그리드 + 장착 슬롯 6개. PawnInventoryPanel 강제 열기 + 루팅 모드 진입 |
-| `MerchantUI` | `Merchant.OnSelected` 이벤트 | 상인 재고 목록(구매 전용). 아이템 클릭/더블클릭 → 구매. 아이템 드롭 존으로 판매도 가능 |
-| `ItemInfoPanel` | 아이템 hover | 공용 툴팁. 등급 컬러, 스탯, 설명, 상점가/판매가/가치. `ItemInfoPanel.Show(item, quality)` / `Hide()` |
-| `StorageBuildingUI` | Storage 좌클릭 | 타이틀바 + InventoryGridUI 그리드. CanAccept 필터 적용 |
+| `InventoryUI` | I키 | 인벤토리 그리드 + 장착 슬롯 6개 + 하단 액션 바. 상인 열림 → 판매 모드(액션 바 [판매] 버튼), 시체 열림 → 옮기기 모드 |
+| `CorpseInventoryUI` | 시체 클릭 | `SelectionManager.OnCorpseSelected` 구독. 인벤토리 그리드 + 장착 슬롯 6개. InventoryUI 강제 열기 + 루팅 모드 진입 |
+| `MerchantUI` | `Merchant.OnSelected` 이벤트 | 상인 재고(구매 전용). **목록↔격자 전환**(헤더 우측 버튼). 아이템 클릭/더블클릭 → 구매. 아이템 드롭 존으로 판매도 가능 |
+
+## 무엇을 매 프레임 갱신할 것인가
+
+| | 예 | 방법 |
+|---|---|---|
+| **시간에 따라 연속으로 변함** | 연료 게이지, 제작 진행률 | `Update`에서 매 프레임. 이벤트만 쓰면 게이지가 시작·끝에만 툭 움직여 "돌고 있다"가 안 읽힌다 |
+| **사건이 있을 때만 변함** | 재고 수량, `최대 8`, 배정 목록 | **이벤트 구독** — `Storage.OnChanged`(static) · `Inventory.OnChanged` · `CraftingTable.OnChanged` · `ResourceNode.OnAssignmentChanged` |
+
+매 프레임 하면 비싼 것 세 가지: **목록 재생성**(`Instantiate`/`Destroy` → GC + 레이아웃 재계산),
+**전수 조회**(`Storage.GetTotalByItem`은 활성 창고 × 그 안의 아이템을 전부 훑는다),
+**TMP 대입**(문자열 할당 + **같은 값을 넣어도 메시를 다시 굽는다**).
+
+> **매 프레임 도는 자리에서 TMP에 글자를 넣을 때는 값이 바뀌었는지 먼저 본다.**
+> `CraftingTableUI.SetText(label, value)`가 그 한 줄이다 — 진행률처럼 실제로 매 프레임 도는
+> 곳에서도 글자가 그대로면 아무 일도 하지 않는다.
+| `ItemInfoUI` | 아이템 hover | 공용 툴팁. 등급 컬러, 스탯, 설명, 상점가/판매가/가치, 잠김 안내. `Show(item, quality, price, priceLabel, locked)` / `Hide()`. **컴포넌트는 늘 켜져 있는 `ItemInfo_UI`에, 보였다 사라지는 상자는 자식 `panel`** — 아래 참조 |
+| `StorageUI` | Storage 좌클릭 | 타이틀바 + InventoryGridUI 그리드. CanAccept 필터 적용 |
 | `CraftingTableUI` | CraftingTable 좌클릭 | 마스터-디테일. 왼쪽 RecipeEntryUI 목록, 오른쪽 디테일. ESC로 닫기 |
 | `ResearchTableUI` | ResearchTable 좌클릭 | 마스터-디테일. 선행연구/재료/시간 표시 |
-| `FarmPlotUI` | FarmPlot 좌클릭 | 씨앗 선택 + 상태/성장/수분 표시. ESC로 닫기 |
+| `FarmUI` | FarmPlot 좌클릭 | 씨앗 선택 + 상태/성장/수분 표시. ESC로 닫기 |
 | `BedUI` | Bed 좌클릭 | 선택 유닛 배정/해제 버튼 |
 | `PatrolZoneUI` | PatrolZone 좌클릭 | 모드 전환 버튼 3개 + 배정 유닛 목록 |
-| `ColonyPanel` | P키 | **무리 관리** — 폰 전체를 한 표에서. 행=폰, 열=작업 on/off + 현재 배정 + 전투 성향 |
+| `ColonyUI` | P키 | **무리 관리** — 폰 전체를 한 표에서. 행=폰, 열=작업 on/off + 현재 배정 + 전투 성향 |
 | `BuildModeUI` | B키 | 화면 하단 건설 바. 왼쪽 카테고리, 오른쪽 건물 목록 |
 | `NodeInfoPanel` | ResourceNode 클릭 | 자원 노드 정보. haulThreshold +5/-5 버튼 |
-| `PawnRosterPanel` | 항상 표시 (원정 나간 폰은 목록에서 빠짐 — 돌아오면 재탐색으로 다시 붙음) | **우측 하단 세로 명부**(340×760, 모서리에 딱 붙임). 한 줄 = 초상화+이름+현재 상태(`PawnStatusText`). 초상화·글자는 `rowHeight`(52)에 비례. 넘치면 스크롤, 행 클릭 = 선택(선택 행 배경 강조). 건설 모드에선 숨김 |
+| `PawnRosterUI` | 항상 표시 (원정 나간 폰은 목록에서 빠짐 — 돌아오면 재탐색으로 다시 붙음) | **우측 하단 세로 명부**(340×760, 모서리에 딱 붙임). 한 줄 = 초상화+이름+현재 상태(`PawnStatusText`). 초상화·글자는 `rowHeight`(52)에 비례. 넘치면 스크롤, 행 클릭 = 선택(선택 행 배경 강조). 건설 모드에선 숨김 |
 | `EventNotificationUI` | 이벤트 발동 | 화면 상단 팝업. 5초 자동 닫힘 |
 | `DungeonCoreUI` | 코어 선택 | 던전 코어 정보/소환 |
-| `ExpeditionPanel` | G키 (필드에서만) | 원정대 편성 — 폰 체크박스 목록 + 줄마다 `적재 +N`(근력 × 5) + `선택 N명 · 적재 M` 요약. [출발] 시 즉시 사라지지 않고 **핵 앞 집결**, 집결 중엔 목록 잠금 + `모이는 중 2/3`. 행은 씬의 `RowTemplate` 복제 |
-| `WorldMenuPanel` | **월드맵**에서 내용물 있는 칸에 **도착** | 마운트앤블레이드(배너로드)식 도착 메뉴. **화면 왼쪽 고정**(오른쪽은 지도가 보이게), 왼쪽 지역 그림 + 오른쪽 지역명·정보·세로 선택지. 멀리서 클릭해선 안 열린다 — 가봐야 안다. 캔버스는 필드와 **같은 것**을 쓰고 `Canvas/WorldUI` 묶음 아래에 있어야 한다. 선택지 목록은 `WorldMapView.OpenMenu`가 만들어 넘기고 패널은 그리기만 |
+| `ExpeditionUI` | G키 (필드에서만) | 원정대 편성 — 폰 체크박스 목록 + 줄마다 `적재 +N`(근력 × 5) + `선택 N명 · 적재 M` 요약. [출발] 시 즉시 사라지지 않고 **핵 앞 집결**, 집결 중엔 목록 잠금 + `모이는 중 2/3`. 행은 씬의 `RowTemplate` 복제 |
+| `WorldMenuUI` | **월드맵**에서 내용물 있는 칸에 **도착** | 마운트앤블레이드(배너로드)식 도착 메뉴. **화면 왼쪽 고정**(오른쪽은 지도가 보이게), 왼쪽 지역 그림 + 오른쪽 지역명·정보·세로 선택지. 멀리서 클릭해선 안 열린다 — 가봐야 안다. 캔버스는 필드와 **같은 것**을 쓰고 `Canvas/WorldUI` 묶음 아래에 있어야 한다. 선택지 목록은 `WorldMapView.OpenMenu`가 만들어 넘기고 패널은 그리기만 |
 
 **공통 패턴:**
 - **캔버스는 하나** — 필드 UI와 월드 UI가 같은 Canvas 아래 형제로 산다. 모드 전환(`GameModeManager`)은 캔버스가 아니라 **캔버스의 직속 자식들**을 다루고, 월드 전용 묶음(`WorldUI`)만 반대로 켠다. 그래서 **월드 전용 UI는 반드시 `Canvas/WorldUI` 바로 아래**에 둘 것 — 더 깊이 넣거나 밖에 두면 필드 UI와 같이 꺼진다
@@ -55,17 +70,17 @@
 - `EquipSlotUI` 위에 드롭 → 장착 (`IDropHandler`). `DropHandled` 플래그로 월드 드롭 방지
 - `MerchantUI.SellZoneRect` 위에 드롭 → 판매
 - UI 밖 드롭 → `_sourceGrid.Inventory.transform.position`에 `DroppedItem.Spawn`
-- 단클릭 → `PawnInventoryPanel.NotifyItemSelected`, 더블클릭 → `NotifyItemDoubleAction`
+- 단클릭 → `InventoryUI.NotifyItemSelected`, 더블클릭 → `NotifyItemDoubleAction`
 - `CanReceiveItem` 체크로 ReceiveFilter 적용. 색 피드백: 초록(가능)/빨강(불가)
 
-## PawnInventoryPanel 액션 모드
+## InventoryUI 액션 모드
 
 `ActionMode` enum: `None` / `Sell` / `Loot`
 
 | 모드 | 진입 | 액션 바 버튼 | 더블클릭 |
 |---|---|---|---|
 | Sell | `MerchantUI.Open()` → `SetSellMode(merchant)` | 판매 | 즉시 판매 |
-| Loot | `CorpseInventoryPanel.OnCorpseSelected` → `SetLootMode(inventory)` | 옮기기 | 즉시 이동 |
+| Loot | `CorpseInventoryUI.OnCorpseSelected` → `SetLootMode(inventory)` | 옮기기 | 즉시 이동 |
 | None | 상인/시체 패널 닫힘 | 숨김 | — |
 
 - 상인 열릴 때 루팅 중이면 `_prevMode`/`_prevLootInventory` 백업 → 상인 닫히면 루팅 모드 복원 (`ClearSellMode`)
@@ -78,9 +93,24 @@
 - `Init(SlotKind)` — 슬롯 종류(MainHand/OffHand/Head/Chest/Hands/Legs) 설정
 - `Bind(Equipment)` — Equipment 교체 시 이벤트 재구독 + Refresh
 - 클릭 → 해제, 드롭(`IDropHandler`) → 장착. `DraggableItem.DropHandled` 플래그로 월드 드롭 방지
-- 호버 → `ItemInfoPanel` 툴팁
+- 호버 → `ItemInfoUI` 툴팁
 
-`PawnInventoryPanel`, `CorpseInventoryPanel` 모두 6개 `EquipSlotUI` 필드를 직접 보유. 래퍼 컴포넌트 없음.
+### 창은 "늘 켜진 부모 + 꺼지는 자식"으로 짓는다
+
+**창 컴포넌트는 전부 `XxxUI`이고, 씬 오브젝트는 `Xxx_UI`(부모) / `Xxx_Panel`(자식)이다**
+(2026-08-04 통일 — `docs/editor_creators.md` "창 오브젝트 이름 규약").
+`EventNotificationUI` · `MerchantUI` · `InventoryUI` · `ItemInfoUI` 전부 이 꼴이다 —
+컴포넌트는 **늘 켜져 있는** 오브젝트에 살고, 보였다 사라지는 건 `[SerializeField] GameObject panel`이다.
+
+**컴포넌트를 꺼지는 그 오브젝트에 붙이면 안 된다.** 유니티는 꺼진 오브젝트의 `Awake`를 부르지
+않으므로 `Instance`가 영영 null이 되고, static 진입점(`Show`/`Notify`)이 조용히 아무것도 안 한다.
+`ItemInfoUI`가 정확히 그래서 **툴팁이 한 번도 안 떴다**(2026-08-04 발견).
+
+런타임 `FindObjectsInactive.Include`로 때울 수도 있지만 쓰지 않는다 — hover마다 도는 경로에
+씬 탐색을 넣을 이유가 없다. **배선으로 풀 수 있는 것은 배선으로 푼다.**
+구조를 고치는 도구는 `DungeonColony → Fix Window Structure`.
+
+`InventoryUI`, `CorpseInventoryUI` 모두 6개 `EquipSlotUI` 필드를 직접 보유. 래퍼 컴포넌트 없음.
 
 ## DraggablePanel
 

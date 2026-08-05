@@ -31,7 +31,7 @@ public struct WorldMenuOption
 //
 // 캔버스는 필드 UI와 **같은 것 하나**를 쓰되, 캔버스 직속의 `WorldUI` 묶음 아래에 있어야 한다 —
 // `GameModeManager`가 캔버스가 아니라 그 자식들을 토글하면서 이 묶음만 반대로 켠다.
-public class WorldMenuPanel : MonoBehaviour
+public class WorldMenuUI : MonoBehaviour
 {
     [SerializeField] GameObject      panel;           // 메뉴 루트 (닫힘 = SetActive(false))
     [Tooltip("왼쪽 지역 그림. 스프라이트가 없으면 바이옴 색 단색으로 채운다.")]
@@ -50,7 +50,7 @@ public class WorldMenuPanel : MonoBehaviour
 
     void Awake()
     {
-        if (panel == null) { Debug.LogWarning("[WorldMenuPanel] panel 미연결"); enabled = false; return; }
+        if (panel == null) { Debug.LogWarning("[WorldMenuUI] panel 미연결"); enabled = false; return; }
 
         // 템플릿은 원본이라 화면에 보이면 안 된다 — 껐다 켜는 건 복제본만.
         if (optionTemplate != null) optionTemplate.gameObject.SetActive(false);

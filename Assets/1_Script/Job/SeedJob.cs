@@ -51,7 +51,10 @@ public class SeedJob : JobBase
             return;
         }
 
-        var storage = Storage.FindNearest(_plot.transform.position, _seed);
+        // **가지러 가는 것**이므로 "받아 줄 곳"이 아니라 "들어 있는 곳"을 찾는다.
+        // `FindNearest`는 이제 남은 자리까지 보므로(입고용), 여기 쓰면 씨앗이 가득 든 창고가
+        // 오히려 탈락한다 — 정확히 가야 할 곳이 걸러지는 셈이다.
+        var storage = Storage.FindStorageWithItem(_seed);
         if (storage != null)
             TileCoord = MapManager.Instance.WorldToTile(storage.transform.position);
     }

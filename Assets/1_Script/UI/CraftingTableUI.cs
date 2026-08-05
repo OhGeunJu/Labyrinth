@@ -22,6 +22,21 @@ public class CraftingTableUI : MonoBehaviour
     [SerializeField] TextMeshProUGUI craftTimeText;
     [SerializeField] Button          craftButton;
 
+    [Tooltip("한 번에 걸 개수. 기본 1 — 한 개만 만들 때는 손댈 필요가 없다.")]
+    [SerializeField] TMP_InputField  craftQuantity;
+
+    [Tooltip("수량 빼기 버튼. 그냥 1씩 · Ctrl 5씩 · Shift 10씩")]
+    [SerializeField] Button          craftMinusButton;
+
+    [Tooltip("수량 더하기 버튼. 그냥 1씩 · Ctrl 5씩 · Shift 10씩")]
+    [SerializeField] Button          craftPlusButton;
+
+    [Tooltip("만들 수 있는 최대치를 수량 칸에 넣는 버튼")]
+    [SerializeField] Button          craftMaxButton;
+
+    [Tooltip("`최대 8` 처럼 상한을 알려 주는 텍스트")]
+    [SerializeField] TextMeshProUGUI craftMaxText;
+
     [Header("제작자 지정 (디테일 패널)")]
     [SerializeField] Button          crafterButton;
     [SerializeField] TextMeshProUGUI crafterText;
@@ -43,7 +58,7 @@ public class CraftingTableUI : MonoBehaviour
     [SerializeField] Image           fuelFill;
 
     [Header("산출물")]
-    // 씬에는 빈 컨테이너만 두고 `InventoryGridUI`는 런타임에 붙인다(`StorageBuildingUI`와 같은 방식).
+    // 씬에는 빈 컨테이너만 두고 `InventoryGridUI`는 런타임에 붙인다(`StorageUI`와 같은 방식).
     [SerializeField] RectTransform   outputGridContainer;
     [SerializeField] Button          haulToggleButton;
     [SerializeField] TextMeshProUGUI haulToggleText;
@@ -65,11 +80,22 @@ public class CraftingTableUI : MonoBehaviour
         CraftingTable.OnSelected         += Open;
         CraftingTable.OnChanged          += OnTableChanged;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
+        // 재료 수량·최대 개수는 **창고가 바뀔 때만** 바뀐다. 매 프레임 다시 세면
+        // 창고 전부를 훑고 문자열을 새로 만들고 TMP 메시까지 다시 굽는다(같은 값이어도).
+        Storage.OnChanged                += OnStorageChanged;
 
         if (haulToggleButton != null)
             haulToggleButton.onClick.AddListener(ToggleHaulOut);
         if (crafterButton != null)
             crafterButton.onClick.AddListener(OpenCrafterPicker);
+        if (craftMaxButton != null)
+            craftMaxButton.onClick.AddListener(FillMaxQuantity);
+        if (craftMinusButton != null)
+            craftMinusButton.onClick.AddListener(() => NudgeQuantity(-1));
+        if (craftPlusButton != null)
+            craftPlusButton.onClick.AddListener(() => NudgeQuantity(+1));
+        // 기본값 1 — 한 개만 만들 때는 칸을 건드릴 필요가 없어야 한다.
+        if (craftQuantity != null) craftQuantity.text = "1";
         if (crafterPickerPanel != null)
             crafterPickerPanel.SetActive(false);
     }
@@ -79,6 +105,7 @@ public class CraftingTableUI : MonoBehaviour
         CraftingTable.OnSelected         -= Open;
         CraftingTable.OnChanged          -= OnTableChanged;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+        Storage.OnChanged                -= OnStorageChanged;
     }
 
     // 연료·산출물이 바뀐 작업대가 **지금 열려 있는 그것일 때만** 갱신한다.
@@ -90,6 +117,15 @@ public class CraftingTableUI : MonoBehaviour
     }
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }
+
+    // 창고가 바뀌었다 — 폰이 철광석을 날라 오면 그 자리에서 `최대 8`이 늘어난다.
+    // **닫혀 있거나 고른 레시피가 없으면 아무것도 안 한다** — 이 이벤트는 운반 때마다 울린다.
+    void OnStorageChanged()
+    {
+        if (panel == null || !panel.activeSelf || _selectedRecipe == null) return;
+        RefreshIngredients(_selectedRecipe);
+        RefreshCraftButton(_selectedRecipe);
+    }
 
     void Update()
     {
@@ -128,7 +164,7 @@ public class CraftingTableUI : MonoBehaviour
             float p = _currentTable.ActiveProgress;
             if (progressRow  != null) progressRow.SetActive(true);
             if (progressFill != null) progressFill.fillAmount = p;
-            if (progressText != null) progressText.text = $"제작 중  {recipe.RecipeName}  {p * 100f:F0}%";
+            SetText(progressText, $"제작 중  {recipe.RecipeName}  {p * 100f:F0}%");
             return;
         }
 
@@ -145,8 +181,8 @@ public class CraftingTableUI : MonoBehaviour
 
                 if (progressRow  != null) progressRow.SetActive(true);
                 if (progressFill != null) progressFill.fillAmount = p;
-                if (progressText != null)
-                    progressText.text = $"{_selectedRecipe.RecipeName}  {p * 100f:F0}% <color=#FFAA55>(멈춤{who})</color>";
+                SetText(progressText,
+                        $"{_selectedRecipe.RecipeName}  {p * 100f:F0}% <color=#FFAA55>(멈춤{who})</color>");
                 return;
             }
         }
@@ -389,8 +425,8 @@ public class CraftingTableUI : MonoBehaviour
         {
             craftButton.onClick.RemoveAllListeners();
             craftButton.onClick.AddListener(() => OnCraftClicked(recipe));
-            // 잠겼으면 재료가 충분해도 주문할 수 없다.
-            craftButton.interactable = !locked && _currentTable != null && _currentTable.CanCraft(recipe);
+            // 잠금·재료·수량 표시를 한 곳에서 정한다(`RefreshCraftButton`).
+            RefreshCraftButton(recipe);
         }
     }
 
@@ -400,6 +436,8 @@ public class CraftingTableUI : MonoBehaviour
         var sb = new StringBuilder();
         foreach (var ing in recipe.Ingredients)
         {
+            // 판정(`CanCraft`)과 **같은 기준**으로 센다. 다르면 화면이 두 답을 낸다 —
+            // 재료가 3/3인데 버튼은 비활성이거나, 그 반대.
             int have   = Storage.GetTotalByItem(ing.Item);
             string col = have >= ing.Amount ? "#88FF88" : "#FF6666";
             sb.AppendLine($"<color={col}>{ing.Item?.ItemName}  {have} / {ing.Amount}</color>");
@@ -407,12 +445,90 @@ public class CraftingTableUI : MonoBehaviour
         ingredientsText.text = sb.ToString();
     }
 
+    // 수량은 **입력칸**이 정한다. 기본값 1이라 한 개만 만들 때는 그냥 누르면 되고,
+    // 여러 개가 필요할 때만 칸을 고친다(상인 구매창과 같은 모양 — 칸 + [최대]).
+    // 칸이 씬에 없으면 1개씩 — 조작이 죽는 것보다 낫다.
+    int ReadCount(int max)
+    {
+        if (max < 1) return 0;
+        return Mathf.Clamp(RawCount(), 1, max);
+    }
+
+    // 칸에 적힌 수 그대로(상한 적용 전). 비었거나 숫자가 아니면 1.
+    int RawCount()
+    {
+        if (craftQuantity == null || !int.TryParse(craftQuantity.text, out int n)) return 1;
+        return n;
+    }
+
+    // -/+ 한 번에 움직이는 폭. **보조키로 성큼성큼** — 20개를 맞추려고 스무 번 누르게 하지 않는다.
+    // 버튼이 있으니 보조키를 몰라도 조작은 되고, 알면 빨라진다(몰라서 막히는 것이 없다).
+    static int StepAmount()
+    {
+        var kb = Keyboard.current;
+        if (kb == null) return 1;
+        if (kb.shiftKey.isPressed) return 10;
+        if (kb.ctrlKey.isPressed)  return 5;
+        return 1;
+    }
+
+    void NudgeQuantity(int sign)
+    {
+        if (craftQuantity == null || _currentTable == null || _selectedRecipe == null) return;
+
+        int max = Mathf.Max(1, _currentTable.MaxCraftable(_selectedRecipe));
+        craftQuantity.text = Mathf.Clamp(RawCount() + sign * StepAmount(), 1, max).ToString();
+    }
+
+    void FillMaxQuantity()
+    {
+        if (craftQuantity == null || _selectedRecipe == null || _currentTable == null) return;
+        craftQuantity.text = Mathf.Max(1, _currentTable.MaxCraftable(_selectedRecipe)).ToString();
+    }
+
     void OnCraftClicked(RecipeData recipe)
     {
         if (_currentTable == null) return;
-        _currentTable.QueueOrder(recipe);
+
+        int count = ReadCount(_currentTable.MaxCraftable(recipe));
+        if (count <= 0) return;
+
+        _currentTable.QueueOrder(recipe, count);
+
+        // 건 만큼은 소진됐으니 칸을 1로 되돌린다 — 10을 걸어 두고 잊으면 다음 클릭에 또 10이 걸린다.
+        if (craftQuantity != null) craftQuantity.text = "1";
+
         RefreshIngredients(recipe);
-        if (craftButton != null)
-            craftButton.interactable = _currentTable.CanCraft(recipe);
+        RefreshCraftButton(recipe);
     }
+
+    // 잠금·재료·수량 표시를 한 곳에서 정한다.
+    void RefreshCraftButton(RecipeData recipe)
+    {
+        if (_currentTable == null) return;
+
+        int  max    = _currentTable.MaxCraftable(recipe);
+        bool locked = IsLocked(recipe);
+
+        if (craftButton != null) craftButton.interactable = !locked && max > 0;
+        if (craftMaxButton   != null) craftMaxButton.interactable   = !locked && max > 0;
+        if (craftMinusButton != null) craftMinusButton.interactable = !locked && max > 0;
+        if (craftPlusButton  != null) craftPlusButton.interactable  = !locked && max > 0;
+
+        // **몇 개까지 걸 수 있는지 보여 준다.** 칸에 아무 수나 적어도 이걸 못 넘으므로,
+        // 안 적어 두면 "20을 적었는데 8만 걸렸다"가 설명되지 않는다.
+        SetText(craftMaxText, locked ? "" : $"최대 {max}");
+    }
+
+    // **값이 같으면 안 넣는다.** TMP는 같은 글자를 대입해도 메시를 다시 굽는다 —
+    // 창고 이벤트는 운반마다 울리므로, 이 한 줄이 대부분의 헛일을 걷어낸다.
+    static void SetText(TextMeshProUGUI label, string value)
+    {
+        if (label != null && label.text != value) label.text = value;
+    }
+
+    bool IsLocked(RecipeData recipe) =>
+        ResearchManager.Instance != null && !ResearchManager.Instance.IsUnlocked(recipe);
+
+
 }

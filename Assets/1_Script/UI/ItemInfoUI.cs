@@ -4,12 +4,24 @@ using UnityEngine.InputSystem;
 using TMPro;
 
 // 아이템 상세 툴팁. 인벤토리 hover + 상인 클릭 양쪽에서 사용.
-// ItemInfoPanel.Show(item, quality)        — 인벤토리 (가격 없음)
-// ItemInfoPanel.Show(item, quality, price) — 상점 (상점가 표시)
-// ItemInfoPanel.Hide()
-public class ItemInfoPanel : MonoBehaviour
+// ItemInfoUI.Show(item, quality)        — 인벤토리 (가격 없음)
+// ItemInfoUI.Show(item, quality, price) — 상점 (상점가 표시)
+// ItemInfoUI.Hide()
+public class ItemInfoUI : MonoBehaviour
 {
-    public static ItemInfoPanel Instance { get; private set; }
+    public static ItemInfoUI Instance { get; private set; }
+
+    // **이 컴포넌트는 늘 켜져 있는 부모(`ItemInfo_UI`)에 살고, 보였다 사라지는 건 자식인
+    // `panel`이다.** 이 프로젝트의 다른 창이 전부 그렇다(`EventNotificationUI`·`MerchantUI`·
+    // `InventoryUI` 모두 `panel` 필드를 토글한다).
+    //
+    // 예전엔 컴포넌트가 **꺼지는 그 오브젝트에** 붙어 있었다. 씬에 `m_IsActive: 0`으로
+    // 저장돼 있었고, 유니티는 꺼진 오브젝트의 `Awake`를 부르지 않으므로 `Instance`가 영영
+    // null이었다 — 툴팁이 **한 번도 뜨지 않았다.** 부모를 하나 세워 두면 `Awake`가 정상적으로
+    // 돌아 배선이 `Find` 없이 성립한다(런타임 탐색은 이 게임에서 매 hover마다 돌 수 있다).
+    [Header("씬 참조")]
+    [Tooltip("실제로 보였다 사라지는 상자. 이 컴포넌트가 붙은 오브젝트가 아니라 **자식**이어야 한다")]
+    [SerializeField] GameObject      panel;
 
     [SerializeField] Image           icon;
     [SerializeField] TextMeshProUGUI displayNameText;
@@ -34,21 +46,38 @@ public class ItemInfoPanel : MonoBehaviour
     void Awake()
     {
         Instance = this;
-        _rt      = GetComponent<RectTransform>();
         _canvas  = GetComponentInParent<Canvas>();
-        gameObject.SetActive(false);
+
+        if (panel == null)
+        {
+            Debug.LogError($"[ItemInfoUI] {name}: panel이 비어 있어 툴팁이 뜨지 않습니다. " +
+                           "DungeonColony → Fix Window Structure 를 실행하세요.");
+            return;
+        }
+
+        _rt = panel.GetComponent<RectTransform>();
+        panel.SetActive(false);
     }
 
+    void OnDestroy() { if (Instance == this) Instance = null; }
+
+    const string LockedNote = "<color=#FAC759>잠김 — 자동 운반·재료·판매·버리기에서 빠집니다</color>";
+
     // priceLabel: null이면 "상점가"/"가치" 자동 결정
-    public static void Show(ItemData item, ItemQuality quality, int price = -1, string priceLabel = null)
-        => Instance?.ShowInternal(item, quality, price, priceLabel);
+    public static void Show(ItemData item, ItemQuality quality, int price = -1,
+                            string priceLabel = null, bool locked = false)
+        => Instance?.ShowInternal(item, quality, price, priceLabel, locked);
 
     public static void Hide()
-        => Instance?.gameObject.SetActive(false);
-
-    void ShowInternal(ItemData item, ItemQuality quality, int price, string priceLabel = null)
     {
-        gameObject.SetActive(true);
+        if (Instance != null && Instance.panel != null) Instance.panel.SetActive(false);
+    }
+
+    void ShowInternal(ItemData item, ItemQuality quality, int price, string priceLabel, bool locked)
+    {
+        if (item == null || panel == null) return;
+
+        panel.SetActive(true);
 
         if (icon)
         {
@@ -68,6 +97,13 @@ public class ItemInfoPanel : MonoBehaviour
         if (statsGroup) statsGroup.SetActive(hasStats);
 
         if (descText) descText.text = item.Description ?? "";
+
+        // 잠긴 뭉치는 **왜 안 팔리는지**를 여기서 말한다. 격자의 `잠금` 글자는 상태만
+        // 보여 줄 뿐이라, 팔려다 거절당한 사람은 그게 원인인 줄 모른다.
+        if (locked && descText)
+            descText.text = string.IsNullOrEmpty(descText.text)
+                          ? LockedNote
+                          : $"{descText.text}\n{LockedNote}";
 
         // price >= 0 → 상점가 표시 / price < 0이지만 BaseValue > 0 → 아이템 기준 가치 표시
         if (price >= 0)
@@ -125,7 +161,7 @@ public class ItemInfoPanel : MonoBehaviour
 
     void LateUpdate()
     {
-        if (gameObject.activeSelf) FollowCursor();
+        if (panel != null && panel.activeSelf) FollowCursor();
     }
 
     void FollowCursor()

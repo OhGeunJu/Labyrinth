@@ -10,7 +10,7 @@ using UnityEngine.UI;
 // 예전엔 `RefreshSeedButtons`가 `new GameObject`로 버튼을 통째로 만들었고, 그걸
 // **`Update`마다** 지웠다 다시 만들었다 — 모양이 코드에 박혀 편집 화면과 어긋나는 데다,
 // 패널을 열어 두는 내내 매 프레임 UI를 새로 짓고 있었다.
-public class FarmPlotUI : MonoBehaviour
+public class FarmUI : MonoBehaviour
 {
     [Header("씬 참조")]
     [SerializeField] GameObject      panel;

@@ -74,6 +74,9 @@ public class PawnMover : MonoBehaviour
     [Header("Athletics 성장")]
     [SerializeField] float athleticsGrowthRate = 0.005f;
 
+    [Tooltip("짐을 지고 걸을 때 근력 성장 속도. 한도 대비 적재 비율이 곱해진다.")]
+    [SerializeField] float strengthGrowthRate = 0.003f;
+
     void Awake()
     {
         _cc = GetComponent<CharacterController>();
@@ -501,7 +504,10 @@ public class PawnMover : MonoBehaviour
                 TrackProgress(pos, desired, effectiveSpeed);
 
                 if (_stats != null)
+                {
                     _stats.GrowStat(StatName.Athletics, athleticsGrowthRate * Time.deltaTime * CombatXp.Sol(_stats.Athletics));
+                    GrowStrengthFromLoad();
+                }
             }
         }
 
@@ -520,10 +526,30 @@ public class PawnMover : MonoBehaviour
         // 나중에 기는 애니메이션 연결
     }
 
+    // 짐을 지고 걸으면 근력이 자란다 (켄시식). **한도 대비 얼마나 실었나**로 재므로,
+    // 근력이 커질수록 같은 짐으로는 덜 자란다 — 성장하려면 더 무겁게 져야 한다.
+    // 가벼운 짐에 눈금이 오르면 빈손 배회로도 근력이 크므로 바닥선을 둔다.
+    const float LoadGrowthFloor = 0.25f;   // 한도의 이만큼은 져야 눈금이 오른다
+
+    void GrowStrengthFromLoad()
+    {
+        if (_inventory == null) return;
+
+        float cap = CarryCapacity.For(_stats);
+        if (cap <= 0f) return;
+
+        float ratio = _inventory.GetTotalWeight() / cap;
+        if (ratio < LoadGrowthFloor) return;
+
+        _stats.GrowStat(StatName.Strength,
+                        strengthGrowthRate * Time.deltaTime * ratio * CombatXp.Sol(_stats.Strength));
+    }
+
+    // 한도(`CarryCapacity`)를 넘긴 만큼 느려진다. 한도 자체는 한 곳에서만 답한다.
     float CalcWeightCorrection()
     {
         if (_stats == null || _inventory == null) return 1f;
-        float maxWeight     = _stats.Strength * 5f;
+        float maxWeight     = CarryCapacity.For(_stats);
         float currentWeight = _inventory.GetTotalWeight();
         if (maxWeight <= 0f || currentWeight <= maxWeight) return 1f;
         return maxWeight / currentWeight;

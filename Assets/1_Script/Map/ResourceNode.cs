@@ -9,7 +9,11 @@ public class ResourceNode : MonoBehaviour, IHaulSource
     public static event Action<ResourceNode> OnAssignmentChanged;
 
     [SerializeField] ResourceNodeData data;
-    [SerializeField] int haulThreshold = 10;  // 이 수량 이상 쌓이면 운반 작업 등록
+
+    [Tooltip("이 수량 이상 쌓이면 운반 작업 등록. 한 번에 몇 개나 실려 가는지는 여기가 아니라 " +
+             "폰의 적재 한도(CarryCapacity)가 정한다.")]
+    [SerializeField] int haulThreshold = 10;
+
     public Inventory Inventory { get; private set; }
 
     public int HaulThreshold
@@ -25,19 +29,33 @@ public class ResourceNode : MonoBehaviour, IHaulSource
     readonly List<UnitBrain> _assigned = new();
     public IReadOnlyList<UnitBrain> AssignedPawns => _assigned;
 
-    public void Assign(UnitBrain brain)
+    // 동시에 붙을 수 있는 인원. 0이면 제한 없음(`ResourceNodeData`에 그렇게 적은 경우).
+    public int MaxWorkers => data != null ? Mathf.Max(0, data.MaxWorkers) : 0;
+
+    public int  AssignedCount => _assigned.Count;
+    public bool IsFull        => MaxWorkers > 0 && _assigned.Count >= MaxWorkers;
+
+    // 배정 성공 여부를 **돌려준다** — 자리가 없으면 부른 쪽이 그 사실을 말해 줘야 한다.
+    // 조용히 실패하면 플레이어는 명령이 먹은 줄 알고 폰이 안 움직이는 것만 본다.
+    public bool Assign(UnitBrain brain)
     {
-        if (brain == null || _assigned.Contains(brain)) return;
+        if (brain == null) return false;
+        if (_assigned.Contains(brain)) return true;   // 이미 여기 있다 = 원하는 상태
+        if (IsFull) return false;
 
         // 다른 노드에 배정돼 있었으면 **거기서 먼저 뗀다.** 폰이 들고 있는
         // `Blackboard.AssignedNode`는 하나뿐이라, 안 떼면 이전 노드의 목록에만
         // 유령 항목이 남는다 — 그 폰은 실제로는 여기서 일하는데 저쪽 패널엔 계속 보인다.
+        //
+        // **자리 확인을 먼저 한 뒤에 뗀다** — 순서가 반대면 꽉 찬 노드에 보내려다 실패했을 때
+        // 폰이 원래 캐던 곳에서도 떨어져 나와 아무 데도 배정되지 않은 채로 남는다.
         var prev = brain.Blackboard.AssignedNode;
         if (prev != null && prev != this) prev.Unassign(brain);
 
         _assigned.Add(brain);
         brain.Blackboard.AssignedNode = this;
         OnAssignmentChanged?.Invoke(this);
+        return true;
     }
 
     public void Unassign(UnitBrain brain)
@@ -75,8 +93,11 @@ public class ResourceNode : MonoBehaviour, IHaulSource
 
     float _gauge;
     int _totalYielded;
-    bool _haulJobPending;
     readonly List<Vector2Int> _blockedTiles = new();
+
+    HaulDispatcher _haul;
+    float _haulCheckTimer;
+    const float HaulCheckInterval = 2f;
 
     // 차지하는 칸들.
     //
@@ -106,6 +127,7 @@ public class ResourceNode : MonoBehaviour, IHaulSource
     void Awake()
     {
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
+        _haul     = new HaulDispatcher(this);
 
         // 빌드존 안일 때만 타일 막힘 표시 (시각화용). 실제 이동 차단은 콜라이더+NavMesh 담당.
         // **차지한 칸 전부**를 막는다 — 한 칸만 막으면 큰 광맥의 나머지 칸에 건물이 겹쳐 지어진다.
@@ -155,16 +177,24 @@ public class ResourceNode : MonoBehaviour, IHaulSource
         // 노드 인벤토리에 쌓아둠
         Inventory.TryAdd(data.DropItem, amount);
 
-        // 임계값 이상 쌓이고 운반 작업이 없을 때만 등록
-        int total = Inventory.GetTotalQuantity(data.DropItem);
-        if (!_haulJobPending && total >= haulThreshold)
-        {
-            var storage = Storage.FindNearest(transform.position, data.DropItem);
-            if (storage != null && JobManager.Instance != null)
-            {
-                _haulJobPending = true;
-                JobManager.Instance.RegisterJob(new HaulJob(this, data.DropItem, total, storage, () => _haulJobPending = false));
-            }
-        }
+        // 임계값 이상 쌓인 만큼 **몫으로 나눠** 등록 — 쌓인 양에 비례해 여러 폰이 붙는다.
+        _haul?.Dispatch(data.DropItem, HaulThreshold);
+    }
+
+    // 쌓인 재고를 주기적으로 다시 본다.
+    //
+    // 산출(`DropYield`) 때만 등록하면, 폰 배낭이 차서 남긴 잔량은 **다음 산출이 있어야만**
+    // 실려 간다 — 다 캔 노드에서는 그 다음이 없어 잔량이 영영 남았다.
+    // 창고가 그때 없었거나 꽉 찼던 경우도 여기서 회복된다(작업대의 방식과 같다).
+    void Update()
+    {
+        if (_haul == null || data == null || data.DropItem == null) return;
+        if (Inventory == null || Inventory.Items.Count == 0) return;
+
+        _haulCheckTimer -= Time.deltaTime;
+        if (_haulCheckTimer > 0f) return;
+        _haulCheckTimer = HaulCheckInterval;
+
+        _haul.Dispatch(data.DropItem, HaulThreshold);
     }
 }

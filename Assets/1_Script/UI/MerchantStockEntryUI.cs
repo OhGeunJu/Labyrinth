@@ -7,6 +7,12 @@ using TMPro;
 public class MerchantStockEntryUI : MonoBehaviour,
     IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
+    // 격자 보기 칸 크기. **타일 프리팹과 `MerchantUI`의 GridLayoutGroup이 같은 값을 봐야 한다** —
+    // 어긋나면 격자가 타일을 늘이거나 줄여 아이콘이 찌그러진다. 그래서 여기 한 곳에만 적는다
+    // (생성기도 이 값을 읽어 프리팹을 짓는다).
+    public const int TileWidth  = 96;
+    public const int TileHeight = 112;
+
     [SerializeField] Image           bg;
     [SerializeField] Image           icon;
     [SerializeField] TextMeshProUGUI nameText;
@@ -38,7 +44,7 @@ public class MerchantStockEntryUI : MonoBehaviour,
         if (qualityText)
         {
             qualityText.text  = entry.Quality.DisplayName();
-            qualityText.color = ItemInfoPanel.QualityColor(entry.Quality);
+            qualityText.color = ItemInfoUI.QualityColor(entry.Quality);
         }
         if (priceText)   priceText.text   = $"{entry.Price} G";
 
@@ -77,8 +83,8 @@ public class MerchantStockEntryUI : MonoBehaviour,
     public void OnPointerEnter(PointerEventData _)
     {
         if (_entry?.Item != null)
-            ItemInfoPanel.Show(_entry.Item, _entry.Quality, _entry.Price);
+            ItemInfoUI.Show(_entry.Item, _entry.Quality, _entry.Price);
     }
 
-    public void OnPointerExit(PointerEventData _) => ItemInfoPanel.Hide();
+    public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();
 }

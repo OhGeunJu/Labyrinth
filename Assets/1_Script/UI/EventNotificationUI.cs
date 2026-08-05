@@ -24,13 +24,37 @@ public class EventNotificationUI : MonoBehaviour
     GameEventData _pending;
     float _closeAt;
 
+    // 게임 이벤트가 아닌 **조작 거절**도 여기로 알린다(잠긴 물건을 팔려 할 때 등).
+    // 알림 창을 새로 만들 이유가 없다 — 플레이어는 이미 여기를 본다.
+    //
+    // `Awake`에서 잡아 두고 **찾지 않는다.** 이 컴포넌트는 늘 켜져 있는 오브젝트에 살고
+    // (꺼지는 건 자식 `panel`이다) 알림은 자주 불릴 수 있는 경로다.
+    static EventNotificationUI _instance;
+
+    public static void Notify(string title, string message)
+    {
+        if (_instance != null && _instance.isActiveAndEnabled)
+        {
+            _instance.Display(title, message, null);
+            return;
+        }
+
+        // 띄울 곳이 없으면(월드맵이라 필드 UI가 통째로 꺼진 동안 등) 흔적은 남긴다.
+        Debug.Log($"[알림] {title} — {message}");
+    }
+
     void Awake()
     {
+        _instance = this;
         if (panel != null) panel.SetActive(false);
         EventManager.OnEventTriggered += Show;
     }
 
-    void OnDestroy() => EventManager.OnEventTriggered -= Show;
+    void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
+        EventManager.OnEventTriggered -= Show;
+    }
 
     // 필드로 돌아와 다시 켜지는 순간 밀린 알림을 띄운다.
     void OnEnable() { if (_pending != null) Display(_pending); }
@@ -47,13 +71,16 @@ public class EventNotificationUI : MonoBehaviour
     }
 
     void Display(GameEventData data)
+        => Display(data.EventName, data.Description, data.Icon);
+
+    void Display(string title, string desc, Sprite icon)
     {
         _pending = null;
         if (panel == null) return;
 
-        if (iconImage != null) { iconImage.sprite = data.Icon; iconImage.enabled = data.Icon != null; }
-        if (titleText != null) titleText.text = data.EventName;
-        if (descText  != null) descText.text  = data.Description;
+        if (iconImage != null) { iconImage.sprite = icon; iconImage.enabled = icon != null; }
+        if (titleText != null) titleText.text = title;
+        if (descText  != null) descText.text  = desc;
 
         panel.SetActive(true);
         // 배속(`Time.timeScale`)을 타지 않는 실제 시간. 10배속에서 0.5초 만에 사라지거나

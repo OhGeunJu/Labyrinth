@@ -34,7 +34,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
     bool  _fuelJobPending;
     float _fuelCheckTimer;
 
-    bool  _haulJobPending;
+    HaulDispatcher _haul;
     float _haulCheckTimer;
 
     const float FuelCheckInterval   = 3f;
@@ -128,10 +128,25 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
     // ── 대기 중인 주문 수 ────────────────────────────────────────────────────
     // 연료는 **주문이 걸려 있을 때만** 채운다. 안 그러면 아무도 안 쓰는 용광로가
     // 석탄을 계속 빨아들인다(연료는 시간에 따라 타 없어지므로 보충이 끝없이 등록된다).
+    //
+    // **레시피별로 센다.** 합계 하나만 두면 "이 레시피를 몇 개 더 걸 수 있나"를 물었을 때
+    // 상관없는 주문까지 깎여 나온다(빵 주문 3개가 철검 수량에서 빠지는 식).
+    readonly Dictionary<RecipeData, int> _pendingByRecipe = new();
     int _pendingOrders;
+
     public bool HasPendingOrder => _pendingOrders > 0;
 
-    public void OrderFinished() => _pendingOrders = Mathf.Max(0, _pendingOrders - 1);
+    public int PendingFor(RecipeData recipe) =>
+        recipe != null && _pendingByRecipe.TryGetValue(recipe, out int n) ? n : 0;
+
+    public void OrderFinished(RecipeData recipe)
+    {
+        _pendingOrders = Mathf.Max(0, _pendingOrders - 1);
+
+        if (recipe == null || !_pendingByRecipe.TryGetValue(recipe, out int n)) return;
+        if (n <= 1) _pendingByRecipe.Remove(recipe);
+        else        _pendingByRecipe[recipe] = n - 1;
+    }
 
     public void SetAllowHaulOut(bool value)
     {
@@ -155,6 +170,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         if (existing == null) Inventory.Resize(outputSize.x, outputSize.y);
 
         Inventory.OnChanged += () => OnChanged?.Invoke(this);
+        _haul = new HaulDispatcher(this);
     }
 
     public bool  RequiresFuel  => _requiresFuel;
@@ -183,11 +199,12 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         UpdateHaulOut();
     }
 
-    // 산출물을 창고로 내보낸다. **한 번에 한 종류씩** — 폰 하나가 다녀오는 동안
-    // 같은 짐에 대해 잡이 중복 등록되지 않게 `_haulJobPending`으로 막는다(연료와 같은 방식).
+    // 산출물을 창고로 내보낸다. 발행은 `HaulDispatcher`가 맡는다 — 쌓인 재고를 몫으로 나눠
+    // 내므로 종류가 여럿이든 한 종류가 많이 쌓였든 여러 폰이 나눠 실어 간다.
+    // (전에는 `_haulJobPending` 하나로 "동시에 한 건, 한 종류"라 운반이 늘 한 명이었다.)
     void UpdateHaulOut()
     {
-        if (!allowHaulOut || Inventory == null || _haulJobPending) return;
+        if (!allowHaulOut || Inventory == null) return;
 
         _haulCheckTimer -= Time.deltaTime;
         if (_haulCheckTimer > 0f) return;
@@ -196,16 +213,8 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         if (Inventory.Items.Count == 0 || JobManager.Instance == null) return;
         if (BuildingDormancy.IsDormantAt(this)) return;   // 휴면 중엔 일감을 만들지 않는다
 
-        var item = Inventory.Items[0].Data;
-        if (item == null) return;
-
-        var storage = Storage.FindNearest(transform.position, item);
-        if (storage == null) return;      // 받아 줄 창고가 없으면 그대로 쌓아 둔다
-
-        _haulJobPending = true;
-        JobManager.Instance.RegisterJob(
-            new HaulJob(this, item, Inventory.GetTotalQuantity(item), storage,
-                        () => _haulJobPending = false));
+        // 완성품은 한 개도 놀려 두지 않는다 — 임계값 1.
+        _haul.Dispatch(1);
     }
 
     // SelectionManager의 단일 레이캐스트가 이 작업대를 클릭 판정 시 호출.
@@ -242,13 +251,52 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         }
     }
 
-    public void QueueOrder(RecipeData recipe)
+    // 재료가 하나도 걸리지 않는 레시피를 한 번에 걸 수 있는 수. 상한이 필요한 이유는
+    // `MaxCraftable` 주석 참조.
+    const int UnboundedBatch = 99;
+
+    // 재료가 **지금 창고에 있는 것만으로** 몇 개 더 걸 수 있나. 수량 칸의 상한이다.
+    //
+    // 주문을 걸어도 재료는 폰이 실제로 집을 때 빠진다. 그래서 창고 재고만 보면 [최대]를 두 번
+    // 눌렀을 때 재고가 그대로라 두 배가 걸린다 — **이 레시피로 이미 걸어 둔 주문 수**를 뺀다.
+    public int MaxCraftable(RecipeData recipe)
+    {
+        if (recipe == null) return 0;
+
+        int max = int.MaxValue;
+        foreach (var ing in recipe.Ingredients)
+        {
+            if (ing.Item == null || ing.Amount <= 0) continue;
+            max = Mathf.Min(max, Storage.GetTotalByItem(ing.Item) / ing.Amount);
+        }
+
+        // **셀 재료가 없는 레시피는 "못 만든다"가 아니라 "무엇도 막지 않는다"이다.**
+        // 0으로 두면 `CanCraft`(재료를 다 통과)와 답이 갈려 버튼이 영구히 잠긴다 —
+        // 지금 에셋엔 그런 레시피가 없지만 JSON·모드가 넣으면 조용히 안 만들어진다.
+        // int.MaxValue를 그대로 흘리면 화면에 `최대 2147483647`이 뜨므로 한 번에 걸 만한
+        // 수로 자른다(수량 칸의 상한일 뿐, 여러 번 누르는 것은 막지 않는다).
+        if (max == int.MaxValue) max = UnboundedBatch;
+
+        return Mathf.Max(0, max - PendingFor(recipe));
+    }
+
+    public void QueueOrder(RecipeData recipe) => QueueOrder(recipe, 1);
+
+    // `count`만큼 한 번에 건다. 열 개를 만들려고 버튼을 열 번 누르게 하지 않는다.
+    public void QueueOrder(RecipeData recipe, int count)
     {
         if (recipe == null || JobManager.Instance == null) return;
         // 휴면(핵 영역 밖) 작업대에는 주문을 넣을 수 없다 — UI 경로가 막혀도 직접 호출 방어.
         if (BuildingDormancy.IsDormantAt(this)) { Debug.Log("[CraftingTable] 휴면 중 — 주문 불가"); return; }
-        _pendingOrders++;
-        JobManager.Instance.RegisterJob(new CraftJob(this, recipe));
+
+        count = Mathf.Max(1, count);
+        for (int i = 0; i < count; i++)
+        {
+            _pendingOrders++;
+            _pendingByRecipe.TryGetValue(recipe, out int n);
+            _pendingByRecipe[recipe] = n + 1;
+            JobManager.Instance.RegisterJob(new CraftJob(this, recipe));
+        }
 
         // 주문이 들어온 순간 연료부터 챙긴다. 주기 검사(3초)를 기다리면 그만큼 늦고,
         // 제작 주문은 **연료가 있어야 배정된다**(`CraftJob.IsReady`) — 보충이 먼저 걸려야 한다.
@@ -263,6 +311,16 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
             TryRegisterFuelJob();
     }
 
+    // **재료는 창고에 있어야 주문할 수 있다.** 배낭은 잠시 들고 있는 자리지 창고가 아니다.
+    //
+    // 한때 `MaterialPool.AvailableAnywhere`(모든 폰 배낭 포함)로 넓게 봤는데, 그러면
+    // 화면은 `재료 3/3`이라 하면서 **정작 만들 수 있는 건 그걸 든 폰 하나**가 된다
+    // (`CraftJob.CanAssignTo`는 남의 배낭을 안 센다 — 조작한 적 없는 폰의 짐이 줄면 안 되니까).
+    // 그 폰이 광맥에 배정돼 있으면 큐를 아예 안 보므로 주문은 영영 안 걸린다 —
+    // 화면은 된다는데 아무 일도 안 일어난다.
+    //
+    // 배낭에 든 재료는 **짐 내리기**로 창고에 들어와야 쓰인다. 그래야 보이는 수량과
+    // 실제로 만들 수 있는 양이 같아진다.
     public bool CanCraft(RecipeData recipe)
     {
         if (recipe == null) return false;

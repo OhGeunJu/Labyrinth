@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
 
-public class CorpseInventoryPanel : MonoBehaviour
+public class CorpseInventoryUI : MonoBehaviour
 {
     [SerializeField] GameObject         panel;
     [SerializeField] RectTransform      gridContainer;
@@ -14,7 +14,7 @@ public class CorpseInventoryPanel : MonoBehaviour
     [SerializeField] EquipSlotUI        chestSlot;
     [SerializeField] EquipSlotUI        handsSlot;
     [SerializeField] EquipSlotUI        legsSlot;
-    [SerializeField] PawnInventoryPanel playerInventoryPanel;
+    [SerializeField] InventoryUI playerInventoryPanel;
 
     InventoryGridUI _gridUI;
     bool            _didForceOpenInventory;
@@ -37,7 +37,7 @@ public class CorpseInventoryPanel : MonoBehaviour
     void Start()
     {
         if (playerInventoryPanel == null)
-            playerInventoryPanel = FindFirstObjectByType<PawnInventoryPanel>();
+            playerInventoryPanel = FindFirstObjectByType<InventoryUI>();
     }
 
     void OnDestroy()

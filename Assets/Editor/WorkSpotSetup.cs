@@ -112,7 +112,14 @@ public static class WorkSpotSetup
     {
         var marker = new GameObject(MarkerName, typeof(MeshFilter), typeof(MeshRenderer));
         marker.transform.SetParent(parent, false);
+
+        // **회전·크기까지 못 박는다.** 화살표 메시는 이미 XZ 평면에 누워 있으므로 회전이 0이어야
+        // 한다. 예전 사각 표식은 눕히려고 X 90도 + 0.85 축소를 걸고 있었는데, 그때 값이 남은
+        // 프리팹이 있었다(`CraftingTable_Labor`) — 메시만 갈아 끼우면 화살표가 서 버린다.
         marker.transform.localPosition = new Vector3(0f, 0.03f, 0f);
+        marker.transform.localRotation = Quaternion.identity;
+        marker.transform.localScale    = Vector3.one;
+
         marker.GetComponent<MeshFilter>().sharedMesh = EnsureArrowMesh();
 
         var renderer = marker.GetComponent<MeshRenderer>();

@@ -20,21 +20,26 @@ public class ExpeditionParty
         CurrentNode = startNode;
     }
 
-    // 적재 한도 = 멤버 근력 합 × 5.
-    // **필드의 폰 적재 규칙과 같은 식**이다(`CombatHandler` / `PawnMover`의 `Strength * 5f`) —
+    // 적재 한도(kg) = 멤버들의 `CarryCapacity` 합. 필드의 폰 적재와 **같은 한 곳**에서 나온다 —
     // 원정대라고 다른 규칙을 쓰면 "이 폰을 데려가면 얼마나 더 지나"가 계산되지 않는다.
-    public float Capacity
+    public float Capacity => CarryCapacity.TotalFor(Members);
+
+    // **등짐은 무게로 센다.** 예전엔 kg으로 만든 `Capacity`를 개수 한도로 썼다 —
+    // 씨앗(0.05)이나 철갑옷(8)이나 똑같이 한 자리를 먹었고, 무엇을 담아 오느냐가
+    // 아무 선택도 되지 못했다. `ItemData.Weight`는 이미 다 저작돼 있었다.
+    public float CarriedWeight
     {
         get
         {
-            float sum = 0f;
-            foreach (var m in Members)
-                if (m != null && m.Stats != null) sum += m.Stats.Strength * 5f;
-            return sum;
+            float w = 0f;
+            foreach (var kv in Cargo)
+                if (kv.Key != null) w += kv.Key.Weight * kv.Value;
+            return w;
         }
     }
 
-    public int Carried
+    // 개수는 표시용으로만 남긴다(한도 판정에는 안 쓴다).
+    public int CarriedCount
     {
         get
         {
@@ -44,14 +49,19 @@ public class ExpeditionParty
         }
     }
 
-    public bool HasRoom => Carried < Mathf.FloorToInt(Capacity);
+    public float FreeWeight => Mathf.Max(0f, Capacity - CarriedWeight);
+
+    public bool HasRoom => FreeWeight > 0f;
 
     // 한도까지만 받고 **실제로 받은 개수를 돌려준다** — 넘치는 만큼 조용히 사라지면 안 된다.
     public int TryAdd(ItemData item, int amount)
     {
         if (item == null || amount <= 0) return 0;
 
-        int room = Mathf.FloorToInt(Capacity) - Carried;
+        // 무게 없는 물건은 무게로 막지 않는다(문서·열쇠 같은 것). 격자 제약은 등짐엔 없다.
+        int room = item.Weight <= 0f
+                 ? amount
+                 : Mathf.FloorToInt(FreeWeight / item.Weight);
         if (room <= 0) return 0;
 
         int take = Mathf.Min(room, amount);

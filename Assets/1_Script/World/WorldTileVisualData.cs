@@ -29,7 +29,7 @@ public class WorldTileVisualData : ScriptableObject
         [Tooltip("칸마다 무작위 Y회전을 준다(같은 프리팹이 반복돼 보이지 않게).")]
         public bool RandomYaw = true;
 
-        [Tooltip("도착 메뉴(`WorldMenuPanel`) 왼쪽에 깔 지역 그림. 내용물 쪽 그림이 없을 때의 폴백. " +
+        [Tooltip("도착 메뉴(`WorldMenuUI`) 왼쪽에 깔 지역 그림. 내용물 쪽 그림이 없을 때의 폴백. " +
                  "둘 다 비면 바이옴 색 단색.")]
         public Sprite MenuArt;
     }
@@ -45,7 +45,7 @@ public class WorldTileVisualData : ScriptableObject
         [Tooltip("지형 표면에서 얼마나 띄울지.")]
         public float HeightOffset;
 
-        [Tooltip("도착 메뉴(`WorldMenuPanel`) 왼쪽에 깔 그림. 바이옴 그림보다 이쪽이 우선.")]
+        [Tooltip("도착 메뉴(`WorldMenuUI`) 왼쪽에 깔 그림. 바이옴 그림보다 이쪽이 우선.")]
         public Sprite MenuArt;
     }
 

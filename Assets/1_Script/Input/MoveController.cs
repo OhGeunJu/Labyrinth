@@ -22,7 +22,7 @@ public class MoveController : MonoBehaviour
 
         // 선택지 창이 떠 있으면 이번 우클릭은 **창을 닫는 데만** 쓴다(창 쪽이 닫는다).
         // 여기서도 처리하면 창을 닫으면서 동시에 명령이 나가 버린다.
-        if (PawnContextMenu.Instance != null && PawnContextMenu.Instance.IsOpen) return;
+        if (PawnContextMenuUI.Instance != null && PawnContextMenuUI.Instance.IsOpen) return;
         if (selectionManager.Selected.Count == 0) return;
 
         // 방랑자만 명령 대상 (하수인은 정보 확인만 가능)
@@ -101,12 +101,12 @@ public class MoveController : MonoBehaviour
         }
     }
 
-    // 선택지 구성은 **여기서** 정한다(`PawnContextMenu`는 받은 것만 그린다).
+    // 선택지 구성은 **여기서** 정한다(`PawnContextMenuUI`는 받은 것만 그린다).
     // 대상 종류를 창 안에서 따지기 시작하면 판단이 두 곳으로 갈라진다
     // (월드맵 도착 메뉴를 `WorldMapView.OpenMenu`가 짜는 것과 같은 규칙).
     void OpenMenuAt(Ray ray, List<PawnMover> commanders)
     {
-        var menu = PawnContextMenu.Instance;
+        var menu = PawnContextMenuUI.Instance;
 
         // 바닥 지점은 따로 잰다 — 유닛·건물을 맞았어도 [여기로 이동]은 바닥을 가리켜야 한다.
         bool hasGround = Physics.Raycast(ray, out RaycastHit groundHit, 500f, groundMask);
@@ -156,14 +156,33 @@ public class MoveController : MonoBehaviour
             bool tree = node.Data != null && node.Data.IsTree;
             title = node.Data?.DropItem != null ? node.Data.DropItem.ItemName : "자원";
 
-            options.Add((tree ? "여기서 나무를 벤다" : "여기서 캔다", () =>
+            // 남은 자리를 **선택지에 적는다.** 눌러 보고 나서야 자리가 없는 걸 아는 것보다
+            // 누르기 전에 보이는 편이 낫다. 꽉 찼으면 그 사실만 적고 아무 일도 하지 않는다.
+            string room = node.MaxWorkers > 0
+                        ? $" ({node.AssignedCount}/{node.MaxWorkers})"
+                        : "";
+            string verb = tree ? "여기서 나무를 벤다" : "여기서 캔다";
+
+            if (node.IsFull)
             {
-                foreach (var pawn in commanders)
+                options.Add(($"{verb}{room} - 자리 없음", () => { }));
+            }
+            else
+            {
+                options.Add(($"{verb}{room}", () =>
                 {
-                    var b = pawn.GetComponent<UnitBrain>();
-                    if (b != null) node.Assign(b);
-                }
-            }));
+                    int rejected = 0;
+                    foreach (var pawn in commanders)
+                    {
+                        var b = pawn.GetComponent<UnitBrain>();
+                        if (b == null) continue;
+                        if (!node.Assign(b)) rejected++;
+                    }
+                    if (rejected > 0)
+                        Debug.Log($"[자원 노드] {node.name}: 자리가 {node.MaxWorkers}명뿐이라 " +
+                                  $"{rejected}명은 배정하지 못했습니다.");
+                }));
+            }
             options.Add(("살펴본다", () => SelectionManager.InspectNode(node)));
         }
         else if (corpse != null)

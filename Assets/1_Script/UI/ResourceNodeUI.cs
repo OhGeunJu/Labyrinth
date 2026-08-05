@@ -5,7 +5,7 @@ using TMPro;
 
 // 자원 노드 선택 시 정보 패널 표시.
 // 노드는 한 종류 자원만 쌓이므로 그리드 인벤토리 대신 단일 아이콘 + 수량으로 표시.
-public class ResourceNodePanel : MonoBehaviour
+public class ResourceNodeUI : MonoBehaviour
 {
     [Header("씬 참조")]
     [Tooltip("노드 선택 시 활성화될 패널 루트")]
@@ -159,18 +159,27 @@ public class ResourceNodePanel : MonoBehaviour
             haulThresholdText.text = $"운반:{_current.HaulThreshold}";
     }
 
+    // 자리만큼만 받는다. 넘친 인원은 **조용히 버리지 않고** 로그로 말한다 —
+    // 다섯을 골라 눌렀는데 둘만 붙으면 플레이어는 왜 그런지 알아야 한다.
     void AssignSelected()
     {
         if (_current == null || _selection == null) return;
-        int count = 0;
+
+        int added = 0, rejected = 0;
         foreach (var pawn in _selection.Selected)
         {
             var brain = pawn.GetComponent<UnitBrain>();
             if (brain == null) continue;
-            _current.Assign(brain);
-            count++;
+
+            if (_current.Assign(brain)) added++;
+            else                        rejected++;
         }
-        if (count > 0) RefreshAssigned();
+
+        if (rejected > 0)
+            Debug.Log($"[자원 노드] {_current.name}: 자리가 {_current.MaxWorkers}명뿐이라 " +
+                      $"{rejected}명은 배정하지 못했습니다.");
+
+        if (added > 0 || rejected > 0) RefreshAssigned();
     }
 
     void TransferToSelected()
@@ -197,6 +206,9 @@ public class ResourceNodePanel : MonoBehaviour
     void RefreshAssigned()
     {
         if (_current == null) return;
+
+        RefreshAssignButton();
+
         if (assignedListRoot == null || pawnEntryPrefab == null) return;
 
         // 기존 엔트리 제거
@@ -210,6 +222,22 @@ public class ResourceNodePanel : MonoBehaviour
             var entry = Instantiate(pawnEntryPrefab, assignedListRoot);
             entry.Setup(brain, _current, RefreshAssigned);
         }
+    }
+
+    // 남은 자리를 **버튼에 적는다.** 따로 칸을 만들면 씬을 고쳐야 하고, 자리 수는
+    // "배정 버튼을 누를까"를 정할 때 보는 값이라 버튼에 붙어 있는 게 맞다.
+    void RefreshAssignButton()
+    {
+        if (assignButton == null || _current == null) return;
+
+        bool limited = _current.MaxWorkers > 0;
+        assignButton.interactable = !_current.IsFull;
+
+        var label = assignButton.GetComponentInChildren<TextMeshProUGUI>();
+        if (label != null)
+            label.text = limited
+                ? $"배정 {_current.AssignedCount}/{_current.MaxWorkers}"
+                : "배정";
     }
 
     void Unsubscribe()

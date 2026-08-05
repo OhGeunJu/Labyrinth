@@ -26,4 +26,8 @@ public class ResourceNodeData : ScriptableObject
 
     [Tooltip("이 자원 채굴의 권장 스킬 레벨 (XP 도전 비율 계산용)")]
     public float RequiredSkill = 0f;
+
+    [Tooltip("이 노드에 동시에 붙을 수 있는 폰 수. 0이면 제한 없음. " +
+             "노드가 차지하는 칸 수를 기준으로 잡으면 화면과 맞는다 (1×1은 1~2, 2×2는 3~4).")]
+    [Min(0)] public int MaxWorkers = 2;
 }

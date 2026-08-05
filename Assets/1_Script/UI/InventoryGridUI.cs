@@ -24,6 +24,9 @@ public class InventoryGridUI : MonoBehaviour
     [SerializeField] Color qtyTextColor  = Color.white;
     [SerializeField] Color nameTextColor = Color.white;
 
+    [Tooltip("자동 운반에서 뺀 뭉치 표시. 수량과 다른 색이어야 한 눈에 갈린다.")]
+    [SerializeField] Color lockTextColor = new Color(0.98f, 0.78f, 0.35f, 1f);
+
     [Header("텍스트 폰트 (한글용)")]
     [SerializeField] TMP_FontAsset font;
 
@@ -303,6 +306,12 @@ public class InventoryGridUI : MonoBehaviour
 
         if (inst.Quantity > 1)
             AddLabel(go.transform, $"x{inst.Quantity}", 14, TextAlignmentOptions.BottomRight, qtyTextColor);
+
+        // 잠긴 뭉치는 **글자로** 말한다. 자물쇠 기호를 쓰면 폰트 폴백에 기대게 되고
+        // (`docs/editor_creators.md` "폰트 체인"), 색만 바꾸면 아이콘 제 색과 섞여 안 보인다.
+        // 수량이 오른쪽 아래에 있으므로 왼쪽 위 — 서로 겹치지 않는다.
+        if (inst.Locked)
+            AddLabel(go.transform, "잠금", 10, TextAlignmentOptions.TopLeft, lockTextColor);
     }
 
     void AddLabel(Transform parent, string text, float fontSize, TextAlignmentOptions align, Color color)

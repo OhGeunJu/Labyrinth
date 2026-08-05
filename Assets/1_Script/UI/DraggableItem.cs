@@ -38,22 +38,22 @@ public class DraggableItem : MonoBehaviour,
     public void OnPointerEnter(PointerEventData _)
     {
         if (_instance?.Data != null)
-            ItemInfoPanel.Show(_instance.Data, _instance.Quality);
+            ItemInfoUI.Show(_instance.Data, _instance.Quality, -1, null, _instance.Locked);
     }
 
-    public void OnPointerExit(PointerEventData _) => ItemInfoPanel.Hide();
+    public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();
 
     public void OnPointerClick(PointerEventData e)
     {
         if (e.clickCount == 2)
-            PawnInventoryPanel.NotifyItemDoubleAction(_instance, _sourceGrid);
+            InventoryUI.NotifyItemDoubleAction(_instance, _sourceGrid);
         else
-            PawnInventoryPanel.NotifyItemSelected(_instance, _sourceGrid);
+            InventoryUI.NotifyItemSelected(_instance, _sourceGrid);
     }
 
     public void OnBeginDrag(PointerEventData e)
     {
-        ItemInfoPanel.Hide();
+        ItemInfoUI.Hide();
         if (_canvas == null) _canvas = GetComponentInParent<Canvas>();
         if (_canvas == null || _sourceGrid == null) return;
 
@@ -198,10 +198,24 @@ public class DraggableItem : MonoBehaviour,
         var dstInv = targetGrid.Inventory;
         if (srcInv == null || dstInv == null) return false;
         if (!targetGrid.CanReceiveItem(_instance.Data)) return false;
-        if (!dstInv.TryAddAt(_instance.Data, _instance.Quantity, newX, newY, _dragRotated)) return false;
+
+        // **딸린 것을 같이 옮긴다.** 옮기는 건 같은 물건이다 — 등급을 안 넘기면
+        // 희귀 철검을 끌어다 놓는 것만으로 일반이 된다(예전에 그랬다).
+        //
+        // 잠금은 **가는 곳에 따라 다르다.** 잠금은 "이건 이 폰 것"이라는 뜻이라
+        // 폰 배낭 사이에서는 따라가야 하고(다른 일꾼에게 맡기는 것이지 푸는 게 아니다),
+        // 창고·작업대·시체로 내려놓는 건 공용 자리에 내놓는 것이므로 거기서 끝난다.
+        bool keepLock = _instance.Locked && IsPawnInventory(dstInv);
+
+        if (!dstInv.TryAddAt(_instance.Data, _instance.Quantity, newX, newY, _dragRotated,
+                             _instance.Quality, keepLock)) return false;
         srcInv.RemoveInstance(_instance);
         return true;
     }
+
+    // 그 인벤토리가 **폰의 배낭**인가(창고·작업대·시체가 아니라).
+    static bool IsPawnInventory(Inventory inv) =>
+        inv != null && inv.GetComponent<UnitBrain>() != null;
 
     // 커서 아래 칸의 뭉치와 합친다. 합쳤으면 true.
     //
@@ -245,6 +259,7 @@ public class DraggableItem : MonoBehaviour,
 
     bool TrySellDrop(PointerEventData e)
     {
+        if (_instance != null && _instance.Locked) return false;   // 잠근 것은 못 판다
         if (MerchantUI.ActiveMerchant == null || MerchantUI.SellZoneRect == null) return false;
         Camera uiCam = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
             ? _canvas.worldCamera : null;
@@ -257,6 +272,11 @@ public class DraggableItem : MonoBehaviour,
 
     bool TryWorldDrop(PointerEventData e)
     {
+        // **잠근 것은 못 버린다.** 창 밖으로 끌면 그대로 땅에 떨어지는데, 그게 이 조작에서
+        // 유일하게 되돌릴 수 없는 것이다 — 잠금이 막아야 할 게 있다면 바로 이것이다.
+        // false를 돌려주면 `OnEndDrag`가 미배치로 보고 원래 자리로 되돌린다.
+        if (_instance != null && _instance.Locked) return false;
+
         // 어떤 그리드 위에서 실패한 경우는 월드 드롭 안 함
         Camera uiCam = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
             ? _canvas.worldCamera : null;

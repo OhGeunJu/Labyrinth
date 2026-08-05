@@ -24,7 +24,7 @@ public static class ItemQualityExt
     };
 
     // 등급 색 — **여기가 단일 출처다.** 툴팁 글자색과 바닥에 떨어진 아이템 색이
-    // 같아야 "저 파란 게 아까 그 희귀템"이 성립한다. UI 쪽 `ItemInfoPanel.QualityColor`가
+    // 같아야 "저 파란 게 아까 그 희귀템"이 성립한다. UI 쪽 `ItemInfoUI.QualityColor`가
     // 이걸 가져다 쓴다(예전엔 거기에만 있어서 UI 밖에서는 쓸 수 없었다).
     public static Color Color(this ItemQuality q) => q switch
     {
