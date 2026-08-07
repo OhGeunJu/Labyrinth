@@ -49,7 +49,7 @@ public class Equipment : MonoBehaviour
         if (inst == null || !_inventory.RemoveOne(inst)) return false;
 
         if (MainHand != null)
-            _inventory.TryAdd(MainHand, 1, _mainHandInst?.Quality ?? ItemQuality.Common);
+            ReturnToInventory(MainHand, _mainHandInst?.Quality ?? ItemQuality.Common);
 
         MainHand      = weapon;
         _mainHandInst = inst;
@@ -64,7 +64,7 @@ public class Equipment : MonoBehaviour
     {
         if (MainHand == null) return;
 
-        _inventory.TryAdd(MainHand, 1, _mainHandInst?.Quality ?? ItemQuality.Common);
+        ReturnToInventory(MainHand, _mainHandInst?.Quality ?? ItemQuality.Common);
         Debug.Log($"[Equipment] {gameObject.name} 해제: {MainHand.ItemName}");
         MainHand      = null;
         _mainHandInst = null;
@@ -80,7 +80,7 @@ public class Equipment : MonoBehaviour
         if (inst == null || !_inventory.RemoveOne(inst)) return false;
 
         if (OffHand != null)
-            _inventory.TryAdd(OffHand, 1, _offHandInst?.Quality ?? ItemQuality.Common);
+            ReturnToInventory(OffHand, _offHandInst?.Quality ?? ItemQuality.Common);
 
         OffHand      = item;
         _offHandInst = inst;
@@ -93,7 +93,7 @@ public class Equipment : MonoBehaviour
     {
         if (OffHand == null) return;
 
-        _inventory.TryAdd(OffHand, 1, _offHandInst?.Quality ?? ItemQuality.Common);
+        ReturnToInventory(OffHand, _offHandInst?.Quality ?? ItemQuality.Common);
         Debug.Log($"[Equipment] {gameObject.name} 오프핸드 해제: {OffHand.ItemName}");
         OffHand      = null;
         _offHandInst = null;
@@ -107,7 +107,7 @@ public class Equipment : MonoBehaviour
         if (inst == null || !_inventory.RemoveOne(inst)) return false;
 
         if (_armor.TryGetValue(armor.Slot, out var prev))
-            _inventory.TryAdd(prev, 1, _armorInst.TryGetValue(armor.Slot, out var pi) ? pi.Quality : ItemQuality.Common);
+            ReturnToInventory(prev, _armorInst.TryGetValue(armor.Slot, out var pi) ? pi.Quality : ItemQuality.Common);
 
         _armor[armor.Slot]    = armor;
         _armorInst[armor.Slot] = inst;
@@ -121,7 +121,7 @@ public class Equipment : MonoBehaviour
         if (!_armor.TryGetValue(slot, out var armor)) return;
 
         _armorInst.TryGetValue(slot, out var inst);
-        _inventory.TryAdd(armor, 1, inst?.Quality ?? ItemQuality.Common);
+        ReturnToInventory(armor, inst?.Quality ?? ItemQuality.Common);
         _armor.Remove(slot);
         _armorInst.Remove(slot);
         OnEquipChanged?.Invoke(this);
@@ -139,6 +139,23 @@ public class Equipment : MonoBehaviour
         _bb.AttackRange = MainHand != null
             ? MainHand.AttackRange
             : (_unitData != null ? _unitData.AttackRange : 1.5f);
+    }
+
+    // 벗은 것을 배낭에 돌려준다. **자리가 없으면 발밑에 내려놓는다.**
+    //
+    // 전에는 `TryAdd`의 반환값을 안 보고 넣어서, 격자가 꽉 차면 **차고 있던 장비가 조용히
+    // 사라졌다.** 하나를 빼면 하나가 들어갈 자리가 생길 것 같지만 그렇지 않다 — 새로 차는
+    // 물건이 스택 안에 있었으면(철검 3개 중 하나) 빼도 칸이 안 비고, 벗은 것은 새 칸을 찾는다.
+    //
+    // 교체를 거절하는 길도 있었지만, 그러면 "왜 안 입지"가 되고 원인이 화면에 안 남는다.
+    // 내려놓으면 눈에 보이고 운반이 알아서 창고로 옮긴다 — 이 프로젝트의 증발 방지 관례다.
+    void ReturnToInventory(ItemData item, ItemQuality quality)
+    {
+        if (item == null) return;
+        if (_inventory != null && _inventory.TryAdd(item, 1, quality) > 0) return;
+
+        DroppedItem.Spawn(item, 1, transform.position + Vector3.up * 0.15f, quality);
+        Debug.Log($"[Equipment] {gameObject.name}: 배낭에 자리가 없어 {item.ItemName}을 발밑에 내려놓았습니다.");
     }
 
     ItemInstance FindInInventory(ItemData data)

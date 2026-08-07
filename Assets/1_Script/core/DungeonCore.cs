@@ -67,16 +67,27 @@ public class DungeonCore : MonoBehaviour
         UnitBrain.OnUnitSpawned -= OnUnitSpawned;
         UnitBrain.OnUnitDied    -= OnUnitDied;
         Destroy(_mat);
+        Release();   // 막아 두었던 칸을 돌려준다 — 안 풀면 핵이 사라진 자리가 영영 막힌다
+    }
+
+    // 한도가 세는 것은 **내가 소환한** 하수인이다. 같은 종족 에셋(`MinionData`)을 쓰는 야생
+    // 개체가 습격으로 들어와도 세면, 적이 몰려올수록 내 소환 한도가 줄어든다.
+    // 종족 데이터의 형태가 아니라 세력이 소속을 정한다.
+    static bool IsMyMinion(UnitBrain unit)
+    {
+        if (unit == null || !(unit.Data is MinionData)) return false;
+        var faction = unit.GetComponent<Faction>();
+        return faction != null && faction.IsPlayer;
     }
 
     void OnUnitSpawned(UnitBrain unit)
     {
-        if (unit.Data is MinionData) _currentMinionCount++;
+        if (IsMyMinion(unit)) _currentMinionCount++;
     }
 
     void OnUnitDied(UnitBrain unit)
     {
-        if (unit.Data is MinionData) _currentMinionCount = Mathf.Max(0, _currentMinionCount - 1);
+        if (IsMyMinion(unit)) _currentMinionCount = Mathf.Max(0, _currentMinionCount - 1);
     }
 
     // 씬에 저작된 부양 높이(표면 위로 얼마나 떠 있는가). 핵 이전 시 이 높이를 유지한다.
@@ -90,8 +101,62 @@ public class DungeonCore : MonoBehaviour
 
         // Floor는 OnEnable에서 등록되므로 이 시점엔 바닥 높이가 준비돼 있다.
         _hoverOffset = transform.position.y - SurfaceHeightAt(transform.position);
+
+        StopBeingAWall();
+        Occupy(transform.position);
+
         // 초기 영역 확정 → 핵 생성 전에 OnEnable한 건물들이 휴면 여부 재평가하도록.
         RaiseTerritoryChanged();
+    }
+
+    // ── 통행 차단은 **한 칸만** ───────────────────────────────────────────────
+    //
+    // 핵도 건물처럼 **자기 타일 하나**만 막는다(서브코어가 `PlacedBuilding`으로 하는 것과 같다).
+    // 핵은 씬에 미리 놓인 오브젝트라 그 경로를 안 타서, 전에는 **콜라이더로만** 막혔다 —
+    // 그런데 길찾기의 장애물 검사는 셀마다 높이 ±2짜리 상자를 던지므로, **떠 있는 구슬**
+    // (y=2, 반지름 0.5)이 발밑 지면 칸에 걸리고 셀 경계에 걸쳐 **2×2가 통째로** 막혔다.
+    // 보이는 것은 공중의 구슬인데 그 밑을 못 지나가니 설명할 길이 없었다.
+    Vector2Int? _occupiedTile;
+
+    void Occupy(Vector3 worldPosition)
+    {
+        var map = MapManager.Instance;
+        if (map == null) return;
+
+        var tile = map.WorldToTile(worldPosition);
+        if (_occupiedTile == tile) return;
+
+        Release();
+        map.SetTile(tile, TileData.MakeImpassable());
+        _occupiedTile = tile;
+    }
+
+    void Release()
+    {
+        var map = MapManager.Instance;
+        if (map != null && _occupiedTile.HasValue)
+            map.SetTile(_occupiedTile.Value, TileData.MakePassable());
+        _occupiedTile = null;
+    }
+
+    // 점유로 막게 됐으므로 콜라이더까지 장애물이면 **같은 것을 두 번 막는다** — 그리고
+    // 그쪽이 더 넓게 번진다. 장애물 레이어(`Wall`)에 있으면 내려놓는다.
+    //
+    // 씬 값을 코드가 덮는 건 보통 피하지만, 여기선 그대로 두면 위 점유가 아무 효과가 없다
+    // (넓은 쪽이 이긴다). 무엇을 왜 바꿨는지 한 번 찍어 둔다.
+    void StopBeingAWall()
+    {
+        var finder = FindFirstObjectByType<HierarchicalPathfinder>();
+        if (finder == null) return;
+
+        int mask = finder.ObstacleLayer.value;
+        if ((mask & (1 << gameObject.layer)) == 0) return;
+
+        string was = LayerMask.LayerToName(gameObject.layer);
+        gameObject.layer = 0;   // Default — 클릭 판정은 레이어 마스크를 안 쓰므로 그대로 된다
+        Debug.Log($"[던전 핵] 레이어를 '{was}'에서 'Default'로 내렸습니다 — " +
+                  "장애물 레이어에 있으면 떠 있는 콜라이더가 발밑 여러 칸을 막습니다. " +
+                  "통행 차단은 점유 타일 한 칸이 맡습니다.");
     }
 
     // 메인 핵 이전(relocate). 정착지 필드맵은 고정(200×200)이므로 그리드를 recenter하지 않는다.
@@ -103,6 +168,7 @@ public class DungeonCore : MonoBehaviour
         // Y는 목적지 표면 + 저작 부양 높이 — 일부러 띄워둔 핵이 이전 후 바닥에 박히지 않게.
         float y = SurfaceHeightAt(worldPosition) + _hoverOffset;
         transform.position = new Vector3(worldPosition.x, y, worldPosition.z);
+        Occupy(transform.position);   // 떠난 칸은 풀고 새 칸을 막는다
         RaiseTerritoryChanged();
     }
 

@@ -224,6 +224,19 @@ public class PawnMover : MonoBehaviour
             if (reached || passed) _coarseIndex++;
             else break;
         }
+
+        // **마지막 구간은 코스 웨이포인트가 아니라 진짜 목적지를 향한다.**
+        //
+        // 코스 라우트는 메소(4m)·L2(100m) **셀 중심**들의 나열이라, 마지막 점이 목적지와
+        // 최대 셀 반쪽만큼 어긋난다. 그걸 그대로 조향 목표로 쓰면 폰은 **셀 중심에 서서 멈추고**,
+        // `AdvanceWaypoint`가 다시 계획해도 같은 셀 중심이 나와 제자리를 맴돈다 —
+        // 그래서 목적지를 2~3m 앞에 두고 영영 못 좁혔다(연구대에 2.6m 앞에서 멈추던 것,
+        // "물리적으로 안 막힘 / 경로 있음 / 가는 길 전부 통행"이 나온 이유가 이것이다).
+        //
+        // 라우트는 **어느 복도로 갈지**를 정하는 안내지 도착점이 아니다. 마지막 칸은 로컬
+        // 정밀 경로(Theta*)가 알아서 잇는다.
+        if (_coarseIndex >= _coarseRoute.Count - 1) return _finalGoal;
+
         return _coarseRoute[_coarseIndex];
     }
 
@@ -556,6 +569,10 @@ public class PawnMover : MonoBehaviour
     }
 
     public bool HasTarget()  => _hasTarget;
+    // 지금 로컬 정밀 경로를 들고 있는가. 없으면 직선 폴백으로 가는 중이라 물체에 처박힌다 —
+    // 포기 진단이 "길을 못 찾은 것"과 "길은 있는데 못 간 것"을 가르는 데 쓴다.
+    public bool HasLocalPath => _localPath != null && _localPath.Count > 0;
+
     public bool IsMoving()   => _hasTarget;
     public void SetDestination(Vector3 pos) => SetMoveTarget(pos);
     public Vector3 Target()  => _currentTarget;

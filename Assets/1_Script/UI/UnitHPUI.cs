@@ -154,8 +154,10 @@ public class UnitHPUI : MonoBehaviour
     // (비플레이어를 무조건 "적"이라 부르면 중립 세력까지 적으로 표기된다)
     static string UnitTypeLabel(UnitBrain brain, Faction faction)
     {
-        if (brain.Data is MinionData) return "하수인";
-        if (brain.Data is NpcData npc) return npc.NpcType switch
+        // **"하수인"은 내 편일 때만이다.** 같은 종족 에셋을 쓰는 야생 개체가 습격으로
+        // 들어오면 적 머리 위에 "하수인"이 뜬다 — 소속을 정하는 건 세력이지 에셋 클래스가 아니다.
+        if (brain.Data is MinionData && faction != null && faction.IsPlayer) return "하수인";
+        if (brain.Npc != null) return brain.Npc.NpcType switch
         {
             NpcType.Villager      => "주민",
             NpcType.Guard         => "경비",

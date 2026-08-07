@@ -1,0 +1,77 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbc8f1bbd5a33cc459268aa213a14f2e, type: 3}
+  m_Name: Merchant_Food
+  m_EditorClassIdentifier: Assembly-CSharp::MerchantData
+  MerchantType: 4
+  DailySlotCount: 5
+  ItemPool:
+  - Item: {fileID: 11400000, guid: b9fba2efe31739045b3f074eacdec853, type: 2}
+    ItemId: 
+    BasePrice: 0
+    MinStock: 3
+    MaxStock: 8
+    Weight: 3
+    Quality: 0
+  - Item: {fileID: 11400000, guid: cfef554abd5ba524c89d8adbc2bd1e63, type: 2}
+    ItemId: 
+    BasePrice: 0
+    MinStock: 2
+    MaxStock: 6
+    Weight: 2.5
+    Quality: 0
+  - Item: {fileID: 11400000, guid: 50b6c8856b1d53144a0a45176ff30713, type: 2}
+    ItemId: 
+    BasePrice: 0
+    MinStock: 2
+    MaxStock: 5
+    Weight: 2
+    Quality: 0
+  - Item: {fileID: 0}
+    ItemId: herbs
+    BasePrice: 0
+    MinStock: 4
+    MaxStock: 10
+    Weight: 3
+    Quality: 0
+  - Item: {fileID: 0}
+    ItemId: vegetables
+    BasePrice: 0
+    MinStock: 4
+    MaxStock: 10
+    Weight: 3
+    Quality: 0
+  - Item: {fileID: 11400000, guid: 051cc962dcb6c70499b16d2ebf7ff145, type: 2}
+    ItemId: 
+    BasePrice: 0
+    MinStock: 2
+    MaxStock: 6
+    Weight: 2
+    Quality: 0
+  - Item: {fileID: 11400000, guid: f6277019a1d7c5e4b97f93bd6234f845, type: 2}
+    ItemId: 
+    BasePrice: 0
+    MinStock: 1
+    MaxStock: 4
+    Weight: 1
+    Quality: 0
+  - Item: {fileID: 11400000, guid: 14edd8f33006f5b4eabaa46295dcc25c, type: 2}
+    ItemId: 
+    BasePrice: 0
+    MinStock: 2
+    MaxStock: 6
+    Weight: 1
+    Quality: 0
+  GoldItem: {fileID: 11400000, guid: c16db23994cf9e04e9b0c69516cdcdcb, type: 2}
+  PriceMultiplier: 1.0
+  ItemOverrides: []
+  SellMultiplier: 0.5

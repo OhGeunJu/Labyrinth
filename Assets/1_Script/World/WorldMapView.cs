@@ -385,8 +385,8 @@ public class WorldMapView : MonoBehaviour
                 break;
 
             case WorldNodeContent.Town:
-                options.Add(WorldMenuOption.Blocked("마을을 둘러본다", "준비 중"));
-                options.Add(WorldMenuOption.Blocked("시장에 간다",     "준비 중"));
+                options.Add(VillageOption(pt, node));
+                options.Add(MarketOption(pt, node));
                 break;
 
             case WorldNodeContent.EnemyLair:
@@ -490,6 +490,187 @@ public class WorldMapView : MonoBehaviour
             sb.Append($"{deposits[i].DisplayName} {deposits[i].Amount}");
         }
         return sb.ToString();
+    }
+
+    // ── 마을 둘러보기 ─────────────────────────────────────────────────────────
+
+    const string VillageLabel = "마을을 둘러본다";
+
+    WorldMenuOption VillageOption(PartyToken pt, Vector2Int node)
+    {
+        if (pt == null || pt.Party.Members.Count == 0)
+            return WorldMenuOption.Blocked(VillageLabel, "여기 온 원정대가 없다");
+
+        return WorldMenuOption.Ready(VillageLabel, () => OpenVillageMenu(pt, node));
+    }
+
+    // 마을 안 — **메뉴 안의 메뉴**(채집기지 건설과 같은 꼴). 지금 여기서 하는 일은 인력 영입이고,
+    // 나중에 소문·의뢰가 붙어도 이 자리에 줄이 늘 뿐이다.
+    //
+    // 왜 시장은 여기 안 넣었나: 시장은 **밖에서 바로 가는 곳**이다(M&B도 마을 메뉴에서
+    // "시장에 간다"가 나란히 있다). 한 단계 더 들어가게 하면 자주 하는 일이 더 멀어진다.
+    void OpenVillageMenu(PartyToken pt, Vector2Int node)
+    {
+        if (menuPanel == null) return;
+
+        _menuParty = pt;
+
+        var wm      = WorldMap.Instance;
+        var tile    = wm.GetTile(node);
+        var gold    = TownMarket.GoldAt(node);
+        var party   = pt.Party;
+        var account = gold != null ? new PartyAccount(gold, party.Members) : null;
+        var options = new List<WorldMenuOption>();
+
+        var recruits = TownRecruits.At(node);
+        int standing = 0;
+
+        foreach (var r in recruits)
+        {
+            if (r.Hired) continue;
+            standing++;
+
+            string label = $"{r.Name}을(를) 고용한다 — {r.Summary}";
+
+            if (account == null)
+                options.Add(WorldMenuOption.Blocked(label, "이 마을엔 오가는 돈이 없다"));
+            else if (account.GoldAmount < r.Cost)
+                options.Add(WorldMenuOption.Blocked(label, "골드 부족"));
+            else
+            {
+                var captured = r;
+                options.Add(WorldMenuOption.Ready(label, () => Hire(pt, node, captured, account)));
+            }
+        }
+
+        if (standing == 0)
+            options.Add(WorldMenuOption.Blocked("사람을 구한다", "지금은 나설 사람이 없다"));
+
+        options.Add(WorldMenuOption.Ready("마을을 나선다", () => OpenMenu(pt, node)));
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"{tile.Content.DisplayName()} · {tile.Biome.DisplayName()} · ({node.x}, {node.y})\n");
+        sb.Append(account != null
+            ? $"원정대 골드 — {account.GoldAmount} G\n"
+            : "<color=#FFFFFF80>이 마을엔 오가는 돈이 없다</color>\n");
+        sb.Append(standing > 0
+            ? $"<color=#FFFFFF80>나설 사람 {standing}명 — 하루가 지나면 바뀐다</color>"
+            : "<color=#FFFFFF80>오늘은 나설 사람이 없다 — 하루가 지나면 바뀐다</color>");
+
+        grid.SetHighlight(node);
+        menuPanel.Open(VillageLabel, sb.ToString(), MenuArtFor(tile), tile.Biome.Color(), options);
+    }
+
+    // 고용 — **돈을 먼저 뺀다.** 폰을 먼저 찍으면 값을 못 치렀을 때 지울 것이 생기고,
+    // 그 사이에 다른 것이 그 폰을 집을 수 있다(`OnUnitSpawned`은 활성화 때 도는데,
+    // 여기선 꺼진 채로 만들므로 아직 아무도 모른다 — 그래도 순서를 헷갈리게 둘 이유는 없다).
+    void Hire(PartyToken pt, Vector2Int node, TownRecruit recruit, PartyAccount account)
+    {
+        if (recruit == null || recruit.Prefab == null || account == null) return;
+
+        if (account.TakeGold(recruit.Cost) < recruit.Cost)
+        {
+            EventNotificationUI.Notify("고용 실패", "원정대에 골드가 모자랍니다.");
+            OpenVillageMenu(pt, node);
+            return;
+        }
+
+        // **꺼진 채로 만든다.** 원정대 멤버는 필드맵에서 빠져 있는 상태가 정상이고
+        // (`WorldMapView.AddMembers`가 그렇게 한다), 거점에 들어갈 때 `EnterSettlement`가
+        // 자리를 잡아 켠다 — 새로 온 사람도 같은 길을 타야 한 곳에서만 살아난다.
+        var go = Instantiate(recruit.Prefab);
+        go.name = recruit.Prefab.name;
+        go.SetActive(false);
+
+        var brain = go.GetComponent<UnitBrain>();
+        if (brain == null)
+        {
+            Debug.LogError($"[마을] 고용한 프리팹에 UnitBrain이 없습니다 — {recruit.Prefab.name}");
+            Destroy(go);
+            account.GiveGold(recruit.Cost);   // 값을 돌려준다
+            return;
+        }
+
+        // **메뉴에서 본 그 사람**을 입힌다 — 이름·스탯·몸집이 명세에 다 적혀 있다.
+        // 안 입히면 `Awake`가 굴린 딴 사람이 합류한다.
+        brain.ApplySpec(recruit.Spec);
+        pt.Party.Members.Add(brain);
+        recruit.Hired = true;
+
+        EventNotificationUI.Notify("합류",
+            $"{recruit.Name}이(가) 원정대에 합류했습니다. ({recruit.Cost}G)");
+
+        OpenVillageMenu(pt, node);   // 목록을 그 자리에서 갱신
+    }
+
+    // ── 마을 시장 ─────────────────────────────────────────────────────────────
+
+    const string MarketLabel = "시장에 간다";
+
+    WorldMenuOption MarketOption(PartyToken pt, Vector2Int node)
+    {
+        if (pt == null || pt.Party.Members.Count == 0)
+            return WorldMenuOption.Blocked(MarketLabel, "여기 온 원정대가 없다");
+
+        if (TownMarket.ShopsAt(node).Count == 0)
+            return WorldMenuOption.Blocked(MarketLabel, "이 마을엔 시장이 없다");
+
+        return WorldMenuOption.Ready(MarketLabel, () => OpenMarketMenu(pt, node));
+    }
+
+    // 시장 안 — **상인마다 한 줄**(재료·식료·무기·방어구). 마을 둘러보기와 같은 꼴이다.
+    //
+    // 전엔 마을에 상인이 하나뿐이라 [시장에 간다]가 곧 그 상인이었다. 종류를 나누면
+    // "이 마을엔 무기 상인이 있나"가 지도를 도는 이유가 되고, 어느 마을에서 무엇을 파는지가
+    // 기억할 만한 정보가 된다.
+    void OpenMarketMenu(PartyToken pt, Vector2Int node)
+    {
+        if (menuPanel == null) return;
+
+        _menuParty = pt;
+
+        var wm      = WorldMap.Instance;
+        var tile    = wm.GetTile(node);
+        var party   = pt.Party;
+        var shops   = TownMarket.ShopsAt(node);
+        var gold    = TownMarket.GoldAt(node);
+        var account = gold != null ? new PartyAccount(gold, party.Members) : null;
+        var options = new List<WorldMenuOption>();
+
+        foreach (var shop in shops)
+        {
+            string label = $"{shop.DisplayName}에게 간다";
+
+            if (shop.Data == null || shop.Data.GoldItem == null)
+            {
+                options.Add(WorldMenuOption.Blocked(label, "이 상인에겐 골드 설정이 없다"));
+                continue;
+            }
+
+            var captured = shop;
+            options.Add(WorldMenuOption.Ready(label, () =>
+            {
+                CloseMenu();   // 상점 창이 메뉴를 가린다 — 둘을 겹쳐 두면 뒤가 안 보인다
+
+                MerchantUI.OpenFor(
+                    captured,
+                    new PartyAccount(captured.Data.GoldItem, party.Members),
+                    party.Members,
+                    $"{captured.DisplayName} · ({node.x}, {node.y})");
+            }));
+        }
+
+        options.Add(WorldMenuOption.Ready("시장을 나선다", () => OpenMenu(pt, node)));
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"{tile.Content.DisplayName()} 시장 · {tile.Biome.DisplayName()} · ({node.x}, {node.y})\n");
+        sb.Append(account != null
+            ? $"원정대 골드 — {account.GoldAmount} G\n"
+            : "<color=#FFFFFF80>이 마을엔 오가는 돈이 없다</color>\n");
+        sb.Append($"<color=#FFFFFF80>상인 {shops.Count}명 — 진열은 하루가 지나면 바뀐다</color>");
+
+        grid.SetHighlight(node);
+        menuPanel.Open(MarketLabel, sb.ToString(), MenuArtFor(tile), tile.Biome.Color(), options);
     }
 
     // ── 탐험(조사) ────────────────────────────────────────────────────────────

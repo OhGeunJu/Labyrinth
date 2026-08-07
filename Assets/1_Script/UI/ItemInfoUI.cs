@@ -85,11 +85,15 @@ public class ItemInfoUI : MonoBehaviour
             icon.color  = item.Icon != null ? Color.white : new Color(1, 1, 1, 0);
         }
 
-        string qualName = quality.DisplayName();
-        if (displayNameText) displayNameText.text = $"[{qualName}] {item.ItemName}";
+        // 이름줄엔 **이름만**. 등급은 바로 아랫줄에 색까지 입혀 나오므로, 이름 앞에도 붙이면
+        // 같은 말이 두 번이고 정작 긴 이름이 잘린다.
+        if (displayNameText) displayNameText.text = item.ItemName;
+
+        // 아랫줄 = **등급 · 종류**. 등급만으로는 "희귀한 무엇인가"를 알 수 없다 —
+        // 종류가 같이 있어야 목록에서 집어 든 것이 무엇인지 한 줄로 읽힌다.
         if (qualityText)
         {
-            qualityText.text  = qualName;
+            qualityText.text  = $"{quality.DisplayName()} · {item.TypeName}";
             qualityText.color = QualityColor(quality);
         }
 
@@ -141,7 +145,8 @@ public class ItemInfoUI : MonoBehaviour
             SetRow(statDamageRow,  null);
             SetRow(statDefenseRow, $"방어: {ad.DamageReduction * mult:F1}");
             SetRow(statWeightRow,  $"무게: {ad.Weight:F1}");
-            SetRow(statExtraRow,   $"슬롯: {ad.Slot}");
+            // 어느 칸에 입는지는 위 종류줄("몸통 방어구")이 이미 말한다 — 여기 또 적지 않는다.
+            SetRow(statExtraRow,   null);
             return true;
         }
         if (item is FoodData fd)

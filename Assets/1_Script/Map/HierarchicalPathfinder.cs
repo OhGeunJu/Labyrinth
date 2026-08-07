@@ -29,6 +29,9 @@ public class HierarchicalPathfinder : MonoBehaviour
     [Header("장애물 레이어")]
     [SerializeField] LayerMask obstacleLayer = ~0;
 
+    // 무엇이 벽으로 취급되는가 — 자기 콜라이더가 여기 걸리는지 알아야 하는 쪽(핵 등)이 읽는다.
+    public LayerMask ObstacleLayer => obstacleLayer;
+
     [Header("지형 비용")]
     [SerializeField] float slopeCostMult   = 0.05f;  // 경사도 1도당 추가 비용 배율
     [SerializeField] float maxWalkableSlope = 45f;    // 이 이상이면 불가

@@ -3,6 +3,8 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "DungeonColony/SeedData")]
 public class SeedData : ItemData
 {
+    public override string TypeName => "씨앗";
+
     [Header("농사")]
     public ItemData HarvestItem;
     public int      HarvestAmount   = 3;

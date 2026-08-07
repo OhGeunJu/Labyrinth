@@ -57,6 +57,21 @@ public class UnitBlackboard
     // 자동 해제되므로, 계속 쫓아다니는 상태를 표현할 수 없다(`HoldPosition`을 따로 둔 것과 같은 이유).
     public Transform FollowTarget;
 
+    // 주우러 갈 드롭. 우클릭 메뉴의 [줍는다]가 켜고, 주웠거나 남이 먼저 가져가면
+    // `PickUpNode`가 스스로 끈다.
+    // **자동 운반(`GroundHaulJob`)과 다른 축이다** — 그건 "창고로 가져다 놓아라"는 큐 작업이고
+    // 이건 "저걸 네가 들어라"는 직접 명령이다. 그래서 큐를 안 타고 작업 설정에도 안 걸린다.
+    public DroppedItem PickUpTarget;
+
+    // 이번 줍기 명령이 **적재 한도를 무시하는가**. 폰 하나만 골라 시켰을 때 켠다 —
+    // 그건 "저걸 네가 들어라"이지 일감 배분이 아니므로, 손으로 배낭에 넣는 것과 같아야 한다
+    // (과적은 막는 대신 이동·공격 속도로 갚는다). 여럿을 골랐을 때는 한도를 지키는 폰이 간다.
+    public bool PickUpIgnoreLimit;
+
+    // 주운 뒤 바로 착용하는가(우클릭 [착용한다]). 원래 차고 있던 것은 `Equipment`가
+    // 배낭으로 돌려준다 — 교체는 이미 그렇게 동작하므로 여기서 따로 벗기지 않는다.
+    public bool PickUpThenEquip;
+
     // 상태
     public bool IsDrafted;
     public bool IsUnarmed  = true;

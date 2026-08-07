@@ -4,9 +4,10 @@ using UnityEngine;
 
 // 원정대 편성 — **폰이 갑자기 사라지지 않게** 하는 장치.
 //
-// 편성을 누르면 즉시 없어지는 게 아니라, 고른 폰들이 **던전 핵 앞으로 걸어와 모인다**.
+// 편성을 누르면 즉시 없어지는 게 아니라, 고른 폰들이 **핵의 집결 자리를 둘러싸고 모인다**.
+// 그 자리는 저작물이다 — 핵의 `WorkSpot`(건설 모드에서 표식이 보인다)이 원의 중심이 된다.
 // 전원이 도착했을 때 비로소 한꺼번에 필드맵에서 빠지고 원정대가 된다(림월드의 대상(隊商) 편성과 같다).
-// 돌아올 때 스폰되는 자리와 **같은 지점**이라 나가고 들어오는 문이 하나로 읽힌다.
+// 나가는 자리와 돌아오는 자리가 둘 다 핵이라 문이 하나로 읽힌다.
 //
 // 왜 한 명씩 도착하는 대로 빼지 않는가: "누구는 갔고 누구는 걸어가는 중"인 중간 상태가 생기면
 // 취소했을 때 어디까지 되돌릴지가 애매해진다. 전원 집결 후 일괄 출발이면 취소가 깨끗하다.
@@ -16,10 +17,14 @@ public class ExpeditionFormation : MonoBehaviour
 {
     public static ExpeditionFormation Instance { get; private set; }
 
-    [Tooltip("집결 지점에 이만큼 다가오면 도착으로 본다(수평 거리).")]
-    [SerializeField] float arriveRadius = 1.8f;
-    [Tooltip("집결 지점 주변에 폰을 벌려 세우는 간격.")]
-    [SerializeField] float spacing = 1.2f;
+    [Tooltip("집결 원의 반지름. **이 안에 들어오면 도착이다.** 인원과 무관하게 고정 — " +
+             "사람이 늘면 원이 커지는 게 아니라 촘촘히 선다.")]
+    [SerializeField] float gatherRadius = 4f;
+    [Tooltip("서라고 보내는 자리를 판정 원보다 이만큼 **안쪽**에 잡는다. 그래야 걸어오다 " +
+             "원을 확실히 넘는다 — 판정선 위에 세우면 경계에서 아슬아슬해진다.")]
+    [SerializeField] float approachInset = 1.2f;
+    [Tooltip("자리가 원 밖으로 밀렸을 때의 폴백 — 제 자리 이만큼 안이면 도착. 이웃 칸(1.0)보다 작아야 한다.")]
+    [SerializeField] float arriveTolerance = 0.8f;
     [Tooltip("길이 막혀 못 오는 폰을 이만큼마다 다시 보낸다(초).")]
     [SerializeField] float nudgeInterval = 2f;
     [Tooltip("이 횟수만큼 다시 보내도 못 오면 '갈 수 없음'으로 알린다(계속 시도는 한다).")]
@@ -39,6 +44,7 @@ public class ExpeditionFormation : MonoBehaviour
     readonly HashSet<UnitBrain> _arrived = new();
     readonly Dictionary<UnitBrain, int> _nudges = new();
     readonly List<UnitBrain> _stuck = new();       // 집결 지점까지 갈 수 없는 폰들
+    Vector3 _center;                               // 집결 원의 중심 — 도착 판정의 기준
     float _nudgeTimer;
 
     public int StuckCount => _stuck.Count;
@@ -69,6 +75,20 @@ public class ExpeditionFormation : MonoBehaviour
 
     void OnDestroy() { if (Instance == this) Instance = null; }
 
+    // **목표는 판정선보다 안쪽이어야 한다.** 원 위에 세우면 폰이 경계에서 멈춰 판정이
+    // 부동소수점 오차에 걸린다 — 안쪽으로 보내면 걸어오다 원을 확실히 넘는다.
+    //
+    // 폴백(제 자리 근처) 쪽은 이웃 칸에 닿으면 안 된다. 자리는 타일 중심에 잡히므로 가장
+    // 가까운 남의 자리가 1.0 떨어져 있고, 그보다 넓으면 옆 사람 칸에서 도착이 되어 뭉친다
+    // (전에 간격 1.2에 도착 반경 1.8이었고 실제로 한 덩어리로 섰다).
+    // 아래로는 폰의 정지 오차(`PawnMover.arriveDistance` 0.5)보다 넉넉해야 판정이 걸린다.
+    void OnValidate()
+    {
+        gatherRadius    = Mathf.Max(1.5f, gatherRadius);
+        approachInset   = Mathf.Clamp(approachInset, 0.5f, gatherRadius - 1f);
+        arriveTolerance = Mathf.Clamp(arriveTolerance, 0.6f, 0.9f);
+    }
+
     // ── 시작 ─────────────────────────────────────────────────────────────────
 
     // 고른 폰들에게 집결을 명령한다. 이미 편성 중이면 거절(중복 편성 방지).
@@ -83,15 +103,15 @@ public class ExpeditionFormation : MonoBehaviour
             return false;
         }
 
-        var center = core.GetSpawnPosition();
-        var spots  = Formation(center, members.Count);
+        _center   = GatherCenter(core);
+        var spots = Formation(_center, members.Count);
 
         for (int i = 0; i < members.Count; i++)
         {
             var brain = members[i];
             if (brain == null) continue;
 
-            var spot = GroundSnap(spots[i]);
+            var spot = spots[i];
             _gathering.Add(brain);
             _spots[brain] = spot;
             Order(brain, spot);
@@ -137,10 +157,7 @@ public class ExpeditionFormation : MonoBehaviour
 
             if (_arrived.Contains(brain)) continue;
 
-            // **수평 거리로만 잰다.** 집결 지점은 `DungeonCore.GetSpawnPosition()`에서 나오는데
-            // 핵은 `_hoverOffset`만큼 떠 있어 그 Y가 그대로 섞인다 —
-            // 3D 거리로 재면 폰이 발밑까지 와도 높이 차 때문에 영영 "도착"이 안 된다.
-            if (FlatDistance(brain.transform.position, _spots[brain]) <= arriveRadius)
+            if (HasArrived(brain))
             {
                 _arrived.Add(brain);
                 // 도착한 폰은 **제자리 대기**로 잡아둔다. `ManualMove`만으로는 안 된다 —
@@ -202,6 +219,24 @@ public class ExpeditionFormation : MonoBehaviour
         }
 
         return changed;
+    }
+
+    // **집결 원 안에 들어오면 도착이다** — 각자의 자리에 정확히 서야 하는 게 아니다.
+    //
+    // 자리는 "어디쯤 서라"는 안내지 조건이 아니다. 조건으로 삼으면 그 칸에 못 서는 폰 하나가
+    // 출발을 통째로 막는다 — 다른 폰에 밀려 반 칸 비켜서기만 해도 그렇다. 폰은 원보다 **안쪽**
+    // 자리로 걸어오므로, 제 자리로 가는 길에 원을 반드시 넘는다.
+    //
+    // 자기 자리 판정을 폴백으로 남긴다: 자리 스냅(`Standable`)이 막힌 칸을 피하다 자리를
+    // 원 밖으로 밀어낼 수 있고, 그때는 원 판정이 영영 안 걸린다.
+    //
+    // **수평 거리로만 잰다.** 핵과 그 자식(`WorkSpot`)은 `_hoverOffset`만큼 떠 있어
+    // 3D 거리로 재면 폰이 발밑까지 와도 높이 차 때문에 영영 "도착"이 안 된다.
+    bool HasArrived(UnitBrain brain)
+    {
+        var pos = brain.transform.position;
+        return FlatDistance(pos, _center) <= gatherRadius
+            || FlatDistance(pos, _spots[brain]) <= arriveTolerance;
     }
 
     static float FlatDistance(Vector3 a, Vector3 b)
@@ -279,19 +314,87 @@ public class ExpeditionFormation : MonoBehaviour
 
     // ── 자리 배치 ────────────────────────────────────────────────────────────
 
-    // 집결 지점 주변 격자. 한 점에 모두 보내면 서로 밀어내며 도착 판정이 흔들린다.
+    // 집결 기준점 — **저작한 자리**다.
+    //
+    // 작업대·연구대가 `WorkSpot`으로 "폰이 서는 자리"를 정하는 것과 **같은 방식**을 쓴다.
+    // 핵에 `WorkSpot`이 있으면 그 칸이 원의 중심이고, 없으면 핵 주변에서 설 수 있는 칸을 찾는다
+    // (`WorkSpot.TileFor`가 둘 다 처리한다). 덕분에 집결 장소가 데이터가 되고, **건설 모드에서
+    // 표식이 보이므로** 그 자리를 막는 배치를 눈으로 피할 수 있다.
+    static Vector3 GatherCenter(DungeonCore core)
+    {
+        var map = MapManager.Instance;
+        if (map == null) return core.transform.position;
+
+        return GroundSnap(map.TileToWorld(WorkSpot.TileFor(core)));
+    }
+
+    // **기준점을 둘러싸는 원 하나.** 반지름은 고정이고, 사람이 늘면 원이 커지는 게 아니라
+    // 촘촘히 선다 — 인원에 따라 집결 범위가 달라지면 "저기 모인다"를 예측할 수 없다.
+    //
+    // 자리는 판정 원보다 `approachInset`만큼 **안쪽**에 잡는다. 판정선 위에 세우면 폰이
+    // 경계에 딱 멈춰 도착이 아슬아슬해지지만, 안쪽으로 보내면 걸어오다 원을 확실히 넘는다.
+    //
+    // 각도가 촘촘해져 두 자리가 같은 칸으로 떨어지면 `Standable`이 옆의 빈 칸으로 밀어낸다.
+    // 원이 감당 못 할 만큼 많아졌을 때 알아서 번지는 것과, 인원마다 원을 다시 그리는 것은 다르다.
     Vector3[] Formation(Vector3 center, int count)
     {
         var result = new Vector3[count];
-        int cols = Mathf.CeilToInt(Mathf.Sqrt(count));
+        var used   = new HashSet<Vector2Int>();
+        var map    = MapManager.Instance;
+
+        float radius = Mathf.Max(0.5f, gatherRadius - approachInset);
 
         for (int i = 0; i < count; i++)
         {
-            int row = i / cols, col = i % cols;
-            float x = (col - (cols - 1) * 0.5f) * spacing;
-            float z = (row - (Mathf.CeilToInt(count / (float)cols) - 1) * 0.5f) * spacing;
-            result[i] = center + new Vector3(x, 0f, z);
+            float a = i * (Mathf.PI * 2f / count);
+            var   p = center + new Vector3(Mathf.Cos(a) * radius, 0f, Mathf.Sin(a) * radius);
+            result[i] = Standable(p, used, map);
         }
         return result;
+    }
+
+    // 자리를 **폰이 실제로 설 수 있는 칸**으로 옮긴다. 원 위의 점은 건물·자원 노드·핵 위에
+    // 떨어질 수 있는데, 그러면 그 폰은 영영 도착하지 못하고 출발이 통째로 막힌다
+    // (`NudgeStragglers`가 몇 번 뒤에 알리긴 하지만, 애초에 안 보내는 게 낫다).
+    Vector3 Standable(Vector3 world, HashSet<Vector2Int> used, MapManager map)
+    {
+        if (map == null) return GroundSnap(world);
+
+        var tile = FreeTileNear(map, map.WorldToTile(world), used);
+        used.Add(tile);
+        return GroundSnap(map.TileToWorld(tile));
+    }
+
+    // `MapManager.FindWorkableNear`와 같은 고리 탐색이지만 **이미 배정한 칸을 뺀다** —
+    // 그게 없으면 막힌 자리 여럿이 같은 대체 칸으로 몰려 한 자리에 겹쳐 선다.
+    static Vector2Int FreeTileNear(MapManager map, Vector2Int center, HashSet<Vector2Int> used,
+                                   int maxRadius = 4)
+    {
+        if (map.IsWorkable(center) && !used.Contains(center)) return center;
+
+        for (int r = 1; r <= maxRadius; r++)
+        {
+            Vector2Int best  = center;
+            float      bestD = float.MaxValue;
+            bool       found = false;
+
+            for (int dx = -r; dx <= r; dx++)
+            for (int dy = -r; dy <= r; dy++)
+            {
+                // 이번 껍질만 본다 — 안쪽은 앞선 반경에서 이미 봤다.
+                if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+
+                var t = new Vector2Int(center.x + dx, center.y + dy);
+                if (used.Contains(t) || !map.IsWorkable(t)) continue;
+
+                float d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = t; found = true; }
+            }
+
+            if (found) return best;
+        }
+
+        // 주변이 전부 막혔다 — 원래 자리를 준다. 못 오면 `NudgeStragglers`가 누구인지 알린다.
+        return center;
     }
 }

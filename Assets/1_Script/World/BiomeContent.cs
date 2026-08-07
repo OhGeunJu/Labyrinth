@@ -18,6 +18,13 @@ public static class BiomeContent
             if (d != null) _byBiome[d.Biome] = d;
     }
 
+    // 실린 바이옴 데이터 전부. 한 바이옴에 없는 것을 다른 바이옴에서 빌려 쓸 때 훑는다
+    // (`TownRecruits` — 마을에 아무도 없는 것보다 옆 지역 사람이라도 서 있는 편이 낫다).
+    public static IEnumerable<BiomeContentData> All
+    {
+        get { EnsureLoaded(); return _byBiome.Values; }
+    }
+
     public static BiomeContentData Get(Biome b)
     {
         EnsureLoaded();

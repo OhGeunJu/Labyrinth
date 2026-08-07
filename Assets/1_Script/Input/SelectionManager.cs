@@ -15,6 +15,7 @@ public class SelectionManager : MonoBehaviour
     Camera _cam;
     Vector2 _dragStart;
     bool _isDragging;
+    bool _pressOverUI;   // 이번 클릭이 UI 위에서 시작됐는가 — 놓을 때까지 월드 선택을 막는다
 
     readonly List<PawnMover> _selected = new();
     public IReadOnlyList<PawnMover> Selected => _selected;
@@ -54,13 +55,28 @@ public class SelectionManager : MonoBehaviour
         // 건설 모드·핵 이전 모드 중에는 클릭이 그쪽 전용 (선택으로 새어나가지 않게)
         if (BuildModeManager.IsActive || CoreRelocator.IsActive) return;
 
+        // **UI에서 시작한 클릭은 놓는 순간까지 통째로 무시한다.**
+        // 예전엔 누를 때만 UI를 보고 걸렀는데, 그러면 배낭에서 바닥으로 **드래그해 물건을
+        // 버릴 때** 누른 곳(UI)은 걸러지고 놓은 곳(월드)은 안 걸러진다. 그 사이 `_dragStart`가
+        // 지난번 값 그대로라 커서와 멀어져 있어 사각 선택으로 잡히고, `SelectByRect`가
+        // 엉뚱한 사각형으로 **선택을 통째로 지웠다** — 물건 하나 버릴 때마다 무리가 풀렸다.
         if (Mouse.current.leftButton.wasPressedThisFrame)
         {
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
-                return;
+            _pressOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+            if (_pressOverUI) return;
 
             _dragStart = Mouse.current.position.ReadValue();
             _isDragging = false;
+        }
+
+        if (_pressOverUI)
+        {
+            if (Mouse.current.leftButton.wasReleasedThisFrame)
+            {
+                _pressOverUI = false;
+                _isDragging  = false;
+            }
+            return;
         }
 
         if (Mouse.current.leftButton.isPressed)
@@ -120,6 +136,11 @@ public class SelectionManager : MonoBehaviour
                 return;
             }
 
+            // 바닥에 떨어진 물건도 **선택을 유지**한다(노드·시체와 같은 이유). 이걸로 할 일은
+            // 우클릭 메뉴에 있고, 그건 고른 폰에게 시키는 것이라 여기서 선택을 지우면
+            // 물건을 한 번 누를 때마다 폰을 다시 골라야 한다.
+            if (hit.collider.GetComponent<DroppedItem>() != null) return;
+
             var pawn = hit.collider.GetComponent<PawnMover>();
             var faction = hit.collider.GetComponent<Faction>();
             if (pawn != null && faction != null && faction.IsPlayer)
@@ -136,7 +157,8 @@ public class SelectionManager : MonoBehaviour
             // 상인이 제대로 된 NPC 폰이 되면서 아래 `PawnMover` 분기에 먼저 걸려,
             // 좌클릭하면 상점 대신 유닛 정보가 떴다 — 상점을 열 방법이 없어진 것이다.
             // 유닛으로서의 정보는 우클릭 메뉴와 상점 창에서 볼 수 있다.
-            if (pawn != null && hit.collider.GetComponent<IWorldClickable>() is { } pawnClickable)
+            if (pawn != null && hit.collider.GetComponent<IWorldClickable>() is { } pawnClickable
+                             && AcceptsClick(pawnClickable))
             {
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(null);
@@ -162,7 +184,7 @@ public class SelectionManager : MonoBehaviour
             // 클릭할 때마다 선택이 풀리면 "폰 고르기 → 건물 열기"를 매번 반대로 해야 한다.
             // (노드·시체도 같은 이유로 유지한다.)
             var clickable = hit.collider.GetComponent<IWorldClickable>();
-            if (clickable != null)
+            if (clickable != null && AcceptsClick(clickable))
             {
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(null);
@@ -184,6 +206,11 @@ public class SelectionManager : MonoBehaviour
         OnNodeSelected?.Invoke(null);
         OnPawnInspected?.Invoke(null);
     }
+
+    // 지금 이 클릭을 받을 수 있는가(`IClickGate`). 못 받으면 아래 분기로 흘러간다 —
+    // 쓰러진 상인은 상점 대신 폰 정보를 띄운다.
+    static bool AcceptsClick(IWorldClickable clickable)
+        => clickable is not IClickGate gate || gate.CanClick;
 
     void SelectByRect()
     {

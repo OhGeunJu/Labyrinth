@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c178bbde4e3a7d94e906402dd581da19, type: 3}
+  m_Name: Ev_Peddler
+  m_EditorClassIdentifier: Assembly-CSharp::GameEventData
+  EventName: "\uD589\uC0C1\uC778 \uBC29\uBB38"
+  Description: "\uB5A0\uB3CC\uC774 \uC7A5\uC0AC\uAFBC\uC774 \uAC70\uC810\uC5D0 \uB4E4\uB800\uC2B5\uB2C8\uB2E4.
+    \uC624\uB798 \uBA38\uBB3C\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
+  Icon: {fileID: 0}
+  Weight: 2
+  MinGameTime: 300
+  EventType: 1
+  EnemyPrefabs: []
+  EnemyCount: 0
+  MerchantPrefabs:
+  - {fileID: 7289360336258315712, guid: d92f5a1c7b0e4d36ba8c19f24e6073a1, type: 3}
+  MerchantVariants:
+  - {fileID: 11400000, guid: 9d6a3f52c14e48b7a90d2e8317f4b6c0, type: 2}
+  - {fileID: 11400000, guid: a1f4c73e58b04e2d9c6f8b0d21e73a45, type: 2}
+  - {fileID: 11400000, guid: c58d1a06e7b34f9182ad3c6e5f10b729, type: 2}
+  - {fileID: 11400000, guid: e07b93f2d4a1486cb35e8071c9d24f63, type: 2}
+  ReinforcementPrefabs: []
+  ReinforcementCount: 0
+  DiscoveryItems: []
+  DiscoveryMinAmount: 3
+  DiscoveryMaxAmount: 12

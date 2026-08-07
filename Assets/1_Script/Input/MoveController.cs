@@ -132,6 +132,7 @@ public class MoveController : MonoBehaviour
 
         var brain   = go.GetComponent<UnitBrain>();
         var node    = go.GetComponent<ResourceNode>();
+        var drop    = go.GetComponent<DroppedItem>();
         var corpse  = go.GetComponent<Corpse>();
         var core    = go.GetComponent<DungeonCore>();
         var clickable = go.GetComponent<IWorldClickable>();
@@ -140,9 +141,10 @@ public class MoveController : MonoBehaviour
         {
             title = !string.IsNullOrWhiteSpace(brain.Data?.RaceName) ? brain.Data.RaceName : go.name;
 
-            // 거래는 상인일 때만. `Merchant`는 NpcType이 ShopMerchant일 때 자동으로 붙는다.
+            // 거래는 상인일 때만. `Merchant`는 상인 역할이면 자동으로 붙는다.
+            // 쓰러진 상인은 선택지에서 뺀다 — 눌러 봐야 아무 일도 안 일어난다.
             var merchant = go.GetComponent<Merchant>();
-            if (merchant != null) options.Add(("거래한다", merchant.OnWorldClick));
+            if (merchant != null && merchant.CanTrade) options.Add(("거래한다", merchant.OnWorldClick));
 
             options.Add(("따라간다", () => FollowWith(commanders, go.transform)));
 
@@ -184,6 +186,33 @@ public class MoveController : MonoBehaviour
                 }));
             }
             options.Add(("살펴본다", () => SelectionManager.InspectNode(node)));
+        }
+        else if (drop != null)
+        {
+            // **바닥에 떨어진 것을 손으로 집는 길.** 자동 운반(`GroundHaulJob`)은 받아 줄 창고가
+            // 있고 폰이 운반 작업을 켰을 때만 도는데, 그 조건이 안 맞으면 물건이 영영 거기 남아
+            // 주울 방법이 없었다 — 발견 이벤트가 떨군 물건이 정확히 그랬다.
+            title = drop.Item != null ? $"{drop.Item.ItemName} x{drop.Amount}" : "떨어진 물건";
+
+            // 한 명만 골랐으면 한도를 넘겨서라도 든다 — 아래 `PickUpWith` 주석 참고.
+            bool ignoreLimit = commanders.Count == 1;
+
+            // 들 수 있는 폰이 있는지 **누르기 전에** 보여 준다(자원 노드의 "자리 없음"과 같은 규칙).
+            bool anyRoom = false;
+            foreach (var pawn in commanders)
+                if (CanTake(pawn.GetComponent<UnitBrain>(), drop, ignoreLimit)) { anyRoom = true; break; }
+
+            // **장비는 [착용한다]가 먼저다.** 무기·갑옷을 주우라고 시키는 대부분의 이유가
+            // 그걸 차기 위해서인데, 줍고 나서 배낭 창을 열어 다시 차게 하면 두 조작이 된다.
+            // 원래 차고 있던 것은 `Equipment`가 배낭으로 돌려준다.
+            if (drop.Item is WeaponData || drop.Item is ArmorData)
+                options.Add(("착용한다", () => PickUpWith(commanders, drop, equip: true)));
+
+            if (anyRoom) options.Add(("줍는다", () => PickUpWith(commanders, drop)));
+            else         options.Add(("줍는다 - 배낭에 자리가 없음", () => { }));
+
+            // 손으로 내려놓은 것은 아무도 안 건드린다 — 되돌리는 길을 여기 둔다.
+            if (drop.NoAutoHaul) options.Add(("창고로 옮긴다", drop.AllowAutoHaul));
         }
         else if (corpse != null)
         {
@@ -228,6 +257,53 @@ public class MoveController : MonoBehaviour
 
         // 창은 **우클릭한 월드 지점**에 붙는다(화면이 아니라) — 카메라를 움직여도 그 자리에 남는다.
         menu.Open(title, options, hit.point);
+    }
+
+    // 이 폰이 이 뭉치를 들 수 있는가.
+    // **무게와 격자를 둘 다 본다** — 무게만 보면 배낭 격자가 꽉 찬 폰이 통과해서, 거기까지
+    // 걸어가 놓고 한 개도 못 싣는다(`GroundHaulJob.CanAssignTo`와 같은 규칙).
+    // `ignoreLimit`이면 무게는 안 본다. 격자는 물리적 한계라 어느 쪽이든 넘을 수 없다.
+    static bool CanTake(UnitBrain b, DroppedItem drop, bool ignoreLimit)
+    {
+        if (b == null || b.Inventory == null || drop == null || drop.Item == null) return false;
+        if (!b.Inventory.CanFit(drop.Item, 1, drop.Quality)) return false;
+        return ignoreLimit || CarryCapacity.RoomFor(b, drop.Item) > 0;
+    }
+
+    // **한 명만 보낸다.** 뭉치 하나를 여럿에게 시키면 먼저 닿은 하나가 집고 나머지는 헛걸음한다.
+    // 들 수 있는 폰 중 가장 가까운 하나 — 제일 가까운 폰의 짐이 찼으면 **그다음 폰이 간다.**
+    //
+    // **혼자 골랐을 때는 적재 한도를 넘겨서라도 든다.** 그건 일감 배분이 아니라 "저걸 네가
+    // 들어라"라서, 손으로 배낭에 넣는 것과 같아야 한다 — 넘긴 만큼 이동·공격이 느려지는 것으로
+    // 이미 값을 치른다. 여럿을 골랐을 때만 한도가 누가 갈지를 가른다.
+    // `equip` — 주운 뒤 바로 착용한다. 그때는 적재 한도를 안 본다: 물건이 배낭을 스쳐
+    // 곧바로 몸에 붙으므로 짐으로 남지 않는다(격자 자리 하나만 잠깐 필요하고, 그 자리는
+    // 벗겨진 것이 도로 들어올 자리이기도 하다).
+    static void PickUpWith(List<PawnMover> commanders, DroppedItem drop, bool equip = false)
+    {
+        bool ignoreLimit = equip || commanders.Count == 1;
+
+        UnitBrain best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (var pawn in commanders)
+        {
+            var b = pawn.GetComponent<UnitBrain>();
+            if (!CanTake(b, drop, ignoreLimit)) continue;
+
+            float d = (pawn.transform.position - drop.transform.position).sqrMagnitude;
+            if (d < bestDist) { bestDist = d; best = b; }
+        }
+        if (best == null) return;
+
+        var bb = best.Blackboard;
+        bb.PickUpTarget      = drop;
+        bb.PickUpIgnoreLimit = ignoreLimit;
+        bb.PickUpThenEquip   = equip;
+        bb.Target            = null;    // 줍는 동안 교전으로 새지 않게
+        bb.FollowTarget      = null;
+        bb.ManualMove        = false;
+        best.AbandonWork();             // 하던 일감을 놓지 않으면 도착하자마자 일하러 돌아간다
     }
 
     static void FollowWith(List<PawnMover> commanders, Transform target)

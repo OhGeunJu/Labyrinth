@@ -102,6 +102,7 @@ GameObject:
   - component: {fileID: 3739624694411399058}
   - component: {fileID: 1199831278945656652}
   - component: {fileID: 7965516416023521190}
+  - component: {fileID: 415283040453218880}
   m_Layer: 0
   m_Name: LargeStorage
   m_TagString: Untagged
@@ -265,3 +266,17 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &415283040453218880
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7109887776689935245}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 310a3b53e6a2bba43885bb4ea6ef3b7e, type: 2}
+  refundRatio: 0.75

@@ -11,7 +11,12 @@ public partial class UnitBrain : MonoBehaviour
     [SerializeField] float tickInterval = 0.1f;
 
     [Header("유닛 데이터")]
+    [Tooltip("**종족** — 스탯 범위·이름 풀·기본 능력치. 무엇을 하는 사람인지는 여기 없다.")]
     [SerializeField] UnitData unitData;
+
+    [Tooltip("**역할**(선택) — 주민·경비·상인. 채우면 NPC 트리를 탄다. " +
+             "종족과 따로 두므로 인간 상인·엘프 상인이 **같은 역할 에셋**을 쓴다.")]
+    [SerializeField] NpcData npcData;
 
     [Tooltip("AI 프로필 — 도주/교전 성향과 유휴 배회 설정. 비우면 타입별 기본값 " +
              "(일반·경비 = 교전+배회 / NPC 주민 = 도주+배회 / 상점 상인 = 도주+제자리).")]
@@ -32,6 +37,9 @@ public partial class UnitBrain : MonoBehaviour
 
     public UnitBlackboard Blackboard => _bb;
     public UnitData Data => unitData;
+
+    // 이 폰의 **역할**(없으면 null = 역할 없는 전투/노동 유닛).
+    public NpcData Npc => npcData;
     public AiProfileData AiProfile => aiProfile;
 
     // ── 전투 성향 (런타임 조정 가능) ─────────────────────────────────────
@@ -64,6 +72,36 @@ public partial class UnitBrain : MonoBehaviour
     }
     public string UnitName { get; private set; }
 
+    // 이름을 밖에서 정해 준다. 기본은 `Awake`가 `NamePool`에서 아무거나 고르는 것인데,
+    // **미리 이름을 보여 주고 데려오는 경우**(마을 고용)엔 메뉴에서 본 사람과 합류한 사람이
+    // 달라지면 안 된다. 빈 이름은 무시한다 — 지우는 길은 만들지 않는다.
+    public void Rename(string name)
+    {
+        if (!string.IsNullOrWhiteSpace(name)) UnitName = name;
+    }
+
+    // 태어나기 전에 적어 둔 명세를 입힌다(`PawnSpec`).
+    //
+    // `Awake`는 이름과 스탯을 제 마음대로 굴린다 — 그게 기본값이다. 하지만 **보고 나서 데려오는
+    // 경우**(마을 고용)엔 메뉴에 뜬 사람과 합류한 사람이 같아야 하므로 그 결과를 덮는다.
+    // 나중에 외모·몸 크기를 사람이 정하게 되어도 **이 통로 하나**로 들어온다.
+    public PawnSpec Spec { get; private set; }
+
+    public void ApplySpec(PawnSpec spec)
+    {
+        if (spec == null) return;
+        Spec = spec;
+
+        Rename(spec.Name);
+
+        if (Stats != null)
+            foreach (var kv in spec.Grades)
+                Stats.SetStat(kv.Key, kv.Value.ToValue());
+
+        // 생김새 — 지금은 크기 하나뿐이다. 늘어나면 여기에 줄이 는다.
+        if (spec.BodyScale > 0f) transform.localScale = Vector3.one * spec.BodyScale;
+    }
+
     Sprite _portrait;
     bool   _portraitTried;
 
@@ -91,7 +129,9 @@ public partial class UnitBrain : MonoBehaviour
         gameObject.AddComponent<StatusEffectSystem>();
 
         Stats = UnitStats.FromData(unitData);
-        Stats.IsLocked = unitData is MinionData;
+        // 성장이 잠기는 건 **내가 소환한** 하수인이다. 같은 종족 에셋을 쓰는 야생 개체까지
+        // 잠그면 "고블린은 성장하지 않는다"가 되는데, 그건 종족의 성질이 아니다.
+        Stats.IsLocked = unitData is MinionData && !UsesEnemyAi;
         Stats.Owner    = gameObject;
 
         _maxHp = unitData != null ? unitData.MaxHP : 100f;
@@ -119,7 +159,7 @@ public partial class UnitBrain : MonoBehaviour
 
         // 작업 설정은 플레이어 세력 일꾼(방랑자·하수인)만 갖는다. 적/NPC는 작업 큐를 쓰지 않는다.
         // 하수인은 MinionData.AllowedJobs를 초기값으로 받되, 이후 조정은 개체별로 적용된다.
-        if (!UsesEnemyAi && !(unitData is NpcData))
+        if (!UsesEnemyAi && npcData == null)
         {
             Work = gameObject.AddComponent<WorkSettings>();
             if (unitData is MinionData minionData)
@@ -185,7 +225,7 @@ public partial class UnitBrain : MonoBehaviour
     void MarkUnloadDirty() => _unloadDirty = true;
 
     // **작업 설정이 없는 폰은 구독하지 않는다.** 적·NPC는 `Work`가 아예 안 붙으므로
-    // (`Awake`의 `!UsesEnemyAi && !(unitData is NpcData)` 관문) 짐을 내릴 일이 없다 —
+    // (`Awake`의 `!UsesEnemyAi && npcData == null` 관문) 짐을 내릴 일이 없다 —
     // 그런데도 전부 `Storage.OnChanged`에 매달려 있으면 창고가 바뀔 때마다 습격 온 적
     // 스무 마리까지 깨운다. 짐내림 기본값을 켜 둘 수 있는 것도 이 관문 덕이다.
     void HookUnloadSignals()
@@ -320,7 +360,7 @@ public partial class UnitBrain : MonoBehaviour
 
         // **플레이어 세력이 아니면 시체로 남는다.**
         // 예전엔 `UsesEnemyAi`로 갈랐는데 그건 **AI 역할**(어떻게 싸우나)을 묻는 축이라
-        // NpcData·MinionData를 통째로 제외했다. 그래서 상인이나 마을 사람을 죽이면
+        // NPC·하수인을 통째로 제외했다. 그래서 상인이나 마을 사람을 죽이면
         // 시체도 유품도 없이 사라졌다 — 이제 중립을 공격할 수 있으니 그건 맞지 않는다.
         // 약탈 가능 여부는 역할이 아니라 **세력**이 정해야 한다.
         var faction = GetComponent<Faction>();
@@ -376,13 +416,18 @@ public partial class UnitBrain : MonoBehaviour
         _bb.IsDrafted = false;
     }
 
-    // 적 AI(감지→전투) 대상인가 — 플레이어 조작 세력이 아니고, NPC/하수인도 아닌 전투 유닛.
+    // 적 AI(감지→전투) 대상인가 — 역할이 없고(NPC 아님) 플레이어 조작 세력도 아닌 전투 유닛.
     // 세력이 늘어나도(고블린·산적 등) 플레이어 편만 아니면 자동으로 적 트리를 쓴다.
+    //
+    // **`MinionData`인지는 묻지 않는다.** 전엔 `unitData is MinionData`면 무조건 하수인으로 봤는데,
+    // 그건 **종족 데이터의 형태**를 **소속**으로 읽은 것이다 — 고블린은 내가 소환할 수도 있고
+    // 야생에 살 수도 있는데, 그 둘을 가르는 건 세력이지 에셋 클래스가 아니다.
+    // 실제로 그래서 습격 이벤트에 세운 고블린이 **플레이어 폰으로 태어났다**(2026-08-07).
     public bool UsesEnemyAi
     {
         get
         {
-            if (unitData is NpcData || unitData is MinionData) return false;
+            if (npcData != null) return false;
             var faction = GetComponent<Faction>();
             return faction != null && !faction.IsPlayer;
         }
@@ -392,8 +437,8 @@ public partial class UnitBrain : MonoBehaviour
     {
         if (UsesEnemyAi)
             return BuildEnemyTree();
-        if (unitData is NpcData)
-            return BuildNpcTree((NpcData)unitData);
+        if (npcData != null)
+            return BuildNpcTree(npcData);
         if (unitData is MinionData)
             return BuildMinionTree();
         return BuildWandererTree();

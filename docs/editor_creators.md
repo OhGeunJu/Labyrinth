@@ -273,6 +273,8 @@ Content
 
 - 이후 수정은 **인스펙터에서** 한다. 그러라고 헤더·스크롤·행 템플릿까지 씬 오브젝트로 만들어 두는 것이다.
 - 다시 지어야 하면 git 이력에서 꺼내거나, 없으면 다시 쓴다. 산출물(씬·에셋)이 정본이므로 생성기가 사라져도 잃는 건 없다.
+- **2026-08-06 정리**: `Migrate Minion Prefabs`(하수인 프리팹 이전 — 씬 `minionEntries`가 비고 `MinionData.Prefab`이 배선돼 이전이 끝났다. 다시 돌려도 옮길 것이 없다), `Rebuild Research Detail Panel`(같은 패널을 `Relayout Research Detail Panel`과 **다른 방식**으로 다뤄서, 둘을 두면 어느 쪽을 돌려야 하는지 알 수 없고 섞어 돌리면 패널이 깨진다. 씬은 Relayout 쪽 구조라 그쪽만 남겼다) 삭제.
+- **2026-08-06 대청소**: 생성기 13개 삭제 — `Create Biome Content Assets` · `Resize Buildings And Rebuild Models` · `Create Carry Bar` · `Upgrade Crafting Table Panel` · `Relayout Item Info Tooltip` · `Create New Buildings` · `Setup Town Recruits` · `Create Research Assets` · `Relayout Research Detail Panel` · `Rename UI Objects` · `Fix Window Structure` · `Setup Work Spots` · `Setup World Map Scene`. **전부 실행이 끝나 산출물이 씬·에셋에 자리를 잡았다**(핵 모델·집결 자리·적재 바·툴팁 여백·방랑자 프리팹·인력 풀까지 확인). 다시 지어야 하면 git에서 꺼낸다.
 - 아래 "지어진 UI" 표는 **무엇이 어떤 컴포넌트로 씬에 있는지의 기록**이지, 지금 쓸 수 있는 메뉴 목록이 아니다.
 
 ### 지어진 UI (기록)
@@ -328,23 +330,17 @@ Content
 
 ## 남아 있는 도구
 
+**2026-08-06에 13개를 지웠다.** 산출물이 씬·에셋에 전부 자리를 잡아서다 — 아래 "생성기의 수명" 참조.
+남은 넷은 일회성 생성기가 아니다.
+
 | 메뉴 | 하는 일 | 왜 남겼나 |
 |---|---|---|
-| `World Map Editor` | 월드맵(`WorldMapData`)을 격자에 칠해 저작하는 `EditorWindow`. 브러시 3종(바이옴/내용물/시작 노드), 드래그 페인트 1회 = Undo 1덩어리, 크기 변경 시 내용 보존, [새로 만들기]/[씬에 연결]. 여기서 칠하는 건 **논리 정보뿐** — 지형(높이·생김새)은 씬에 직접 만들어 붙인다. **절차 생성 없음.** | 일회성이 아니라 **상시 저작 도구** |
-| `Setup World Map Scene` | 월드맵에 필요한 오브젝트/컴포넌트를 **없는 것만 채우고 참조만 잇는다**(WorldMap·SettlementManager·GameModeManager·WorldMapView·MapRoot·WorldCamera·WorldMapGrid + 에셋 배선). **아무것도 지우지 않는다** — MapRoot 아래 지형과 손으로 맞춘 카메라가 살아남아야 하므로. 여러 번 실행해도 안전. | 배선이 끊길 때마다 다시 돌리는 **복구 도구** |
-| `Create Biome Content Assets` | `Resources/Data/Biomes/`에 바이옴별 `BiomeContentData` 스캐폴드 생성. 이미 있으면 건너뛴다. | 실행됨(에셋 7종 생성). 바이옴을 늘리면 다시 돌린다 |
-| `Toggle Movement Diagnostics` | 이동 계측 on/off. | 이동 개편 Play Mode 검증이 아직 안 끝났다 |
-| `Relayout Research Detail Panel` | 연구대 디테일 패널의 칸을 다시 나눈다(제목·시간·설명·선행/해금·재료를 위에서 쌓고, 게이지·[연구] 버튼은 바닥 고정). **아무것도 만들거나 지우지 않고** RectTransform만 다시 잡으므로 여러 번 실행해도 안전하다. 글자 줄바꿈·자동 축소도 같이 못 박는다 — 칸만 넓히면 자동 축소가 꺼져 있어 여전히 잘린다 | 칸이 어긋날 때 다시 돌리는 **복구 도구** |
-| `Create Research Assets` | `Resources/Data/Research/`에 연구 에셋 생성(연금술·원소 공학). **없는 것만 만든다.** `UnlockedRecipes`는 비워 둔다 — JSON 레시피가 `requiredResearchId`로 자기를 가리키므로, 양쪽에 적으면 목록이 어긋났을 때 어느 쪽이 맞는지 알 수 없다 | 연구를 늘릴 때 다시 돌리는 **저작 도구** |
-| `Create New Buildings` | `3_Prefab` 프리팹 + `Resources/Data/Buildings` 데이터를 한 쌍으로 생성(벽·큰 창고). **없는 것만 만든다.** 레지스트리 방식이라 씬은 안 건드린다 | 건물을 늘릴 때 다시 돌리는 **저작 도구** |
-| `Resize Buildings And Rebuild Models` | `BuildingData.Size`를 정하고 **모델을 그 크기로 다시 짓는다**(작업대 8종·연구대·침대·창고). 기존 모델은 조각마다 회전이 있어 부모를 비균등 스케일하면 찌그러진다 — 늘리는 대신 파라미터로 다시 조립한다. **`WorkSpot`은 안 지우고** 새 크기의 앞 가장자리로 옮긴다. 제자리 수정이라 `BuildingData.Prefab` 참조가 유지된다 | 크기를 바꿀 때마다 다시 돌리는 **저작 도구** |
-| `Setup Work Spots` | `3_Prefab`의 작업대·연구대 프리팹에 **작업 자리(`WorkSpot`)** 를 붙인다(건물 앞 1칸, 반투명 표식 포함). **이미 있으면 건너뛴다.** 프리팹은 **제자리 수정**(`LoadPrefabContents` → `SaveAsPrefabAsset` 같은 경로)이라 `BuildingData.Prefab` 참조가 안 끊긴다 | 작업대를 늘릴 때 다시 돌리는 **배선 도구** |
-| `Upgrade Crafting Table Panel` | 작업대 패널에 연료 게이지·산출물 그리드·운반 허용 버튼을 붙이고 `CraftingTableUI`에 배선. 새 구역을 **패널 아래에 매달아** 기존 자식 좌표를 안 건드린다. 다시 실행하면 이전 구역을 지우고 새로 짓는다 | 산출물/연료 배치를 다시 만들 때 쓰는 **재생성 도구** |
-| `Migrate Minion Prefabs` | 씬의 `DungeonCore.minionEntries` 배선을 레지스트리로 이전 — 씬 오브젝트를 `3_Prefab/Minion_*.prefab`으로 뜨고(**있으면 안 만듦**) `MinionData.Prefab`에 연결한 뒤 `minionEntries`를 비운다. **전부 성공했을 때만** 비운다(대체물 없이 지우면 소환이 죽는다). 뜰 때 **루트를 켠다** — 씬 템플릿이 꺼져 있어 그대로 뜨면 소환된 하수인이 꺼진 채 나온다 | 하수인 종류를 늘릴 때 다시 돌리는 **이전 도구** |
-| `Fix Window Structure` | 창 컴포넌트를 **자기 전용 `<기준>_UI` 오브젝트**로 옮기고 패널을 그 자식으로 내린다. 어긋나는 꼴 둘을 편다 — (1) 컴포넌트가 **패널 자신에** 붙은 경우(`ItemInfoUI`: 꺼진 채 저장돼 `Awake`가 안 돌아 툴팁이 한 번도 안 떴다) → 부모를 바깥에 세운다, (2) 컴포넌트가 **남의 오브젝트에 얹힌** 경우(`WorldMenuUI`가 월드 UI 묶음 `WorldUI`에) → 그 안쪽에 세운다. 컴포넌트는 **복사해 붙인다**(`ComponentUtility`) — 인스펙터 참조를 들고 가야 해서. 부모는 제 부모와 같은 크기로 펼친다(자식의 `anchoredPosition`이 뜻을 유지해야 한다). **대상은 손으로 적는다** — "이 오브젝트가 다른 역할도 하는가"는 자동으로 알 수 없다. 여러 번 실행해도 안전 | 구조가 어긋났을 때 다시 돌리는 **복구 도구** |
-| `Rename UI Objects (Preview / Apply)` | 창 오브젝트 이름을 `<기준>_UI`/`<기준>_Panel`로 통일한다. `panel` 필드에서 짝을 읽고 컴포넌트 타입에서 이름을 유도하므로 **표를 손으로 적지 않는다**. Preview는 계획만 찍고 아무것도 안 바꾼다. 프리팹 소속·구조용 묶음(`WorldUI`)은 건너뛴다 | 창을 늘릴 때 다시 돌리는 **정리 도구** |
-| `Create Carry Bar` | 배낭 창(I키) 액션 바 위에 `CarryBar` 한 줄을 세운다 — `무게 12/15kg` + [짐내림] + [잠금] — 그리고 `InventoryUI`에 배선한다. 다시 실행하면 이전 것을 지우고 새로 짓는다(자리를 손봤다면 다시 손봐야 한다). 액션 바와 **같은 부모**에 두므로 액션 바를 옮기면 따라간다 | 배낭 창 하단을 다시 지을 때 쓰는 **재생성 도구** |
-| `Build Mod AssetBundle` | 프로젝트 창에서 고른 모델·프리팹·텍스처를 에셋 번들로 구워 모드 폴더에 넣는다. 번들 이름 = **모드 폴더 이름**(모드마다 하나, 다시 구우면 덮어씀). 읽는 쪽은 `ModAssets`. | **유니티가 런타임에 .fbx/.obj를 못 읽어서** 모드가 모델을 넣으려면 번들이 유일한 길이다. 모드를 만들 때마다 쓰는 **상시 도구** |
+| `World Map Editor` | 월드맵(`WorldMapData`)을 격자에 칠해 저작하는 `EditorWindow`. 브러시 3종(바이옴/내용물/시작 노드), 드래그 페인트 1회 = Undo 1덩어리, 크기 변경 시 내용 보존, [새로 만들기]/[씬에 연결]. 여기서 칠하는 건 **논리 정보뿐** — 지형은 씬에 직접 만들어 붙인다. **절차 생성 없음** | 지도를 그릴 때마다 쓰는 **상시 저작 도구** |
+| `Build Mod AssetBundle` | 프로젝트 창에서 고른 모델·프리팹·텍스처를 에셋 번들로 구워 모드 폴더에 넣는다. 번들 이름 = **모드 폴더 이름**. 읽는 쪽은 `ModAssets` | **유니티가 런타임에 .fbx를 못 읽어서**, 모드가 프리팹·뼈대·애니메이션을 넣으려면 번들이 유일한 길이다. 지우면 모딩 기능이 함께 사라진다 |
+| `Debug: Give All Items` / `Complete All Research` | 선택한 폰에 전 아이템 지급 / 연구 전부 완료 | Play Mode 검증용. 시장·고용을 확인하려면 골드가 필요하다 |
+| `Toggle Movement Diagnostics` | 이동 계측 on/off | 이동 개편 검증이 아직 안 끝났다 |
+| `Snap Placed Buildings To Grid` | 씬의 `PlacedBuilding`을 발자국 격자에 맞춘다(**홀수 크기 축은 `.5`, 짝수 축은 `.0`**). 회전 반영, `Undo` 지원, 씬 직접 저장 | 에디터에서 끌어다 놓으면 아무 좌표에나 서고, 그러면 모델이 반 칸씩 밀려 **폰이 서야 할 작업 자리를 먹는다**. 손으로 배치할 때마다 필요하다 |
+| `Fit Building Colliders To Size` | `BuildingData.Size`에 맞춰 프리팹 `BoxCollider`를 조정(발자국보다 0.2 작게) | 옛 리사이즈 도구가 모델만 키우고 콜라이더는 두고 갔다(연구대: 모델 3×2 / 콜라이더 1×1). **반드시 정렬을 먼저 돌릴 것** — 어긋난 채로 키우면 작업 자리를 문다 |
 
 **씬을 건드리는 생성기는 씬을 직접 저장해야 한다.** `AssetDatabase.SaveAssets()`는 **에셋만** 저장한다 — 씬 컴포넌트를 고치고 `EditorUtility.SetDirty`만 부르면 씬이 더티로 표시되지 않아 저장 대상에서 빠지고, Unity를 닫는 순간 작업이 통째로 날아간다. 2026-07-31에 건설 목록 등록 15건과 연구 게이지 배선이 이렇게 사라졌다.
 ```csharp

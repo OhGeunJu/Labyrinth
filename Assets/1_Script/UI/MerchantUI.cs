@@ -4,10 +4,19 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 
+// 상점 창. **어느 상점을 여느냐와 누가 값을 치르느냐는 밖에서 정해 준다** —
+// 필드맵 상인은 `Merchant.OnSelected`로, 월드맵 마을은 `WorldMapView`가 `OpenFor`로 연다.
+// 그래서 이 창은 "창고 상점"과 "원정대 상점"을 구분하지 않는다(`TradeAccount`가 가른다).
 public class MerchantUI : MonoBehaviour
 {
-    public static Merchant      ActiveMerchant { get; private set; }
-    public static RectTransform SellZoneRect   { get; private set; }
+    public static Shop          ActiveShop   { get; private set; }
+    public static RectTransform SellZoneRect { get; private set; }
+
+    // 월드맵 마을 등 상인 오브젝트가 없는 곳에서 여는 진입점.
+    // `traders`가 있으면 그 폰들의 배낭으로 사고판다(없으면 필드처럼 고른 폰을 쓴다).
+    public static void OpenFor(Shop shop, TradeAccount account,
+                               IReadOnlyList<UnitBrain> traders, string title = null)
+        => _instance?.Open(shop, account, traders, title);
 
     // DraggableItem 드롭 판매용. count는 한 번에 팔 개수.
     public static bool TrySellItem(ItemInstance inst, int count = 1)
@@ -51,6 +60,7 @@ public class MerchantUI : MonoBehaviour
     [Header("연동")]
     [SerializeField] InventoryUI inventoryPanel;
 
+
     // ── 보기 상태 ────────────────────────────────────────────────────────────
     // **기본은 격자.** 재고는 훑어보는 것이지 읽는 것이 아니라, 아이콘이 늘어선 편이 빠르다
     // (배낭·창고도 격자라 눈이 같은 방식으로 움직인다). 이름·가격을 나란히 비교하고 싶을 때만
@@ -64,7 +74,10 @@ public class MerchantUI : MonoBehaviour
     TextMeshProUGUI _viewToggleLabel;
 
     bool                                _didForceOpenInventory;
-    Merchant                            _merchant;
+    Shop                                _shop;
+    TradeAccount                        _account;
+    IReadOnlyList<UnitBrain>            _traders;      // 원정대 거래일 때만. null이면 고른 폰
+    int                                 _traderIndex;
     MerchantStockEntry                  _selectedBuy;
     MerchantStockEntryUI                _selectedBuyUI;
     readonly List<MerchantStockEntryUI> _buyEntryUIs = new();
@@ -78,11 +91,16 @@ public class MerchantUI : MonoBehaviour
         if (buyButton) { buyButton.interactable = false; buyButton.onClick.AddListener(OnBuyClicked); }
         if (buyMaxButton) buyMaxButton.onClick.AddListener(FillMaxBuyQuantity);
         SetupViewToggle();
-        Merchant.OnSelected              += Open;
+        Merchant.OnSelected              += OpenForMerchant;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
+        GameModeManager.OnModeChanged    += OnGameModeChanged;
     }
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }
+
+    // 필드에서 상점을 연 채로 M을 누르면 창이 지도 위에 남는다 — 거래 상대가 화면에서
+    // 사라졌는데 창만 살아 있으면 창고 돈으로 지도에서 물건을 사게 된다.
+    void OnGameModeChanged(GameMode mode) => Close();
 
     void Start()
     {
@@ -93,57 +111,95 @@ public class MerchantUI : MonoBehaviour
     void OnDestroy()
     {
         _instance = null;
-        Merchant.OnSelected              -= Open;
+        Merchant.OnSelected              -= OpenForMerchant;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+        GameModeManager.OnModeChanged    -= OnGameModeChanged;
     }
 
     void Update()
     {
         // 닫기 버튼은 공용 `CloseButton`이 **패널을 그냥 끄기만** 한다(UI 규약).
-        // 그러면 여기서 해야 할 뒷정리 — 판매 모드 해제·인벤토리 닫기·`ActiveMerchant` 비우기 —
+        // 그러면 여기서 해야 할 뒷정리 — 판매 모드 해제·인벤토리 닫기·`ActiveShop` 비우기 —
         // 가 안 돈다. 그대로 두면 창을 닫아도 폰 인벤토리가 판매 모드에 남고,
         // 드래그 판매가 닫힌 상점을 상대로 계속 먹는다.
         // **이 컴포넌트는 루트에 있어 패널이 꺼져도 Update가 돌므로** 뒤늦게라도 정리할 수 있다.
-        if (_merchant != null && panel != null && !panel.activeSelf) { Close(); return; }
+        if (_shop != null && panel != null && !panel.activeSelf) { Close(); return; }
+
+        // **거래 중에 상인이 쓰러지면 창을 닫는다.** 열 때만 막으면 창을 띄워 둔 채
+        // 때려눕히고 계속 사는 길이 남는다(월드맵 시장은 `_merchant`가 없어 해당 없음).
+        if (_merchant != null && !_merchant.CanTrade) { Close(); return; }
 
         if (panel && panel.activeSelf &&
             Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             Close();
     }
 
-    void Open(Merchant merchant)
+    // 필드맵 상인 클릭 — 지갑은 거점 창고, 거래 폰은 지금 고른 폰.
+    void OpenForMerchant(Merchant merchant)
     {
-        _merchant      = merchant;
-        ActiveMerchant = merchant;
+        if (merchant == null) return;
+
+        // **누구의 가게인지 제목에 적는다.** 재고는 상인마다 따로 도는데(각자 자기 `Shop`),
+        // 제목이 종류 이름뿐이면 무기 상인이 둘 있을 때 어느 쪽 창인지 알 수 없다.
+        var brain  = merchant.GetComponent<UnitBrain>();
+        string who = brain != null ? brain.UnitName : null;
+        string title = string.IsNullOrWhiteSpace(who)
+            ? merchant.Shop.DisplayName
+            : $"{who} ({merchant.Shop.DisplayName})";
+
+        Open(merchant.Shop, merchant.Account, null, title);
+        _merchant = merchant;   // `Open`이 비우므로 그 뒤에 건다
+    }
+
+    // 지금 창을 연 상인(있으면). 월드맵 시장은 파는 폰이 없어 null이다.
+    Merchant _merchant;
+
+    void Open(Shop shop, TradeAccount account, IReadOnlyList<UnitBrain> traders, string title)
+    {
+        if (shop == null || account == null) return;
+
+        _shop          = shop;
+        _account       = account;
+        _merchant      = null;   // 월드맵 시장 등 파는 폰이 없는 진입점의 기본값
+        _traders       = (traders != null && traders.Count > 0) ? traders : null;
+        ActiveShop     = shop;
         _selectedBuy   = null;
         _selectedBuyUI = null;
 
         if (panel)            panel.SetActive(true);
-        if (merchantNameText) merchantNameText.text = merchant.Data?.MerchantType.DisplayName() ?? "상인";
+        if (merchantNameText) merchantNameText.text = title ?? shop.DisplayName;
 
         ApplyContainerLayout();
         RebuildBuyList();
         RefreshGold();
 
-        // **고른 폰이 없으면 인벤토리를 안 연다.** 팔 사람이 없는데 빈 배낭 창을 띄우면
+        // **거래할 폰이 없으면 인벤토리를 안 연다.** 팔 사람이 없는데 빈 배낭 창을 띄우면
         // 상점만 보려고 눌렀을 때 화면이 둘로 갈라진다. 판매는 폰을 고르고 나서 하는 일이다.
-        bool hasPawn = GetPlayerInventory() != null;
+        bool hasPawn = TraderInventory() != null;
 
         _didForceOpenInventory = hasPawn && inventoryPanel != null && !inventoryPanel.IsPanelOpen;
         if (hasPawn)
         {
             inventoryPanel?.ForceOpen();
-            inventoryPanel?.SetSellMode(merchant);
+            inventoryPanel?.SetSellMode(shop);
+
+            // 원정대면 **누구 배낭을 볼지 고르는 일**을 배낭 창에 넘긴다 — 무게·짐내림·잠금이
+            // 이미 거기 있으므로 폰을 고르는 자리도 같은 줄에 있어야 한다.
+            if (_traders != null) inventoryPanel?.SetPawnCycle(_traders);
         }
     }
 
     public void Close()
     {
         ItemInfoUI.Hide();
-        _merchant      = null;
-        ActiveMerchant = null;
+        _shop      = null;
+        _account   = null;
+        _traders   = null;
+        _merchant  = null;
+        ActiveShop = null;
         if (panel) panel.SetActive(false);
         inventoryPanel?.ClearSellMode();
+        inventoryPanel?.ClearPawnCycle();
         if (_didForceOpenInventory) inventoryPanel?.ForceClose();
     }
 
@@ -279,9 +335,9 @@ public class MerchantUI : MonoBehaviour
         // 보기에 따라 **어느 템플릿을 복제할지**만 갈린다. 뒤 동작(선택·더블클릭·툴팁)은
         // 같은 `MerchantStockEntryUI` 컴포넌트라 한 벌로 끝난다.
         var template = (_gridView && CanUseGrid) ? tileEntryPrefab : entryPrefab;
-        if (_merchant == null || template == null) return;
+        if (_shop == null || template == null) return;
 
-        foreach (var entry in _merchant.CurrentStock)
+        foreach (var entry in _shop.Stock)
         {
             var ui         = Instantiate(template, stockContainer);
             var capturedUI = ui;
@@ -303,18 +359,27 @@ public class MerchantUI : MonoBehaviour
 
     void ExecuteBuy()
     {
-        if (_merchant == null || _selectedBuy == null) return;
+        if (_shop == null || _selectedBuy == null) return;
 
         int want = ReadCount(buyQuantity, MaxBuyable());
 
         int bought = 0;
-        // 고른 폰이 있으면 그 배낭으로. 없거나 꽉 찼으면 `TryBuy`가 창고로 돌린다.
+        // 거래 폰이 있으면 그 배낭으로. 없거나 꽉 차면 `TryBuy`가 계정으로 돌린다
+        // (거점이면 창고, 원정대면 다른 멤버 배낭).
         for (int i = 0; i < want; i++)
         {
-            if (!_merchant.TryBuy(_selectedBuy, GetPlayerInventory())) break;
+            if (!_shop.TryBuy(_selectedBuy, _account, TraderInventory())) break;
             bought++;
         }
-        if (bought == 0) return;
+
+        if (bought == 0)
+        {
+            // 아무것도 못 샀는데 화면이 그대로면 "왜 안 사지지"가 된다. 돈은 위에서
+            // 이미 걸렀으니 여기까지 온 실패는 **넣을 자리가 없다**는 뜻이다.
+            EventNotificationUI.Notify("구매 실패",
+                $"{_selectedBuy.Item?.ItemName}을(를) 받을 자리가 없습니다. 배낭이나 창고를 비워 주세요.");
+            return;
+        }
 
         RefreshGold();
         _selectedBuyUI?.RefreshStock();
@@ -324,10 +389,9 @@ public class MerchantUI : MonoBehaviour
     // 살 수 있는 최대 = **재고와 지갑 중 적은 쪽.** 수량 칸에 아무 수나 적어도 이걸 못 넘는다.
     int MaxBuyable()
     {
-        if (_selectedBuy == null) return 0;
-        var goldItem = _merchant?.Data?.GoldItem;
-        int gold     = goldItem != null ? Storage.GetTotalByItem(goldItem) : 0;
-        int afford   = _selectedBuy.Price > 0 ? gold / _selectedBuy.Price : _selectedBuy.Stock;
+        if (_selectedBuy == null || _account == null) return 0;
+        int afford = _selectedBuy.Price > 0 ? _account.GoldAmount / _selectedBuy.Price
+                                            : _selectedBuy.Stock;
         return Mathf.Max(0, Mathf.Min(_selectedBuy.Stock, afford));
     }
 
@@ -339,15 +403,14 @@ public class MerchantUI : MonoBehaviour
     void RefreshBuyButton()
     {
         if (buyButton == null) return;
-        if (_selectedBuy == null || _merchant?.Data?.GoldItem == null)
+        if (_selectedBuy == null || _account == null || _shop?.Data?.GoldItem == null)
         { buyButton.interactable = false; return; }
-        int gold = Storage.GetTotalByItem(_merchant.Data.GoldItem);
-        buyButton.interactable = _selectedBuy.Stock > 0 && gold >= _selectedBuy.Price;
+        buyButton.interactable = _selectedBuy.Stock > 0 && _account.GoldAmount >= _selectedBuy.Price;
     }
 
     internal bool ExecuteSell(ItemInstance inst, int count = 1)
     {
-        if (_merchant == null || inst == null) return false;
+        if (_shop == null || inst == null) return false;
 
         // **잠근 것은 못 판다.** 판매로 들어오는 길이 셋(버튼·더블클릭·드래그)이라 각 입구를
         // 막으면 언젠가 하나를 빠뜨린다 — 실제로 돈이 오가는 이 한 곳에서 막는다.
@@ -359,23 +422,36 @@ public class MerchantUI : MonoBehaviour
             return false;
         }
 
-        var inv = GetPlayerInventory();
+        var inv = TraderInventory();
         if (inv == null) return false;
-        if (_merchant.TrySell(inst, inv, count) <= 0) return false;
+        if (_shop.TrySell(inst, inv, _account, count) <= 0) return false;
         RefreshGold();
+        RefreshBuyButton();     // 판 돈으로 살 수 있게 된 것이 있다
         return true;
     }
 
-    Inventory GetPlayerInventory()
+    // 사고파는 **배낭**. 원정대 거래면 배낭 창이 지금 보여주는 멤버, 필드면 지금 고른 폰.
+    //
+    // 원정대 쪽은 **배낭 창에 묻는다** — 넘겨보기를 거기가 갖고 있으므로, 여기서 따로 세면
+    // 보이는 배낭과 값이 오가는 배낭이 어긋날 수 있다.
+    Inventory TraderInventory()
     {
+        if (_traders != null)
+        {
+            var pawn = inventoryPanel != null ? inventoryPanel.BoundPawn : null;
+            if (pawn == null) pawn = _traders[0];    // 아직 배낭 창이 안 열렸을 때
+            return pawn != null ? pawn.Inventory : null;
+        }
+
         if (_selection == null) _selection = Object.FindFirstObjectByType<SelectionManager>();
         if (_selection == null || _selection.Selected.Count == 0) return null;
         return _selection.Selected[0].GetComponent<Inventory>();
     }
 
+    // 지갑의 주인을 같이 적는다 — 창고 돈과 원정대 돈은 액수만 봐선 구분이 안 된다.
     void RefreshGold()
     {
-        if (goldText == null || _merchant?.Data?.GoldItem == null) return;
-        goldText.text = $"골드: {Storage.GetTotalByItem(_merchant.Data.GoldItem)} G";
+        if (goldText == null || _account == null) return;
+        goldText.text = $"{_account.Label} 골드: {_account.GoldAmount} G";
     }
 }

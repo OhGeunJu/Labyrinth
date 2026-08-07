@@ -260,7 +260,7 @@ public class DraggableItem : MonoBehaviour,
     bool TrySellDrop(PointerEventData e)
     {
         if (_instance != null && _instance.Locked) return false;   // 잠근 것은 못 판다
-        if (MerchantUI.ActiveMerchant == null || MerchantUI.SellZoneRect == null) return false;
+        if (MerchantUI.ActiveShop == null || MerchantUI.SellZoneRect == null) return false;
         Camera uiCam = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
             ? _canvas.worldCamera : null;
         if (!RectTransformUtility.RectangleContainsScreenPoint(MerchantUI.SellZoneRect, e.position, uiCam))
@@ -287,7 +287,12 @@ public class DraggableItem : MonoBehaviour,
 
         var dropPos = inv.transform.position + Vector3.up * 0.15f;
         inv.RemoveInstance(_instance);
-        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality);
+
+        // **손으로 내려놓은 것은 자동 운반에서 뺀다.** 그러지 않으면 운반을 켠 폰이 곧바로
+        // 주워 창고에 넣어, 내려놓기가 사실상 "창고로 보내기"가 된다 — 어디에 두고 싶어도
+        // 둘 수가 없다. 다시 나르게 하려면 그 물건을 우클릭해 [창고로 옮긴다].
+        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality,
+                          noAutoHaul: true);
         return true;
     }
 }

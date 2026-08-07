@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -57,6 +58,12 @@ public class InventoryUI : MonoBehaviour
     [SerializeField] Button          lockButton;
     [SerializeField] TextMeshProUGUI lockLabel;
 
+    [Tooltip("적재 바 오른쪽 끝의 폰 넘겨보기 묶음. 원정대 거래일 때만 켜진다")]
+    [SerializeField] GameObject      traderGroup;
+    [SerializeField] TextMeshProUGUI traderNameText;
+    [SerializeField] Button          traderPrevButton;
+    [SerializeField] Button          traderNextButton;
+
     ItemInstance _lastSellSelection;   // 고른 것이 바뀌면 수량을 1로 되돌리려고 기억한다
 
     InventoryGridUI  _gridUI;
@@ -65,7 +72,7 @@ public class InventoryUI : MonoBehaviour
     ActionMode      _mode;
     ItemInstance    _selectedItem;
     InventoryGridUI _selectedSourceGrid;
-    Merchant        _merchant;
+    Shop            _shop;
     Inventory       _lootInventory;
 
     // 상인 모드 진입 전 상태 백업 (상인 닫을 때 복원용)
@@ -87,6 +94,9 @@ public class InventoryUI : MonoBehaviour
         if (actionButton) actionButton.onClick.AddListener(OnActionClicked);
         if (unloadButton) unloadButton.onClick.AddListener(ToggleUnload);
         if (lockButton)   lockButton.onClick.AddListener(ToggleLockMode);
+        if (traderPrevButton) traderPrevButton.onClick.AddListener(() => StepPawn(-1));
+        if (traderNextButton) traderNextButton.onClick.AddListener(() => StepPawn(+1));
+        if (traderGroup)  traderGroup.SetActive(false);
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
 
         RefreshLockToggle();
@@ -121,11 +131,15 @@ public class InventoryUI : MonoBehaviour
         // 수량 칸에 숫자를 치는 중이면 I(토글)가 먹으면 안 된다 — 창이 닫혀 버린다.
         if (sellQuantity != null && sellQuantity.isFocused) return;
 
-        if (Keyboard.current[toggleKey].wasPressedThisFrame) Toggle();
+        // 월드맵에서 I를 누르면 **아무도 안 고른 빈 배낭**이 뜬다 — 거기선 선택이 팀 단위라
+        // 고른 폰이라는 게 없다. 거래로 폰이 지정돼 있을 때만 연다.
+        if (Keyboard.current[toggleKey].wasPressedThisFrame &&
+            (GameModeManager.IsField || _boundPawn != null))
+            Toggle();
 
         // 상점이 어떤 길로 닫히든 [판매] 표시가 따라 사라지게 한다.
         // 닫는 쪽마다 정리를 부르게 하면 언젠가 한 곳을 빠뜨린다 — 여기서 한 번 더 본다.
-        if (_mode == ActionMode.Sell && MerchantUI.ActiveMerchant == null) RefreshActionBar();
+        if (_mode == ActionMode.Sell && MerchantUI.ActiveShop == null) RefreshActionBar();
     }
 
     void Toggle()
@@ -136,17 +150,96 @@ public class InventoryUI : MonoBehaviour
         else if (_mode == ActionMode.None) ClearActionMode();
     }
 
+    // **밖에서 지정한 폰**이 있으면 선택보다 그게 이긴다. 월드맵 마을에서 거래할 때 쓴다 —
+    // 원정 나간 폰은 `SelectionManager`에 잡히지 않으므로(GameObject가 꺼져 있다) 선택을
+    // 통해서는 배낭을 열 길이 아예 없다.
+    UnitBrain _boundPawn;
+
+    public UnitBrain BoundPawn => _boundPawn;
+
+    public void BindTo(UnitBrain pawn)
+    {
+        _boundPawn = pawn;
+        BindToSelected();
+    }
+
+    public void ClearBoundPawn()
+    {
+        if (_boundPawn == null) return;
+        _boundPawn = null;
+        BindToSelected();
+    }
+
+    // ── 폰 넘겨보기 (원정대) ─────────────────────────────────────────────────
+    //
+    // **"누구의 배낭인가"는 배낭 창의 정보다.** 상점 창에 달면 상점을 안 열었을 땐 넘겨볼
+    // 수단이 없고, 무게·짐내림·잠금이 이미 "이 폰"의 것인데 폰을 고르는 자리만 딴 창에 있게 된다.
+    //
+    // 월드맵에서만 쓴다 — 필드에서는 폰을 클릭해 고르는 방식이 이미 있고, 같은 일을 하는
+    // 조작이 둘이면 어느 쪽이 이기는지 헷갈린다. 그래서 목록이 없으면 줄 자체가 꺼진다.
+    IReadOnlyList<UnitBrain> _cycle;
+    int                      _cycleIndex;
+
+    public void SetPawnCycle(IReadOnlyList<UnitBrain> pawns)
+    {
+        _cycle      = (pawns != null && pawns.Count > 0) ? pawns : null;
+        _cycleIndex = 0;
+        BindTo(_cycle != null ? _cycle[0] : null);
+        RefreshTraderBar();
+    }
+
+    public void ClearPawnCycle()
+    {
+        _cycle = null;
+        ClearBoundPawn();
+        RefreshTraderBar();
+    }
+
+    void StepPawn(int delta)
+    {
+        if (_cycle == null || _cycle.Count == 0) return;
+        _cycleIndex = (_cycleIndex + delta + _cycle.Count) % _cycle.Count;
+        BindTo(_cycle[_cycleIndex]);
+        RefreshTraderBar();
+    }
+
+    void RefreshTraderBar()
+    {
+        if (traderGroup == null) return;
+
+        bool show = _cycle != null;
+        traderGroup.SetActive(show);
+        if (!show) return;
+
+        var pawn = _cycle[Mathf.Clamp(_cycleIndex, 0, _cycle.Count - 1)];
+        if (traderNameText != null)
+            traderNameText.text = _cycle.Count > 1
+                ? $"{pawn?.UnitName ?? "?"} ({_cycleIndex + 1}/{_cycle.Count})"
+                : pawn?.UnitName ?? "?";
+
+        // 혼자면 넘길 곳이 없다 — 눌러도 아무 일 없는 버튼을 남기지 않는다.
+        if (traderPrevButton != null) traderPrevButton.gameObject.SetActive(_cycle.Count > 1);
+        if (traderNextButton != null) traderNextButton.gameObject.SetActive(_cycle.Count > 1);
+    }
+
     void BindToSelected()
     {
         if (_gridUI == null) return;
-        if (_selection == null || _selection.Selected.Count == 0)
+
+        var pawn = _boundPawn != null
+                 ? _boundPawn.transform
+                 : (_selection != null && _selection.Selected.Count > 0
+                        ? _selection.Selected[0].transform
+                        : null);
+
+        if (pawn == null)
         {
             _gridUI.Bind(null);
             BindEquipSlots(null);
             BindWeight(null);
             return;
         }
-        var pawn = _selection.Selected[0];
+
         _gridUI.Bind(pawn.GetComponent<Inventory>());
         BindEquipSlots(pawn.GetComponent<Equipment>());
         BindWeight(pawn.GetComponent<UnitBrain>());
@@ -292,12 +385,12 @@ public class InventoryUI : MonoBehaviour
         if (panel != null) panel.SetActive(false);
     }
 
-    public void SetSellMode(Merchant merchant)
+    public void SetSellMode(Shop shop)
     {
         _prevMode          = _mode;
         _prevLootInventory = _lootInventory;
         _mode              = ActionMode.Sell;
-        _merchant          = merchant;
+        _shop          = shop;
         _selectedItem      = null;
         RefreshActionBar();
     }
@@ -305,7 +398,7 @@ public class InventoryUI : MonoBehaviour
     // 상인 닫힐 때 호출 — 루팅 중이었으면 루팅 모드로 복원
     public void ClearSellMode()
     {
-        _merchant     = null;
+        _shop     = null;
         _selectedItem = null;
         if (_prevMode == ActionMode.Loot && _prevLootInventory != null)
         {
@@ -325,7 +418,7 @@ public class InventoryUI : MonoBehaviour
     {
         _mode          = ActionMode.Loot;
         _lootInventory = lootInventory;
-        _merchant      = null;
+        _shop      = null;
         _selectedItem  = null;
         RefreshActionBar();
     }
@@ -333,7 +426,7 @@ public class InventoryUI : MonoBehaviour
     public void ClearActionMode()
     {
         _mode          = ActionMode.None;
-        _merchant      = null;
+        _shop      = null;
         _lootInventory = null;
         _selectedItem  = null;
         if (actionBar) actionBar.SetActive(false);
@@ -375,7 +468,7 @@ public class InventoryUI : MonoBehaviour
 
     void ExecuteSell()
     {
-        if (_merchant == null || _selectedItem == null) return;
+        if (_shop == null || _selectedItem == null) return;
 
         // 수량은 **입력칸에 적힌 수**를 쓴다. 스택 개수를 넘지 못하게 잘라 준다.
         int want     = MerchantUI.ReadCount(sellQuantity, _selectedItem.Quantity);
@@ -421,7 +514,7 @@ public class InventoryUI : MonoBehaviour
         // 상점을 닫는 길이 여럿이라(X 버튼·Esc·건설 모드 진입) 한 군데서 `ClearSellMode`를
         // 빠뜨리면 인벤토리에 [판매]가 그대로 남는다 — 팔 상대가 없는데 파는 버튼이 보인다.
         // 상태를 복구하려 하지 말고 **매번 조건으로 확인**한다.
-        if (_mode == ActionMode.Sell && MerchantUI.ActiveMerchant == null)
+        if (_mode == ActionMode.Sell && MerchantUI.ActiveShop == null)
         {
             ClearActionMode();
             return;
@@ -461,7 +554,7 @@ public class InventoryUI : MonoBehaviour
             }
             else if (_mode == ActionMode.Sell)
             {
-                int price = _merchant?.GetSellPrice(_selectedItem) ?? 0;
+                int price = _shop?.GetSellPrice(_selectedItem) ?? 0;
                 string qc = ColorUtility.ToHtmlStringRGB(ItemInfoUI.QualityColor(_selectedItem.Quality));
                 actionItemText.text =
                     $"<color=#{qc}>[{_selectedItem.Quality.DisplayName()}]</color> {_selectedItem.Data?.ItemName}" +

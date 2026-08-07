@@ -19,6 +19,28 @@ public class ResearchJob : JobBase
 
     public override JobCategory Category => JobCategory.Research;
 
+    // 이어서 하는 연구인가 — 재료는 처음 착수할 때 한 번만 들어간다.
+    bool Resuming => _data != null && ResearchManager.Instance != null
+                  && ResearchManager.Instance.GetProgressSeconds(_data) > 0f;
+
+    // **재료가 다 있어야 배정한다** — 없으면 큐에서 기다린다(예약 유지), 입고되면 자동 재개.
+    //
+    // 전에는 이 게이트가 없어서 재료가 모자란 채로 배정됐고, `OnStart`가 `Status = Done`으로
+    // 끝내 버려 **눌러 둔 연구가 조용히 풀렸다.** 게다가 환불이 바닥으로 가던 시절엔
+    // "환불 → 창고 집계에서 빠짐 → 다음 배정에서 재료 부족 → 예약 소멸"이 한 고리로 돌았다.
+    // `CraftJob`은 처음부터 이 게이트를 갖고 있었다 — 연구만 빠져 있었다.
+    public override bool IsReady =>
+        _table != null && _data != null && _table.CanResearch(_data);
+
+    // 재료를 **이 폰이** 댈 수 있는가(창고 + 자기 배낭). 남의 배낭 것으로는 못 한다.
+    public override bool CanAssignTo(UnitBrain unit)
+    {
+        if (_data == null || Resuming) return true;
+        foreach (var ing in _data.Ingredients)
+            if (MaterialPool.Available(ing.Item, unit) < ing.Amount) return false;
+        return true;
+    }
+
     // ── 진행 상황 (UI 게이지용) ────────────────────────────────────────────
     public ResearchData Data => _data;
 
@@ -54,10 +76,7 @@ public class ResearchJob : JobBase
 
         // **이미 진행 중이던 연구는 재료를 다시 받지 않는다.** 재료는 처음 시작할 때 한 번만 들어간다 —
         // 아니면 중단·재개를 반복하는 것만으로 재료가 계속 빨려 들어간다.
-        bool resuming = ResearchManager.Instance != null
-                     && ResearchManager.Instance.GetProgressSeconds(_data) > 0f;
-
-        if (!resuming)
+        if (!Resuming)
         {
             // 재료는 **창고 + 이 폰의 배낭**에서 센다(`MaterialPool`).
             foreach (var ing in _data.Ingredients)
@@ -65,6 +84,9 @@ public class ResearchJob : JobBase
                 if (MaterialPool.Available(ing.Item, ReservedBy) < ing.Amount)
                 {
                     Debug.Log($"[ResearchJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요");
+                    // **예약은 잃지 않는다.** 그냥 끝내면 눌러 둔 연구가 조용히 사라진다 —
+                    // 큐에 되돌리면 `IsReady`가 재료가 들어올 때까지 배정을 미뤄 준다.
+                    _table?.QueueResearch(_data);
                     Status = JobStatus.Done;
                     return;
                 }
@@ -99,7 +121,7 @@ public class ResearchJob : JobBase
             _consumed = false;
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
             foreach (var ing in _data.Ingredients)
-                DroppedItem.Spawn(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+                MaterialPool.Refund(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
         }
 
         if (_requeueOnCancel) _table?.QueueResearch(_data);

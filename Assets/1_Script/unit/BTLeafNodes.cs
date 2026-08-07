@@ -142,6 +142,75 @@ public class FollowNode : BTNode
     }
 }
 
+// 우클릭 [줍는다] — 지정한 드롭까지 걸어가 배낭에 담는다.
+// 큐를 안 타므로 운반 작업을 꺼 둔 폰에게도 시킬 수 있다(직접 명령이므로).
+public class PickUpNode : BTNode
+{
+    const float ReachDistance = 1.2f;
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        // 남이 먼저 주웠거나 사라졌으면 유니티의 `== null`이 잡는다. **여기서 꺼 주지 않으면**
+        // 없는 것을 향해 영영 Running을 돌려 폰이 아무것도 안 하게 된다(`FollowNode`와 같은 함정).
+        var drop = bb.PickUpTarget;
+        if (drop == null) { bb.PickUpTarget = null; return BTStatus.Failure; }
+
+        if (Vector3.Distance(bb.Self.transform.position, drop.transform.position) > ReachDistance)
+        {
+            bb.Mover.SetMoveTarget(drop.transform.position);
+            return BTStatus.Running;
+        }
+
+        bb.Mover.StopMovement();
+
+        bool ignoreLimit = bb.PickUpIgnoreLimit;
+        bool thenEquip   = bb.PickUpThenEquip;
+        var  item        = drop.Item;
+        bb.PickUpTarget      = null;   // 성공이든 실패든 이 명령은 여기서 끝난다
+        bb.PickUpIgnoreLimit = false;
+        bb.PickUpThenEquip   = false;
+
+        var brain = bb.Self.GetComponent<UnitBrain>();
+        if (brain == null || brain.Inventory == null) return BTStatus.Failure;
+
+        // **한 명만 골라 시켰으면 한도를 넘겨서라도 든다**(`PickUpIgnoreLimit`) — 손으로 배낭에
+        // 넣는 것과 같은 일이고, 과적은 막는 대신 속도로 갚는다. 여럿을 골라 시킨 것은 일감
+        // 배분에 가까우므로 질 수 있는 만큼만 든다.
+        // 어느 쪽이든 **격자 자리는 넘을 수 없다** — 못 실은 잔량은 그 자리에 다시 떨어지고
+        // 새 운반 일감이 걸린다(`DroppedItem.PickUp`).
+        int max = ignoreLimit ? int.MaxValue : CarryCapacity.RoomFor(brain, drop.Item);
+        int got = drop.PickUp(brain.Inventory, max);
+        if (got <= 0)
+        {
+            Debug.Log($"[줍기] {brain.UnitName}: 배낭에 자리가 없어 {item.ItemName}을 들지 못했습니다.");
+            return BTStatus.Failure;
+        }
+
+        // **줍는 것과 착용은 한 동작이다.** 배낭에 넣었다가 배낭 창을 열어 다시 차게 하면
+        // "저걸 입어라"가 두 조작이 된다. 원래 차고 있던 것은 `Equipment`가 배낭으로
+        // 돌려주므로(교체가 이미 그렇게 동작한다) 여기서 따로 벗기지 않는다.
+        if (thenEquip) EquipPickedUp(brain, item);
+
+        return BTStatus.Success;
+    }
+
+    static void EquipPickedUp(UnitBrain brain, ItemData item)
+    {
+        var equipment = brain.Equipment;
+        if (equipment == null) return;
+
+        bool ok = item switch
+        {
+            WeaponData weapon => equipment.Equip(weapon),   // 방패면 Equip이 보조손으로 보낸다
+            ArmorData  armor  => equipment.EquipArmor(armor),
+            _                 => false,
+        };
+        if (!ok)
+            Debug.Log($"[착용] {brain.UnitName}: {item.ItemName}을 착용하지 못했습니다 " +
+                      "(양손 무기를 든 채 보조손 등).");
+    }
+}
+
 // 전투
 public class FightNode : BTNode
 {
@@ -189,6 +258,24 @@ public class WorkNode : BTNode
     // `ExpeditionFormation.NudgeStragglers`가 집결에서 쓰는 것과 같은 모양.
     const float StuckSeconds  = 6f;     // 이만큼 가까워지지 않으면 포기
     const float ProgressEpsilon = 0.35f; // 이보다 줄어야 "가고 있다"고 본다
+
+    // ── 어디까지 가면 "도착"인가 ──────────────────────────────────────────
+    // **저작한 자리에 실제로 선다**(`WorkSpot`). 칸 하나가 1m이므로 그 칸 위에 서 있다는 것은
+    // 중심에서 반대각선(≈0.71) 안쪽이라는 뜻이다 — 0.9면 넉넉하다.
+    //
+    // 예전엔 이 값이 **2.0**뿐이었다. 그러면 폰이 작업대에서 두 칸 떨어져 서서 일하고,
+    // 자리를 저작한 뜻이 사라진다(멀리서 허공에 대고 제작하는 것처럼 보인다).
+    //
+    // 그렇다고 0.9만 두면 **못 서는 상황이 곧 교착**이다(그 칸에 다른 폰이 서 있거나 반 칸
+    // 어긋난 건물이 물고 있을 때). 그래서 **가까이 와서 더는 못 좁히면 거기서라도 한다** —
+    // 일이 아예 안 되는 것보다 한 발 떨어져 하는 편이 낫다. 완전히 못 가면 6초 뒤 포기는 그대로다.
+    const float WorkRadius    = 0.9f;   // 저작된 자리에 선다
+    const float ReachRadius   = 2.0f;   // 더는 못 좁힐 때 받아들이는 한계
+    const float SettleSeconds = 2f;     // 이만큼 못 좁히면 "더는 못 간다"로 본다
+
+    // **자원 노드는 이 규약을 안 쓴다.** 바위·나무에는 저작된 자리가 없고 `MaxWorkers`만큼
+    // 여럿이 둘러서서 캔다 — 한 칸에 붙이면 서로 비켜서다 아무도 못 캔다. 넉넉히 둔다.
+    const float NodeReach = 2.0f;
 
     float _stuckTimer;
     float _bestDist = float.MaxValue;
@@ -246,7 +333,7 @@ public class WorkNode : BTNode
         float dist    = Vector2.Distance(new Vector2(pos.x, pos.z),
                                          new Vector2(jobCenter.x, jobCenter.z));
 
-        if (dist > 2.0f)
+        if (!Arrived(dist, currentJob.TileCoord))
         {
             // 이동 중이 아닐 때만 목표 재설정 (이미 이동 중이면 기다림)
             if (!bb.Mover.HasTarget())
@@ -261,6 +348,13 @@ public class WorkNode : BTNode
                 Debug.LogWarning($"[Work] {bb.Self.name}: '{JobCategoryInfo.DisplayName(currentJob.Category)}' " +
                                  $"일감 지점 {currentJob.TileCoord}까지 갈 수 없어 놓습니다 " +
                                  "(길이 막혔거나 바닥 밖일 수 있습니다).");
+
+                // **왜 못 갔는지까지 남긴다.** 좌표만 찍으면 "길은 열려 보이는데 왜?"에서 멈춘다 —
+                // 목표 칸이 점유됐는지·바닥이 있는지·차단 기억에 걸렸는지, 그리고 로컬 경로가
+                // 아예 안 나온 것인지(직선 폴백으로 처박은 것인지)가 원인을 가른다.
+                // `PawnMover`의 포기(4단계)가 쓰던 진단을 일감 쪽에서도 그대로 쓴다.
+                MovementDiagnostics.LogGiveUp(bb.Self.name, pos, jobCenter,
+                                              bb.Mover.HasLocalPath, bb.Self);
 
                 // 놓는 건 **취소**로 한다 — 각 Job이 OnCancelled에 "들고 있던 것 되돌리기"를
                 // 이미 구현해 두었다(운반 짐 드롭·제작 재료 환불). 예약만 풀면 그게 안 돈다.
@@ -302,7 +396,11 @@ public class WorkNode : BTNode
         float dist = Vector2.Distance(new Vector2(pos.x, pos.z),
                                       new Vector2(nodeCenter.x, nodeCenter.z));
 
-        if (dist > 2.0f)
+        // **자원 노드는 둘러서서 캔다 — 한 자리에 붙이지 않는다.**
+        // 작업대와 다른 축이다: 작업대는 `WorkSpot`으로 **설 자리를 저작**하지만, 바위·나무는
+        // 그런 자리가 없고 `MaxWorkers`만큼 여럿이 붙는다. 좁게 잡으면 한 칸을 두고 서로
+        // 비켜서다 아무도 못 캔다. 넉넉히 잡아 각자 닿는 데서 캐게 둔다.
+        if (dist > NodeReach)
         {
             if (!bb.Mover.HasTarget())
                 bb.Mover.SetMoveTarget(TileToWorld(node.TileCoord, bb));
@@ -324,6 +422,26 @@ public class WorkNode : BTNode
         }
 
         return BTStatus.Running;
+    }
+
+    // "여기서 하기로 했다"를 **붙들어 둔다.** 일을 시작하면 `ResetProgress`가 정체 타이머를
+    // 지우는데, 그걸 매 틱 다시 재면 다음 틱에 "아직 안 왔다"가 되어 **일한다 ↔ 다시 걷는다**가
+    // 진동한다. 목표 칸이 바뀌면(운반 2단계처럼) 저절로 풀리도록 어느 칸이었는지도 같이 든다.
+    bool       _settled;
+    Vector2Int _settledFor;
+
+    // 저작된 자리에 섰거나(WorkRadius), 가까이 와서 더는 못 좁히거나(ReachRadius + 정체).
+    bool Arrived(float dist, Vector2Int tile)
+    {
+        if (dist <= WorkRadius) return true;
+        if (dist > ReachRadius) return false;
+
+        if (_settled && _settledFor == tile) return true;
+        if (_stuckTimer < SettleSeconds) return false;
+
+        _settled    = true;
+        _settledFor = tile;
+        return true;
     }
 
     Vector3 TileToWorld(Vector2Int tile, UnitBlackboard bb)

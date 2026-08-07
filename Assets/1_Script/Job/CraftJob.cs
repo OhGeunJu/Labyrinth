@@ -251,8 +251,10 @@ public class CraftJob : JobBase
         {
             _consumed = false;
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
+            // 창고로 되돌린다 — 바닥에 떨구면 그것이 다시 운반 일감이 되고, 나르는 동안
+            // 창고 집계에서 빠져 있어 같은 주문이 "재료 부족"으로 다시 죽는다(연구와 같은 정책).
             foreach (var ing in _recipe.Ingredients)
-                DroppedItem.Spawn(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+                MaterialPool.Refund(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
         }
 
         // 주문 자체는 잃지 않는다 — 큐에 되돌려 다른 폰(또는 나중에 이 폰)이 이어받게 한다.

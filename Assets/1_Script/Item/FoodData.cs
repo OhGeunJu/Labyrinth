@@ -3,6 +3,8 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "DungeonColony/FoodData")]
 public class FoodData : ItemData
 {
+    public override string TypeName => "음식";
+
     [Tooltip("섭취 시 회복되는 허기량 (0-100)")]
     public float NutritionValue = 30f;
 

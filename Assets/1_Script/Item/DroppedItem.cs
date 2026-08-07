@@ -10,6 +10,24 @@ public class DroppedItem : MonoBehaviour
     public int         Amount  { get; private set; }
     public ItemQuality Quality { get; private set; }
 
+    // **플레이어가 손으로 내려놓은 것은 자동으로 치우지 않는다.**
+    //
+    // 일부러 내려놓은 물건을 폰이 도로 창고에 넣으면 "내려놓기"가 곧 "창고로 보내기"가 되어,
+    // 어디에 두고 싶어도 둘 수가 없다 — 짐내림을 꺼 둔 폰의 짐도 바닥을 거쳐 창고로 흘러간다
+    // (짐내림과 운반은 다른 축이라 끈 쪽만으로는 막히지 않는다).
+    //
+    // 사건으로 떨어진 것(발견·철거 환불·작업대 넘침·수확 넘침)은 그대로 운반된다 — 그건
+    // **아무도 의도하지 않은 자리**라서 치우는 것이 맞다. 다시 나르게 하려면 우클릭 [창고로 옮긴다].
+    public bool NoAutoHaul { get; private set; }
+
+    // "이제 가져가라" — 손으로 내려놓은 것을 다시 운반 대상으로 되돌린다.
+    public void AllowAutoHaul()
+    {
+        if (!NoAutoHaul) return;
+        NoAutoHaul = false;
+        TryRegisterHaul();
+    }
+
     // ── 공용 드롭 모델 ────────────────────────────────────────────────────
     // **왜 3_Prefab이 아니라 Resources인가** (프로젝트 기본은 3_Prefab + 인스펙터 참조):
     //   ① `Spawn`이 static 팩토리라 인스펙터에서 프리팹을 꽂아줄 자리가 없다.
@@ -56,13 +74,16 @@ public class DroppedItem : MonoBehaviour
 
     // 어디서든 호출 가능한 팩토리 메서드. quality를 보존해 등급 있는 장비가 드롭을 거쳐도 소실되지 않게 한다.
     public static DroppedItem Spawn(ItemData item, int amount, Vector3 position,
-                                    ItemQuality quality = ItemQuality.Common)
+                                    ItemQuality quality = ItemQuality.Common,
+                                    bool noAutoHaul = false)
     {
         var go = new GameObject($"Drop_{item.ItemName}");
         go.transform.position = position;
 
         var col = go.AddComponent<SphereCollider>();
-        col.radius    = 0.3f;
+        // 우클릭으로 집으려면 **맞힐 수 있어야** 한다 — 0.3은 꾸러미 모델보다 작아서
+        // 눌러도 자꾸 바닥이 잡혔다. 트리거라 이동을 막지는 않는다.
+        col.radius    = 0.5f;
         col.isTrigger = true;
 
         // 시각 표현: ItemData.WorldModel 우선, 없으면 **공용 꾸러미 모델**.
@@ -93,9 +114,10 @@ public class DroppedItem : MonoBehaviour
             Object.Destroy(c);
 
         var dropped = go.AddComponent<DroppedItem>();
-        dropped.Item    = item;
-        dropped.Amount  = amount;
-        dropped.Quality = quality;
+        dropped.Item       = item;
+        dropped.Amount     = amount;
+        dropped.Quality    = quality;
+        dropped.NoAutoHaul = noAutoHaul;
 
         dropped.TryRegisterHaul();
         return dropped;
@@ -113,6 +135,7 @@ public class DroppedItem : MonoBehaviour
 
     public void TryRegisterHaul()
     {
+        if (NoAutoHaul) return;   // 손으로 내려놓은 것 — 시키기 전엔 아무도 안 건드린다
         if (JobManager.Instance == null || Item == null) return;
 
         // **쌓인 만큼·이 등급으로** 물어본다. 개수를 빼먹으면 한 개 자리만 확인하고 50을
@@ -126,6 +149,8 @@ public class DroppedItem : MonoBehaviour
 
     void Update()
     {
+        if (NoAutoHaul) return;
+
         // 일감이 살아 있으면 그만이다. 끝났거나 취소됐거나 애초에 못 걸었을 때만 다시 본다.
         if (_haulJob != null &&
             _haulJob.Status != JobStatus.Done &&
@@ -151,7 +176,7 @@ public class DroppedItem : MonoBehaviour
 
         int leftover = Amount - added;
         if (leftover > 0)
-            DroppedItem.Spawn(Item, leftover, transform.position, Quality);
+            DroppedItem.Spawn(Item, leftover, transform.position, Quality, NoAutoHaul);
         Destroy(gameObject);
         return added;
     }

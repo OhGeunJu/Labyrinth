@@ -3,6 +3,13 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "DungeonColony/WeaponData")]
 public class WeaponData : ItemData
 {
+    // 쓰던 무기는 **중고다.** 사는 값과 파는 값이 크게 벌어져야 "장비는 사서 쓰는 것이지
+    // 되팔아 돈 버는 수단이 아니다"가 값으로 드러난다. 상인 매입률(0.45)과 곱해 실질 0.25 —
+    // 대략 사는 값의 4분의 1이다.
+    public override float ResaleFactor => 0.55f;
+
+    public override string TypeName => Type.DisplayName();
+
     [Header("무기 분류")]
     public WeaponType Type;
     public bool IsLargeWeapon;  // 양손무기/폴암 → 근력 공격속도 보정

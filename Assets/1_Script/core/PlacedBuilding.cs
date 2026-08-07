@@ -28,6 +28,39 @@ public class PlacedBuilding : MonoBehaviour
     void OnEnable()  => All.Add(this);
     void OnDisable() => All.Remove(this);
 
+    // **씬에 손으로 놓아둔 건물도 자기 칸을 막는다.**
+    //
+    // 점유 등록은 `BuildModeManager.Place`만 했다. 그래서 에디터에서 끌어다 놓은 건물은
+    // `MapManager`가 **전혀 모르는 상태**가 된다 — 길찾기가 아는 것은 콜라이더뿐인데
+    // 그건 모델보다 훨씬 작을 수 있어(연구대: 모델 3×2, 콜라이더 1×1) **모델 한복판을
+    // 가로지르는 경로**가 나온다. 폰은 그 경로를 따라가다 눈에 보이는 모서리에 처박히고,
+    // 로그에는 "로컬경로 있음 / 목표칸 통행가능"만 남는다(2026-08-08 연구대 사건).
+    //
+    // 배치로 지은 건물은 이미 `OccupyTiles`가 불렸으므로 여기서 다시 하지 않는다.
+    void Start()
+    {
+        if (_occupiedTiles.Count > 0) return;             // 배치 경로가 이미 등록했다
+        if (data == null || !data.OccupiesTile) return;
+        if (MapManager.Instance == null) return;
+
+        OccupyTiles(FootprintAt(transform.position, data.Size));
+    }
+
+    // 중심에서 크기만큼 펼친 칸들. `BuildModeManager.GetFootprint`가 만드는 것과 같은 칸이
+    // 나오고, 격자에서 반 칸쯤 어긋나게 놓인 건물도 반올림으로 제자리를 찾는다.
+    static IEnumerable<Vector2Int> FootprintAt(Vector3 center, Vector2Int size)
+    {
+        int w = Mathf.Max(1, size.x);
+        int h = Mathf.Max(1, size.y);
+
+        int x0 = Mathf.RoundToInt(center.x - w * 0.5f);
+        int z0 = Mathf.RoundToInt(center.z - h * 0.5f);
+
+        for (int x = 0; x < w; x++)
+        for (int z = 0; z < h; z++)
+            yield return new Vector2Int(x0 + x, z0 + z);
+    }
+
     // 배치 시 부착 + BuildingData 연결.
     public static PlacedBuilding Attach(GameObject go, BuildingData data)
     {

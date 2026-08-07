@@ -129,6 +129,11 @@ public class WorldMap : MonoBehaviour
 
     void Generate()
     {
+        // 마을 시장은 칸 좌표를 열쇠로 static에 남는다 — 지도를 새로 지으면 옛 좌표의
+        // 상점이 엉뚱한 마을에 붙는다(도메인 리로드를 끄면 플레이 정지 뒤에도 살아남는다).
+        TownMarket.Clear();
+        TownRecruits.Clear();
+
         if (mapData != null && mapData.IsSized) LoadAuthored();
         else                                    BuildEmpty();
 

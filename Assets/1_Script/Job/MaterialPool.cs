@@ -63,4 +63,29 @@ public static class MaterialPool
         if (remaining > 0) return Storage.ConsumeByItem(item, remaining);
         return true;
     }
+
+    // 차감했던 재료를 되돌린다(제작·연구 취소 환불). **창고로 먼저, 바닥은 최후 수단.**
+    //
+    // 예전엔 곧장 바닥에 떨궜다. 그러면 그 짐이 **다시 운반 일감**이 되어 폰이 나르러 가고,
+    // 나르는 동안 재료는 창고 집계에서 빠져 있다 — 같은 작업이 다시 배정되면 "재료 부족"이
+    // 되어 조용히 죽는다. 연구가 저절로 풀리면서 폰이 운반만 하던 것이 이 고리였다(2026-08-08).
+    //
+    // 되돌리는 것은 **원래 있던 곳(창고)으로** 가는 게 맞다 — 취소는 사건이 아니라 무효화다.
+    public static void Refund(ItemData item, int amount, UnityEngine.Vector3 dropAt)
+    {
+        if (item == null || amount <= 0) return;
+
+        int left = amount;
+        while (left > 0)
+        {
+            var storage = Storage.FindNearest(dropAt, item, left);
+            if (storage == null) break;
+
+            int added = storage.TryAdd(item, left);
+            if (added <= 0) break;      // 자리를 못 찾았다 — 더 돌아도 같은 답이다
+            left -= added;
+        }
+
+        if (left > 0) DroppedItem.Spawn(item, left, dropAt);
+    }
 }

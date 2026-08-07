@@ -392,14 +392,31 @@ public static class DataManager
         return item;
     }
 
+    // JSON의 enum 문자열을 읽되 **못 읽으면 알린다.**
+    //
+    // 전엔 `if (Enum.TryParse(...)) 대입;`이라 실패가 조용히 넘어갔다 — 값은 C# 기본값(0)에
+    // 머문다. `"weaponType": "Dagger"`(enum에 없는 값)로 적힌 무기 둘이 **맨손**으로 등록돼
+    // 있었고, 맨손은 다른 스탯을 쓰므로 전투가 통째로 다르게 돌았다. 데이터가 조용히 틀리는 건
+    // 코드가 틀리는 것보다 찾기 어렵다 — **모드가 오타를 내면 더더욱.**
+    static T ParseEnum<T>(string raw, T fallback, string itemId, string field) where T : struct, Enum
+    {
+        if (string.IsNullOrEmpty(raw)) return fallback;
+        if (Enum.TryParse<T>(raw, ignoreCase: true, out var v)) return v;
+
+        Debug.LogWarning($"[DataManager] '{itemId}'의 {field} = \"{raw}\" 는 " +
+                         $"{typeof(T).Name}에 없는 값입니다 — {fallback}(으)로 둡니다. " +
+                         $"쓸 수 있는 값: {string.Join(", ", Enum.GetNames(typeof(T)))}");
+        return fallback;
+    }
+
     static WeaponData BuildWeapon(WeaponSchema s, string root)
     {
         var w = ScriptableObject.CreateInstance<WeaponData>();
         ApplyBase(w, s, root);
-        if (Enum.TryParse<WeaponType>(    s.weaponType,     ignoreCase: true, out var wt)) w.Type           = wt;
-        if (Enum.TryParse<DamageCategory>(s.damageCategory, ignoreCase: true, out var dc)) w.DamageCategory = dc;
-        if (Enum.TryParse<PhysicalType>(  s.physicalType,   ignoreCase: true, out var pt)) w.PhysicalType   = pt;
-        if (Enum.TryParse<DamageElement>( s.damageElement,  ignoreCase: true, out var de)) w.DamageElement  = de;
+        w.Type           = ParseEnum(s.weaponType,     w.Type,           s.id, "weaponType");
+        w.DamageCategory = ParseEnum(s.damageCategory, w.DamageCategory, s.id, "damageCategory");
+        w.PhysicalType   = ParseEnum(s.physicalType,   w.PhysicalType,   s.id, "physicalType");
+        w.DamageElement  = ParseEnum(s.damageElement,  w.DamageElement,  s.id, "damageElement");
         w.IsLargeWeapon      = s.isLargeWeapon;
         w.IsBladed           = s.isBladed;
         w.IsRanged           = s.isRanged;
@@ -416,7 +433,7 @@ public static class DataManager
     {
         var a = ScriptableObject.CreateInstance<ArmorData>();
         ApplyBase(a, s, root);
-        if (Enum.TryParse<ArmorSlot>(s.armorSlot, ignoreCase: true, out var slot)) a.Slot = slot;
+        a.Slot = ParseEnum(s.armorSlot, a.Slot, s.id, "armorSlot");
         a.DamageReduction = s.damageReduction;
         return a;
     }

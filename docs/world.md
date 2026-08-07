@@ -67,7 +67,7 @@ NavMesh 제거. 켄시급 대형 맵이라 전체를 1m 격자로 못 덮으므�
 **`GameEventData`** (ScriptableObject, `DungeonColony/GameEventData`):
 - 공통: `EventName`, `Description`, `Icon`, `Weight`, `MinGameTime`, `EventType`
 - Raid: `EnemyPrefabs: List<GameObject>`, `EnemyCount`
-- Merchant: `MerchantPrefab: GameObject`
+- Merchant: `MerchantPrefabs: List<GameObject>`(종족) × `MerchantVariants: List<MerchantData>`(상품)
 - Reinforcement: `ReinforcementPrefabs: List<GameObject>`, `ReinforcementCount`
 - Discovery: `ResourceNodePrefab`, `DiscoveryMinDist`, `DiscoveryMaxDist`
 

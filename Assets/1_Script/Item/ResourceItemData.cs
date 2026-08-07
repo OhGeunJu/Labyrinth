@@ -11,4 +11,7 @@ public class ResourceItemData : ItemData
     [Tooltip("창고 필터·UI 분류에 쓰는 묶음. 종류가 아니라 묶음이다 — 종류는 이 에셋 자신.")]
     public ResourceGroup Group;
 
+    // 묶음 이름이 곧 종류 이름이다 — "원석"·"주괴"·"보석".
+    public override string TypeName => Group.DisplayName();
+
 }

@@ -148,6 +148,7 @@ public class GameModeManager : MonoBehaviour
             foreach (Transform child in uiCanvas.transform)
             {
                 if (child == worldUiRoot) continue;
+                if (_modeAgnosticUi.Contains(child)) continue;
                 _fieldUi.Add(child);
                 _fieldUiWasOpen.Add(child.gameObject.activeSelf);
                 child.gameObject.SetActive(false);
@@ -167,6 +168,40 @@ public class GameModeManager : MonoBehaviour
         _fieldUiStashed = false;
     }
 
+    // ── 모드 무관 UI ──────────────────────────────────────────────────────────
+    //
+    // **양쪽 모드에서 다 쓰는 창.** 상점과 배낭이 그렇다 — 거래는 거점 상인에게도 하고
+    // 월드맵 마을에서도 하는데, 필드 UI로 묶어 두면 지도에서 상점을 여는 순간 창이 꺼진다.
+    //
+    // 스태시에서 빼는 것뿐이라 **알아서 열리지는 않는다.** 이 창들은 늘 켜진 루트 + 꺼지는
+    // `panel` 자식 구조라(`docs/ui.md`), 루트를 남겨 둬도 화면엔 아무것도 안 나온다.
+    //
+    // 씬 배열로 두지 않는다 — 목록을 인스펙터에 적으면 새 창을 만들 때마다 배선을 빠뜨린다.
+    // `FindWorldUiRoot`와 같은 방식으로 **컴포넌트에서 캔버스 직속 부모를 타고 올라간다.**
+    readonly HashSet<Transform> _modeAgnosticUi = new();
+
+    void CollectModeAgnosticUi()
+    {
+        _modeAgnosticUi.Clear();
+        AddModeAgnostic<MerchantUI>();
+        AddModeAgnostic<InventoryUI>();
+        AddModeAgnostic<ItemInfoUI>();   // 두 창의 툴팁이 같은 것을 쓴다
+    }
+
+    void AddModeAgnostic<T>() where T : Component
+    {
+        if (uiCanvas == null) return;
+
+        var found = FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var c in found)
+        {
+            if (c == null) continue;
+            var t = c.transform;
+            while (t != null && t.parent != uiCanvas.transform) t = t.parent;
+            if (t != null) _modeAgnosticUi.Add(t);
+        }
+    }
+
     // ── 참조 해결 ─────────────────────────────────────────────────────────────
 
     void Resolve()
@@ -183,6 +218,7 @@ public class GameModeManager : MonoBehaviour
 
         if (uiCanvas == null) uiCanvas = First<Canvas>();
         if (worldUiRoot == null) worldUiRoot = FindWorldUiRoot();
+        CollectModeAgnosticUi();
 
         // worldCamera가 정해진 뒤에 수집해야 필드/월드를 가를 수 있다(아래 Collect 규칙).
         _fieldOnly.Clear();

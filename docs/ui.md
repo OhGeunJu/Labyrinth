@@ -9,7 +9,7 @@
 | `GradeUpNotificationUI` | 등급 승급 시 | **월드 공간** 텍스트가 유닛 머리 위에 떠올라 페이드 (2.5초). 카메라 빌보드 + 등급 색상 |
 | `InventoryUI` | I키 | 인벤토리 그리드 + 장착 슬롯 6개 + 하단 액션 바. 상인 열림 → 판매 모드(액션 바 [판매] 버튼), 시체 열림 → 옮기기 모드 |
 | `CorpseInventoryUI` | 시체 클릭 | `SelectionManager.OnCorpseSelected` 구독. 인벤토리 그리드 + 장착 슬롯 6개. InventoryUI 강제 열기 + 루팅 모드 진입 |
-| `MerchantUI` | `Merchant.OnSelected` 이벤트 | 상인 재고(구매 전용). **목록↔격자 전환**(헤더 우측 버튼). 아이템 클릭/더블클릭 → 구매. 아이템 드롭 존으로 판매도 가능 |
+| `MerchantUI` | `Merchant.OnSelected`(필드) / `OpenFor`(월드 마을) | 상인 재고(구매 전용). **목록↔격자 전환**(헤더 우측 버튼). 아이템 클릭/더블클릭 → 구매. 아이템 드롭 존으로 판매도 가능. **모드 무관** — 아래 참조 |
 
 ## 무엇을 매 프레임 갱신할 것인가
 
@@ -25,7 +25,7 @@
 > **매 프레임 도는 자리에서 TMP에 글자를 넣을 때는 값이 바뀌었는지 먼저 본다.**
 > `CraftingTableUI.SetText(label, value)`가 그 한 줄이다 — 진행률처럼 실제로 매 프레임 도는
 > 곳에서도 글자가 그대로면 아무 일도 하지 않는다.
-| `ItemInfoUI` | 아이템 hover | 공용 툴팁. 등급 컬러, 스탯, 설명, 상점가/판매가/가치, 잠김 안내. `Show(item, quality, price, priceLabel, locked)` / `Hide()`. **컴포넌트는 늘 켜져 있는 `ItemInfo_UI`에, 보였다 사라지는 상자는 자식 `panel`** — 아래 참조 |
+| `ItemInfoUI` | 아이템 hover | 공용 툴팁. **이름줄은 이름만**, 아랫줄이 `등급 · 종류`(등급 색). 스탯, 설명, 상점가/판매가/가치, 잠김 안내. `Show(item, quality, price, priceLabel, locked)` / `Hide()`. **컴포넌트는 늘 켜져 있는 `ItemInfo_UI`에, 보였다 사라지는 상자는 자식 `panel`** — 아래 참조 |
 | `StorageUI` | Storage 좌클릭 | 타이틀바 + InventoryGridUI 그리드. CanAccept 필터 적용 |
 | `CraftingTableUI` | CraftingTable 좌클릭 | 마스터-디테일. 왼쪽 RecipeEntryUI 목록, 오른쪽 디테일. ESC로 닫기 |
 | `ResearchTableUI` | ResearchTable 좌클릭 | 마스터-디테일. 선행연구/재료/시간 표시 |
@@ -44,6 +44,7 @@
 **공통 패턴:**
 - **캔버스는 하나** — 필드 UI와 월드 UI가 같은 Canvas 아래 형제로 산다. 모드 전환(`GameModeManager`)은 캔버스가 아니라 **캔버스의 직속 자식들**을 다루고, 월드 전용 묶음(`WorldUI`)만 반대로 켠다. 그래서 **월드 전용 UI는 반드시 `Canvas/WorldUI` 바로 아래**에 둘 것 — 더 깊이 넣거나 밖에 두면 필드 UI와 같이 꺼진다
 - **필드 UI는 "일괄 on/off"가 아니라 상태 복원** — 월드로 나갈 때 열려 있던 패널을 기억했다가 돌아올 때 그대로 되돌린다(`GameModeManager.ApplyFieldUi`). 일괄로 켜면 **닫아 뒀던 인벤토리·상점 패널까지 따라 열린다**
+- **양쪽 모드에서 다 쓰는 창은 스태시에서 뺀다** — 상점·배낭·툴팁(`MerchantUI`·`InventoryUI`·`ItemInfoUI`)이 그렇다. 거래는 거점 상인에게도 하고 월드맵 마을에서도 하는데, 필드 UI로 묶여 있으면 지도에서 여는 순간 꺼진다. 목록은 **씬 배열이 아니라** 컴포넌트에서 캔버스 직속 부모를 타고 올라가 찾는다(`GameModeManager.CollectModeAgnosticUi`) — 인스펙터에 적으면 새 창을 만들 때마다 배선을 빠뜨린다. 스태시에서 빼는 것뿐이라 **알아서 열리지는 않는다**(늘 켠 루트 + 꺼지는 `panel` 자식 구조라서)
 - `BuildModeManager.OnActiveChanged` — 건설 모드 열릴 때 대부분 UI 자동 닫힘
 - `CloseButton` — `Target` RectTransform 연결 시 클릭으로 비활성화
 - ESC 키 — 대부분 패널이 `Update()`에서 `escapeKey.wasPressedThisFrame` 체크로 닫힘
@@ -79,7 +80,7 @@
 
 | 모드 | 진입 | 액션 바 버튼 | 더블클릭 |
 |---|---|---|---|
-| Sell | `MerchantUI.Open()` → `SetSellMode(merchant)` | 판매 | 즉시 판매 |
+| Sell | `MerchantUI.Open()` → `SetSellMode(shop)` | 판매 | 즉시 판매 |
 | Loot | `CorpseInventoryUI.OnCorpseSelected` → `SetLootMode(inventory)` | 옮기기 | 즉시 이동 |
 | None | 상인/시체 패널 닫힘 | 숨김 | — |
 

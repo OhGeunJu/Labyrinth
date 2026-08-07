@@ -1,0 +1,148 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+// 거래의 **우리 쪽** — 값을 치를 돈이 어디 있고, 산 물건은 어디로 가는가.
+//
+// 상인이 아는 것은 "무엇을 얼마에 파는가"뿐이다. 지갑이 거점 창고인지 원정대 배낭인지는
+// 상인의 성질이 아니라 **누가 사러 왔느냐**의 문제다. 예전엔 `Merchant`가 `Storage`를 직접
+// 불러서, 창고가 닿지 않는 곳(월드맵 마을)에서는 같은 상인이 아예 동작할 수 없었다.
+//
+// **계약 — 돈은 전액 아니면 0이다.** `TakeGold`가 절반만 빼 가면 되돌릴 방법이 없다.
+// 물건(`Receive`)은 반대로 부분 입고를 인정한다 — 격자·무게가 막는 건 정상적인 거절이고,
+// 실제로 받은 개수를 돌려주면 호출자가 거기까지만 값을 치르면 된다.
+public abstract class TradeAccount
+{
+    protected readonly ItemData GoldItem;
+
+    protected TradeAccount(ItemData goldItem) { GoldItem = goldItem; }
+
+    // UI에 "누구의 지갑인가"를 적는다 — 창고 돈과 원정대 돈을 헷갈리면 안 산 물건을 샀다고 믿는다.
+    public abstract string Label { get; }
+
+    public abstract int GoldAmount { get; }
+
+    // 실제로 뺀 금액. 전액을 못 대면 **아무것도 빼지 않고** 0.
+    public abstract int TakeGold(int amount);
+
+    // 실제로 넣은 금액. 넣을 곳이 없으면 0.
+    public abstract int GiveGold(int amount);
+
+    // 산 물건을 받는다. 실제로 받은 개수(0 = 받을 곳 없음).
+    public abstract int Receive(ItemData item, int amount, ItemQuality quality);
+}
+
+// 거점 창고 지갑 — 필드맵에 상주하는 상인이 쓰는 계정(기존 동작 그대로).
+public class StorageAccount : TradeAccount
+{
+    // 창고를 고를 기준점. 상인이 서 있는 자리에서 가장 가까운 창고로 넣고 뺀다.
+    readonly Vector3 _origin;
+
+    public StorageAccount(ItemData goldItem, Vector3 origin) : base(goldItem)
+    {
+        _origin = origin;
+    }
+
+    public override string Label => "창고";
+
+    public override int GoldAmount => GoldItem != null ? Storage.GetTotalByItem(GoldItem) : 0;
+
+    public override int TakeGold(int amount)
+    {
+        if (GoldItem == null || amount <= 0) return 0;
+        // `ConsumeByItem`은 총량을 먼저 확인하므로 부분 차감이 없다 — 계약과 맞는다.
+        return Storage.ConsumeByItem(GoldItem, amount) ? amount : 0;
+    }
+
+    public override int GiveGold(int amount)
+    {
+        if (GoldItem == null || amount <= 0) return 0;
+        var dest = Storage.FindNearest(_origin, GoldItem, amount);
+        return dest != null ? dest.Inventory.TryAdd(GoldItem, amount) : 0;
+    }
+
+    public override int Receive(ItemData item, int amount, ItemQuality quality)
+    {
+        if (item == null || amount <= 0) return 0;
+
+        // **수량과 등급을 넘긴다.** 기본값(1개·일반)으로 물으면 만적인 창고가 "한 개는 들어간다"고
+        // 답하고, 등급이 다르면 스택이 안 합쳐져 결국 못 넣는다.
+        var dest = Storage.FindNearest(_origin, item, amount, quality);
+        return dest != null ? dest.Inventory.TryAdd(item, amount, quality) : 0;
+    }
+}
+
+// 원정대 지갑 — 멤버들의 배낭이 곧 지갑이고 창고다.
+//
+// **등짐(`ExpeditionParty.Cargo`)은 쓰지 않는다.** 등짐은 아이템과 개수만 들고 등급을 모르므로,
+// 희귀 검을 거기 넣으면 조용히 일반이 된다 — 08-04에 세 군데서 걷어낸 바로 그 사고다.
+// 등짐은 밖에서 캔 자원을 나르는 그릇으로 남기고, 거래는 등급을 아는 배낭으로만 한다.
+//
+// **잠근 뭉치는 안 쓴다.** 잠금은 "자동과 비가역 처분에서 빼라"는 뜻이고 값을 치르는 건
+// 되돌릴 수 없다. 덕분에 여비를 잠가 두면 그만큼은 절대 안 나간다.
+public class PartyAccount : TradeAccount
+{
+    readonly IReadOnlyList<UnitBrain> _members;
+
+    public PartyAccount(ItemData goldItem, IReadOnlyList<UnitBrain> members) : base(goldItem)
+    {
+        _members = members;
+    }
+
+    public override string Label => "원정대";
+
+    public override int GoldAmount
+    {
+        get
+        {
+            if (GoldItem == null || _members == null) return 0;
+            int sum = 0;
+            foreach (var m in _members)
+            {
+                var inv = Inv(m);
+                if (inv != null) sum += inv.GetUnlockedQuantity(GoldItem);
+            }
+            return sum;
+        }
+    }
+
+    public override int TakeGold(int amount)
+    {
+        if (GoldItem == null || amount <= 0 || _members == null) return 0;
+        if (GoldAmount < amount) return 0;     // 전액 아니면 손대지 않는다
+
+        int left = amount;
+        foreach (var m in _members)
+        {
+            if (left <= 0) break;
+            var inv = Inv(m);
+            if (inv != null) left -= inv.RemoveUnlocked(GoldItem, left);
+        }
+
+        // 위에서 총량을 확인했으므로 여기 남는 일은 없다. 남았다면 세는 쪽과 빼는 쪽의
+        // 기준이 어긋난 것이므로 조용히 넘기지 않고 드러낸다.
+        if (left > 0)
+            Debug.LogWarning($"[PartyAccount] 골드 차감이 {left} 모자랍니다 — 세는 기준과 빼는 기준이 어긋났습니다.");
+
+        return amount - left;
+    }
+
+    public override int GiveGold(int amount) => Receive(GoldItem, amount, ItemQuality.Common);
+
+    public override int Receive(ItemData item, int amount, ItemQuality quality)
+    {
+        if (item == null || amount <= 0 || _members == null) return 0;
+
+        int left = amount;
+        foreach (var m in _members)
+        {
+            if (left <= 0) break;
+            var inv = Inv(m);
+            if (inv != null) left -= inv.TryAdd(item, left, quality);
+        }
+        return amount - left;
+    }
+
+    // 원정 나간 폰은 GameObject가 꺼져 있다(`ExpeditionFormation`). 컴포넌트는 살아 있어
+    // 데이터는 그대로 읽고 쓸 수 있다 — 도는 것은 `Update`뿐이다.
+    static Inventory Inv(UnitBrain brain) => brain != null ? brain.Inventory : null;
+}

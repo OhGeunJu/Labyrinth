@@ -1,140 +1,77 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using Random = UnityEngine.Random;
 
-// 마을 상주 상인 NPC에 부착. 매일 자정에 재고 갱신.
-public class Merchant : MonoBehaviour, IWorldClickable
+// **폰에 이걸 붙이면 상인이 된다.** 어느 종족의 프리팹이든 `Merchant` + `MerchantData`를
+// 얹으면 그 물건을 파는 상인이다 — 고블린 무기상인과 엘프 식료상인이 서로 다른 프리팹
+// 계보를 만들지 않는다. 역할(`NpcData`)은 상인이 **어떻게 행동하는가**(자리를 지킨다 /
+// 들렀다 떠난다)를 정할 뿐, 무엇을 파는지는 여기가 든다.
+//
+// **재고와 거래 자체는 `Shop`이 한다** — 이 컴포넌트는 그걸 씬에 세우고(클릭 판정·일일 갱신),
+// 값을 치를 지갑으로 **거점 창고**(`StorageAccount`)를 물려 주는 역할만 한다.
+// 월드맵 마을은 오브젝트가 없어 같은 `Shop`을 `TownMarket`이 든다.
+//
+// **`Shop`은 컴포넌트마다 하나다.** 같은 `MerchantData`를 쓰는 상인이 둘이어도 재고는
+// 따로 돈다 — `MerchantData`는 "무엇을 팔 수 있는가"(후보 목록)이고, 오늘 진열대에 무엇이
+// 몇 개 올랐는지는 그 상인의 것이다. 한쪽에서 사도 다른 쪽 재고는 그대로다.
+public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
 {
     public static event Action<Merchant> OnSelected;
 
+    [Tooltip("이 상인이 파는 것. 비우면 역할 에셋(NpcData.MerchantData)의 기본값을 쓴다.")]
     [SerializeField] MerchantData _data;
     public MerchantData Data
     {
         get => _data;
-        set { _data = value; RefreshStock(); }
+        set { _data = value; _shop = new Shop(_data); }
     }
 
-    public List<MerchantStockEntry> CurrentStock { get; private set; } = new();
+    Shop _shop;
+    public Shop Shop => _shop ??= new Shop(_data);
+
+    // 프리팹/씬에서 **손으로 물려 둔** 상품인가 — 역할 기본값이나 스폰 주입으로 채워진 것과
+    // 구별한다. 저작한 것은 밖에서 덮으면 안 된다: "이 사람은 늘 이것만 판다"가 성립해야
+    // 고정 상인(고블린 방어구 상인 등)을 프리팹 하나로 세울 수 있다.
+    public bool HasAuthoredData { get; private set; }
+
+    public List<MerchantStockEntry> CurrentStock => Shop.Stock;
+
+    // 이 상인의 지갑은 **거점 창고**다. 상인이 선 자리에서 가장 가까운 창고로 넣고 뺀다.
+    public TradeAccount Account => new StorageAccount(_data?.GoldItem, transform.position);
 
     void Awake()
     {
         GameTimeManager.OnDayChanged += RefreshStock;
         // 인스펙터에서 직접 Data가 지정된 경우 초기 재고 생성
-        if (_data != null) RefreshStock();
+        HasAuthoredData = _data != null;
+        if (_data != null) _shop = new Shop(_data);
     }
 
     void OnDestroy() => GameTimeManager.OnDayChanged -= RefreshStock;
 
+    // **쓰러진 상인과는 거래하지 않는다.** 기절은 폰의 상태지만 `Merchant`는 그것을 모르는
+    // 별개 컴포넌트라, 클릭 라우팅이 그대로 상점을 열어 줬다 — 때려눕히고 물건을 사는 길이
+    // 열려 있었다. 시체도 마찬가지다(`BecomeCorpse`는 `Merchant`를 떼지 않는다).
+    public bool CanTrade
+    {
+        get
+        {
+            if (GetComponent<Corpse>() != null) return false;
+            var brain = GetComponent<UnitBrain>();
+            return brain == null || brain.Blackboard == null || !brain.Blackboard.IsKnockedOut;
+        }
+    }
+
+    // 쓰러져 있으면 클릭을 안 받는다 → 상점 대신 폰 정보가 뜬다(`SelectionManager`).
+    // 거절을 알림으로 띄우지 않는 이유는 `IClickGate` 주석에.
+    public bool CanClick => CanTrade;
+
     // SelectionManager의 단일 레이캐스트가 이 상인을 클릭 판정 시 호출.
-    public void OnWorldClick() => OnSelected?.Invoke(this);
-
-    public void RefreshStock()
+    public void OnWorldClick()
     {
-        CurrentStock.Clear();
-        if (Data == null || Data.ItemPool.Count == 0) return;
-
-        var pool  = new List<MerchantPoolEntry>(Data.ItemPool);
-        int slots = Mathf.Min(Data.DailySlotCount, pool.Count);
-
-        for (int i = 0; i < slots; i++)
-        {
-            float total = 0f;
-            foreach (var e in pool) total += e.Weight;
-
-            float roll = Random.value * total;
-            float acc  = 0f;
-            MerchantPoolEntry picked = pool[pool.Count - 1];
-            foreach (var e in pool) { acc += e.Weight; if (roll <= acc) { picked = e; break; } }
-
-            pool.Remove(picked);
-
-            // 못 찾은 항목은 **뽑기에서 빼고 넘어간다**(위에서 이미 pool에서 제거했다).
-            // 진열대에 빈 줄로 올리면 클릭했을 때 아무 일도 안 일어나 원인을 알 수 없다.
-            var item = picked.Resolve();
-            if (item == null)
-            {
-                Debug.LogWarning($"[Merchant] 재고 항목을 못 찾았습니다 — ItemId '{picked.ItemId}'. 진열에서 뺍니다.");
-                i--;   // 이 칸은 다른 것으로 채운다
-                if (pool.Count == 0) break;
-                continue;
-            }
-
-            CurrentStock.Add(new MerchantStockEntry
-            {
-                Item    = item,
-                Price   = Data.CalcPrice(picked),
-                Stock   = Random.Range(picked.MinStock, picked.MaxStock + 1),
-                Quality = picked.Quality,
-            });
-        }
+        if (!CanTrade) return;
+        OnSelected?.Invoke(this);
     }
 
-    // 구매 시도. 골드 부족, 받을 곳 없음, 자리 없음이면 false.
-    //
-    // `buyer`가 있으면 **거기 먼저 넣는다** — 산 물건을 바로 들고 다니는 게 자연스럽고,
-    // 창고로 직행하면 방금 산 것을 다시 꺼내러 가야 한다. 폰이 없거나 배낭이 꽉 차면 창고로.
-    public bool TryBuy(MerchantStockEntry entry, Inventory buyer = null)
-    {
-        if (Data?.GoldItem == null || entry.Stock <= 0) return false;
-        if (Storage.GetTotalByItem(Data.GoldItem) < entry.Price) return false;
-
-        // **물건 입고를 먼저 확정한다** — 골드부터 빼면 넣을 자리가 없을 때 돈만 사라진다.
-        bool stored = buyer != null && buyer.TryAdd(entry.Item, 1, entry.Quality) > 0;
-
-        if (!stored)
-        {
-            var dest = Storage.FindNearest(transform.position, entry.Item);
-            if (dest == null) return false;
-            stored = dest.Inventory.TryAdd(entry.Item, 1, entry.Quality) > 0;
-        }
-        if (!stored) return false;
-
-        Storage.ConsumeByItem(Data.GoldItem, entry.Price); // 위에서 총량 확인됨
-        entry.Stock--;
-        return true;
-    }
-
-    // 판매 시도. **실제로 판 개수를 돌려준다**(0 = 실패).
-    // 한 번에 하나씩만 팔리면 스택 아이템을 비우는 데 클릭이 수십 번 든다.
-    //
-    // 한 개씩 도는 이유: 골드가 창고에 안 들어가면(만적) 거기서 멈춰야 하는데,
-    // 한꺼번에 계산하면 "절반만 팔린" 상태를 되돌릴 방법이 없다. 개당 원자성을 지킨다.
-    public int TrySell(ItemInstance inst, Inventory sourceInv, int count = 1)
-    {
-        if (Data?.GoldItem == null || inst == null || sourceInv == null) return 0;
-
-        int price = Data.CalcSellPrice(inst.Data, inst.Quality);
-        if (price <= 0) return 0;
-
-        var goldDest = Storage.FindNearest(transform.position, Data.GoldItem);
-        if (goldDest == null) return 0;
-
-        int sold = 0;
-        int want = Mathf.Clamp(count, 1, inst.Quantity);
-
-        for (int i = 0; i < want; i++)
-        {
-            // 골드 입고를 먼저 확정한 뒤 물건을 뺀다 — 순서를 뒤집으면 창고가 꽉 찼을 때
-            // 물건만 사라진다.
-            int addedGold = goldDest.Inventory.TryAdd(Data.GoldItem, price);
-            if (addedGold < price)
-            {
-                if (addedGold > 0) goldDest.Inventory.Remove(Data.GoldItem, addedGold);
-                break;
-            }
-
-            if (!sourceInv.RemoveOne(inst))
-            {
-                goldDest.Inventory.Remove(Data.GoldItem, price);
-                break;
-            }
-            sold++;
-        }
-        return sold;
-    }
-
-    public int GetSellPrice(ItemInstance inst)
-        => Data?.CalcSellPrice(inst.Data, inst.Quality) ?? 0;
+    public void RefreshStock() => Shop.Refresh();
 }
