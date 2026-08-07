@@ -125,9 +125,12 @@ public class MerchantUI : MonoBehaviour
         // **이 컴포넌트는 루트에 있어 패널이 꺼져도 Update가 돌므로** 뒤늦게라도 정리할 수 있다.
         if (_shop != null && panel != null && !panel.activeSelf) { Close(); return; }
 
-        // **거래 중에 상인이 쓰러지면 창을 닫는다.** 열 때만 막으면 창을 띄워 둔 채
-        // 때려눕히고 계속 사는 길이 남는다(월드맵 시장은 `_merchant`가 없어 해당 없음).
-        if (_merchant != null && !_merchant.CanTrade) { Close(); return; }
+        // **거래 중에 상인이 사라지거나 쓰러지면 창을 닫는다.** 열 때만 막으면 창을 띄워 둔 채
+        // 때려눕히고 계속 사는 길이 남고, **행상인은 머물 시간이 끝나면 스스로 소멸하는데**
+        // `Shop`은 MonoBehaviour가 아니라서 그 뒤에도 창이 멀쩡히 살아 거래가 계속된다.
+        // 그래서 "필드 상인으로 열었다"를 따로 기억한다 — 파괴된 참조는 `_merchant != null`이
+        // 거짓이 되어 그것만으로는 구분이 안 된다(월드맵 시장은 애초에 상인이 없다).
+        if (_openedForMerchant && (_merchant == null || !_merchant.CanTrade)) { Close(); return; }
 
         if (panel && panel.activeSelf &&
             Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
@@ -148,11 +151,13 @@ public class MerchantUI : MonoBehaviour
             : $"{who} ({merchant.Shop.DisplayName})";
 
         Open(merchant.Shop, merchant.Account, null, title);
-        _merchant = merchant;   // `Open`이 비우므로 그 뒤에 건다
+        _merchant = merchant;            // `Open`이 비우므로 그 뒤에 건다
+        _openedForMerchant = true;
     }
 
     // 지금 창을 연 상인(있으면). 월드맵 시장은 파는 폰이 없어 null이다.
     Merchant _merchant;
+    bool     _openedForMerchant;   // 필드 상인으로 열었는가 — 파괴 판정과 월드 시장을 가른다
 
     void Open(Shop shop, TradeAccount account, IReadOnlyList<UnitBrain> traders, string title)
     {
@@ -160,7 +165,8 @@ public class MerchantUI : MonoBehaviour
 
         _shop          = shop;
         _account       = account;
-        _merchant      = null;   // 월드맵 시장 등 파는 폰이 없는 진입점의 기본값
+        _merchant          = null;   // 월드맵 시장 등 파는 폰이 없는 진입점의 기본값
+        _openedForMerchant = false;
         _traders       = (traders != null && traders.Count > 0) ? traders : null;
         ActiveShop     = shop;
         _selectedBuy   = null;
@@ -196,6 +202,7 @@ public class MerchantUI : MonoBehaviour
         _account   = null;
         _traders   = null;
         _merchant  = null;
+        _openedForMerchant = false;
         ActiveShop = null;
         if (panel) panel.SetActive(false);
         inventoryPanel?.ClearSellMode();

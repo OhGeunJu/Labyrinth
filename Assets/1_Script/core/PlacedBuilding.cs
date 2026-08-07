@@ -40,18 +40,30 @@ public class PlacedBuilding : MonoBehaviour
     void Start()
     {
         if (_occupiedTiles.Count > 0) return;             // 배치 경로가 이미 등록했다
+        OccupyFootprint();
+    }
+
+    // **자기 크기만큼 점유한다.** 배치·청사진·씬 저작이 같은 계산을 쓰도록 여기 모았다 —
+    // 청사진은 한때 `WorldToTile(position)` 한 칸만 막아서, 3×2 건물이 지어지고 나면
+    // 나머지 다섯 칸을 폰이 그냥 통과했다.
+    public void OccupyFootprint()
+    {
         if (data == null || !data.OccupiesTile) return;
         if (MapManager.Instance == null) return;
 
-        OccupyTiles(FootprintAt(transform.position, data.Size));
+        OccupyTiles(FootprintAt(transform.position, data.Size, transform.rotation));
     }
 
     // 중심에서 크기만큼 펼친 칸들. `BuildModeManager.GetFootprint`가 만드는 것과 같은 칸이
     // 나오고, 격자에서 반 칸쯤 어긋나게 놓인 건물도 반올림으로 제자리를 찾는다.
-    static IEnumerable<Vector2Int> FootprintAt(Vector3 center, Vector2Int size)
+    static IEnumerable<Vector2Int> FootprintAt(Vector3 center, Vector2Int size, Quaternion rot)
     {
         int w = Mathf.Max(1, size.x);
         int h = Mathf.Max(1, size.y);
+
+        // 90°/270°면 축이 바뀐다(`BuildModeManager.FootprintSize`와 같은 규칙).
+        int quarter = Mathf.RoundToInt(rot.eulerAngles.y / 90f) & 3;
+        if (quarter % 2 == 1) (w, h) = (h, w);
 
         int x0 = Mathf.RoundToInt(center.x - w * 0.5f);
         int z0 = Mathf.RoundToInt(center.z - h * 0.5f);

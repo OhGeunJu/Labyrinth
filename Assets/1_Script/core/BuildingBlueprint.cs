@@ -134,9 +134,10 @@ public class BuildingBlueprint : MonoBehaviour
             BuildingDormancy.Ensure(go);
             // 철거/환불용 메타 보관
             var placed = PlacedBuilding.Attach(go, _data);
-            // 타일 점유(통행 차단) 건물이면 footprint를 통행 불가로 등록 (철거 시 대칭 해제)
-            if (_data.OccupiesTile && MapManager.Instance != null)
-                placed.OccupyTiles(new[] { MapManager.Instance.WorldToTile(transform.position) });
+            // 타일 점유(통행 차단) 건물이면 footprint를 통행 불가로 등록 (철거 시 대칭 해제).
+            // **크기만큼 막는다** — 예전엔 중심 한 칸만 막아서 3×2 건물의 나머지 다섯 칸을
+            // 폰이 그냥 통과했다(즉시 배치는 처음부터 footprint를 넘겼는데 청사진만 빠져 있었다).
+            placed.OccupyFootprint();
         }
 
         // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
