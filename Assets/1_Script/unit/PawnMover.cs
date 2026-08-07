@@ -570,9 +570,6 @@ public class PawnMover : MonoBehaviour
 
     public bool HasTarget()  => _hasTarget;
 
-    // 발이 땅에 닿아 있는가. 떨어지는 중에는 걷게 해도 소용없으므로 복귀 판단에 쓴다.
-    public bool IsGrounded => _cc != null && _cc.isGrounded;
-
     // 낙하 복구를 **어디로** 할 것인가.
     //
     // 마지막 접지 위치를 그냥 쓰면 **무한 낙하**가 된다: 한 번도 땅을 밟은 적 없는 폰은
