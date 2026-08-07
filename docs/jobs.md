@@ -186,8 +186,8 @@ UI: `ColonyUI` — P키 토글 (`docs/ui.md`).
 
 **`Storage`** (씬 오브젝트):
 - `BuildingName` — 표시명
-- `allowedTypes: List<ResourceType>` — empty = 전체 허용
-- 필터 API: `SetAllowAll()` / `AddFilter(type)` / `RemoveFilter(type)` / `HasFilter(type)` / `CanAccept(ItemData)`
+- 필터: **묶음**(`ResourceGroup`)과 **아이템 콕 집기**를 따로 둔다. 둘 다 비면 전부 허용.
+- API: `AddFilter(ResourceGroup)` / `AddItemFilter(ItemData)` / `AllowsEverything` / `CanAccept(ItemData)` / `HasRoomFor(item, amount, quality)`
 - `TryAdd(item, amount)` — 필터 통과 시만 입고
 - `Init(BuildingData)` — 빌드 모드 배치 시 초기화
 - `static OnSelected` — 좌클릭 시 이벤트 → `StorageUI`가 구독

@@ -1,4 +1,4 @@
-# 핵 영역(크립) 시스템 설계 — 2026-06-05 결정, 구현 예정(2026-06-06)
+# 핵 영역(크립) 시스템 설계 — 2026-06-05 결정, **step 1~5 구현 완료**(~2026-07-27)
 
 저그 *Creep Tumor*식 **다중 핵 + 영역 합집합** 모델. 핵 이동/제거 시 "빌드존 리셋" 이슈를 근본 해결한다.
 
@@ -37,15 +37,16 @@
 - **`GridRenderer`**: 점유/영역/비활성 시각화를 온디맨드 높이로 갱신(경사지 부유 버그도 같이 해결).
 - **길찾기**: 메소 격자가 이미 코어를 따라다님 — 정합. 추가 작업 없음.
 
-## 구현 단계 (제안)
+## 구현 (완료)
 
-1. ✅ (2026-06-06) 영역/그리드 분리 + 점유 희소 저장 (`MapManager` 리팩터). `_tiles[50,50]`→`HashSet<Vector2Int>` 절대좌표, `RecenterAt` wipe 제거, `GridRenderer` 오버레이 유지. 상세: `docs/worklog.md`.
-2. ✅ (2026-06-06) 온디맨드 지형 평탄도 샘플. `MapManager.SampleGroundHeight`/`TileToGround`/`IsFlatEnough`, `IsBuildable`이 코너 높이차 검사, `BuildModeManager`·`GridRenderer` 지면 스냅(경사지 부유 버그 동시 해결).
-3. ✅ (2026-06-06) 핵 변경 이벤트(`DungeonCore.OnTerritoryChanged`) → 고아 건물 **휴면/재가동**(`BuildingDormancy`). FarmPlot/CraftingTable/WaterSource enabled 토글 + 회색 틴트, `Storage.IsActive`로 집계 제외. 상세: `docs/worklog.md`.
-4. ✅ (2026-06-06, step 2와 함께) 경사지 높이 버그 수정 + 비활성 회색 틴트 표시. (전용 영역 오버레이는 후속)
-5. ✅ (2026-07-27) 메인 핵 이전 액션 — `CoreRelocator`(이전 모드: 타일 유효성 + 새 영역 원 + 휴면/재가동 예정 수 미리보기 → 좌클릭 확정) + `DungeonCoreUI` [핵 이전] 버튼. 확정은 `DungeonCore.RelocateTo`(위치 이동 + `RaiseTerritoryChanged`) → 휴면 재평가 자동. **`RecenterAt`은 호출하지 않음** — 정착지 필드맵이 고정(200×200)이라 그리드 재중심이 불필요(초안의 `RecenterAt` 연결은 모델 A 확정으로 폐기). 상세: `docs/worklog.md`.
+1. 영역/그리드 분리 + 점유 희소 저장(`HashSet<Vector2Int>` 절대좌표, `RecenterAt` wipe 제거)
+2. 온디맨드 지형 샘플(`SampleGroundHeight`/`TileToGround`/`IsFlatEnough`) + 지면 스냅
+3. `OnTerritoryChanged` → 고아 건물 휴면/재가동(`BuildingDormancy`)
+4. 경사지 높이 버그 + 비활성 회색 틴트
+5. 메인 핵 이전(`CoreRelocator` + `DungeonCore.RelocateTo`). **`RecenterAt`은 안 부른다** —
+   정착지 필드맵이 고정(200×200)이라 그리드 재중심이 불필요(초안의 연결은 모델 A 확정으로 폐기)
 
-**→ 이 설계는 step 1~5 전부 구현 완료.** 남은 것은 아래 "미결/주의"의 세부 정책뿐.
+날짜별 경위는 `docs/worklog.md`. **남은 것은 아래 "미결/주의"의 세부 정책뿐.**
 
 ## 미결/주의
 

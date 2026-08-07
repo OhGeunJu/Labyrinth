@@ -163,7 +163,7 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 - `Faction` 컴포넌트: `Data`(SO) + 레거시 `factionType`(Player/Enemy) 폴백. **한쪽이라도 SO가 없으면** 레거시 규칙(플레이어 편 여부가 다르면 적대)으로 판정 → SO를 안 붙인 기존 씬은 동작 그대로.
 - `IsPlayer` / `StanceTo` / `IsHostileTo`(선공 여부) / `IsAllyOf`(같은 편).
 
-**반격은 관계와 무관** — `UnitBlackboard.LastAttacker`(+`RetaliationMemory` 15초). `BodyPartSystem.TakeDamage`가 `DamageInfo.Source`를 기록하고(아군 오사는 제외), `DetectNode`는 주변 탐색보다 **반격 대상을 우선**한다. `NpcFleeNode`도 때린 상대를 위협으로 본다. → 중립 세력을 선공하면 그쪽이 대응한다.
+**반격은 관계와 무관** — `UnitBlackboard.LastAttacker`(+`RetaliationMemory` 15초). `BodyPartSystem.TakeDamage`가 `DamageInfo.Source`를 기록하고(아군 오사는 제외), `DetectNode`는 주변 탐색보다 **반격 대상을 우선**한다. `FleeNode`도 때린 상대를 위협으로 본다. → 중립 세력을 선공하면 그쪽이 대응한다.
 
 **스타터 에셋**: `Assets/5_Data/Faction/`에 플레이어/고블린/산적/마을사람 4종 + 관계 기입(고블린은 기본 적대·산적만 예외, 산적→마을사람 일방 적대). 각 유닛 프리팹의 `Faction.Data`에 연결해 쓴다.
 
@@ -218,7 +218,7 @@ BT는 `UnitBrain.tickInterval`(기본 0.1초)마다 돈다. **노드 안에서 `
 - `WanderNode`는 **이동 중이면 목적지를 새로 주지 않는다** → 스폰 직후 받은 이동 명령(침공 집결 등)을 덮어쓰지 않는다.
 - 배회가 필요한 민간인은 `NpcData` + `NpcType.Villager`(도주→배회→대기)가 여전히 가장 간단하다.
 
-**AI 역할 판정**: `UnitBrain.UsesEnemyAi` = `NpcData/MinionData가 아님 && !IsPlayer` → 적 BT + 사망 시 시체화. 세력이 늘어나도 플레이어 편만 아니면 자동으로 적 AI.
+**AI 역할 판정**: `UnitBrain.UsesEnemyAi` = **`NpcData`가 없고 && !IsPlayer** → 적 BT. 세력이 늘어나도 플레이어 편만 아니면 자동으로 적 AI. **`MinionData`인지는 안 묻는다**(2026-08-07) — 같은 종족이 소환물일 수도 야생일 수도 있고, 그걸 가르는 건 세력이다. 시체화 판정도 역할이 아니라 세력이 정한다.
 
 ## Hunger System
 
@@ -279,22 +279,25 @@ BT는 `UnitBrain.tickInterval`(기본 0.1초)마다 돈다. **노드 안에서 `
 
 ## NPC System
 
-**`NpcData : UnitData`** (ScriptableObject, `DungeonColony/NpcData`):
+**`NpcData`** (ScriptableObject, `DungeonColony/NpcData`) — **역할이지 종족이 아니다.** 2026-08-06까지 `UnitData`를 상속해 종족 데이터를 겸했는데, 그러면 "주민"이라는 종족이 있는 꼴이라 종족을 늘릴 때마다 역할마다 이름 풀·스탯을 복붙해야 했다(종족 × 역할의 곱셈). 지금은 `UnitBrain`이 `unitData`(종족)와 `npcData`(역할)를 **따로** 들고 프리팹이 둘을 조합한다.
 - `NpcType` — Villager, Guard, ShopMerchant, EventMerchant
-- `WanderRadius`, `FleeDetectRange`, `StayDuration`
+- `WanderRadius`, `FleeDetectRange`, `StayDuration`, `ArrivalOffset`
+- `MerchantData` — **역할의 기본 상품일 뿐이다.** 프리팹의 `Merchant` 컴포넌트에 물린 것이 이긴다(`UnitBrain.EnsureMerchant`).
 
 **NpcType별 BT:**
 
 | NpcType | BT |
 |---|---|
-| Villager | Flee → Wander → Idle |
-| Guard | Detect+Fight → Patrol → Idle |
-| ShopMerchant | Idle (고정) |
-| EventMerchant | WalkIn → Stay(StayDuration) → WalkOut → Despawn |
+| Villager | (성향) → Wander → Idle |
+| Guard | (성향) → Patrol → Wander → Idle |
+| ShopMerchant | 상품 연결 → (성향) → Idle. 기본 제자리 |
+| EventMerchant | 상품 연결 → WalkIn → Stay(StayDuration) → WalkOut → Despawn |
+
+**상인 둘 다 `Merchant`를 붙인다** — 2026-08-07까지 이벤트 상인은 안 붙여서 클릭해도 아무것도 안 열렸다. 오래 머물지 않는 것이 그 상인의 성질이지 물건이 없다는 뜻이 아니다.
 
 **BT 노드 (`BTNpcNodes.cs`):**
-- `NpcFleeNode(detectRange, fleeDistance=15f)` — 적 감지 시 반대 방향으로 `fleeDistance`만큼 이동
-- `NpcWanderNode(radius)` — HomePosition 중심으로 radius 내 랜덤 배회. 도착 후 2~6초 대기
+- `FleeNode(detectRange, fleeDistance, 조건)` — 적 감지 시 반대 방향으로 이동. 조건은 매 틱 성향을 읽는다
+- `WanderNode(radius, pauseMin, pauseMax)` — HomePosition 중심 랜덤 배회. **이동 중인 목적지는 안 덮는다**(외부 명령 보존)
 - `NpcEventMerchantNode(stayDuration)` — 이동→대기→귀환→소멸 단계 처리
 
 **`NpcEventMerchantNode` 내부 동작:**

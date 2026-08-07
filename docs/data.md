@@ -12,9 +12,9 @@
 ```
 
 **API:**
-- `GetItem(name)` / `GetRecipe(name)` / `GetResearch(name)` — 이름으로 단건 조회
+- `GetItem(id)` / `GetRecipe(id)` / `GetResearch(id)` / `GetBuilding(name)` / `GetUnit(id)`
 - `GetRecipesBySkill(CraftSkill)` — 제작대 타입별 레시피 목록
-- `AllItems` / `AllRecipes` — 전체 조회
+- `AllItems` / `AllRecipes` / `AllResearch` / `AllBuildings` / `AllUnits` / `AllMinions`
 
 ## JSON 파일 형식
 
@@ -68,7 +68,7 @@
 - `physicalType`: `Slash`, `Pierce`, `Blunt`
 - `damageElement`: `None`, `Fire`, `Ice`, `Lightning`, `Poison`
 - `armorSlot`: `Head`, `Chest`, `Hands`, `Legs`
-- `resourceType`: `Stone`, `CutStone`, `IronOre`, `CopperOre`, `TinOre`, `Coal`, `SilverOre`, `GoldOre`, `MagicStone`, `Ruby`, `Sapphire`, `Topaz`, `Emerald`, `Etherstone`, `Voidstone`, `Bronze`, `Steel`, `SilverIngot`, `GoldIngot`, `Wood`, `Lumber`
+- `resourceGroup`: `Stone`, `Ore`, `Gem`, `Ingot`, `Wood`, `Currency` (옛 `resourceType`도 받아 묶음으로 옮기고 경고)
 - `requiredSkillType`: `Labor`, `WeaponCrafting`, `ArmorCrafting`, `Cooking`, `Alchemy`, `Research`, `Smelting`, `Stonecutting`, `Woodworking`, `Gemcutting`
 
 **미구현 JSON 타입** (향후 추가 예정): UnitData/MinionData, SubCoreData (프리팹 참조 문제), ResearchData
@@ -133,16 +133,16 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 
 | Type | 생성 메뉴 | 주요 필드 |
 |---|---|---|
-| `UnitData` | `DungeonColony/UnitData` | RaceName, MaxHP, MoveSpeed, AttackDamage, AttackRange, DetectRange + stat ranges |
-| `MinionData` | `DungeonColony/MinionData` | (UnitData) + SummonCostType, SummonCostAmount, AllowedJobs, CanProvideWater |
-| `NpcData` | `DungeonColony/NpcData` | (UnitData) + NpcType, WanderRadius, FleeDetectRange, StayDuration |
+| `UnitData` | `DungeonColony/UnitData` | RaceName, NamePool, MaxHP, MoveSpeed, AttackDamage, AttackRange, DetectRange, DefaultMin/MaxGrade, StatGrades, StatGrowthRates |
+| `MinionData` | `DungeonColony/MinionData` | (UnitData) + SummonCostItem, SummonCostAmount, AllowedJobs, CanProvideWater, Prefab, SortOrder |
+| `NpcData` | `DungeonColony/NpcData` | **역할 전용**(종족 상속 아님) — NpcType, WanderRadius, FleeDetectRange, StayDuration, ArrivalOffset, MerchantData |
 | `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged, BlockBonus, RangedBlockBonus, DamageCategory, PhysicalType, DamageElement, EffectChance |
 | `ArmorData` | `DungeonColony/ArmorData` | ArmorSlot, DamageReduction |
-| `BuildingData` | `DungeonColony/BuildingData` | BuildingName, Category (BuildCategory enum), CostType, CostAmount, Prefab, UsesBlueprint |
+| `BuildingData` | `DungeonColony/BuildingData` | BuildingName, Category, SortOrder, **Size**, CostItem, CostAmount, Prefab, UsesBlueprint, IsFloor, **OccupiesTile**, RequiredResearch |
 | `DungeonCoreData` | `DungeonColony/DungeonCoreData` | CoreType, BaseRadius, MaxGrade, BaseMinionCap, HungerRateModifier, per-frame modifiers |
-| `ResourceNodeData` | `DungeonColony/ResourceNodeData` | ResourceType, GaugeRequired, DropMin, DropMax, DropItem |
+| `ResourceNodeData` | `DungeonColony/ResourceNodeData` | DropItem, GaugeRequired, DropMin, DropMax, RequiredSkill, IsTree |
 | `ItemData` | `DungeonColony/ItemData` | ItemName, Description, Icon, Width, Height, Weight |
-| `ResourceItemData` | `DungeonColony/ResourceItemData` | (ItemData) + ResourceType, Stack (MaxStack 오버라이드) |
+| `ResourceItemData` | `DungeonColony/ResourceItemData` | (ItemData) + `Group`(`ResourceGroup`), Stack (MaxStack 오버라이드) |
 | `SeedData` | `DungeonColony/SeedData` | (ItemData) + HarvestItem, HarvestAmount, GrowthTime, MoistureDecay, WaterFillAmount |
 | `FoodData` | `DungeonColony/FoodData` | (ItemData) + NutritionValue, EatTime. MaxStack=20 |
 | `RecipeData` | `DungeonColony/RecipeData` | RecipeName, Ingredients, Result, ResultAmount, CraftTime, Category, SkillGrowthAmount, RequiredResearch |
@@ -156,14 +156,16 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
   - `ArmorData` — 방어구
   - `SeedData` — 씨앗 (MaxStack=99)
   - `FoodData` — 음식 (MaxStack=20)
-- `UnitData`
-  - `MinionData` — 하수인
-  - `NpcData` — NPC
+- `UnitData`(종족)
+  - `MinionData` — 소환 가능한 종족
+
+`NpcData`(역할)는 **종족을 상속하지 않는다** — 2026-08-06에 갈랐다. 조합은 프리팹이 한다(`UnitBrain`이 `unitData`와 `npcData`를 따로 든다).
 
 ## 게임 데이터 Excel
 
-`Tools/GameData.xlsx` — `Tools/make_gamedata.py` 실행으로 재생성.
-시트: Items / Recipes / Buildings / Enums(참고). 드롭다운 유효성 검사, 카테고리별 색상 구분.
+`python Tools/export_gamedata.py` → `Tools/GameData.xlsx`(Items·Recipes·Buildings·Enums) + `Tools/Items.csv`·`Recipes.csv`(git diff용).
+
+**표는 저작물이 아니라 에셋의 그림자다** — 에셋과 코드를 직접 읽어 만든다. 값을 바꿨으면 다시 돌릴 것. 제작 배수(산출값 ÷ 재료비)가 1 미만이면 붉게 칠해진다.
 
 ---
 
@@ -186,33 +188,23 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 
 게다가 연구만 파일명 기준이라 **네 종류의 규칙이 제각각**이었다. 지금은 넷 다 같다.
 
-## 이행 — 표시명 조회는 아직 된다
+## 이행은 끝났다 (2026-08-02) — 경고는 이제 부채의 신호다
 
-기존 JSON과 저작물이 `"itemName": "철검"`처럼 표시명으로 가리키고 있어서, 그걸 한 번에 끊으면 전부 깨진다. 그래서 **보조 색인**을 둔다.
+저장소 안의 콘텐츠는 **전부 Id로 가리킨다.** 표시명 조회(보조 색인)는 **남의 모드를 위해** 남겨 뒀다 — 조회 순서는 **`Id` 먼저 → 없으면 표시명**이고, 표시명으로 찾히면 키마다 한 번씩 경고한다. `Id` 충돌은 시끄럽게 알린다(무엇이 무엇을 덮었는지).
 
-- 조회 순서: **`Id` 먼저 → 없으면 표시명.**
-- 표시명으로 찾히면 **키마다 한 번씩 경고**한다 — 언젠가 지울 길이 보이게.
-- `Id` 충돌은 **시끄럽게 알린다**(무엇이 무엇을 덮었는지 로그로).
+> **콘솔에 표시명 경고가 뜨면 그건 남은 부채다.** `WarnLegacy`는 못 옮긴 참조가 있다는 뜻이고, `WarnDuplicateName`은 같은 이름의 데이터가 둘이라 표시명 참조가 **뒤엣것**을 집는다는 뜻이다. **경고가 침묵인 것이 정상 상태다.**
 
-JSON 스키마에도 식별자 필드가 생겼다. **모드는 이걸 쓸 것**:
+모드가 쓸 JSON 식별자 필드:
 
-| 스키마 | 새 필드 | 비우면 |
+| 스키마 | 필드 | 비우면 |
 |---|---|---|
 | `ItemSchema` | `id` | `itemName`이 식별자 (레거시) |
 | `RecipeSchema` | `id` · `resultItemId` | `recipeName` · `resultItemName` |
 | `IngredientSchema` | `itemId` | `itemName` |
 
-> JSON으로 만든 아이템·레시피는 에셋 파일이 아니라 `.name`이 비어 있다 — 파일명 폴백이 통하지 않으므로 `ApplyBase`/레시피 로더가 **Id를 직접 못 박는다.**
+> JSON으로 만든 아이템·레시피는 에셋 파일이 아니라 `.name`이 비어 있다 — 파일명 폴백이 안 통하므로 `ApplyBase`/레시피 로더가 **Id를 직접 못 박는다.**
 
-## 이행은 끝났다 (2026-08-02) — 이제 경고는 부채의 신호다
-
-저장소 안의 콘텐츠는 **전부 Id로 가리킨다.** `StreamingAssets`의 표시명 참조는 0건이고(아이템 JSON 5·레시피 JSON 25를 옮겼다), SO 에셋 파일명도 전부 ASCII다.
-
-보조 색인과 경고는 **남의 모드를 위해** 남겨 뒀다. 그래서 지금부터는:
-
-> **콘솔에 표시명 경고가 뜨면 그건 남은 부채다.** `WarnLegacy`("표시명으로 찾았습니다")는 어딘가 못 옮긴 참조가 있다는 뜻이고, `WarnDuplicateName`("표시명 중복")은 같은 이름의 데이터가 둘이라 표시명 참조가 **뒤엣것**을 집는다는 뜻이다. 경고가 침묵인 것이 정상 상태다.
-
-**`Id`를 비우면 파일명이 곧 공개 식별자**라는 점은 이행 때 특히 아프다. 내용과 어긋난 파일명 넷(`Crystal_item`=구리 광석 등)이 그대로 모드용 이름이 될 뻔했다. 고칠 때 **`.meta`째 `git mv`**(GUID 보존 → 씬·프리팹 참조 무사) 하고 **`.asset` 안의 `m_Name`도 같이 고쳐야 한다** — `DataId.Resolve`가 읽는 건 파일명이 아니라 `asset.name`, 즉 `m_Name`이다. 파일만 바꾸면 식별자는 옛 이름 그대로다.
+**에셋 이름을 고칠 때는 `.meta`째 `git mv`**(GUID 보존 → 씬·프리팹 참조 무사) 하고 **`.asset` 안의 `m_Name`도 같이 고칠 것** — `DataId.Resolve`가 읽는 건 파일명이 아니라 `asset.name`이다. 파일만 바꾸면 식별자는 옛 이름 그대로다.
 
 ---
 
@@ -279,7 +271,7 @@ JSON 스키마에도 식별자 필드가 생겼다. **모드는 이걸 쓸 것**
 
 | 종류 | 경로 | 개수 | 비고 |
 |---|---|---|---|
-| 자원 아이템 `ResourceItemData` | `Resources/Data/Items/Res_*.asset` | ResourceType 22종 중 **없는 것만** | 기존 `Stone_item`·`Ore_item`·`Wood_item`·`Crystal_item`·`Gold`은 재사용 |
+| 자원 아이템 `ResourceItemData` | `Resources/Data/Items/Res_*.asset` | 22종 | 종류는 아이템 자체가 정한다(옛 `ResourceType` enum은 08-02 삭제) |
 | 작물·음식 | `Resources/Data/Items/Crop_*·Food_*` | 7 | 밀 / 생고기 / 생선 / 빵 / 구운 고기 / 산딸기 / 버섯 |
 | 씨앗 `SeedData` | `Resources/Data/Items/Seed_*` | 3 | 밀 / 산딸기 / 버섯 |
 | 무기 `WeaponData` | `Resources/Data/Items/Wpn_*` | 11 | 검·도끼·철퇴·창·활·석궁·지팡이·방패 2종 |
@@ -337,27 +329,11 @@ JSON 스키마에도 식별자 필드가 생겼다. **모드는 이걸 쓸 것**
 - 평원이 시작 지역이라 **막히지 않게** 흔한 것 위주로 뒀다.
 - `ResourceSite`로 저작한 칸은 매장량 ×2.5(`WorldDeposits.ResourceSiteMultiplier`).
 
-## 레거시 아이템 — 이름이 타입과 어긋나 있었다 (2026-07-31 교정)
-
-`ResourceType` enum이 커지면서 **저장된 정수의 의미가 밀렸다.** 에셋 이름은 옛 뜻 그대로인데 타입은 새 뜻이 된 상태.
-
-| 에셋 | 실제 `ResourceType` | 옛 `ItemName` | 고친 `ItemName` |
-|---|---|---|---|
-| `Items/Ore_item` | **CutStone** | "Ore" | **다듬은 돌** |
-| `Items/Crystal_item` | **CopperOre** | "Crystal" | **구리 광석** |
-
-**타입은 모든 참조에서 일관되게 쓰이고 있었다** — `Rec_CutStone`의 결과물, `Rec_Bronze`의 재료, `Node_CopperVein`의 드롭, 평원 매장 전부 타입 기준으로 맞물려 있다. 그래서 **이름만 고쳤다**(참조는 하나도 안 건드림).
-
-> 같은 종류의 사고를 막으려면: `ResourceType`에 값을 **중간에 끼워 넣지 말고 끝에 추가**할 것. 기존 에셋은 정수로 저장돼 있어 순서가 바뀌면 조용히 다른 자원이 된다.
+> **enum 값은 중간에 끼우지 말고 끝에 추가할 것.** 에셋은 정수로 저장돼 있어 순서가 바뀌면 조용히 다른 뜻이 된다(`ResourceType` 시절 실제로 겪었고, 지금은 `MerchantType`·`ItemQuality`가 같은 성질이다).
 
 ## 알려진 잔재
 
-- `Assets/5_Data/Resource/Ore.asset` · `Crystal.asset` — **아무도 참조하지 않는다.** 새로 만든 `Node_*` 세트가 같은 역할을 하므로 중복. 삭제 후보.
-- `Assets/Resources/Data/Biome/New Biome Content Data.asset` — 폴더가 **`Biome`(단수)**라 `BiomeContent`가 읽는 `Data/Biomes`에 안 잡힌다. 죽은 파일.
-- `Assets/Resources/Data/Research/New Research Data.asset` — 빈 스캐폴드. `Res_*` 6종이 생겼으므로 정리 대상.
-- ~~`Assets/5_Data/Item/`~~ — 2026-07-31 사용자가 삭제 완료.
-- ~~`Recipes/stick Recipe Data` · `Items/stick Weapon Data`~~ — 2026-07-31 삭제. 재료가 `돌 × 0`이라 **공짜 무한 생산**이었고, 연구 잠금을 켜자 유일하게 열린 레시피로 남아 드러났다.
-- `5_Data/New Merchant Data.asset` · `New Npc Data.asset` — 이름 그대로 빈 스캐폴드. 아직 참조 검사 안 함, 정리 후보.
+- `5_Data/New Merchant Data.asset` — 빈 스캐폴드. 정리 후보.
 
 ## 아직 비어 있는 것
 

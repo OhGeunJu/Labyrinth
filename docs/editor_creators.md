@@ -273,8 +273,8 @@ Content
 
 - 이후 수정은 **인스펙터에서** 한다. 그러라고 헤더·스크롤·행 템플릿까지 씬 오브젝트로 만들어 두는 것이다.
 - 다시 지어야 하면 git 이력에서 꺼내거나, 없으면 다시 쓴다. 산출물(씬·에셋)이 정본이므로 생성기가 사라져도 잃는 건 없다.
-- **2026-08-06 정리**: `Migrate Minion Prefabs`(하수인 프리팹 이전 — 씬 `minionEntries`가 비고 `MinionData.Prefab`이 배선돼 이전이 끝났다. 다시 돌려도 옮길 것이 없다), `Rebuild Research Detail Panel`(같은 패널을 `Relayout Research Detail Panel`과 **다른 방식**으로 다뤄서, 둘을 두면 어느 쪽을 돌려야 하는지 알 수 없고 섞어 돌리면 패널이 깨진다. 씬은 Relayout 쪽 구조라 그쪽만 남겼다) 삭제.
-- **2026-08-06 대청소**: 생성기 13개 삭제 — `Create Biome Content Assets` · `Resize Buildings And Rebuild Models` · `Create Carry Bar` · `Upgrade Crafting Table Panel` · `Relayout Item Info Tooltip` · `Create New Buildings` · `Setup Town Recruits` · `Create Research Assets` · `Relayout Research Detail Panel` · `Rename UI Objects` · `Fix Window Structure` · `Setup Work Spots` · `Setup World Map Scene`. **전부 실행이 끝나 산출물이 씬·에셋에 자리를 잡았다**(핵 모델·집결 자리·적재 바·툴팁 여백·방랑자 프리팹·인력 풀까지 확인). 다시 지어야 하면 git에서 꺼낸다.
+- **같은 대상을 다루는 생성기를 둘 두지 말 것.** 어느 쪽을 돌려야 하는지 알 수 없고, 섞어 돌리면 산출물이 깨진다(실제로 연구 패널이 그랬다).
+- 2026-08-06에 15개를 지웠다. 경위는 `docs/worklog.md`.
 - 아래 "지어진 UI" 표는 **무엇이 어떤 컴포넌트로 씬에 있는지의 기록**이지, 지금 쓸 수 있는 메뉴 목록이 아니다.
 
 ### 지어진 UI (기록)

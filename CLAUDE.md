@@ -99,7 +99,11 @@ Guidance for Claude Code in this repository.
 
 ### 작업대 산출물
 
-완성품은 **폰이 아니라 작업대에 쌓인다** — `CraftingTable.Inventory`(기본 8×3). 순서는 **산출물 → (꽉 차면) 폰 인벤 → (그것도 안 되면) 드롭**. `allowHaulOut`이 켜져 있으면 폰이 창고로 실어 간다(끄면 작업대에 쌓아 둠). 운반 출처는 **`IHaulSource`**(인벤토리+타일좌표+transform) — `ResourceNode`와 `CraftingTable`이 같은 `HaulJob`을 쓴다. 발행은 **`HaulDispatcher`** 공통. **두 숫자를 헷갈리지 말 것** — `haulThreshold`는 "이만큼 쌓이면 나른다"는 발행 **조건**이고, 실어 가는 양은 **`CarryCapacity`(폰이 질 수 있는 무게)** 가 정한다. 몫을 미리 쪼개지 않는다: 미배정 재고를 통째로 맡긴 일감 하나를 내고, 폰이 정해지는 순간(`HaulJob.OnReserved` ← `JobBase.Reserve`) 그 폰이 질 만큼만 남기고 **나머지를 즉시 놓아** 다음 일감이 되게 한다 — 몇 명이 붙을지 미리 맞힐 필요가 없다. 배낭에 실은 순간 맡음은 **전부** 놓는다(출처에서 이미 빠진 수량을 계속 맡으면 이중으로 빠진다). 주기 점검(2초)이 잔량을 다시 집어 든다. 연료는 **용광로만** 요구(`_requiresFuel`), 없으면 `CraftJob.Execute`가 대기하므로 UI에 게이지+보충 안내가 뜬다. `Inventory.Resize(w,h)`는 **비어 있을 때만** 통한다.
+완성품은 **폰이 아니라 작업대에 쌓인다** — `CraftingTable.Inventory`(기본 8×3). 순서는 **산출물 → (꽉 차면) 폰 인벤 → (그것도 안 되면) 드롭**. `allowHaulOut`이 켜져 있으면 폰이 창고로 실어 간다. 운반 출처는 **`IHaulSource`**(`ResourceNode`·`CraftingTable`이 같은 `HaulJob`을 쓴다), 발행은 **`HaulDispatcher`** 공통.
+
+**두 숫자를 헷갈리지 말 것** — `haulThreshold`는 "이만큼 쌓이면 나른다"는 발행 **조건**이고, 실어 가는 양은 **`CarryCapacity`** 가 정한다. **몫을 미리 쪼개지 않는다**: 미배정 재고를 통째로 맡긴 일감 하나를 내고, 폰이 정해지는 순간(`OnReserved`) 그 폰이 질 만큼만 남기고 **나머지를 즉시 놓아** 다음 일감이 되게 한다 — 몇 명이 붙을지 미리 맞힐 필요가 없다. 배낭에 실은 순간 맡음은 **전부** 놓는다(안 그러면 이중으로 빠진다). 주기 점검(2초)이 잔량을 다시 집는다.
+
+연료는 **용광로만** 요구(`_requiresFuel`) — 없으면 `CraftJob.Execute`가 대기하고 UI에 게이지+보충 안내가 뜬다. `Inventory.Resize(w,h)`는 **비어 있을 때만** 통한다. 상세 `docs/jobs.md`.
 
 ### 적재 무게 — `CarryCapacity` (한도의 단일 출처)
 
@@ -113,7 +117,7 @@ Guidance for Claude Code in this repository.
 - **플레이어가 배낭에 직접 넣는 건 막지 않는다** — 대신 넘긴 비율만큼 이동·공격 속도가 준다(`PawnMover` / `CombatHandler`의 무게 보정). 손으로 한 일을 거부하면 "왜 안 들어가지"가 되고, 자동이 한도를 무시하면 "왜 이 폰만 느리지"가 된다. `InventoryUI`가 `무게 12/15kg`을 띄우고 과적이면 붉게 물든다(액션 바 위 `CarryBar` — 씬 오브젝트, 생성기 `Create Carry Bar`).
 - **짐을 지고 걸으면 근력이 자란다**(켄시식) — `PawnMover.GrowStrengthFromLoad`, 한도 대비 적재 비율로 재고 25% 미만이면 안 오른다. 근력이 커질수록 같은 짐으로는 덜 자란다.
 - 원정대 등짐(`ExpeditionParty`)도 같은 한도를 쓰고 **무게로 센다**. 예전엔 kg으로 만든 수를 개수 한도로 써서 씨앗이나 철갑옷이나 한 자리였다.
-- 옛 `PartyCarry`는 삭제됐다(2026-08-04). 같은 답을 두 벌로 들고 있던 파일이고 호출자가 없었다 — 적재를 묻는 곳은 전부 `CarryCapacity`다.
+- **적재를 묻는 곳은 전부 `CarryCapacity`다** — 답이 두 벌이면 반드시 어긋난다(옛 `PartyCarry`가 3.3배 어긋나 있었다).
 
 ### 재료는 `MaterialPool`로 센다 (창고만 보지 말 것)
 
@@ -195,7 +199,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 ### 상인 시스템
 
-**골드**: `ResourceItemData` SO (`ResourceType.Gold`, Stack=9999). Storage에 보관, `GetTotalByItem` / `ConsumeByItem`으로 집계.
+**골드**: `ResourceItemData` SO (`Group = Currency`, Stack=9999). Storage에 보관, `GetTotalByItem` / `ConsumeByItem`으로 집계.
 
 **`ItemData.ResaleFactor`** — **되팔 때의 감가.** 1 = 시세대로, 낮을수록 손해. **상인이 아니라 물건이 든다** — 상인 쪽에만 두면 "이 상인은 인색하다"밖에 표현할 수 없어 그에게 광석을 팔아도 똑같이 깎인다. 값이 안 나오는 건 물건의 성질이다: 광석은 시세대로 받지만 쓰던 검은 중고다. 기본 1(자원·식량) / `WeaponData` 0.55 / `ArmorData` 0.5 → 상인 매입률과 곱해 **장비는 사는 값의 약 1/4.5, 자원은 1/2**로 팔린다. JSON 아이템도 `"type": "weapon"`이면 `WeaponData`로 만들어지므로 그대로 적용된다.
 
@@ -226,7 +230,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 **`Shop`은 상인마다 하나다.** 같은 `MerchantData`를 쓰는 상인이 둘이어도 재고는 **따로 돈다** — `MerchantData`는 "무엇을 팔 수 있는가"(후보 목록)이고 오늘 진열대에 무엇이 몇 개 올랐는지는 그 상인의 것이다. 한쪽에서 사도 다른 쪽은 그대로고, 일일 갱신도 각자 돈다. 창 제목은 `이름 (무기 상인)` — 종류 이름만 쓰면 무기 상인이 둘일 때 어느 쪽 창인지 알 수 없다.
 
-**`TownRecruits`** (`Assets/1_Script/World/TownRecruits.cs`) — 마을에서 **사람을 구한다**. `At(node)`. **마을엔 늘 최소 한 명이 선다**(바이옴 풀이 비면 다른 바이옴 것을 빌려 쓰고 경고). 인원(1~3)은 **후보 종류 수와 무관**하다 — 사람을 가르는 건 종족이 아니라 이름이라, 같은 종족을 여럿 세우되 한 마을 안에서 이름이 겹치지 않게 고른다. 후보 하나하나가 `PawnSpec`을 들고 선다(이름·등급·몸집·값이 미리 정해진다). 등급 범위는 `RecruitEntry.MinGrade/MaxGrade`(기본 F- ~ E)가 **종족 기본을 덮는다** — 같은 인간이라도 어디서 만났느냐로 갈린다. 후보는 `BiomeContentData.TownRecruits`(프리팹 + 기준가 + 등급범위 + 가중치)에서 **칸 좌표 + 시드 + 날짜**로 결정적 — 같은 날 다시 들르면 같은 사람이 서 있고, 하루가 지나면 바뀐다(여닫는다고 새로 뽑히지 않는다 — 그러면 고르는 일이 아니라 돌리는 일이 된다). **이름을 미리 정한다** — `UnitBrain`은 `Awake`에서 `NamePool`에서 아무거나 고르므로, 그대로 두면 메뉴에서 본 사람과 합류한 사람의 이름이 다르다(`UnitBrain.Rename`이 그 통로). 고용 = `PartyAccount`로 값을 치르고 → 프리팹을 **꺼진 채로** 찍어 `party.Members`에 넣는다(거점 진입 시 `EnterSettlement`가 자리를 잡아 켠다 — 새로 온 사람도 같은 길을 탄다). **고용 프리팹은 씬의 폰을 뜬 것**이어야 한다 — `pawn.prefab`은 종족·세력이 비어 있는 껍데기다(`DungeonColony → Setup Town Recruits`가 뜬다).
+**`TownRecruits`** — 마을에서 **사람을 구한다**. `At(node)`. **마을엔 늘 최소 한 명이 선다**(바이옴 풀이 비면 빌려 쓰고 경고). 인원(1~3)은 후보 종류 수와 무관 — 사람을 가르는 건 종족이 아니라 이름이라 같은 종족을 여럿 세우되 이름이 안 겹치게 고른다. 후보는 `BiomeContentData.TownRecruits`에서 **칸 좌표 + 시드 + 날짜**로 결정적(여닫는다고 새로 안 뽑힌다 — 그러면 고르는 일이 아니라 돌리는 일이 된다). 후보마다 `PawnSpec`을 들고 서고(이름·등급·몸집·값이 미리 정해진다) 등급 범위는 `RecruitEntry`가 종족 기본을 덮는다. **이름을 미리 정한다**(`UnitBrain.Rename`) — 안 그러면 `Awake`가 새로 굴려 메뉴에서 본 사람과 합류한 사람이 달라진다. 고용 = `PartyAccount`로 값을 치르고 프리팹을 **꺼진 채로** 찍어 `party.Members`에 넣는다(거점 진입 시 `EnterSettlement`가 켠다).
 
 **`TownMarket`** (`Assets/1_Script/World/TownMarket.cs`) — 월드맵 `Town` 칸의 시장. `ShopsAt(node)` / `GoldAt(node)`. **종류당 하나씩** 선다(재료·식료·무기·방어구). **종류는 바이옴 풀에 있는 것이 전부 뜬다** — 좌표가 고르는 건 "같은 종류에 후보가 여럿일 때 어느 쪽인가"뿐이다. 종류까지 추첨하면 무기 상인을 만나려고 마을을 순회하게 되고, 그건 고르는 일이 아니라 찾아다니는 일이 된다. 어느 상인이 서는지는 `BiomeContentData.TownMerchants`에서 **칸 좌표 + 시드 해시로 결정적**(`WorldDeposits`와 같은 패턴 — 배치는 저작물, 세부만 굴린다). 재고는 **하루 단위 캐시**(여닫으며 재고를 새로 뽑는 것을 막는다), 상인 자체는 안 바뀐다. 지도를 새로 지으면 `WorldMap.Generate`가 `Clear()`.
 
@@ -291,8 +295,8 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 - **씬에 손으로 놓은 건물도 자기 칸을 막는다** — `PlacedBuilding.Start()`가 `data.Size`로 발자국을 등록한다(배치로 지은 건물은 이미 불렸으므로 건너뜀). **건물 프리팹에는 `PlacedBuilding` + `data`를 미리 붙여 둘 것** — 없으면 이 등록이 아예 안 돌고, 그러면 길찾기가 아는 건 콜라이더뿐이라 모델보다 작을 때 **모델 한복판을 가로지르는 경로**가 나온다.
 - **씬 배치는 격자에 맞출 것**: **홀수 크기 축은 `.5`, 짝수 축은 `.0`**(`GetFootprint`/`FootprintCenter` 규약). 어긋나면 모델이 옆 칸으로 삐져나와 **작업 자리를 먹는다**. 도구: `Snap Placed Buildings To Grid` → `Fit Building Colliders To Size`(**순서 지킬 것**).
 - `OnActiveChanged` — 건설 모드 토글 시 다른 UI 자동 닫힘
-- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(모델 A, 코어 무관). `MapManager._floored` 희소 저장(타일 → **바닥 윗면 Y**). 건물 배치 높이는 `SurfaceHeight` + `BuildModeManager.SpawnOnSurface` — 프리팹 루트 `localPosition.y`가 양수면 **저작 부양 높이**로 보고 그만큼 띄우고(서브코어 등), 아니면 `SnapOnSurface`가 렌더러 바닥면을 표면에 맞춘다(피벗 중앙 프리팹 파묻힘 방지, 올리기만 함). 즉시 배치/청사진/고스트/자유 배치 동일 규칙. 메인 핵은 `DungeonCore._hoverOffset`(Start에서 캡처)로 이전 후에도 부양 유지. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 그리드/자유 모드 공통, 던전 씬은 플래그를 켤 것(필드 씬 기본 false·무영향). 공허 조준=레이캐스트 실패 시 y=0 평면 폴백, 바닥은 좌클릭 유지 드래그 페인트 + 그리드 강제. 에셋: `Floor.prefab` + `Floor.asset`(placeable) / 씬의 `[DungeonStarterFloor]`(코어바닥 20×20 저작, `requireFloor` 켜짐). 공허 이동 차단 3중: 길찾기(L1/메소)가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지 선정은 `MapManager.IsStandable` 검사.
-- **핵 영역(크립) / 건물 휴면**: 점유는 절대좌표 희소 저장이라 핵 이동에도 유지. 영역(핵 union) 밖 건물은 `BuildingDormancy`가 휴면(작동 정지+회색 틴트, 철거 X), 복구 시 재가동. **휴면 = 전면 사용 불가**: 창고 집계 제외(`Storage.IsActive`), 침대·농지·작업대·연구대·우물 컴포넌트 `enabled=false`, 클릭해도 패널 안 열림(`SelectionManager` 게이트), 매달린 일감은 `JobBase.IsSiteUsable`로 배정 보류(취소 아님 → 복구 시 재개). 외부 판정은 `BuildingDormancy.IsDormantAt(Component)`. 런타임 배치 시 `BuildingDormancy.Ensure`로 자동 부착(씬 사전 배치 건물은 수동 부착 필요). **핵 이전**: `DungeonCoreUI`의 [핵 이전] 버튼 → `CoreRelocator`(좌클릭 확정 / 우클릭·Esc 취소, 타일 유효성 + 새 영역 원 + 휴면·재가동 예정 수 미리보기) → `RelocateTo`. 설계: `docs/design_core_creep.md` (step 1~5 완료)
+- **바닥(floor) 시스템**: `BuildingData.IsFloor` → 무료 substrate(코어 무관). `MapManager._floored`가 타일 → **바닥 윗면 Y**를 희소 저장. 배치 높이는 `SurfaceHeight` + `SpawnOnSurface` — 프리팹 루트 `localPosition.y`가 양수면 **저작 부양 높이**로 보고 그만큼 띄우고(서브코어 등), 아니면 렌더러 바닥면을 표면에 맞춘다(피벗 중앙 프리팹 파묻힘 방지). 즉시 배치/청사진/고스트/자유 배치 동일. 건물의 "바닥 위에만" 게이트 = `FloorRequired`(= `requireFloor` 플래그 ∥ 바닥 존재) — 던전 씬은 플래그를 켤 것. 바닥은 좌클릭 드래그 페인트 + 그리드 강제. **공허 이동 차단 3중**: 길찾기가 바닥 밖 셀 unwalkable + `PawnMover` 낭떠러지 가드(`ledgeLookahead`) + `fallRecoveryY` 낙하 복구. AI 목적지는 `IsStandable` 검사.
+- **핵 영역(크립) / 건물 휴면**: 영역(핵 union) 밖 건물은 `BuildingDormancy`가 휴면(작동 정지+회색 틴트, 철거 X). **휴면 = 전면 사용 불가** — 창고 집계 제외(`Storage.IsActive`), 컴포넌트 `enabled=false`, 클릭해도 패널 안 열림, 매달린 일감은 `JobBase.IsSiteUsable`로 **배정 보류**(취소 아님 → 복구 시 재개). 외부 판정 `BuildingDormancy.IsDormantAt`. 런타임 배치는 `Ensure`로 자동 부착(씬 사전 배치는 수동). **핵 이전** = `DungeonCoreUI` [핵 이전] → `CoreRelocator` → `RelocateTo`. 상세 `docs/design_core_creep.md`
 
 ### Input & Camera
 
@@ -339,7 +343,7 @@ Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에�
 
 `python Tools/export_gamedata.py` → `Tools/GameData.xlsx`(Items·Recipes·Buildings·Enums, 시트마다 자동 필터) + `Tools/Items.csv`·`Tools/Recipes.csv`(git diff용).
 
-**표는 저작물이 아니라 에셋의 그림자다** — 에셋과 코드를 직접 읽어 만든다. 값을 바꿨으면 다시 돌려 맞출 것. 옛 `make_gamedata.py`는 값을 손으로 적어 두는 방식이라 아이템이 40종에서 멈추고 삭제된 `ResourceType`을 계속 쓰고 있었다(2026-08-06 교체). **손으로 적은 표는 반드시 뒤처진다 — 적을 때만 맞고 그 뒤로는 아무도 고치지 않는다.**
+**표는 저작물이 아니라 에셋의 그림자다** — 에셋과 코드를 직접 읽어 만든다. 값을 바꿨으면 다시 돌릴 것. **손으로 적은 표는 반드시 뒤처진다** — 적을 때만 맞고 그 뒤로는 아무도 고치지 않는다.
 
 제작 배수(산출값 ÷ 재료비)가 **1 미만이면 붉게** 칠해진다 — 만들수록 손해인 레시피가 표에서 가장 먼저 눈에 띈다.
 

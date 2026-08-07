@@ -137,7 +137,7 @@
 - `TryAdd(item, amount, quality)` / `TryAddAt(item, x, y, rotated, quality)`
 - `MoveItem(inst, x, y, rotated)` / `Remove(type, amount)` / `RemoveInstance(inst)`
 - `CanPlaceItem(item, x, y, rotated)` / `CanPlaceExtern(item, x, y, rotated)` — 외부 아이템 색 피드백용
-- `GetTotalQuantity(type)` / `GetTotalByType(type)` / `GetTotalWeight()` / `GetAt(x, y)`
+- `GetTotalQuantity(item)` / `GetTotalQuantity(item, quality)` / `GetTotalWeight()` / `GetAt(x, y)`
 
 `ItemInstance` — 런타임 객체: `Data`, `Quantity`, `GridX`, `GridY`, `Rotated`, `EffectiveWidth/Height`, `DisplayName` (등급 접두사 포함)
 
