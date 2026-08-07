@@ -171,6 +171,58 @@ public partial class UnitBrain : MonoBehaviour
 
     void OnDestroy() => UnhookUnloadSignals();
 
+    // ── 공허 복귀 ─────────────────────────────────────────────────────────────
+    // 떨어지지 않고 **서 있는데 바닥 밖**인 경우를 다룬다(밀려났거나 바닥이 철거됐거나).
+    // 완전히 추락하는 경우는 `PawnMover.fallRecoveryY`가 마지막 접지 위치로 되돌린다 —
+    // 그건 사고 복구고, 이쪽은 **제 발로 걸어 나오는 것**이다.
+    const float VoidSearchRadius = 10f;   // 이 안에 바닥이 없으면 걸어서는 못 나온다
+
+    bool _voidWarned;
+    bool _voidRecovering;   // 지금 들고 있는 목적지가 **복귀용**인가
+
+    bool TryRecoverFromVoid()
+    {
+        if (_mover == null) return false;
+
+        var map = MapManager.GetForPosition(transform.position);
+        if (map == null || !map.FloorRequired) return false;   // 지형 맵은 해당 없음
+
+        var tile = map.WorldToTile(transform.position);
+        if (map.IsStandable(tile))
+        {
+            _voidWarned = _voidRecovering = false;
+            return false;
+        }
+
+        // 떨어지는 중엔 걷게 해도 소용없다. 착지하거나 `fallRecoveryY`가 건질 때까지 기다린다.
+        if (!_mover.IsGrounded) return true;
+
+        // 이미 **복귀 명령을 수행 중**이면 새로 잡지 않는다 — 매 틱 다시 고르면 제자리에서 떤다.
+        // 그냥 `HasTarget()`만 보면 안 된다: 빠지기 직전에 들고 있던 **낡은 목적지**를 그대로
+        // 좇아 공허를 가로질러 간다. 우리가 낸 명령일 때만 그대로 둔다.
+        if (_voidRecovering && _mover.HasTarget()) return true;
+
+        var to = map.FindWorkableNear(tile, Mathf.CeilToInt(VoidSearchRadius));
+        if (!map.IsWorkable(to))
+        {
+            // 걸어 나갈 곳이 없다 — 조용히 얼어붙는 대신 한 번 알린다.
+            if (!_voidWarned)
+            {
+                _voidWarned = true;
+                Debug.LogWarning($"[공허] {UnitName}: {tile} 주변 {VoidSearchRadius:F0}칸 안에 " +
+                                 "설 수 있는 칸이 없어 스스로 못 나옵니다.");
+            }
+            return true;
+        }
+
+        // 하던 일감은 놓는다 — 공허에 서서 맡고 있으면 다른 폰도 못 가져간다.
+        AbandonWork();
+
+        _mover.SetMoveTarget(map.TileToGround(to));
+        _voidRecovering = true;
+        return true;
+    }
+
 
     string ResolveUnitName()
     {
@@ -192,6 +244,12 @@ public partial class UnitBrain : MonoBehaviour
         UpdateHunger();
 
         if (_bb.IsKnockedOut) return;
+
+        // **바닥 밖에 놓였으면 복귀가 먼저다.** 공허에 선 폰은 길찾기가 그 칸을 unwalkable로
+        // 굽기 때문에 무엇을 시켜도 경로가 안 나오고, 그 자리에서 얼어붙는다(하던 일감도 6초 뒤
+        // 포기로 흘러간다). 트리마다 노드를 넣는 대신 여기서 한 번 막는다 — **이건 결정이 아니라
+        // 몸의 상태**라서, 기절 게이트가 바로 위에 있는 것과 같은 이유다.
+        if (TryRecoverFromVoid()) return;
 
         _tickTimer += Time.deltaTime;
         if (_tickTimer < tickInterval) return;

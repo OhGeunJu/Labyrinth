@@ -150,7 +150,7 @@ public class EventManager : MonoBehaviour
             var prefab = data.EnemyPrefabs[Random.Range(0, data.EnemyPrefabs.Count)];
             if (prefab == null) continue;
 
-            var go = Instantiate(prefab, ScatterNear(edge, 3f, used), Quaternion.identity);
+            var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used));
 
             // **핵을 향해 걷게 한다.** 적 트리는 탐지(수 미터)와 배회(12m)뿐이라,
             // 명령이 없으면 침공대가 맵 가장자리에서 서성이다 끝난다 — 습격이 일어나지 않는 것과 같다.
@@ -175,7 +175,7 @@ public class EventManager : MonoBehaviour
             var prefab = data.ReinforcementPrefabs[Random.Range(0, data.ReinforcementPrefabs.Count)];
             if (prefab == null) continue;
 
-            var go = Instantiate(prefab, ScatterNear(edge, 3f, used), Quaternion.identity);
+            var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used));
 
             // 던전 코어 방향으로 초기 이동 (랜덤 오프셋으로 뭉치지 않게)
             var mover = go.GetComponent<PawnMover>();
@@ -196,7 +196,7 @@ public class EventManager : MonoBehaviour
         var prefab = PickOne(data.MerchantPrefabs);
         if (prefab == null) return;
 
-        var go       = Instantiate(prefab, edge, Quaternion.identity);
+        var go       = SpawnPawn(prefab, edge);
         var merchant = go.GetComponent<Merchant>();
 
         // **저작한 상인은 건드리지 않는다.** 프리팹에 손으로 상품을 물려 뒀다면 그건
@@ -401,6 +401,27 @@ public class EventManager : MonoBehaviour
         found = pick.tile;
         dist  = pick.dist;
         return true;
+    }
+
+    // 폰을 표면 **위에** 세워서 찍는다.
+    //
+    // `ScatterNear`가 주는 것은 `TileToGround` — **바닥 윗면 Y**다. 거기에 그대로 찍으면
+    // `CharacterController`(중심 0, 높이 2)의 **아래 절반이 바닥에 파묻힌다.** 유니티가 겹침을
+    // 풀면서 옆으로 밀어내는데, 그 자리가 바닥 가장자리면 그대로 밖으로 나가 떨어진다
+    // ("바닥보다 살짝 밖에서 나와서 계속 떨어진다", 2026-08-08).
+    //
+    // 핵이 하수인을 소환할 때 멀쩡했던 건 `GetSpawnPosition`이 **핵의 높이**(부양)를 쓰기 때문이다
+    // — 공중에서 떨어져 착지하므로 파묻힐 일이 없었다.
+    static GameObject SpawnPawn(GameObject prefab, Vector3 groundPos)
+    {
+        var go = Instantiate(prefab, groundPos, Quaternion.identity);
+
+        var cc = go.GetComponent<CharacterController>();
+        float lift = cc != null ? cc.height * 0.5f - cc.center.y : 1f;
+
+        var p = go.transform.position;
+        go.transform.position = new Vector3(p.x, groundPos.y + lift + 0.05f, p.z);
+        return go;
     }
 
     const int ScatterTries = 12;

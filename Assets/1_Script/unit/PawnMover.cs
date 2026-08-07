@@ -462,7 +462,7 @@ public class PawnMover : MonoBehaviour
                 StopMovement();
                 _verticalVel = 0f;
                 _cc.enabled = false;
-                transform.position = _lastGroundedPos;
+                transform.position = SafeRecoveryPoint();
                 _cc.enabled = true;
                 return;
             }
@@ -569,6 +569,36 @@ public class PawnMover : MonoBehaviour
     }
 
     public bool HasTarget()  => _hasTarget;
+
+    // 발이 땅에 닿아 있는가. 떨어지는 중에는 걷게 해도 소용없으므로 복귀 판단에 쓴다.
+    public bool IsGrounded => _cc != null && _cc.isGrounded;
+
+    // 낙하 복구를 **어디로** 할 것인가.
+    //
+    // 마지막 접지 위치를 그냥 쓰면 **무한 낙하**가 된다: 한 번도 땅을 밟은 적 없는 폰은
+    // `_lastGroundedPos`가 태어난 자리(= 바닥 밖)라 되돌려 놔도 다시 떨어지고, 그게 영원히
+    // 반복된다("바닥보다 살짝 밖에서 나와서 계속 떨어져", 2026-08-08).
+    //
+    // 그래서 되돌릴 자리가 **설 수 있는 곳인지 확인**하고, 아니면 가장 가까운 바닥으로 보낸다.
+    Vector3 SafeRecoveryPoint()
+    {
+        var map = MapManager.GetForPosition(_lastGroundedPos);
+        if (map == null || !map.FloorRequired) return _lastGroundedPos;
+
+        var tile = map.WorldToTile(_lastGroundedPos);
+        if (map.IsStandable(tile)) return _lastGroundedPos;
+
+        var safe = map.FindWorkableNear(tile, 10);
+        if (!map.IsWorkable(safe))
+        {
+            Debug.LogWarning($"[낙하복구] {name}: {tile} 주변에 설 수 있는 칸이 없습니다.");
+            return _lastGroundedPos;
+        }
+
+        // 표면 **위에** 세운다 — 표면 Y에 그대로 놓으면 캡슐 아래 절반이 파묻혀 또 밀려난다.
+        var ground = map.TileToGround(safe);
+        return new Vector3(ground.x, ground.y + _cc.height * 0.5f - _cc.center.y + 0.05f, ground.z);
+    }
     // 지금 로컬 정밀 경로를 들고 있는가. 없으면 직선 폴백으로 가는 중이라 물체에 처박힌다 —
     // 포기 진단이 "길을 못 찾은 것"과 "길은 있는데 못 간 것"을 가르는 데 쓴다.
     public bool HasLocalPath => _localPath != null && _localPath.Count > 0;
