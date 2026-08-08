@@ -30,6 +30,71 @@ public enum StatName
     Smelting, Stonecutting, Woodworking, Gemcutting
 }
 
+// **스탯 이름의 표시명 — 여기 하나뿐이다.**
+//
+// 원래 `GradeUpNotificationUI` 안에 private으로 들어 있었다. 특성(`TraitData.EffectSummary`)이
+// 같은 이름을 필요로 하면서 두 벌이 될 참이었는데, 표시명이 두 곳에 있으면 반드시 어긋난다
+// (`ResourceType` enum을 지운 것과 같은 이유 — 한 자원에 이름이 셋이었다).
+public static class StatNameExt
+{
+    public static string ToDisplay(this StatName s) => s switch
+    {
+        StatName.Strength          => "근력",
+        StatName.Toughness         => "강인함",
+        StatName.Dexterity         => "손재주",
+        StatName.Cognition         => "인지력",
+        StatName.MeleeAttack       => "근접공격",
+        StatName.MeleeDefense      => "근접방어",
+        StatName.RangedDefense     => "원거리방어",
+        StatName.PrecisionShooting => "정밀사격",
+        StatName.MartialArts       => "무술",
+        StatName.Evasion           => "회피",
+        StatName.Athletics         => "육상",
+        StatName.Swimming          => "수영",
+        StatName.Mining            => "채굴",
+        StatName.Growing           => "원예",
+        StatName.Cutting           => "벌목",
+        StatName.Taming            => "조련",
+        StatName.Cooking           => "요리",
+        StatName.Medicine          => "의료",
+        StatName.Research          => "연구",
+        StatName.WeaponCrafting    => "무기제작",
+        StatName.ArmorCrafting     => "갑옷제작",
+        StatName.Alchemy           => "연금",
+        StatName.Smelting          => "제련",
+        StatName.Stonecutting      => "석재가공",
+        StatName.Woodworking       => "목공",
+        StatName.Gemcutting        => "보석가공",
+        StatName.Labor             => "노동",
+        StatName.OneHandSword      => "한손검",
+        StatName.OneHandAxe        => "한손도끼",
+        StatName.OneHandMace       => "한손둔기",
+        StatName.TwoHandSword      => "양손검",
+        StatName.TwoHandAxe        => "양손도끼",
+        StatName.TwoHandMace       => "양손둔기",
+        StatName.Polearm           => "장창",
+        StatName.Bow               => "활",
+        StatName.Crossbow          => "쇠뇌",
+        StatName.Javelin           => "투창",
+        StatName.ElementalMagic    => "원소마법",
+        StatName.DarkMagic         => "암흑마법",
+        StatName.HolyMagic         => "신성마법",
+        StatName.ElementalFire     => "원소·불",
+        StatName.ElementalIce      => "원소·얼음",
+        StatName.ElementalLightning=> "원소·전기",
+        StatName.ElementalPoison   => "원소·독",
+        StatName.DarkFire          => "암흑·불",
+        StatName.DarkIce           => "암흑·얼음",
+        StatName.DarkLightning     => "암흑·전기",
+        StatName.DarkPoison        => "암흑·독",
+        StatName.HolyFire          => "신성·불",
+        StatName.HolyIce           => "신성·얼음",
+        StatName.HolyLightning     => "신성·전기",
+        StatName.HolyPoison        => "신성·독",
+        _                          => s.ToString(),
+    };
+}
+
 public static class StatGradeExt
 {
     public const float MaxStatValue = 130f;

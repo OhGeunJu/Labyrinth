@@ -107,6 +107,10 @@ public class UnitHPUI : MonoBehaviour
 
         // 활성 상태이상
         if (sfx != null) AppendStatusEffects(sb, sfx);
+
+        // **특성 — 이름만.** 여긴 상태를 보는 창이라 오프셋 숫자까지 늘어놓으면 혈액·허기가
+        // 밀린다. 무엇을 얼마나 얹는지는 스탯 창(C)이 답한다.
+        AppendTraits(sb, brain);
         sb.AppendLine();
 
         // 장착
@@ -175,6 +179,15 @@ public class UnitHPUI : MonoBehaviour
             FactionStance.Ally    => "우호",
             _                     => "중립",
         };
+    }
+
+    // 한 줄로 붙여 쓴다 — `특성  강인함 · 겁쟁이`. 없는 폰(0개)은 줄 자체가 안 뜬다.
+    static void AppendTraits(StringBuilder sb, UnitBrain brain)
+    {
+        string names = TraitPool.NameList(brain.Traits);
+        if (string.IsNullOrEmpty(names)) return;
+
+        sb.AppendLine($"특성  <color=#D8C89A>{names}</color>");
     }
 
     static string H(string t)    => $"<color=#E8C566>{t}</color>";

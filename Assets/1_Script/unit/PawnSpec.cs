@@ -25,8 +25,17 @@ public class PawnSpec
     // 여기 값이 있다는 것 자체가 "생김새는 명세가 든다"는 규약을 세운다.
     public float BodyScale = 1f;
 
+    // **기본 폰이 못 갖는 모습.** 굴려서는 안 나오고 저작해야만 붙는다(`PawnSpecData`) —
+    // 이름 있는 동료가 남들과 똑같이 생기면 이름을 붙인 뜻이 절반 사라진다.
+    public Material   MaterialOverride;
+    public GameObject ModelOverride;
+
     // 굴린 등급. 값이 아니라 **등급**을 든다 — 화면에 뜨는 것도, 값을 매기는 것도 등급이다.
     public readonly Dictionary<StatName, StatGrade> Grades = new();
+
+    // **특성도 태어나기 전에 정해진다.** 시드에서 나오므로 마을 후보 메뉴에 뜬 특성과
+    // 합류한 폰의 특성이 같다 — 스탯·이름과 같은 이유로 여기 든다.
+    public readonly List<TraitData> Traits = new();
 
     // 이 사람이 얼마나 쓸 만한가 — 등급 평균(0 = F-). 값 매김·표시의 단일 기준.
     public float GradeAverage { get; private set; }
@@ -42,12 +51,32 @@ public class PawnSpec
     // 몸 크기는 좁게 흔든다. 크게 흔들면 같은 종족이 아니라 다른 종족처럼 보인다.
     public static PawnSpec Roll(UnitData data, int seed, StatGrade min, StatGrade max,
                                 IReadOnlyList<string> nameCandidates = null)
+        => RollCore(data, seed, nameCandidates, min, max, _ => (min, max));
+
+    // **종족이 스탯별로 정한 범위를 그대로 쓰는 굴리기** — 저작한 고정 개체용.
+    //
+    // 마을 후보는 지역 등급이 종족 기본을 덮으므로 위 오버로드(min/max 지정)를 쓴다. 하지만
+    // 이름 있는 동료는 "그 종족다움"이 남아야 한다 — 엘프가 손재주만 좋게 저작돼 있으면
+    // 고정 개체도 그래야지, 전 스탯이 같은 범위로 뭉개지면 종족을 저작한 뜻이 사라진다.
+    public static PawnSpec Roll(UnitData data, int seed,
+                                IReadOnlyList<string> nameCandidates = null)
+    {
+        var min = data != null ? data.DefaultMinGrade : StatGrade.D;
+        var max = data != null ? data.DefaultMaxGrade : StatGrade.D;
+        return RollCore(data, seed, nameCandidates, min, max,
+                        stat => data != null ? data.GetGradeRange(stat) : (min, max));
+    }
+
+    // `tierMin/tierMax` = 이 사람의 **수준**을 뽑는 범위, `rangeOf` = 스탯마다 조일 범위.
+    static PawnSpec RollCore(UnitData data, int seed, IReadOnlyList<string> nameCandidates,
+                             StatGrade tierMin, StatGrade tierMax,
+                             Func<StatName, (StatGrade min, StatGrade max)> rangeOf)
     {
         var spec = new PawnSpec { Seed = seed };
         var rng  = new System.Random(seed);
 
-        int lo = Mathf.Min((int)min, (int)max);
-        int hi = Mathf.Max((int)min, (int)max);
+        int lo = Mathf.Min((int)tierMin, (int)tierMax);
+        int hi = Mathf.Max((int)tierMin, (int)tierMax);
         // **먼저 이 사람의 수준(tier)을 정하고, 스탯은 그 언저리에서 굴린다.**
         //
         // 스탯 51개를 각각 균등하게 굴리면 **평균이 거의 안 흔들린다** — 51번을 평균 내면
@@ -61,7 +90,11 @@ public class PawnSpec
         int sum = 0, count = 0;
         foreach (StatName stat in Enum.GetValues(typeof(StatName)))
         {
-            int g = Mathf.Clamp(tier + rng.Next(-1, 2), lo, hi);   // 수준 ±1칸
+            // 수준 ±1칸을 굴리되 **그 스탯의 범위**로 조인다(종족이 스탯별로 저작했을 수 있다).
+            var (sMin, sMax) = rangeOf(stat);
+            int g = Mathf.Clamp(tier + rng.Next(-1, 2),
+                                Mathf.Min((int)sMin, (int)sMax),
+                                Mathf.Max((int)sMin, (int)sMax));
             spec.Grades[stat] = (StatGrade)g;
             sum += g;
             count++;
@@ -71,7 +104,22 @@ public class PawnSpec
         spec.BodyScale = 0.94f + (float)rng.NextDouble() * 0.12f;   // 0.94 ~ 1.06
         spec.Name      = PickName(data, rng, nameCandidates);
 
+        // **맨 끝에서 뽑는다.** 앞의 굴림 순서를 건드리지 않으므로, 특성이 생기기 전에
+        // 뽑아 둔 사람도 시드만 같으면 이름·스탯이 그대로다. 개수(0~3)도 여기서 굴린다.
+        spec.Traits.AddRange(TraitPool.RollForPawn(rng));
+
         return spec;
+    }
+
+    // 등급을 밖에서 못 박은 뒤 평균을 다시 센다(`PawnSpecData.Build`). 값·표시가 평균을
+    // 기준으로 도므로, 안 다시 세면 저작한 S급 동료가 굴린 값 그대로 싸게 나온다.
+    public void RecomputeAverage()
+    {
+        if (Grades.Count == 0) { GradeAverage = 0f; return; }
+
+        int sum = 0;
+        foreach (var kv in Grades) sum += (int)kv.Value;
+        GradeAverage = sum / (float)Grades.Count;
     }
 
     static string PickName(UnitData data, System.Random rng, IReadOnlyList<string> candidates)

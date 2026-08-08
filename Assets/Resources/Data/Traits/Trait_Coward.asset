@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c41d67b0a52e394ab7f2d9e6c130af5, type: 3}
+  m_Name: Trait_Coward
+  m_EditorClassIdentifier:
+  TraitName: "겁쟁이"
+  Description: "싸움보다 도망이 빠르다. 도망 하나는 누구보다 잘한다."
+  Icon: {fileID: 0}
+  StatOffsets:
+  - Stat: 4
+    Delta: -10
+  - Stat: 35
+    Delta: 12
+  Weight: 1.0
+  ExclusiveGroup: "기질"

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public partial class UnitBrain : MonoBehaviour
@@ -21,6 +22,17 @@ public partial class UnitBrain : MonoBehaviour
     [Tooltip("AI 프로필 — 도주/교전 성향과 유휴 배회 설정. 비우면 타입별 기본값 " +
              "(일반·경비 = 교전+배회 / NPC 주민 = 도주+배회 / 상점 상인 = 도주+제자리).")]
     [SerializeField] AiProfileData aiProfile;
+
+    // ── 고정 개체 (선택) ──────────────────────────────────────────────────────
+    // **이름 있는 동료는 매번 다른 사람이면 안 된다.** 기본값은 `Awake`가 이름도 스탯도
+    // 제 마음대로 굴리는 것이라, 같은 프리팹을 두 번 찍으면 다른 사람이 나온다.
+    [Header("고정 개체 (선택)")]
+    [Tooltip("이름만 못 박는다. 스탯·생김새까지 정하려면 아래 `pawnSpec`을 쓸 것.")]
+    [SerializeField] string fixedName;
+
+    [Tooltip("저작한 개체 명세 — 스탯을 **원하는 등급으로 콕 집어** 정하고 전용 생김새도 준다. " +
+             "채우면 위 `fixedName`보다 이쪽이 이긴다.")]
+    [SerializeField] PawnSpecData pawnSpec;
 
     PawnMover _mover;
     UnitBlackboard _bb;
@@ -98,8 +110,86 @@ public partial class UnitBrain : MonoBehaviour
             foreach (var kv in spec.Grades)
                 Stats.SetStat(kv.Key, kv.Value.ToValue());
 
-        // 생김새 — 지금은 크기 하나뿐이다. 늘어나면 여기에 줄이 는다.
+        // **특성은 스탯을 덮어쓴 뒤에 얹는다.** 순서가 뒤집히면 명세의 등급이 특성 보정을
+        // 지워 버려, 특성이 붙어 있는데 아무 효과도 없는 폰이 된다.
+        SetTraits(spec.Traits);
+
+        // 생김새 — 크기 · 재질 · 전용 모델. 늘어나면 여기에 줄이 는다.
         if (spec.BodyScale > 0f) transform.localScale = Vector3.one * spec.BodyScale;
+        ApplyLook(spec);
+    }
+
+    // ── 특성 ──────────────────────────────────────────────────────────────────
+    // **이 폰이 어떤 사람인가.** 스탯에 숫자만 얹으므로(모델 A) 전투·작업 코드는 특성을 모른다.
+    readonly List<TraitData> _traits = new();
+
+    public IReadOnlyList<TraitData> Traits => _traits;
+
+    public bool HasTrait(TraitData trait) => trait != null && _traits.Contains(trait);
+
+    // 명세가 들고 온 특성으로 **갈아 끼운다**(스폰 시 한 번). 이미 얹은 것이 있으면 되돌린다 —
+    // 안 그러면 `ApplySpec`이 두 번 불릴 때 보정이 두 겹으로 쌓인다.
+    void SetTraits(IEnumerable<TraitData> traits)
+    {
+        foreach (var t in _traits) TraitPool.Remove(t, Stats);
+        _traits.Clear();
+
+        if (traits == null) return;
+        foreach (var t in traits) AddTrait(t);
+    }
+
+    // **나중에 붙일 수도 있다** — 부상 후 트라우마, 사건으로 얻는 별명 같은 것들의 진입점이다.
+    // 기본은 스폰 고정이지만 통로를 막아 두면 나중에 그 기능이 `ApplySpec`을 다시 뜯게 된다.
+    public bool AddTrait(TraitData trait)
+    {
+        if (trait == null || _traits.Contains(trait)) return false;
+
+        // 배타 묶음이 겹치면 안 붙인다 — `용감`한 폰이 `겁쟁이`가 되려면 먼저 떼야 한다.
+        if (!string.IsNullOrWhiteSpace(trait.ExclusiveGroup))
+            foreach (var t in _traits)
+                if (t != null && t.ExclusiveGroup == trait.ExclusiveGroup) return false;
+
+        _traits.Add(trait);
+        TraitPool.Apply(trait, Stats);
+        return true;
+    }
+
+    public bool RemoveTrait(TraitData trait)
+    {
+        if (!_traits.Remove(trait)) return false;
+        TraitPool.Remove(trait, Stats);
+        return true;
+    }
+
+    // **저작한 모습을 입힌다.** 굴려서는 안 나오고 명세에 적어야만 붙는다 —
+    // 이름 있는 동료가 남들과 똑같이 생기면 이름을 붙인 뜻이 절반 사라진다.
+    void ApplyLook(PawnSpec spec)
+    {
+        // 전용 모델이 있으면 **기본 렌더러를 끄고** 자식으로 붙인다. 지우지 않고 끄는 이유는
+        // 초상화(`PortraitCapture`)·선택 표식처럼 렌더러를 훑는 것들이 이미 있어서,
+        // 구조를 바꾸는 것보다 보이는 것만 바꾸는 편이 파장이 작기 때문이다.
+        if (spec.ModelOverride != null)
+        {
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+                r.enabled = false;
+
+            var model = Instantiate(spec.ModelOverride, transform);
+            model.transform.localPosition = Vector3.zero;
+            model.transform.localRotation = Quaternion.identity;
+
+            // 붙인 모델의 콜라이더는 뗀다 — 폰의 `CharacterController`와 겹쳐
+            // 자기 자신에 걸리거나 클릭 판정이 둘로 갈린다(`DroppedItem`과 같은 처리).
+            foreach (var c in model.GetComponentsInChildren<Collider>(true))
+                Destroy(c);
+            return;
+        }
+
+        if (spec.MaterialOverride == null) return;
+
+        // 재질만 갈아 끼우는 경우. `sharedMaterial`을 쓴다 — `material`은 개체마다 사본을
+        // 만들어 배칭이 깨지고 누수가 된다(`BuildingDormancy` 틴트와 같은 이유).
+        foreach (var r in GetComponentsInChildren<Renderer>(true))
+            r.sharedMaterial = spec.MaterialOverride;
     }
 
     Sprite _portrait;
@@ -154,6 +244,7 @@ public partial class UnitBrain : MonoBehaviour
         }
 
         UnitName = ResolveUnitName();
+        ApplyAuthoredSpec();
 
         _root = BuildTree();
 
@@ -170,6 +261,28 @@ public partial class UnitBrain : MonoBehaviour
     }
 
     void OnDestroy() => UnhookUnloadSignals();
+
+    // 인스펙터에 적어 둔 고정값을 입힌다. **밖에서 명세를 주는 경우**(마을 고용)는
+    // 스폰 직후 `ApplySpec`이 이 위에 덮으므로 둘이 다투지 않는다 — 저작은 기본값이고
+    // 주입이 이긴다(상인 상품과 같은 우선순위).
+    void ApplyAuthoredSpec()
+    {
+        if (pawnSpec == null)
+        {
+            Rename(fixedName);   // 이름만 못 박는 경우(빈 문자열은 `Rename`이 무시한다)
+
+            // **명세가 없는 폰도 특성을 받는다.** 방랑자든 하수인이든 적이든 마찬가지다 —
+            // 특성이 일부에게만 있으면 "이 고블린은 왜 안 쓰러지지"에 답이 없어진다.
+            // 명세가 있는 폰은 `ApplySpec`이 시드에서 뽑은 것을 쓴다(메뉴에서 본 그대로).
+            SetTraits(TraitPool.RollForPawn(
+                new System.Random(UnityEngine.Random.Range(int.MinValue, int.MaxValue))));
+            return;
+        }
+
+        var spec = pawnSpec.Build(unitData);
+        if (!string.IsNullOrWhiteSpace(fixedName)) spec.Name = fixedName;
+        ApplySpec(spec);
+    }
 
     string ResolveUnitName()
     {
