@@ -2,7 +2,11 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // 건설 예비 설계. 자재가 다 모이면 실제 건물을 스폰하고 자신은 파괴됨.
-public class BuildingBlueprint : MonoBehaviour
+//
+// **청사진은 칸을 막지 않는다** — 짓는 동안 폰이 지나다녀야 하고, 자재를 지고 오는 폰도
+// 통과한다. 대신 자기가 앞으로 깔고 앉을 칸을 `Footprint`로 알려 준다: 그래야 건설 자리가
+// 발자국 밖으로 잡히고(`WorkSpot.TileFor`), 완성되는 순간 지은 폰이 벽 안에 갇히지 않는다.
+public class BuildingBlueprint : MonoBehaviour, IFootprintSite
 {
     public static readonly List<BuildingBlueprint> All = new();
 
@@ -17,6 +21,13 @@ public class BuildingBlueprint : MonoBehaviour
     public bool     IsComplete => _costDelivered >= _costRequired;
     public int      Remaining  => Mathf.Max(0, _costRequired - _costDelivered);
     public ItemData CostItem   => _costItem;
+
+    // 완성되면 막을 칸들 — 계산은 `PlacedBuilding`과 같은 것을 쓴다(답이 두 벌이면 어긋난다).
+    // 칸을 안 막는 건물(`OccupiesTile` false)은 발자국도 비운다 — 그 위에 서도 갇히지 않는다.
+    public IEnumerable<Vector2Int> Footprint =>
+        _data != null && _data.OccupiesTile
+            ? PlacedBuilding.FootprintAt(transform.position, _data.Size, transform.rotation)
+            : System.Array.Empty<Vector2Int>();
 
     public void Init(BuildingData data)
     {

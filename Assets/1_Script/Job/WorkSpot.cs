@@ -48,18 +48,44 @@ public class WorkSpot : MonoBehaviour
     //
     // ①에서도 "설 수 있으면"을 확인하는 이유: 저작해 둔 자리를 나중에 다른 건물이 막을 수 있다.
     // 그때 고집하면 폰이 영영 못 간다 — 저작은 **선호**지 보장이 아니다.
+    //
+    // **건물이 깔고 앉을 칸은 후보에서 뺀다**(`IFootprintSite`). 다 지어진 건물은 그 칸이 이미
+    // 통행 불가라 저절로 빠지지만, **청사진은 일부러 안 막는다** — 짓는 동안 폰이 지나다녀야
+    // 하기 때문이다. 그래서 발자국을 따로 묻지 않으면 3×2 건물의 한복판이 건설 자리로 뽑히고,
+    // 완성되는 순간 그 칸이 막히며 방금 지은 폰이 벽 안에 갇힌다.
     public static Vector2Int TileFor(Component site)
     {
         if (site == null || MapManager.Instance == null) return default;
+
+        var footprint = FootprintOf(site);
 
         var spot = site.GetComponentInChildren<WorkSpot>(true);
         if (spot != null)
         {
             var t = spot.Tile;
-            if (MapManager.Instance.IsWorkable(t)) return t;
+            if (MapManager.Instance.IsWorkable(t) && (footprint == null || !footprint.Contains(t)))
+                return t;
         }
 
         var center = MapManager.Instance.WorldToTile(site.transform.position);
-        return MapManager.Instance.FindWorkableNear(center);
+
+        // 발자국이 크면 반경 2로는 못 빠져나온다 — 절반 + 한 칸이면 어느 방향으로든 밖이다.
+        int radius = 2;
+        if (footprint != null)
+            foreach (var t in footprint)
+                radius = Mathf.Max(radius, Mathf.Max(Mathf.Abs(t.x - center.x), Mathf.Abs(t.y - center.y)) + 1);
+
+        return MapManager.Instance.FindWorkableNear(center, radius, footprint);
+    }
+
+    // 부모까지 타고 올라가 찾는다 — 일감이 넘기는 것은 `ResearchTable`처럼 건물에 붙은
+    // 컴포넌트고, 발자국을 아는 것은 그 위의 `PlacedBuilding` / `BuildingBlueprint`다.
+    static HashSet<Vector2Int> FootprintOf(Component site)
+    {
+        var owner = site.GetComponentInParent<IFootprintSite>();
+        if (owner == null) return null;
+
+        var set = new HashSet<Vector2Int>(owner.Footprint);
+        return set.Count > 0 ? set : null;
     }
 }

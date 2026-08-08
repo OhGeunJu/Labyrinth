@@ -21,8 +21,10 @@ public class ConstructionJob : JobBase
         _amount    = amount;
         Priority   = 3;
 
-        if (blueprint != null && MapManager.Instance != null)
-            TileCoord = MapManager.Instance.WorldToTile(blueprint.transform.position);
+        // **건물 자리가 아니라 폰이 서는 자리다.** 전에는 청사진 중심 칸을 그대로 목표로 삼았는데,
+        // 청사진은 칸을 안 막으므로 그 칸에 설 수 있었다 — 폰이 3×2 건물 **한복판**에 서서 짓고,
+        // 완성되는 순간 발밑이 통행 불가가 되어 그대로 갇혔다.
+        SetSite(blueprint);
     }
 
     protected override void OnStart()
@@ -37,7 +39,8 @@ public class ConstructionJob : JobBase
             return;
         }
 
-        TileCoord = MapManager.Instance.WorldToTile(_sourceStorage.transform.position);
+        // 창고도 자기 칸은 통행 불가다 — `WorkSpot`이 그 앞의 설 수 있는 칸을 준다.
+        TileCoord = WorkSpot.TileFor(_sourceStorage);
         Debug.Log($"[ConstructionJob] 건설 자재 수거 시작 — {_material.ItemName} ×{_amount}");
     }
 
@@ -56,7 +59,7 @@ public class ConstructionJob : JobBase
             _carriedAmount = toTake;
 
             _phase    = Phase.GoToBlueprint;
-            TileCoord = MapManager.Instance.WorldToTile(_blueprint.transform.position);
+            TileCoord = WorkSpot.TileFor(_blueprint);   // 발자국 밖 — 다 지어져도 갇히지 않는다
         }
         else
         {

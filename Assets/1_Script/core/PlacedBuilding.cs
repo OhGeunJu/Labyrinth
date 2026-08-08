@@ -5,7 +5,7 @@ using UnityEngine;
 // 배치 시 BuildingDormancy.Ensure처럼 자동 부착(BuildModeManager.Place / BuildingBlueprint.Complete).
 // 철거: 점유 해제 + 메소 재베이크 + 건설비 75% 환불(또는 코어 아이템 드랍, step C) + 파괴.
 [DisallowMultipleComponent]
-public class PlacedBuilding : MonoBehaviour
+public class PlacedBuilding : MonoBehaviour, IFootprintSite
 {
     public static readonly List<PlacedBuilding> All = new();
 
@@ -54,9 +54,14 @@ public class PlacedBuilding : MonoBehaviour
         OccupyTiles(FootprintAt(transform.position, data.Size, transform.rotation));
     }
 
+    // 이 건물이 깔고 앉는 칸들 (`IFootprintSite`) — 폰이 서는 자리를 고를 때 후보에서 빠진다.
+    public IEnumerable<Vector2Int> Footprint =>
+        data != null ? FootprintAt(transform.position, data.Size, transform.rotation)
+                     : System.Array.Empty<Vector2Int>();
+
     // 중심에서 크기만큼 펼친 칸들. `BuildModeManager.GetFootprint`가 만드는 것과 같은 칸이
     // 나오고, 격자에서 반 칸쯤 어긋나게 놓인 건물도 반올림으로 제자리를 찾는다.
-    static IEnumerable<Vector2Int> FootprintAt(Vector3 center, Vector2Int size, Quaternion rot)
+    public static IEnumerable<Vector2Int> FootprintAt(Vector3 center, Vector2Int size, Quaternion rot)
     {
         int w = Mathf.Max(1, size.x);
         int h = Mathf.Max(1, size.y);
@@ -86,11 +91,67 @@ public class PlacedBuilding : MonoBehaviour
     public void OccupyTiles(IEnumerable<Vector2Int> tiles)
     {
         if (MapManager.Instance == null) return;
+
+        var claimed = new List<Vector2Int>();
         foreach (var t in tiles)
         {
             MapManager.Instance.SetTile(t, TileData.MakeImpassable());
             _occupiedTiles.Add(t);
+            claimed.Add(t);
         }
+
+        EvictPawns(claimed);
+    }
+
+    // **막은 칸 위에 서 있던 폰을 밖으로 내보낸다.**
+    //
+    // 건물 대부분(33종 중 28종)은 즉시 배치고, 배치는 폰을 전혀 안 본다 — 폰이 선 자리에 3×2
+    // 연구대가 그냥 생긴다. 그냥 두면 **못 나온다**: 길찾기는 출발 칸이 막힌 것을 풀어 주지
+    // 않으므로 어떤 목적지를 줘도 경로가 안 나오고, 폰은 건물 안에서 일감을 집었다 놓기만 한다.
+    //
+    // **걷는 중인 폰은 건드리지 않는다.** 그 폰은 이미 계산해 둔 경로를 타고 제 발로 빠져나가고,
+    // 지나가는 것뿐인데 순간이동시키면 가던 길이 끊긴다. 순간이동은 스스로 못 나오는 폰,
+    // 즉 **거기 서 있던 폰**에게만 필요하다.
+    static void EvictPawns(List<Vector2Int> tiles)
+    {
+        if (tiles.Count == 0) return;
+        var map = MapManager.Instance;
+        if (map == null) return;
+
+        var blocked = new HashSet<Vector2Int>(tiles);
+
+        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            var from = map.WorldToTile(brain.transform.position);
+            if (!blocked.Contains(from)) continue;
+
+            // 목표만 있고 경로가 없으면 걷는 게 아니라 **막혀 선 것**이다 — 그건 내보낸다.
+            var mover = brain.GetComponent<PawnMover>();
+            if (mover != null && mover.HasTarget() && mover.HasLocalPath) continue;
+
+            var to = map.FindWorkableNear(from, 4, blocked);
+            if (blocked.Contains(to)) continue;   // 나갈 데가 없으면 그대로 둔다 — 옮기는 시늉만 하면 더 나쁘다
+
+            Teleport(brain, map.TileToGround(to));
+        }
+    }
+
+    // 표면 **위에** 내려놓는다. `TileToGround`는 바닥 윗면이라 그대로 쓰면 `CharacterController`의
+    // 아래 절반이 파묻히고, 유니티가 겹침을 풀며 옆으로 밀어낸다 — 그 자리가 가장자리면 그대로
+    // 떨어진다(`EventManager.SpawnPawn`이 스폰에서 같은 보정을 한다, 2026-08-08).
+    static void Teleport(UnitBrain brain, Vector3 groundPos)
+    {
+        var cc     = brain.GetComponent<CharacterController>();
+        float lift = cc != null ? cc.height * 0.5f - cc.center.y : 1f;
+
+        // 켜진 채로 옮기면 콜라이더가 제자리로 되민다.
+        if (cc != null) cc.enabled = false;
+        brain.transform.position = new Vector3(groundPos.x, groundPos.y + lift + 0.05f, groundPos.z);
+        if (cc != null) cc.enabled = true;
+
+        // 걸어오던 경로는 여기서 쓸모없다. 목표를 지우면 BT가 다음 틱에 새 자리에서 다시 계획한다.
+        brain.GetComponent<PawnMover>()?.StopMovement();
+        Debug.Log($"[PlacedBuilding] {brain.name} — 건물이 들어선 칸에서 밖으로 옮김");
     }
 
     // 마우스 위치의 건물 PlacedBuilding 반환 (없으면 null).

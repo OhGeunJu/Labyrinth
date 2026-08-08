@@ -160,9 +160,15 @@ public class MapManager : MonoBehaviour
     // 네 칸이 전부 막히는 일이 흔한데, 그때 막힌 칸 자신을 목적지로 돌려주면 폰은
     // **영영 도착 판정에 못 걸린다**(6초 뒤 일감을 놓고, 다시 집고, 또 놓는다).
     // 대각선과 반경 2까지 보면 대부분 살아난다.
-    public Vector2Int FindWorkableNear(Vector2Int center, int maxRadius = 2)
+    //
+    // `exclude`는 **지금은 지나갈 수 있지만 서면 안 되는 칸**이다 — 청사진 발자국이 그렇다.
+    // 통행 판정만으로는 못 거른다(청사진은 일부러 칸을 안 막는다).
+    public Vector2Int FindWorkableNear(Vector2Int center, int maxRadius = 2,
+                                       ICollection<Vector2Int> exclude = null)
     {
-        if (IsWorkable(center)) return center;
+        bool Allowed(Vector2Int t) => IsWorkable(t) && (exclude == null || !exclude.Contains(t));
+
+        if (Allowed(center)) return center;
 
         for (int r = 1; r <= maxRadius; r++)
         {
@@ -176,7 +182,7 @@ public class MapManager : MonoBehaviour
                 if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
 
                 var t = new Vector2Int(center.x + dx, center.y + dy);
-                if (!IsWorkable(t)) continue;
+                if (!Allowed(t)) continue;
 
                 float d = dx * dx + dy * dy;      // 같은 고리 안에서는 대각선보다 직선이 가깝다
                 if (d < bestDist) { bestDist = d; best = t; }
