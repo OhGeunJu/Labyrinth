@@ -160,6 +160,61 @@ public class EventManager : MonoBehaviour
         }
     }
 
+    // ── 지도에서 걸어온 무리 ──────────────────────────────────────────────────
+
+    // **월드맵의 약탈대가 거점에 닿았다** — 여기서 진짜 적이 된다.
+    //
+    // `SpawnRaid`(이벤트 추첨으로 나오는 습격)와 같은 자리·같은 명령을 쓴다. 다른 것은
+    // 하나뿐이다: 무리는 **누가 오는지가 이미 정해져 있다**(`PawnSpec`). 지도에서 두들겨
+    // 반쯤 줄여 놓은 무리가 필드에서는 멀쩡한 정원으로 나오면, 지도 위에서 싸운 것이
+    // 아무 뜻도 갖지 못한다.
+    //
+    // 자리를 못 찾으면 **거짓을 돌려준다** — 호출자가 그때는 알림 대신 다른 처리를 한다
+    // (알림만 띄우고 아무도 안 오면 "왜 아무 일도 없지"가 된다).
+    public bool SpawnArrivingBand(WorldBand band, out Vector3 edge)
+    {
+        edge = Vector3.zero;
+        if (band == null || !band.IsAlive) return false;
+        if (!TryFindEdgeSpawn(out edge)) return false;
+
+        var core = DungeonCore.Instance;
+        var used = new HashSet<Vector2Int>();
+        int spawned = 0;
+
+        foreach (var m in band.Members)
+        {
+            if (m == null || m.Prefab == null) continue;
+
+            var go = SpawnPawn(m.Prefab, ScatterNear(edge, 3f, used));
+            spawned++;
+
+            // 지도에서 본 그 사람을 그대로 세운다(이름·스탯·특성).
+            var brain = go.GetComponent<UnitBrain>();
+            if (brain != null && m.Spec != null) brain.ApplySpec(m.Spec);
+
+            // 적 트리는 탐지·배회뿐이라 명령이 없으면 가장자리에서 서성이다 끝난다.
+            var mover = go.GetComponent<PawnMover>();
+            if (mover != null && core != null) mover.SetMoveTarget(ScatterNear(core.transform.position, 5f));
+        }
+
+        // **한 명도 못 세웠으면 실패다.** 무리 데이터에 프리팹이 안 물려 있으면 여기까지
+        // 조용히 통과해서, 부르는 쪽이 "N명이 들이닥쳤습니다"라고 알리고는 **아무도 안 왔다.**
+        // 자리를 못 찾았을 때 이미 `false`를 돌려주는 것과 같은 규칙이다
+        // (알림이 먼저 나가면 "몰려온다"고 해 놓고 아무 일도 안 일어난다).
+        if (spawned == 0)
+            Debug.LogWarning($"[Event] {band.Name}: 세울 프리팹이 없어 도착을 건너뜁니다 " +
+                             "(WorldBandData.Members의 Prefab을 확인하세요).");
+
+        return spawned > 0;
+    }
+
+    // 핵에서 본 8방위 — 지도에서 온 습격도 어느 쪽에서 들어왔는지 같은 말로 알린다.
+    public static string CompassFromCore(Vector3 point)
+    {
+        var core = DungeonCore.Instance;
+        return core != null ? DirectionFrom(core.transform.position, point) : null;
+    }
+
     // ── 지원군 ───────────────────────────────────────────────────────────────
 
     void SpawnReinforcement(GameEventData data, Vector3 edge)

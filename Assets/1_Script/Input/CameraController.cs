@@ -76,6 +76,14 @@ public class CameraController : MonoBehaviour
         _pitch = euler.x > 180f ? euler.x - 360f : euler.x;
     }
 
+    // **카메라는 게임 시계가 아니라 실시간으로 움직인다.**
+    //
+    // `GameTimeManager.SetSpeed`가 `Time.timeScale`을 직접 만지므로, 멈추면(`Speed = 0`)
+    // `Time.deltaTime`이 **0이 되어 카메라가 통째로 얼어붙는다** — 이동·회전·줌이 전부 죽는다.
+    // 그런데 멈춰 세우는 이유의 절반은 **차분히 둘러보려고**다. 배속도 같은 문제다:
+    // 3배속이면 카메라가 세 배로 튄다(조작 감각이 게임 속도를 따라갈 이유가 없다).
+    static float Dt => Time.unscaledDeltaTime;
+
     void Update()
     {
         HandleMove();
@@ -97,7 +105,7 @@ public class CameraController : MonoBehaviour
         dir.y = 0f;
 
         if (dir != Vector3.zero)
-            transform.position += dir.normalized * moveSpeed * Time.deltaTime;
+            transform.position += dir.normalized * moveSpeed * Dt;
     }
 
     void HandleRotate()
@@ -119,8 +127,8 @@ public class CameraController : MonoBehaviour
         Vector2 delta = curMousePos - _lastMousePos;
         _lastMousePos = curMousePos;
 
-        _yaw += delta.x * rotateSpeed * Time.deltaTime;
-        _pitch = Mathf.Clamp(_pitch - delta.y * rotateSpeed * Time.deltaTime, minPitch, maxPitch);
+        _yaw += delta.x * rotateSpeed * Dt;
+        _pitch = Mathf.Clamp(_pitch - delta.y * rotateSpeed * Dt, minPitch, maxPitch);
     }
 
     void HandleZoom()
@@ -140,7 +148,7 @@ public class CameraController : MonoBehaviour
         else
             zoomDir = transform.forward;
 
-        Vector3 newPos = transform.position + zoomDir * scroll * zoomSpeed * Time.deltaTime;
+        Vector3 newPos = transform.position + zoomDir * scroll * zoomSpeed * Dt;
         newPos.y = Mathf.Clamp(newPos.y, minHeight, maxHeight);
         transform.position = newPos;
     }
@@ -160,7 +168,7 @@ public class CameraController : MonoBehaviour
 
         if (!_lerpingToPitch) return;
 
-        _pitch = Mathf.LerpAngle(_pitch, _targetPitch, angleLerpSpeed * Time.deltaTime);
+        _pitch = Mathf.LerpAngle(_pitch, _targetPitch, angleLerpSpeed * Dt);
 
         if (Mathf.Abs(Mathf.DeltaAngle(_pitch, _targetPitch)) < 0.5f)
         {

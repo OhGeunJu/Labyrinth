@@ -170,6 +170,7 @@ public class ColonyUI : MonoBehaviour
         MakeHeaderLabel("배정", ColonyColumns.AssignX, ColonyColumns.AssignW, TextAlignmentOptions.Left);
         MakeHeaderLabel("성향", ColonyColumns.StanceX, ColonyColumns.StanceW, TextAlignmentOptions.Center);
         MakeHeaderLabel("짐내림", ColonyColumns.UnloadX, ColonyColumns.UnloadW, TextAlignmentOptions.Center);
+        MakeHeaderLabel("자가치유", ColonyColumns.SelfTendX, ColonyColumns.SelfTendW, TextAlignmentOptions.Center);
 
         // **폭을 열 수에 맞춘다.** 씬에 적힌 고정 폭을 두면 열을 하나 더할 때마다
         // 글자가 패널 밖으로 밀려난다(짐내림을 넣었을 때 실제로 그랬다).

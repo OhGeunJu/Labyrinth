@@ -23,6 +23,12 @@ public partial class UnitBrain : MonoBehaviour
              "(일반·경비 = 교전+배회 / NPC 주민 = 도주+배회 / 상점 상인 = 도주+제자리).")]
     [SerializeField] AiProfileData aiProfile;
 
+    [Tooltip("**지니는 것**(선택) — 장비·소지품·주머니. 종족과 따로 두므로 인간 산적과 " +
+             "인간 마을 사람이 **같은 `Human`을 쓰면서 다른 것을 지닌다**.\n" +
+             "종족이 든 것(`UnitData.Loot` = 몸에서 나오는 가죽·이빨)과 **겹치지 않고 더해진다** " +
+             "— 다른 물음에 답하기 때문이다.")]
+    [SerializeField] LoadoutData loadout;
+
     // ── 고정 개체 (선택) ──────────────────────────────────────────────────────
     // **이름 있는 동료는 매번 다른 사람이면 안 된다.** 기본값은 `Awake`가 이름도 스탯도
     // 제 마음대로 굴리는 것이라, 같은 프리팹을 두 번 찍으면 다른 사람이 나온다.
@@ -295,6 +301,10 @@ public partial class UnitBrain : MonoBehaviour
 
     void Start()
     {
+        // **알리기 전에 입힌다.** 구독자(로스터·UI·`WorldBattle` 전력 계산)가 장비를 읽으므로,
+        // 알린 뒤에 채우면 첫 계산이 맨몸 기준으로 나온다.
+        ApplyLoadout();
+
         OnUnitSpawned?.Invoke(this);
     }
 
@@ -487,8 +497,15 @@ public partial class UnitBrain : MonoBehaviour
 
     void BecomeCorpse()
     {
+        DropCoins();
+        DropLoot();
+
+        // **소속을 먼저 챙긴다.** 아래에서 `Faction` 컴포넌트를 지우는데, 그건 자동 탐지를
+        // 막으려는 것이지 "누구의 시체인지" 잊자는 뜻이 아니다.
+        var corpseFaction = GetComponent<Faction>();
+
         var corpse = gameObject.AddComponent<Corpse>();
-        corpse.Init(UnitName, Inventory);
+        corpse.Init(UnitName, Inventory, corpseFaction != null ? corpseFaction.Data : null);
 
         enabled = false;
         if (_mover != null) _mover.enabled = false;
@@ -496,9 +513,122 @@ public partial class UnitBrain : MonoBehaviour
         var combat = GetComponent<CombatHandler>();
         if (combat != null) combat.enabled = false;
 
-        // 팩션 제거 — 시체가 적으로 재탐지·재공격되는 것 방지
-        var faction = GetComponent<Faction>();
-        if (faction != null) Destroy(faction);
+        // **몸이 도는 것도 멈춘다.** `BodyPartSystem.Update`는 출혈·자연회복·기절회복을 돌리는데,
+        // 시체에서 그게 계속 돌면 죽은 놈의 혈액이 눈앞에서 줄고(또는 도로 차고) 기절 회복
+        // 타이머까지 굴러간다. `StatusEffectSystem`도 같다 — 시체가 계속 불타며 피해를 받는다.
+        // `enabled=false`라 되살릴 일이 생기면 그대로 되돌릴 수 있다(휴면 건물과 같은 규칙).
+        var body = GetComponent<BodyPartSystem>();
+        if (body != null) body.enabled = false;
+
+        var sfx = GetComponent<StatusEffectSystem>();
+        if (sfx != null) sfx.enabled = false;
+
+        // 팩션 제거 — 시체가 적으로 재탐지·재공격되는 것 방지.
+        // (`enabled = false`로는 못 막는다 — `GetComponent`는 꺼진 것도 돌려준다.)
+        // 소속 자체는 위에서 `Corpse`가 받아 갔다.
+        if (corpseFaction != null) Destroy(corpseFaction);
+    }
+
+    // ── 지니는 것 ────────────────────────────────────────────────────────────
+    //
+    // **출처는 `LoadoutData` 하나뿐이다**(`loadout`). 종족(`UnitData`)에는 아이템이 없다.
+    //
+    // 한때 "몸에서 나오는 것(늑대 가죽)은 종족, 지니는 것(무기)은 역할"로 갈라 두 벌을 굴렸다.
+    // 서사로는 맞는 구분인데 **기계적으로는 둘 다 "죽으면 나오는 아이템"**이라, "이 적이 뭘
+    // 떨구나"에 답하려면 에셋 두 개를 열어 더해야 했다. 답이 두 벌이면 반드시 어긋난다 —
+    // `CarryCapacity`·표시명·`MaterialPool`에서 이미 겪은 것과 같다.
+    //
+    // 늑대 가죽은 `Loadout_Wolf`에 적는다. 종족이 아니라 **그 프리팹이 무엇이냐**의 문제로 두면
+    // 같은 `Goblin`을 쓰는 야생 도적과 내 하수인도 저절로 갈린다.
+
+    // **주머니에 든 동전.** 시체를 뒤지면 나온다 — 그게 싸울 이유의 절반이다.
+    //
+    // 등급으로 자동 산출하는 길도 있었지만, 그러면 "강한 늑대가 금화를 물고 있다"가 되어
+    // 저작으로 막을 방법이 없다.
+    void DropCoins()
+    {
+        if (Inventory == null || loadout == null) return;
+
+        var coin = Wallet.Coin;
+        if (coin == null) return;
+
+        GiveOrDrop(coin, RollRange(loadout.CoinDropMin, loadout.CoinDropMax));
+    }
+
+    // **시체 배낭에 넣되, 안 들어가는 만큼은 발밑에 내려놓는다.**
+    //
+    // 시체가 이미 뭘 지니고 있으면(`ApplyLoadout`이 못 채워 남긴 장비, 살아서 주운 것)
+    // 격자가 찰 수 있다. `TryAdd`의 반환값을 안 보면 **넘친 만큼이 조용히 사라진다** —
+    // 그러면 굴림표를 아무리 저작해도 "가끔 안 나오는" 것으로만 보이고 원인이 화면에 안 남는다.
+    //
+    // 떨구는 쪽을 고른 이유는 `Equipment.ReturnToInventory`와 같다: **눈에 보이고 운반이 알아서
+    // 창고로 옮긴다.** 이 프로젝트의 증발 방지 관례다(사건으로 떨어진 것은 `NoAutoHaul`이 아니라
+    // 그대로 운반된다 — 아무도 의도해서 거기 둔 것이 아니므로).
+    void GiveOrDrop(ItemData item, int amount)
+    {
+        if (item == null || amount <= 0) return;
+
+        int added = Inventory != null ? Inventory.TryAdd(item, amount) : 0;
+        int left  = amount - added;
+        if (left <= 0) return;
+
+        DroppedItem.Spawn(item, left, transform.position + Vector3.up * 0.15f);
+        Debug.Log($"[UnitBrain] {UnitName}: 시체 배낭이 차서 {item.ItemName} {left}개를 발밑에 내려놓았습니다.");
+    }
+
+    static int RollRange(int min, int max)
+    {
+        int lo = Mathf.Max(0, Mathf.Min(min, max));
+        int hi = Mathf.Max(0, Mathf.Max(min, max));
+        return hi <= 0 ? 0 : UnityEngine.Random.Range(lo, hi + 1);
+    }
+
+    // **시체에 남는 물건.** 죽을 때 만드는 이유: 살아 있는 동안 아무 차이를 만들지 않기
+    // 때문이다. 미리 지고 다니게 하면 적재 무게·짐내림 같은 **살아 있는 폰의 규칙에 공짜로
+    // 걸린다** — 적이 제 배낭이 무겁다고 느려지고, 아군이 되면 그것을 창고로 나르려 든다.
+    //
+    // 장비는 반대다(`ApplyLoadout`) — 그건 싸우는 동안 실제로 일하므로 태어날 때 있어야 한다.
+    void DropLoot()
+    {
+        if (Inventory == null || loadout == null || loadout.Loot == null) return;
+
+        foreach (var entry in loadout.Loot)
+        {
+            if (entry == null) continue;
+            int n = entry.Roll();
+            // JSON 아이템은 `Resolve()`로만 나온다. 넘친 만큼은 발밑에 — 조용히 사라지면 안 된다.
+            if (n > 0) GiveOrDrop(entry.Resolve(), n);
+        }
+    }
+
+    // **태어날 때 차고 나오는 것.**
+    //
+    // 배낭에 넣고 `Equipment`로 차게 한다 — 바로 꽂는 길은 없고, 있으면 안 된다.
+    // `Equipment.Equip*`이 `FindInInventory` + `RemoveOne`으로 도는 배낭 경유 설계라,
+    // 다른 경로를 하나 더 내면 벗을 때 돌아갈 자리가 없는 장비가 생긴다.
+    //
+    // 못 찬 것은 배낭에 남는다 — 그대로 전리품이 된다(양손 무기를 든 채 굴린 방패 등).
+    void ApplyLoadout()
+    {
+        if (Inventory == null || Equipment == null) return;
+        if (loadout == null || loadout.Loadout == null) return;
+
+        // **같은 부위를 여럿 적으면 나중 것이 이긴다** — `EquipArmor`가 앞의 것을 배낭으로
+        // 돌려보내고, 밀려난 것은 그대로 전리품이 된다.
+        foreach (var entry in loadout.Loadout)
+        {
+            if (entry == null || !entry.Roll()) continue;
+
+            var item = entry.Resolve();   // 장비는 대부분 JSON이라 여기서만 나온다
+            if (Inventory.TryAdd(item, 1) <= 0) continue;
+
+            switch (item)
+            {
+                case WeaponData w: Equipment.Equip(w);      break;
+                case ArmorData  a: Equipment.EquipArmor(a); break;
+                // 무기도 갑옷도 아니면 배낭에 든 채로 둔다(먹을 것을 지니고 다니는 적).
+            }
+        }
     }
 
     // 하던 일을 놓는다 — 큐 일감은 취소(각 Job의 OnCancelled가 재료 환불·주문 재등록을 처리),

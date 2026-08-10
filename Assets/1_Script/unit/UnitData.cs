@@ -30,6 +30,13 @@ public class UnitData : ScriptableObject
 
     [Tooltip("개체 고유 이름 후보. 소환 시 랜덤 1개 선택. 비어 있으면 RaceName 사용.")]
     public List<string> NamePool = new();
+
+    // **여기에 아이템은 없다.** 무엇을 지니고 무엇을 떨구는지는 전부 `LoadoutData`(`UnitBrain.loadout`)가
+    // 든다 — 늑대 가죽까지 포함해서. 한때 "몸에서 나오는 것(가죽)은 종족, 지니는 것(무기)은 역할"로
+    // 갈라 두 벌을 굴렸는데, 그건 **서사적 구분이지 기계적 구분이 아니다**: 둘 다 "죽으면 나오는
+    // 아이템"이고, 답이 두 벌이면 "이 적이 뭘 떨구나"에 답하려고 에셋 두 개를 열어 **더해야** 한다.
+    // 이 저장소가 `CarryCapacity`·표시명·`MaterialPool`에서 반복해서 배운 것과 같다.
+
     public float MaxHP      = 100f;
     public float MoveSpeed  = 4f;
 

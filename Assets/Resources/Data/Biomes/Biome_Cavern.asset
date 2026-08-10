@@ -45,7 +45,19 @@ MonoBehaviour:
   - {fileID: 11400000, guid: e07b93f2d4a1486cb35e8071c9d24f63, type: 2}
   TownRecruits:
   - Prefab: {fileID: 8065809389404098821, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
-    HireCost: 160
+    MinGrade: 0
+    MaxGrade: 4
     Weight: 1
+  Lairs:
+  - Band: {fileID: 11400000, guid: 8477440d5a975cd4198012906ea160a6, type: 2}
+    LairName: "\uACE0\uBE14\uB9B0 \uC18C\uAD74"
+    MinStrength: 8
+    MaxStrength: 18
+    SortieDays: 0.5
+    RegenPerDay: 1
+    Weight: 1
+  TownBands:
+  - {fileID: 11400000, guid: ae7b0493238026a45a70e3489c718cc3, type: 2}
+  - {fileID: 11400000, guid: 9efcc9bfb4442984fa40685e81f42570, type: 2}
   SummonableMinions: []
   UnlockableResearch: []

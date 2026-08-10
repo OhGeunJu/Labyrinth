@@ -27,6 +27,8 @@ public class ColonyRowUI : MonoBehaviour
     TextMeshProUGUI _stanceLabel;
     Image           _unloadImage;
     TextMeshProUGUI _unloadLabel;
+    Image           _selfTendImage;
+    TextMeshProUGUI _selfTendLabel;
 
     readonly Dictionary<JobCategory, Image>           _boxImages = new();
     readonly Dictionary<JobCategory, TextMeshProUGUI> _boxMarks  = new();
@@ -103,6 +105,15 @@ public class ColonyRowUI : MonoBehaviour
         _unloadImage = unloadBtn.GetComponent<Image>();
         _unloadLabel = unloadBtn.GetComponentInChildren<TextMeshProUGUI>();
 
+        // 자가치유 — 짐내림과 같은 성격이다. 남의 일감을 집는 것이 아니라
+        // **이 폰을 어떻게 굴릴까**라서 작업 체크 무리에서 떨어뜨려 둔다.
+        var tendBtn = UIHelper.MakeButton(transform, "SelfTend", "", Vector2.zero,
+                                          Vector2.zero, 13f);
+        Place(tendBtn.GetComponent<RectTransform>(), ColonyColumns.SelfTendX, ColonyColumns.SelfTendW);
+        tendBtn.onClick.AddListener(ToggleSelfTend);
+        _selfTendImage = tendBtn.GetComponent<Image>();
+        _selfTendLabel = tendBtn.GetComponentInChildren<TextMeshProUGUI>();
+
         if (_brain.Work != null) _brain.Work.OnChanged += Refresh;
 
         Refresh();
@@ -133,6 +144,12 @@ public class ColonyRowUI : MonoBehaviour
             }
         }
 
+        Refresh();
+    }
+
+    void ToggleSelfTend()
+    {
+        _brain?.Work?.ToggleSelfTend();
         Refresh();
     }
 
@@ -224,6 +241,15 @@ public class ColonyRowUI : MonoBehaviour
             _unloadLabel.color = Color.white;
         }
 
+        // 자가치유 — 켜짐/꺼짐만. 의료 스탯이 낮아도 끄지 않는다(맨손으로도 하는 일이다).
+        bool selfTend = work != null && work.SelfTend;
+        if (_selfTendImage != null) _selfTendImage.color = selfTend ? OnColor : OffColor;
+        if (_selfTendLabel != null)
+        {
+            _selfTendLabel.text  = selfTend ? "V" : "";
+            _selfTendLabel.color = Color.white;
+        }
+
         // 전투 성향
         if (!_brain.HasStanceOverride)
         {
@@ -297,5 +323,9 @@ public static class ColonyColumns
     public static float UnloadX   => StanceX + StanceW + 10f;
     public const  float UnloadW   = 56f;
 
-    public static float TotalWidth => UnloadX + UnloadW + 12f;
+    // 자가치유 — 짐내림과 같은 성격("이 폰을 어떻게 굴릴까")이라 그 옆에 붙인다.
+    public static float SelfTendX => UnloadX + UnloadW + 6f;
+    public const  float SelfTendW = 62f;
+
+    public static float TotalWidth => SelfTendX + SelfTendW + 12f;
 }

@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Militia
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uB9C8\uC744 \uC790\uACBD\uB2E8"
+  tokenColor: {r: 0.4, g: 0.65, b: 1, a: 1}
+  faction: {fileID: 11400000, guid: 64b225562e9254c45bd4a247c3316b9a, type: 2}
+  behavior: 2
+  members:
+  - Prefab: {fileID: 6072683599181711989, guid: d05392ec80dcf444e81ff861a906f8a7, type: 3}
+    MinCount: 2
+    MaxCount: 4
+    MinGrade: 1
+    MaxGrade: 8
+  speed: 4.8
+  ChaseRadius: 12
+  merchant: {fileID: 0}
+  loot: []
+  PowerMultiplier: 1

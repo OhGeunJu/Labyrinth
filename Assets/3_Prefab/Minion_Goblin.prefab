@@ -35,7 +35,7 @@ Transform:
   m_GameObject: {fileID: 6894885055828391614}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 25.18074, y: 1, z: 31.87458}
+  m_LocalPosition: {x: 0, y: 1, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -173,6 +173,7 @@ MonoBehaviour:
   blockedCheckTime: 0.35
   sidestepTime: 0.6
   athleticsGrowthRate: 0.005
+  strengthGrowthRate: 0.003
 --- !u!114 &6543470735047992352
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -187,7 +188,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnitBrain
   tickInterval: 0.1
   unitData: {fileID: 11400000, guid: f4b6d612bdb34774fbd1fe15076871f9, type: 2}
+  npcData: {fileID: 0}
   aiProfile: {fileID: 0}
+  loadout: {fileID: 0}
+  fixedName: 
+  pawnSpec: {fileID: 0}
 --- !u!114 &7349180766767762573
 MonoBehaviour:
   m_ObjectHideFlags: 0

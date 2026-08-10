@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Caravan
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uC0C1\uB2E8"
+  tokenColor: {r: 0.9, g: 0.8, b: 0.35, a: 1}
+  faction: {fileID: 11400000, guid: 64b225562e9254c45bd4a247c3316b9a, type: 2}
+  behavior: 1
+  members:
+  - Prefab: {fileID: 7289360336258315712, guid: 62e80772fe22b0643964680f301e51fd, type: 3}
+    MinCount: 1
+    MaxCount: 1
+    MinGrade: 1
+    MaxGrade: 7
+  - Prefab: {fileID: 6072683599181711989, guid: d05392ec80dcf444e81ff861a906f8a7, type: 3}
+    MinCount: 1
+    MaxCount: 3
+    MinGrade: 1
+    MaxGrade: 8
+  speed: 3.8
+  ChaseRadius: 0
+  merchant: {fileID: 11400000, guid: a1f4c73e58b04e2d9c6f8b0d21e73a45, type: 2}
+  loot:
+  - Item: {fileID: 11400000, guid: c16db23994cf9e04e9b0c69516cdcdcb, type: 2}
+    MinPerKill: 5
+    MaxPerKill: 25
+    Chance: 0.7
+  PowerMultiplier: 0.8

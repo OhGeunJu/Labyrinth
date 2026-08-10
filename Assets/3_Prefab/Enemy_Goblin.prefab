@@ -173,6 +173,7 @@ MonoBehaviour:
   blockedCheckTime: 0.35
   sidestepTime: 0.6
   athleticsGrowthRate: 0.005
+  strengthGrowthRate: 0.003
 --- !u!114 &6543470735047992352
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -187,7 +188,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnitBrain
   tickInterval: 0.1
   unitData: {fileID: 11400000, guid: f4b6d612bdb34774fbd1fe15076871f9, type: 2}
+  npcData: {fileID: 0}
   aiProfile: {fileID: 11400000, guid: 06a83d3eba122044ca3ea7cb67d5d05c, type: 2}
+  loadout: {fileID: 11400000, guid: 5ba2bfbb12e765c44a5d4be858341701, type: 2}
+  fixedName: 
+  pawnSpec: {fileID: 0}
 --- !u!114 &7349180766767762573
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -170,6 +170,17 @@ public class CombatHandler : MonoBehaviour
     }
 
     // ── 방어/회피 ────────────────────────────────────────────────────
+    //
+    // **쓰러진 놈은 막지도 피하지도 못한다.** 방어는 무기를 들어 받는 것이고 회피는 몸을
+    // 피하는 것이라 둘 다 **능동적인 동작**이다 — 기절한 사람이 할 수 있는 일이 아니다.
+    //
+    // 회피를 남겨 둘까 망설였지만("누운 놈을 못 맞출 수도 있지 않나") 그건 **공격자 쪽의
+    // 실수**다. 그걸 방어자의 `Evasion`으로 굴리면 회피가 높은 폰은 기절해서도 잘 안 맞는
+    // 꼴이 되고, 스탯이 높을수록 마무리가 오래 걸린다 — 눕힌 보람이 사라진다.
+    // 빗맞음을 넣고 싶으면 방어자 스탯이 아니라 고정 확률이어야 한다.
+    static bool IsDown(CombatHandler c) =>
+        c != null && c._brain != null && c._brain.Blackboard != null && c._brain.Blackboard.IsKnockedOut;
+
     // 대립 굴림: def^k / (atk^k × bias + def^k)
     //  · k(지수)   — 스킬 격차를 확률에 얼마나 급격히 반영할지
     //  · bias(우위) — 공격자 쪽 가중. 파리티에서 기본 확률 = 1 / (1 + bias)
@@ -183,6 +194,7 @@ public class CombatHandler : MonoBehaviour
 
     bool TryBlock(CombatHandler defender, float attackerAttackSkill)
     {
+        if (IsDown(defender)) return false;
         bool defUnarmed    = defender.GetWeaponType() == WeaponType.Unarmed;
         float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
         float shieldBonus  = defender._equipment?.OffHand?.BlockBonus ?? 0f;
@@ -194,6 +206,7 @@ public class CombatHandler : MonoBehaviour
 
     bool TryBlockRanged(CombatHandler defender, float attackerAttackSkill)
     {
+        if (IsDown(defender)) return false;
         float defenseSkill = defender._stats.RangedDefense;
         float shieldBonus  = defender._equipment?.OffHand?.RangedBlockBonus ?? 0f;
         float effective    = defenseSkill + shieldBonus;
@@ -204,6 +217,7 @@ public class CombatHandler : MonoBehaviour
 
     bool TryDodge(CombatHandler defender, float attackerAttackSkill)
     {
+        if (IsDown(defender)) return false;
         float evasion     = defender._stats.Evasion;
         float dodgeChance = OpposedChance(evasion, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
         if (defender._sfx != null) dodgeChance *= defender._sfx.DefenseChanceMod;

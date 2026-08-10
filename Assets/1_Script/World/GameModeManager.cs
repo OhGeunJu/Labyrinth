@@ -186,6 +186,9 @@ public class GameModeManager : MonoBehaviour
         AddModeAgnostic<MerchantUI>();
         AddModeAgnostic<InventoryUI>();
         AddModeAgnostic<ItemInfoUI>();   // 두 창의 툴팁이 같은 것을 쓴다
+        // 우클릭 명령 창 — 필드에서 폰·노드에 쓰던 것을 월드맵에서 무리에도 쓴다.
+        // 우클릭이 "무엇을 하러 가느냐"로 갈리는 것은 두 화면에서 같은 일이라 창도 같아야 한다.
+        AddModeAgnostic<PawnContextMenuUI>();
     }
 
     void AddModeAgnostic<T>() where T : Component

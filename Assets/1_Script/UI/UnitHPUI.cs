@@ -56,16 +56,18 @@ public class UnitHPUI : MonoBehaviour
     {
         if (_buildMode) { panel?.SetActive(false); return; }
 
-        // 내 유닛 선택이 우선, 없으면 클릭으로 조사 중인 유닛
-        UnitBrain brain = null;
-        if (selectionManager.Selected.Count > 0)
+        // **방금 눌러 본 것이 우선**, 없으면 고른 폰.
+        //
+        // 순서가 반대였다 — 그래서 적을 보려면 `SelectionManager`가 폰 선택을 지워야 했고,
+        // 적을 한 번 볼 때마다 폰을 다시 골라야 했다. 이제 선택은 그대로 두고 **무엇을
+        // 보여줄지만** 여기서 가른다. 조사는 일회성이라 내 폰을 다시 고르면 그 순간
+        // `OnPawnInspected(null)`이 와서 저절로 풀린다(빈 곳 클릭·사각 선택도 같다).
+        UnitBrain brain = _inspected;
+
+        if (brain == null && selectionManager.Selected.Count > 0)
         {
             var selected = selectionManager.Selected[0];
             if (selected != null) brain = selected.GetComponent<UnitBrain>();
-        }
-        else if (_inspected != null)
-        {
-            brain = _inspected;
         }
 
         if (brain == null) { panel?.SetActive(false); return; }   // 선택 없음 / 파괴된 유닛
@@ -80,10 +82,16 @@ public class UnitHPUI : MonoBehaviour
 
         // 헤더 — 이름 [유형] (세력)
         var faction = brain.GetComponent<Faction>();
+        var corpse  = brain.GetComponent<Corpse>();
+
+        // **시체에는 `Faction` 컴포넌트가 없다** — `BecomeCorpse`가 자동 탐지를 막으려고 지운다.
+        // 소속은 `Corpse`가 받아 뒀으므로 거기서 읽는다(안 그러면 죽는 순간 소속이 사라진다).
+        var factionData = faction != null ? faction.Data : corpse != null ? corpse.Faction : null;
+
         string raceName = !string.IsNullOrEmpty(brain.UnitName) ? brain.UnitName
                         : brain.Data != null ? brain.Data.RaceName : pawn.name;
-        string factionName = faction != null && faction.Data != null
-            ? $"  <color=#7AA>({faction.Data.FactionName})</color>" : "";
+        string factionName = factionData != null
+            ? $"  <color=#7AA>({factionData.FactionName})</color>" : "";
         sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>[{UnitTypeLabel(brain, faction)}]</color>{factionName}");
         sb.AppendLine();
 
@@ -97,8 +105,10 @@ public class UnitHPUI : MonoBehaviour
                 sb.AppendLine($"부패  {BarColored(sfx.CorruptionGauge, StatusEffectSystem.MaxCorruption, "#A020F0", "#6010A0")}  {sfx.CorruptionGauge:F0}/{StatusEffectSystem.MaxCorruption:F0}");
         }
 
-        // 허기 — 플레이어 세력만 시뮬레이션되므로 그 유닛에만 표시
-        if (faction == null || faction.IsPlayer)
+        // 허기 — 플레이어 세력만 시뮬레이션되므로 그 유닛에만, 그리고 **살아 있을 때만** 표시.
+        // 전엔 `faction == null || faction.IsPlayer`였는데 시체는 `Faction`이 지워져 있어
+        // 그 `== null` 구멍으로 들어왔다. 모르는 것은 플레이어가 아니고, **죽은 자는 안 배고프다.**
+        if (corpse == null && faction != null && faction.IsPlayer)
         {
             float hunger = brain.Blackboard.Hunger;
             string hungerColor = hunger > 60f ? "#8BC34A" : hunger > 30f ? "#FF9800" : "#F44336";

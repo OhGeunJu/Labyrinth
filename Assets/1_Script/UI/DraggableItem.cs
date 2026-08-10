@@ -35,10 +35,12 @@ public class DraggableItem : MonoBehaviour,
         _img        = GetComponent<Image>();
     }
 
+    // `owner: this` — **아이콘이 사라지면 툴팁도 같이 닫힌다.** 동전을 더블클릭해 잔고로
+    // 넣으면 이 아이콘이 파괴되는데, 그때 `OnPointerExit`는 오지 않는다(`ItemInfoUI` 참고).
     public void OnPointerEnter(PointerEventData _)
     {
         if (_instance?.Data != null)
-            ItemInfoUI.Show(_instance.Data, _instance.Quality, -1, null, _instance.Locked);
+            ItemInfoUI.Show(_instance.Data, _instance.Quality, -1, null, _instance.Locked, this);
     }
 
     public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();
@@ -277,10 +279,16 @@ public class DraggableItem : MonoBehaviour,
         // false를 돌려주면 `OnEndDrag`가 미배치로 보고 원래 자리로 되돌린다.
         if (_instance != null && _instance.Locked) return false;
 
-        // 어떤 그리드 위에서 실패한 경우는 월드 드롭 안 함
-        Camera uiCam = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
-            ? _canvas.worldCamera : null;
-        if (InventoryGridUI.FindUnderCursor(e.position, uiCam) != null) return false;
+        // **UI 위에서는 절대 안 버린다 — 창 밖으로 나가야 떨어진다.**
+        //
+        // 전에는 **격자만** 봤다. 그래서 창 안이어도 격자가 아닌 자리(장비 열, 액션 바,
+        // 패널 여백)에 놓으면 물건이 바닥에 떨어졌다 — 아직 배낭 안에서 자리를 옮기던
+        // 중인데 밖에 버린 것이 됐다.
+        //
+        // 끌고 있는 아이콘은 `OnBeginDrag`에서 `raycastTarget`을 껐으므로 자기 자신을
+        // 짚지 않는다.
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            return false;
 
         var inv = _sourceGrid?.Inventory;
         if (inv == null) return false;

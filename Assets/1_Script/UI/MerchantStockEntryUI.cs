@@ -82,8 +82,9 @@ public class MerchantStockEntryUI : MonoBehaviour,
 
     public void OnPointerEnter(PointerEventData _)
     {
+        // `owner: this` — 사서 이 행이 사라지면 툴팁도 같이 닫힌다(`ItemInfoUI` 참고).
         if (_entry?.Item != null)
-            ItemInfoUI.Show(_entry.Item, _entry.Quality, _entry.Price);
+            ItemInfoUI.Show(_entry.Item, _entry.Quality, _entry.Price, null, false, this);
     }
 
     public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();

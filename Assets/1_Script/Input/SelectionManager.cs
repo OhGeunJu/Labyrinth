@@ -47,7 +47,28 @@ public class SelectionManager : MonoBehaviour
 
     void Update()
     {
+        PruneSelection();
         HandleSelection();
+    }
+
+    // **선택에서 사라진 폰을 걷어낸다.**
+    //
+    // 선택이 지속 상태가 되면서(빈 곳 클릭이 더는 안 지운다) 청소할 곳이 필요해졌다 —
+    // 전에는 땅을 한 번 누르는 것이 사실상 청소였다.
+    //
+    // 걷어내는 것 둘: **파괴된 폰**(죽었다)과 **꺼진 폰**(원정을 떠나 GameObject가 비활성).
+    // 꺼진 것은 **`== null`로 안 걸린다** — 그래서 원정 나간 폰이 선택에 남아 우클릭 명령이
+    // 지도 밖의 누군가에게 조용히 나갔다.
+    void PruneSelection()
+    {
+        for (int i = _selected.Count - 1; i >= 0; i--)
+        {
+            var pawn = _selected[i];
+            if (pawn != null && pawn.gameObject.activeInHierarchy) continue;
+
+            _selected.RemoveAt(i);
+            OnSelectionChanged?.Invoke(pawn, false);   // 표식 해제(파괴된 것은 구독자가 거른다)
+        }
     }
 
     void HandleSelection()
@@ -168,9 +189,13 @@ public class SelectionManager : MonoBehaviour
             }
 
             // 조작 불가 유닛(적/NPC) — 선택(명령)은 안 되지만 정보 패널은 띄운다.
+            //
+            // **폰 선택은 유지한다**(노드·시체·드롭·건물과 같은 규칙). 적을 눌러 보는 이유는
+            // 대개 **그 다음에 무언가를 시키려는 것**이다 — 살펴보고 우클릭으로 친다.
+            // 여기서 선택을 지우면 적을 한 번 볼 때마다 폰을 다시 골라야 한다.
+            // 정보 패널은 `UnitHPUI`가 "조사 중인 것이 있으면 그쪽"으로 가려 준다.
             if (pawn != null)
             {
-                ClearSelection();
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(pawn.GetComponent<UnitBrain>());
@@ -200,8 +225,14 @@ public class SelectionManager : MonoBehaviour
             }
         }
 
-        // 빈 곳 클릭 — 전부 해제
-        ClearSelection();
+        // 빈 곳 클릭 — **패널만 닫고 폰 선택은 그대로 둔다**(켄시식).
+        //
+        // 선택은 "지금 누구에게 명령하고 있나"라는 **지속 상태**다. 빈 땅을 눌렀다고 그게
+        // 바뀔 이유가 없고, 실제로는 반대다 — 카메라를 돌리다 땅을 한 번 스치면 데리고
+        // 다니던 팀이 통째로 풀려서, 우클릭 한 번 하려고 매번 다시 고르게 된다.
+        //
+        // 그래서 **선택을 푸는 별도 조작은 두지 않는다.** 바꾸는 길(다른 폰 클릭 · 사각 선택 ·
+        // 로스터)이 이미 있고, 켄시도 그렇다. "아무도 안 고른 상태"가 필요한 곳은 없다.
         DungeonCore.Instance?.Deselect();
         OnNodeSelected?.Invoke(null);
         OnPawnInspected?.Invoke(null);
@@ -216,8 +247,11 @@ public class SelectionManager : MonoBehaviour
     {
         Vector2 end = Mouse.current.position.ReadValue();
         Rect screenRect = GetScreenRect(_dragStart, end);
-        ClearSelection();
 
+        // **먼저 훑고 나서 바꾼다.** 예전엔 여기서 `ClearSelection()`을 하고 담았는데,
+        // 그러면 **빈 땅을 훑는 순간 선택이 통째로 날아간다** — 빈 곳 클릭과 같은 사고이고
+        // 드래그는 더 자주 빗나간다(사각형이 조금만 어긋나도 아무도 안 잡힌다).
+        var caught = new List<PawnMover>();
         UnitBrain inspected = null;   // 우리 폰이 하나도 안 잡혔을 때 대신 보여줄 유닛
 
         foreach (var pawn in FindObjectsByType<PawnMover>(FindObjectsSortMode.None))
@@ -226,16 +260,23 @@ public class SelectionManager : MonoBehaviour
             if (screenPos.z <= 0f || !screenRect.Contains((Vector2)screenPos, true)) continue;
 
             var faction = pawn.GetComponent<Faction>();
-            if (faction != null && faction.IsPlayer) { AddToSelection(pawn); continue; }
+            if (faction != null && faction.IsPlayer) { caught.Add(pawn); continue; }
 
             if (inspected == null) inspected = pawn.GetComponent<UnitBrain>();
+        }
+
+        // **잡힌 것이 있을 때만 갈아치운다.** 하나도 못 잡았으면 하던 선택을 그대로 둔다.
+        if (caught.Count > 0)
+        {
+            ClearSelection();
+            foreach (var pawn in caught) AddToSelection(pawn);
         }
 
         // **드래그로 남의 유닛을 훑으면 스탯을 보여준다.**
         // 좌클릭은 상인에게서 상점을 여는 데 쓰이므로(그쪽이 더 자주 하는 일),
         // 유닛으로서의 정보를 볼 길이 드래그에 남는다. 우리 폰이 하나라도 잡혔으면
         // 그건 명령을 위한 선택이므로 정보 패널을 띄우지 않는다.
-        OnPawnInspected?.Invoke(_selected.Count == 0 ? inspected : null);
+        OnPawnInspected?.Invoke(caught.Count == 0 ? inspected : null);
     }
 
     void AddToSelection(PawnMover pawn)

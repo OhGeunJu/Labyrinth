@@ -28,6 +28,29 @@ public class WorkSettings : MonoBehaviour
 
     public void Toggle(JobCategory category) => SetEnabled(category, !IsEnabled(category));
 
+    // ── 자가치유 ─────────────────────────────────────────────────────────────
+    //
+    // **작업 카테고리가 아니다.** 카테고리는 "남의 일감을 집을까"인데 이건 "누워 있는 동안
+    // 제 상처를 스스로 싸맬까"라서 큐를 타지 않는다 — `RestNode`가 직접 한다
+    // (침대에 배정된 폰은 BT가 `Rest`에서 멈춰 `Work`까지 가지도 않는다).
+    //
+    // **기본은 끔**(림월드와 같다). 자가치유는 **약을 축낸다** — 의료가 낮은 폰이 구급낭을
+    // 헐어 쓰는 것보다 의사를 기다리는 편이 대개 낫고(`Treatment.SelfPenalty`도 붙는다),
+    // 켜져 있는 줄 모르는 채 물자가 새는 것이 가장 나쁘다.
+    //
+    // 켜는 자리를 둔 이유는 **의사가 없을 때**다 — 혼자 다니는 방랑자, 원정에서 돌아온 폰.
+    // 켤지 말지는 지금 사람이 몇인지에 달렸으므로 플레이어가 정한다.
+    public bool SelfTend { get; private set; }
+
+    public void SetSelfTend(bool on)
+    {
+        if (SelfTend == on) return;
+        SelfTend = on;
+        OnChanged?.Invoke();
+    }
+
+    public void ToggleSelfTend() => SetSelfTend(!SelfTend);
+
     // 하수인 초기값. 목록이 비어 있으면 "전부 허용"(MinionData의 기존 규칙 그대로).
     //
     // **직접 배정 카테고리(채굴·벌목·경비)는 여기서 아무 뜻이 없다.** 그것들은 큐를 타지

@@ -168,7 +168,7 @@ Transform:
   m_GameObject: {fileID: 4772346933550002192}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 36, y: 1.1299998, z: 37}
+  m_LocalPosition: {x: 0, y: 1.1299998, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -244,9 +244,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a71084d493ad99640994097b8bfa1407, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PawnMover
+  moveSpeed: 4
+  stopDistance: 0.12
   gravity: -20
   groundStickForce: -2
-  tileSize: 1
+  fallRecoveryY: -10
+  arriveDistance: 0.5
+  coarseReachDistance: 4
+  replanDistance: 15
+  goalEpsilon: 1.5
+  ledgeLookahead: 0.6
+  avoidRadius: 1.5
+  avoidStrength: 1
+  blockedCheckTime: 0.35
+  sidestepTime: 0.6
+  athleticsGrowthRate: 0.005
+  strengthGrowthRate: 0.003
 --- !u!136 &7503398495828026623
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -309,3 +322,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UnitBrain
   tickInterval: 0.1
   unitData: {fileID: 0}
+  npcData: {fileID: 0}
+  aiProfile: {fileID: 0}
+  loadout: {fileID: 0}
+  fixedName: 
+  pawnSpec: {fileID: 0}

@@ -6,9 +6,19 @@ public static class BTTargetUtil
 {
     // 살아있는 공격 대상인지 — 파괴됨/비활성/시체/기절 제외.
     // 기절 유닛을 제외해야 KO가 사형선고가 아니라 회복 가능한 상태가 된다 (켄시식).
-    public static bool IsAttackable(GameObject go) =>
-        go != null && go.activeInHierarchy && go.GetComponent<Corpse>() == null
-        && !(go.GetComponent<UnitBrain>()?.Blackboard?.IsKnockedOut ?? false);
+    public static bool IsAttackable(GameObject go) => IsAttackable(go, null);
+
+    // `bb`를 주면 그 폰이 **콕 집어 마무리하라고 지목한 대상**(`FinishTarget`)은 기절해 있어도
+    // 통과한다. 지목은 우클릭 [마무리한다]에서만 붙으므로 자동 경로는 예전 그대로다 —
+    // 탐지·반격은 `bb` 없이 물어서 쓰러진 놈을 계속 건너뛴다.
+    public static bool IsAttackable(GameObject go, UnitBlackboard bb)
+    {
+        if (go == null || !go.activeInHierarchy) return false;
+        if (go.GetComponent<Corpse>() != null) return false;   // 죽었으면 더 때릴 것이 없다
+
+        bool down = go.GetComponent<UnitBrain>()?.Blackboard?.IsKnockedOut ?? false;
+        return !down || (bb != null && bb.FinishTarget == go);
+    }
 }
 
 // 조건 체크
@@ -29,7 +39,9 @@ public class DetectNode : BTNode
 
         // 이미 잡은 타겟이 유효하면 유지하되, 훨씬 가까운 적이 생기면 갈아탄다.
         // (옆에 적을 두고 멀리 있는 상대를 패러 가는 것 방지 — 단 매 틱 흔들리지 않게 여유를 둔다)
-        GameObject current = bb.Target != null && BTTargetUtil.IsAttackable(bb.Target) ? bb.Target : null;
+        // 들고 있던 타겟은 `bb`를 같이 물어본다(지목한 마무리 대상이면 기절해도 유지).
+        // 아래 새 후보 스캔·반격은 `bb` 없이 물어 **자동으로는 쓰러진 놈을 안 고른다.**
+        GameObject current = bb.Target != null && BTTargetUtil.IsAttackable(bb.Target, bb) ? bb.Target : null;
         float currentDistSqr = current != null ? SqrDist(selfPos, current) : float.MaxValue;
 
         var myFaction = bb.Self.GetComponent<Faction>();
@@ -219,10 +231,12 @@ public class FightNode : BTNode
         var combat = bb.Self.GetComponent<CombatHandler>();
         if (combat == null) return BTStatus.Failure;
 
-        // 타겟이 없거나 죽었으면(시체 포함) 전투 종료
-        if (!BTTargetUtil.IsAttackable(bb.Target))
+        // 타겟이 없거나 죽었으면(시체 포함) 전투 종료.
+        // **지목한 마무리 대상은 기절해 있어도 통과한다** — `bb`를 같이 넘기는 이유다.
+        if (!BTTargetUtil.IsAttackable(bb.Target, bb))
         {
-            bb.Target = null;
+            bb.Target       = null;
+            bb.FinishTarget = null;   // 끝났으면 예외도 같이 거둔다(다음 대상에 새지 않게)
             combat.ExitCombat();
             return BTStatus.Failure;
         }
@@ -574,7 +588,7 @@ public class RestNode : BTNode
             }
 
             // 도착 — 다가온 면에 맞춰 눕는다
-            bb.Mover.SetSleeping(true, _bed.SleepPosition, _bed.SleepRotationFrom(pos));
+            bb.Mover.SetSleeping(true, _bed.SleepPosition, _bed.SleepRotation);
         }
 
         bb.RestTicked = true;   // 이번 틱에 쉬고 있음 (상위 분기로 넘어가면 UnitBrain이 깨운다)
@@ -586,10 +600,55 @@ public class RestNode : BTNode
             body.HealBlood(BloodHealRate * bb.TickDelta, degradeCap: false);
             body.RestoreBloodCap(CapRestoreRate * bb.TickDelta);
             body.HealBodyParts(PartHealRate * bb.TickDelta);
+
+            SelfTend(brain, bb, body);
         }
 
         // 회복이 끝나도 일어나지 않는다 — 배정이 곧 "쉬는 중"이라는 명령.
         return BTStatus.Running;
+    }
+
+    // ── 자가치유 ─────────────────────────────────────────────────────────────
+    //
+    // **여기 있는 이유**: BT 순서가 `Rest → … → Work`라, 침대에 배정된 폰은 이 노드에서
+    // Running으로 멈춰 `WorkNode`까지 가지도 않는다. 자가치유를 일감으로 만들면 **아무도 못
+    // 집는 일감**이 된다. 림월드도 자가치유는 누운 채로 한다.
+    //
+    // **약은 제 배낭에서만 나온다.** 누워 있는 사람이 창고까지 손을 뻗을 수는 없다 —
+    // 그게 의사를 부르는 이유의 절반이다(의사는 챙겨서 온다, `TreatJob`).
+    // 회복량·속도·약 고르기는 의사와 **같은 규칙**(`Treatment`)을 쓰되 `self: true`가 붙는다.
+    float _tendEndTime;
+    MedicineData _tending;
+
+    void SelfTend(UnitBrain brain, UnitBlackboard bb, BodyPartSystem body)
+    {
+        if (brain == null || brain.Work == null || !brain.Work.SelfTend) return;
+        if (!body.NeedsTreatment) { _tendEndTime = 0f; return; }
+
+        float skill = brain.Stats != null ? brain.Stats.Medicine : 0f;
+
+        // 한 회차 시작 — 무엇으로 할지는 **시작할 때** 정한다(도중에 바뀌면 걸린 시간과
+        // 실제 쓴 약이 어긋난다).
+        if (_tendEndTime <= 0f)
+        {
+            _tending     = Treatment.BestInBackpack(brain);
+            _tendEndTime = Time.time + Treatment.Seconds(_tending, skill, self: true);
+            return;
+        }
+
+        if (Time.time < _tendEndTime) return;
+
+        var used  = Treatment.ConsumeFromBackpack(brain, _tending) ? _tending : null;
+        float pow = Treatment.Power(used, skill, self: true);
+        Treatment.Apply(body, pow);
+
+        if (brain.Stats != null)
+            brain.Stats.GrowStat(StatName.Medicine, 6f * CombatXp.Sol(skill));
+
+        Debug.Log($"[SelfTend] {brain.UnitName} 자가치유 " +
+                  $"({(used != null ? used.ItemName : "맨손")}, 배율 {pow:F2})");
+
+        _tendEndTime = 0f;   // 다음 회차
     }
 
     void LeaveBed(UnitBlackboard bb)
@@ -598,6 +657,7 @@ public class RestNode : BTNode
         if (_bed == null) return;
         _bed.Vacate(bb.Self.GetComponent<UnitBrain>());
         _bed = null;
+        _tendEndTime = 0f;   // 일어나면 하던 회차는 없던 일이다
     }
 }
 

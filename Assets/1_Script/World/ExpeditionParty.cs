@@ -24,6 +24,22 @@ public class ExpeditionParty
     // 원정대라고 다른 규칙을 쓰면 "이 폰을 데려가면 얼마나 더 지나"가 계산되지 않는다.
     public float Capacity => CarryCapacity.TotalFor(Members);
 
+    // **죽은 사람을 목록에서 걷어낸다.**
+    //
+    // 자동 전투(`WorldBattle.ApplyToParty`)는 `BodyPartSystem.TakeDamage`로 때리는데, 그러다
+    // 죽으면 플레이어 세력 폰은 `UnitBrain.Die`가 `Destroy`한다 — 그런데 목록에는 파괴된
+    // 참조가 그대로 남았다. 어디서도 터지지는 않지만(전부 null 검사가 있다) **숫자가 거짓말을
+    // 한다**: 조우 창이 "우리 5명"이라 적어 놓고 실제로는 둘이고, 토큰 크기와 등짐 한도까지
+    // 다섯 사람 몫으로 잡힌다 — 하필 **붙을지 말지를 정하는 그 숫자**다.
+    //
+    // 파괴는 프레임 끝에 반영되므로 전투 직후 한 번 훑는 것으로는 늦는다. 매 프레임 도는
+    // 곳에서 부른다(`WorldMapView.MoveParties`).
+    public void PruneDead()
+    {
+        for (int i = Members.Count - 1; i >= 0; i--)
+            if (Members[i] == null) Members.RemoveAt(i);
+    }
+
     // **등짐은 무게로 센다.** 예전엔 kg으로 만든 `Capacity`를 개수 한도로 썼다 —
     // 씨앗(0.05)이나 철갑옷(8)이나 똑같이 한 자리를 먹었고, 무엇을 담아 오느냐가
     // 아무 선택도 되지 못했다. `ItemData.Weight`는 이미 다 저작돼 있었다.

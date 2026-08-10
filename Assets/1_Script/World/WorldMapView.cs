@@ -45,6 +45,22 @@ public class WorldMapView : MonoBehaviour
     public Camera    WorldCamera => worldCamera;
     public Transform MapRoot     => mapRoot;
 
+    // 지도 위의 **다른 것들**(무리)이 격자와 원정대 위치를 물어볼 창구.
+    // `WorldBandManager`가 자기 토큰을 같은 지형에 앉히고, 쫓을 원정대를 찾는 데 쓴다.
+    public static WorldMapView Instance { get; private set; }
+    public WorldMapGrid Grid => grid;
+
+    // 무리에게 다가가서 **무엇을 할 작정인가.** 필드의 우클릭 선택지와 같은 축이다 —
+    // 고르는 순간 정해지고, 다다르면 그대로 벌어진다.
+    public enum BandIntent
+    {
+        None,      // 작정 없음 — 그 자리로 가기만 한다. **중립은 멈춰 세우지 않는다**
+        Talk,      // 가서 말을 건다 — 맞닿으면 조우 메뉴가 뜬다(뭘 할지 그때 고른다)
+        Attack,    // 다다르는 즉시 싸운다
+        Trade,     // 다다르는 즉시 상점을 연다
+        Follow,    // 계속 따라다닌다. 중립이면 조용히 뒤를 잇고, 적대면 저쪽이 먼저 붙는다
+    }
+
     // 월드맵 위의 원정대 하나 — 논리(파티)와 화면(토큰)과 이동 상태를 묶는다.
     class PartyToken
     {
@@ -54,6 +70,15 @@ public class WorldMapView : MonoBehaviour
         public Vector3         MoveTarget;
         public bool            Moving;
         public bool            Selected;
+
+        // **쫓아가는 중인 무리.** 목적지를 클릭한 순간의 좌표로 굳히면 안 된다 — 무리는 우리가
+        // 다가가는 동안에도 걷고 있어서, 도착해 보면 몇 미터 옆에 서 있다(중립 무리는 우리가
+        // `waitRadius` 안에 들어야 멈춘다). 그러면 맞닿지 못해 말을 걸 수가 없다.
+        public WorldBand       Approaching;
+
+        // **가서 무엇을 할 것인가.** 필드에서 우클릭으로 "공격한다"를 고르면 폰이 걸어가서
+        // 때리는 것과 같다 — 다다른 뒤에 창을 한 번 더 띄우면 같은 결정을 두 번 하게 된다.
+        public BandIntent      Intent;
     }
 
     readonly List<PartyToken> _parties  = new();
@@ -61,8 +86,18 @@ public class WorldMapView : MonoBehaviour
     readonly Dictionary<GameObject, PartyToken> _byGo = new();   // 레이캐스트 → 팀
 
     PartyToken _menuParty;      // 지금 열린 도착 메뉴가 누구 것인가
+
+    // 지금 열린 창이 **무리에 관한 것**인가(정보·조우·전투 결과). 조우는 칸 메뉴를 밀어내도
+    // 되지만 다른 무리가 끼어들어 결과창을 덮으면 무슨 일이 있었는지 못 읽는다.
+    bool _bandMenuOpen;
     Vector2 _dragStart;
     bool    _dragging;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+    }
 
     void Start()
     {
@@ -91,13 +126,37 @@ public class WorldMapView : MonoBehaviour
 
     void OnDestroy()
     {
+        if (Instance == this) Instance = null;
         WorldMap.OnNodeChanged -= OnNodeChanged;
         if (menuPanel != null) menuPanel.Closed -= OnMenuClosed;
     }
 
+    // 그 지점에서 반경 안에 있는 **가장 가까운 원정대**의 위치. 무리가 쫓을 대상을 찾을 때
+    // 쓴다 — 원정대 토큰의 위치를 아는 것은 여기뿐이므로, 목록을 통째로 내주는 대신
+    // 물음에만 답한다.
+    public bool TryNearestParty(Vector3 from, float radius, out Vector3 pos)
+    {
+        pos = Vector3.zero;
+        float best = radius * radius;
+        bool found = false;
+
+        foreach (var pt in _parties)
+        {
+            if (pt.Go == null) continue;
+            var p = pt.Go.transform.position;
+            float d = (p - from).sqrMagnitude;
+            if (d >= best) continue;
+            best  = d;
+            pos   = p;
+            found = true;
+        }
+        return found;
+    }
+
     void OnMenuClosed()
     {
-        _menuParty = null;
+        _menuParty    = null;
+        _bandMenuOpen = false;
         grid?.ClearHighlight();
     }
 
@@ -110,6 +169,12 @@ public class WorldMapView : MonoBehaviour
             GameModeManager.Instance?.Toggle();
             return;   // 전환한 프레임에 반대편 입력까지 처리하지 않게
         }
+
+        // **조우는 지도를 보고 있지 않아도 일어난다.** 지도가 계속 도는 이상 무리도 계속
+        // 걷고, 나가 있는 원정대는 그 자리에 있다. 다만 필드를 보는 중엔 **메뉴를 열지 않고
+        // 알리기만 한다** — 조작 없이 판정해 버리면 싸울지 도망칠지를 뺏는 것이고,
+        // 조용히 넘기면 돌아왔을 때 원정대가 왜 다쳤는지 알 수가 없다.
+        CheckEncounters();
 
         if (!GameModeManager.IsWorld) return;
 
@@ -155,8 +220,17 @@ public class WorldMapView : MonoBehaviour
 
     void SelectSingle()
     {
+        // **무리는 선택을 지우지 않는다.** 들여다보는 것이지 고르는 것이 아니라서, 데려갈 팀을
+        // 고른 채로 상대를 살펴볼 수 있어야 한다(바닥의 드롭·자원 노드와 같은 규칙).
+        if (TryPickToken(out var picked, out var band))
+        {
+            if (band != null) { OpenBandInfo(band); return; }
+            ClearSelection();
+            Select(picked);
+            return;
+        }
+
         ClearSelection();
-        if (TryPickParty(out var pt)) { Select(pt); return; }
 
         // 팀이 아니라 땅을 눌렀다 — **내 지역이면 원정대 없이도 정보를 연다.**
         // 채집기지에 얼마나 쌓였는지 보려고 매번 팀을 보낼 순 없다.
@@ -258,13 +332,25 @@ public class WorldMapView : MonoBehaviour
         return hits;
     }
 
-    bool TryPickParty(out PartyToken pt)
+    // 토큰(원정대 ∥ 무리) 중 **가장 가까이 맞은 하나**. 둘을 따로 훑으면 겹쳐 있을 때
+    // 뒤에 있는 것이 먼저 잡힌다 — 눈에 보이는 것과 눌리는 것이 어긋난다.
+    bool TryPickToken(out PartyToken pt, out WorldBand band)
     {
-        pt = null;
+        pt   = null;
+        band = null;
         if (OverUI()) return false;
 
+        var mgr = WorldBandManager.Instance;
         foreach (var h in SortedHits())
-            if (h.collider != null && _byGo.TryGetValue(h.collider.gameObject, out pt)) return true;
+        {
+            if (h.collider == null) continue;
+            var go = h.collider.gameObject;
+
+            if (_byGo.TryGetValue(go, out pt)) return true;
+
+            var b = mgr != null ? mgr.BandFor(go) : null;
+            if (b != null) { band = b; return true; }
+        }
 
         pt = null;
         return false;
@@ -294,13 +380,25 @@ public class WorldMapView : MonoBehaviour
     {
         var mouse = Mouse.current;
         if (mouse == null || !mouse.rightButton.wasPressedThisFrame) return;
-        if (_selected.Count == 0 || !TryPickTerrain(out var hit)) return;
+
+        // 명령 창이 떠 있으면 이번 우클릭은 **창을 닫는 데만** 쓴다(창 쪽이 닫는다).
+        // 여기서도 처리하면 창을 닫으면서 동시에 명령이 나간다 — `MoveController`와 같은 규약.
+        if (PawnContextMenuUI.Instance != null && PawnContextMenuUI.Instance.IsOpen) return;
+        if (_selected.Count == 0) return;
+
+        // **무리를 겨눴으면 명령 창이 뜬다** — 필드에서 유닛을 우클릭하는 것과 같은 규약이다.
+        // 우클릭 하나에 뜻이 여럿(치러 간다 / 사러 간다 / 따라간다)일 때 그 갈림길을 화면에 낸다.
+        if (TryPickToken(out _, out var band) && band != null) { OpenBandOrders(band); return; }
+
+        if (!TryPickTerrain(out var hit)) return;
 
         var spots = Formation(hit.point, _selected.Count);
         for (int i = 0; i < _selected.Count; i++)
         {
-            _selected[i].MoveTarget = spots[i];
-            _selected[i].Moving     = true;
+            _selected[i].MoveTarget  = spots[i];
+            _selected[i].Moving      = true;
+            _selected[i].Approaching = null;   // 딴 데로 보내는 것은 쫓기를 그만두는 뜻이다
+            _selected[i].Intent      = BandIntent.None;
         }
     }
 
@@ -326,7 +424,20 @@ public class WorldMapView : MonoBehaviour
         for (int i = _parties.Count - 1; i >= 0; i--)
         {
             var pt = _parties[i];
+
+            // 전투에서 죽은 사람을 걷어낸다 — 인원수가 토큰 크기·등짐 한도·조우 창의
+            // "우리 N명"에 그대로 쓰이는데, 파괴된 참조가 남아 그 숫자가 거짓말을 했다.
+            pt.Party?.PruneDead();
+
             if (!pt.Moving || pt.Go == null) continue;
+
+            // 쫓는 중이면 **매 프레임 다시 겨눈다.** 놓친 무리(돌아갔거나 죽은)는 쫓기를 접는다.
+            if (pt.Approaching != null)
+            {
+                var mgr = WorldBandManager.Instance;
+                if (mgr != null && mgr.Has(pt.Approaching)) pt.MoveTarget = pt.Approaching.Position;
+                else                                        pt.Approaching = null;
+            }
 
             var pos  = pt.Go.transform.position;
             var from = new Vector3(pos.x, 0f, pos.z);
@@ -340,7 +451,25 @@ public class WorldMapView : MonoBehaviour
 
             if ((next - to).sqrMagnitude >= 0.0025f) continue;
 
-            pt.Moving = false;
+            // **맞닿은 무리가 있으면 그쪽이 이긴다.** 예전엔 무조건 칸 메뉴를 열었는데,
+            // 무리 위로 걸어가면 `빈 지역 / 탐험한다 / 떠난다`가 뜨고 정작 눈앞의 무리는
+            // 말을 걸 수가 없었다 — 게다가 그 메뉴가 열려 있는 동안은 `CheckEncounters`가
+            // 통째로 쉬어서, 닫기 전까지 조우가 영영 안 났다.
+            var band = WorldBandManager.Instance?.FindContact(pt.Go.transform.position,
+                                                              b => Interrupts(pt, b));
+            if (band != null)
+            {
+                // 따라다니는 중이면 **멈추지 않는다** — 상대가 다시 걸으면 같이 걸어야 한다.
+                if (pt.Approaching == band && pt.Intent == BandIntent.Follow && !IsHostile(band)) continue;
+
+                pt.Moving = false;
+                ResolveContact(pt, band);
+                continue;
+            }
+
+            pt.Moving      = false;
+            pt.Approaching = null;
+            pt.Intent      = BandIntent.None;
 
             // **도착하면 메뉴가 저절로 열린다**(M&B 방식).
             // 빈 야생에서도 연다 — 아무 칸에나 자리를 잡을 수 있어야 하므로 거기서도 할 일이 있다.
@@ -357,6 +486,556 @@ public class WorldMapView : MonoBehaviour
 
     float TokenSize(PartyToken pt) =>
         grid.NodeSpacing * (0.35f + Mathf.Min(pt.Party.Members.Count, 8) * 0.03f);
+
+    // ── 조우 ─────────────────────────────────────────────────────────────────
+    //
+    // 마운트앤블레이드식이다: **길 위에서 맞닿으면 메뉴가 뜬다.** 무엇을 고를 수 있는지는
+    // 세력 관계가 정한다 — 적대면 싸우거나 도망치고, 중립 상단이면 거래하거나 덮친다.
+    //
+    // 판정이 여기 있는 이유: 조우는 **원정대의 이동을 멈추고 창을 여는 일**이고, 그 둘의
+    // 주인이 이 스크립트다. 무리를 움직이고 무리끼리 붙이는 것은 `WorldBandManager` 몫이라
+    // 서로 자기가 가진 것에만 답한다.
+
+    void CheckEncounters()
+    {
+        var mgr = WorldBandManager.Instance;
+        if (mgr == null || _parties.Count == 0) return;
+
+        // **조우는 칸 메뉴를 밀어낸다.** 예전엔 창이 열려 있으면 무조건 쉬었는데, 도착 메뉴가
+        // 저절로 뜨는 구조라 그 창을 닫기 전까지 조우가 영영 안 났다.
+        // 다만 이미 무리에 관한 창(정보·조우·전투 결과)이 떠 있으면 건드리지 않는다 —
+        // 다른 무리가 끼어들어 결과창을 덮으면 무슨 일이 있었는지 못 읽는다.
+        if (_bandMenuOpen && menuPanel != null && menuPanel.IsOpen) return;
+
+        foreach (var pt in _parties)
+        {
+            if (pt.Go == null || pt.Party.Members.Count == 0) continue;
+
+            var band = mgr.FindContact(pt.Go.transform.position, b => Interrupts(pt, b));
+            if (band == null) continue;
+
+            // 필드를 보는 중이면 알리기만 하고 붙들어 둔다. 유예를 걸어야 매 프레임
+            // 같은 알림이 쏟아지지 않는다 — 지도로 넘어오면 그때 메뉴가 뜬다.
+            if (!GameModeManager.IsWorld)
+            {
+                mgr.PushApart(band);
+                EventNotificationUI.Notify("조우",
+                    $"원정대가 {band.Summary}와(과) 마주쳤습니다. M키로 지도를 여세요.",
+                    holdWhenHidden: true);
+                return;
+            }
+
+            // 따라다니는 중인 **중립** 무리와는 매번 창을 띄우지 않는다 — 따라가기는
+            // 붙어 다니는 것이지 말을 거는 것이 아니다. 적대는 저쪽이 가만두지 않으므로 뜬다.
+            if (pt.Approaching == band && pt.Intent == BandIntent.Follow && !IsHostile(band)) continue;
+
+            pt.Moving = false;   // 지나쳐 가면서 창만 뜨면 대응할 새가 없다
+            ResolveContact(pt, band);
+            return;              // 한 번에 하나만 — 창은 하나뿐이다
+        }
+    }
+
+    // 이 무리가 우리를 **멈춰 세우는가.**
+    //
+    // **적만 그렇다.** 적은 지나칠 수가 없다 — 싸우든 도망치든 항복하든 무엇이든 해야 한다.
+    // 중립은 길에서 스쳐도 아무 일이 아니고, 매번 창이 뜨면 지도를 가로지르는 것 자체가
+    // 번거로워진다(마을 앞 순찰대를 지날 때마다 걸린다). 중립과 할 일이 있으면 **우클릭으로
+    // 작정하고 간다** — 그 작정은 여기서도 받아 준다.
+    bool Interrupts(PartyToken pt, WorldBand band) =>
+        IsHostile(band) || (pt.Approaching == band && pt.Intent != BandIntent.None);
+
+    // 맞닿았다 — **작정하고 온 것이면 그대로 벌어지고, 아니면 무엇을 할지 그때 고른다.**
+    //
+    // 작정이 그 무리를 향한 것일 때만 실행한다: 상단을 사러 가던 길에 도적떼와 부딪혔는데
+    // 상점이 열리면 안 된다.
+    void ResolveContact(PartyToken pt, WorldBand band)
+    {
+        var intent = pt.Approaching == band ? pt.Intent : BandIntent.None;
+
+        // 쫓기는 여기서 끝난다(따라가기만 빼고). 안 지우면 [도망친다]를 고른 다음 프레임에
+        // 목표를 다시 겨눠 **도망치자마자 제 발로 쫓아간다.**
+        if (intent != BandIntent.Follow)
+        {
+            pt.Approaching = null;
+            pt.Intent      = BandIntent.None;
+        }
+
+        switch (intent)
+        {
+            case BandIntent.Attack:
+                Fight(pt, band);
+                return;
+
+            case BandIntent.Trade when band.Shop != null && band.Shop.Data != null:
+                TradeWithBand(pt, band);
+                return;
+        }
+
+        // 작정이 없거나(우연히 마주쳤다) 그새 사정이 바뀌었으면(팔 것이 없어졌다) 물어본다.
+        OpenEncounterMenu(pt, band);
+    }
+
+    // 이 무리가 우리에게 적인가. **방향은 둘 다 본다** — 한쪽만 적대인 관계가 성립하므로
+    // (산적 → 마을사람 적대 / 마을사람 → 산적 중립), 어느 쪽이든 적대면 평화롭게 지나갈 수 없다.
+    static bool IsHostile(WorldBand band)
+    {
+        var mine = Faction.Player != null ? Faction.Player.Data : null;
+        if (mine == null || band.Faction == null) return false;
+        return mine.IsHostileTo(band.Faction) || band.Faction.IsHostileTo(mine);
+    }
+
+    // ── 무리에게 내리는 명령 (우클릭) ─────────────────────────────────────────
+    //
+    // **필드의 우클릭 창을 그대로 쓴다**(`PawnContextMenuUI`). 우클릭이 "무엇을 하러 가느냐"로
+    // 갈리는 것은 두 화면에서 같은 일이고, 규약이 둘이면 지도에 나갈 때마다 조작을 새로 배워야 한다.
+    //
+    // **고르는 순간 정해지고, 가서 그대로 벌어진다.** 다다른 뒤에 조우 메뉴를 한 번 더 띄우면
+    // 같은 결정을 두 번 하게 된다 — 필드에서 [공격한다]를 고른 폰이 도착해서 다시 묻지 않는 것과 같다.
+    void OpenBandOrders(WorldBand band)
+    {
+        var menu = PawnContextMenuUI.Instance;
+        if (menu == null) { OpenBandInfo(band); return; }   // 창이 없으면 정보라도 보여준다
+
+        var options = new List<(string, System.Action)>();
+
+        if (!IsHostile(band))
+        {
+            if (band.Shop != null && band.Shop.Data != null)
+                options.Add(("거래한다", () => Order(band, BandIntent.Trade)));
+
+            // 중립은 스쳐도 아무 일이 안 나므로(`Interrupts`), **말을 걸려면 작정하고 가야 한다.**
+            // 적에게는 안 띄운다 — 맞닿기만 해도 창이 뜨니 같은 말이 두 줄이 된다.
+            options.Add(("말을 건다", () => Order(band, BandIntent.Talk)));
+        }
+
+        options.Add(("공격한다",   () => Order(band, BandIntent.Attack)));
+        options.Add(("따라간다",   () => Order(band, BandIntent.Follow)));
+        // **[살펴본다]는 없다** — 좌클릭이 이미 정보 창이고, 우클릭은 "무엇을 하러 가느냐"의
+        // 자리다. 보는 일까지 여기 두면 같은 것을 여는 길이 둘이 된다.
+
+        // 필드가 늘 마지막에 [여기로 이동]을 두는 것과 같다 — 무리와 상관없이 그 자리로만
+        // 가고 싶을 때가 있고, 그 길이 없으면 무리 근처에는 아무 명령도 못 내린다.
+        options.Add(("이 자리로 이동", () =>
+        {
+            var spots = Formation(band.Position, _selected.Count);
+            for (int i = 0; i < _selected.Count; i++)
+            {
+                _selected[i].MoveTarget  = spots[i];
+                _selected[i].Moving      = true;
+                _selected[i].Approaching = null;
+                _selected[i].Intent      = BandIntent.None;
+            }
+        }));
+
+        menu.Open(band.Summary, options, band.Position, worldCamera);
+    }
+
+    // 고른 팀 전부에게 같은 작정을 준다. **자리를 벌리지 않는다** — 맞닿는 것이 목적이라
+    // 흩어져 서면 아무도 조우 거리에 못 든다.
+    void Order(WorldBand band, BandIntent intent)
+    {
+        foreach (var sel in _selected)
+        {
+            sel.MoveTarget  = band.Position;
+            sel.Moving      = true;
+            sel.Approaching = band;
+            sel.Intent      = intent;
+        }
+        CloseMenu();
+    }
+
+    // 무리를 **눌러서** 들여다본다. 조우 전에도 "저게 뭔가"를 알 수 있어야 다가갈지 피할지를
+    // 정한다 — 처음엔 토큰에 콜라이더도 안 뒀는데, 그러면 지도 위의 무리가 눌러도 아무 반응이
+    // 없는 그림이 된다.
+    //
+    // **여기서 할 수 있는 건 다가가는 것뿐이다.** 거래·대화는 맞닿아야 열린다(마을에 도착해야
+    // 시장이 열리는 것과 같은 규약) — 멀리서 다 되면 지도 위를 오갈 이유가 없다.
+    void OpenBandInfo(WorldBand band)
+    {
+        if (menuPanel == null) return;
+
+        _menuParty = null;
+
+        var options = new List<WorldMenuOption>();
+
+        if (_selected.Count == 0)
+            options.Add(WorldMenuOption.Blocked("다가간다", "고른 원정대가 없다"));
+        else
+            options.Add(WorldMenuOption.Ready("다가간다", () =>
+            {
+                // 다가가는 것은 곧 **말을 걸러 가는 것**이다 — 맞닿으면 조우 메뉴가 떠서
+                // 그때 고른다. `None`으로 두면 중립은 멈춰 세우지 않아(`Interrupts`)
+                // 옆까지 걸어가 놓고 아무 일도 안 일어난다.
+                Order(band, BandIntent.Talk);
+            }));
+
+        options.Add(WorldMenuOption.Ready("떠난다", CloseMenu));
+
+        var tile = WorldMap.Instance.GetTile(band.Node);
+        grid.SetHighlight(band.Node);
+        _bandMenuOpen = true;
+        menuPanel.Open(band.Name, BandInfo(band), MenuArtFor(tile), band.Data.TokenColor, options);
+    }
+
+    string BandInfo(WorldBand band)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        sb.Append($"{band.Count}명 · ");
+        sb.Append(IsHostile(band) ? "<color=#FF8080>적대</color>" : "중립");
+        sb.Append($" · ({band.Node.x}, {band.Node.y})\n");
+
+        sb.Append(band.Behavior switch
+        {
+            WorldBandBehavior.Roam    => band.Returning
+                                       ? "<color=#FFFFFF80>근거지로 돌아가는 중이다</color>"
+                                       : "<color=#FFFFFF80>이 근방을 떠돌고 있다</color>",
+            WorldBandBehavior.Caravan => "<color=#FFFFFF80>마을 사이를 오간다</color>",
+            _                         => "<color=#FFFFFF80>마을 둘레를 돈다</color>",
+        });
+
+        // **끌고 다니는 사람이 있으면 그게 가장 중요한 정보다** — 쫓아갈 이유가 그것이다.
+        // 흥정이 되는지도 같이 적는다: 되면 돈을 챙겨 가고, 안 되면 병력을 챙겨 가야 한다.
+        if (band.Captives.Count > 0)
+        {
+            sb.Append($"\n<color=#FFD060>포로 {band.Captives.Count}명을 끌고 간다</color>");
+            sb.Append(CaptiveHint(band.Faction, band.Captives));
+        }
+
+        if (_selected.Count == 1)
+        {
+            float mine = WorldBattle.PowerOf(_selected[0].Party.Members);
+            sb.Append(mine >= band.Power
+                ? "\n<color=#FFFFFF80>고른 원정대가 더 세 보인다</color>"
+                : "\n<color=#FFFFFF80>고른 원정대로는 버거워 보인다</color>");
+        }
+
+        return sb.ToString();
+    }
+
+    void OpenEncounterMenu(PartyToken pt, WorldBand band)
+    {
+        if (menuPanel == null) return;
+
+        _menuParty = pt;
+
+        var options = new List<WorldMenuOption>();
+        bool hostile = IsHostile(band);
+
+        if (hostile)
+        {
+            // 붙잡힌 사람이 있으면 **되찾는 얘기가 먼저다** — 싸우다 죽일 수도 있는 마당에
+            // 흥정 줄이 아래에 묻혀 있으면 안 된다.
+            if (band.Captives.Count > 0)
+                options.Add(RansomOption(pt, band.Faction, band.Captives,
+                                         () => FreeInto(band.Captives, pt)));
+
+            options.Add(WorldMenuOption.Ready("싸운다",   () => Fight(pt, band)));
+            options.Add(WorldMenuOption.Ready("도망친다", () => Flee(pt, band)));
+            options.Add(WorldMenuOption.Ready("항복한다", () => Surrender(pt, band)));
+        }
+        else
+        {
+            if (band.Shop != null && band.Shop.Data != null)
+                options.Add(WorldMenuOption.Ready("거래한다", () => TradeWithBand(pt, band)));
+            else if (band.Behavior == WorldBandBehavior.Caravan)
+                options.Add(WorldMenuOption.Blocked("거래한다", "이 상단엔 골드 설정이 없다"));
+
+            // **순찰대에게도 할 일이 있어야 한다.** 지나치는 것밖에 못 하면 지도 위의 중립
+            // 무리는 장식이다. 이 지역을 도는 사람들이니 근처 소굴 사정을 안다 —
+            // 정찰(`탐험한다`)과 **같은 결과**를 주므로 규칙이 하나 더 생기지는 않는다.
+            if (band.Behavior == WorldBandBehavior.Patrol)
+                options.Add(AskDirectionsOption(band));
+
+            // **중립을 덮치는 길은 열어 둔다.** 못 하게 막으면 지도 위의 선택이 "적이면 싸운다"
+            // 하나뿐이 된다. 대가(관계 악화)는 아직 없지만, 자리는 지금 만들어 둔다.
+            options.Add(WorldMenuOption.Ready("습격한다", () => Fight(pt, band)));
+            options.Add(WorldMenuOption.Ready("지나친다", () => Leave(band)));
+        }
+
+        grid.SetHighlight(pt.Party.CurrentNode);
+        _bandMenuOpen = true;
+        menuPanel.Open(band.Name, EncounterInfo(pt, band), MenuArtFor(TileAt(pt)),
+                       band.Data.TokenColor, options);
+    }
+
+    WorldTile TileAt(PartyToken pt) => WorldMap.Instance.GetTile(pt.Party.CurrentNode);
+
+    // **전력을 숨기지 않는다.** 마운트앤블레이드도 상대 인원을 보여준다 — 붙을지 말지가
+    // 선택이 되려면 재료가 있어야 하고, 없으면 매번 도망치는 것이 정답이 된다.
+    string EncounterInfo(PartyToken pt, WorldBand band)
+    {
+        float mine   = WorldBattle.PowerOf(pt.Party.Members);
+        float theirs = band.Power;
+
+        string odds = theirs <= 0f      ? "상대가 되지 않는다"
+                    : mine >= theirs * 1.5f ? "우리가 훨씬 우세하다"
+                    : mine >= theirs        ? "우리가 조금 낫다"
+                    : mine * 1.5f >= theirs ? "만만치 않다"
+                    :                         "상대가 훨씬 강하다";
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"{band.Name} · {band.Count}명\n");
+        sb.Append($"우리 {pt.Party.Members.Count}명 · {odds}\n");
+        sb.Append(band.Data.Speed >= partySpeed
+            ? "<color=#FFFFFF80>우리보다 발이 빠르다 — 도망쳐도 따라잡힌다</color>"
+            : "<color=#FFFFFF80>우리보다 느리다 — 뿌리칠 수 있다</color>");
+        return sb.ToString();
+    }
+
+    // 순찰대가 아는 것 — **가장 가까운, 아직 안 살펴본 소굴**. 하나를 조사한 것으로 표시한다.
+    // 여러 개를 한꺼번에 열어 주지 않는다: 한 번 물어 지도가 통째로 밝아지면 발품을 팔 이유가
+    // 사라지고, 순찰대를 만날 때마다 하나씩 열려야 다시 만날 이유도 생긴다.
+    WorldMenuOption AskDirectionsOption(WorldBand band)
+    {
+        const string Label = "이 근방을 묻는다";
+
+        var wm = WorldMap.Instance;
+        Vector2Int found = default;
+        int bestDist = int.MaxValue;
+
+        for (int x = 0; x < wm.Width;  x++)
+        for (int y = 0; y < wm.Height; y++)
+        {
+            var n = new Vector2Int(x, y);
+            if (wm.GetTile(n).Content != WorldNodeContent.EnemyLair) continue;
+            if (wm.IsSurveyed(n)) continue;
+
+            int d = WorldMap.Distance(band.Node, n);
+            if (d >= bestDist) continue;
+            bestDist = d;
+            found    = n;
+        }
+
+        if (bestDist == int.MaxValue)
+            return WorldMenuOption.Blocked(Label, "이 사람들이 아는 소굴은 다 살펴봤다");
+
+        var node = found;
+        return WorldMenuOption.Ready(Label, () =>
+        {
+            wm.MarkSurveyed(node);
+            CloseMenu();
+
+            var lair = WorldLairs.At(node);
+            EventNotificationUI.Notify("소문",
+                lair != null
+                    ? $"({node.x}, {node.y})에 {lair.Name}이(가) 있다고 합니다 — {lair.ThreatLabel}."
+                    : $"({node.x}, {node.y})의 소굴 이야기를 들었습니다.");
+        });
+    }
+
+    void Fight(PartyToken pt, WorldBand band)
+    {
+        var result = WorldBattle.Resolve(pt.Party, band);
+        var mgr    = WorldBandManager.Instance;
+
+        // **순서가 셋 다 중요하다.**
+        //  ① 이겼으면 포로부터 넘겨받는다 — 무리를 치운 뒤면 `Remove`가 "탈출"로 먼저
+        //     풀어 버려서, 구해 놓고도 따로 노는 팀이 하나 생긴다.
+        //  ② 결과창은 붙잡히기 전에 띄운다 — 띄우는 데 `pt`가 필요하다.
+        //  ③ 무리를 치우는 것은 맨 마지막 — 포로를 다 옮긴 뒤라야 안전하다.
+        if (result.PlayerWon) FreeInto(band.Captives, pt);
+
+        mgr?.PushApart(band);
+        ShowBattleResult(pt, result);
+
+        if (!result.PlayerWon) Capture(pt, band.Captives, band.Name);
+        mgr?.RemoveIfDead(band);
+    }
+
+    // 이긴 자리에서 풀려난 사람들은 **그 원정대에 합류한다.** 새 팀으로 세우면 같은 자리에
+    // 토큰이 둘 겹쳐서, 구해 놓고도 따로 데리고 다녀야 한다.
+    void FreeInto(List<UnitBrain> captives, PartyToken pt)
+    {
+        if (captives == null || captives.Count == 0) return;
+
+        int n = 0;
+        foreach (var m in captives)
+        {
+            if (m == null) continue;
+            pt.Party.Members.Add(m);
+            n++;
+        }
+        captives.Clear();
+
+        if (n > 0) EventNotificationUI.Notify("구출", $"붙잡혀 있던 {n}명이 합류했습니다.");
+    }
+
+    // **진 원정대는 포로가 되어 끌려간다.**
+    //
+    // 전에는 가장 가까운 정착지로 밀어냈다. 그건 "졌지만 아무 일도 없었다"에 가까워서, 지는
+    // 것이 사건이 되지 못했다. 붙잡히면 지도에서 사라지고 **되찾아야 한다** — 그 무리를 이겨
+    // 구출하거나, 소굴로 끌려간 뒤엔 소굴을 치거나, 저희끼리 도망쳐 나오기를 기다리거나.
+    //
+    // 폰은 지우지 않는다. 꺼진 채로 무리가 들고 다니므로 이름·스탯·특성이 그대로 살아 있고,
+    // 풀려나면 그 사람 그대로 돌아온다.
+    // **붙잡는 쪽을 인자로 받는다.** 길이 둘이다 — 길에서 무리에게 지거나, 소굴을 치다 지거나.
+    // 무리에게 지면 그 무리가 데려가고(근거지에 닿으면 소굴로 넘어간다), **소굴 앞에서 지면
+    // 소굴이 바로 가둔다.**
+    //
+    // 전에는 소굴전도 `Capture(pt, band)`를 불렀는데, 그 `band`는 `Assault`가 굴려 만든
+    // **로컬 개체라 `WorldBandManager`에 등록되지 않는다.** 거기 넣은 사람은 `RollEscapes`도
+    // `Remove`도 `FindContact`도 못 보고, 그 함수가 끝나는 순간 함께 사라졌다 —
+    // **되찾는 길 다섯이 전부 막힌 채 원정대가 통째로 증발했다.**
+    void Capture(PartyToken pt, List<UnitBrain> into, string captorName)
+    {
+        foreach (var m in pt.Party.Members)
+            if (m != null) into.Add(m);
+
+        pt.Party.Members.Clear();
+
+        // 방금 띄운 전투 결과창을 지키려고 먼저 끊는다 — `RemoveParty`는 그 팀의 창을 닫는데,
+        // 무슨 일이 있었는지 못 읽고 팀만 사라지면 영문을 알 수 없다.
+        _menuParty = null;
+        RemoveParty(pt);
+
+        EventNotificationUI.Notify("포로",
+            $"원정대가 {captorName}에게 붙잡혀 끌려갔습니다.", holdWhenHidden: true);
+    }
+
+    // 풀려난 사람들을 **새 원정대로** 지도에 세운다. 탈출·구출·소굴 함락이 전부 여기로 모인다 —
+    // 되돌아오는 길이 셋인데 처리가 셋이면 반드시 하나가 어긋난다.
+    //
+    // **등짐은 없다.** 붙잡힐 때 통째로 빼앗겼고, 풀려나며 되찾는 것은 사람뿐이다.
+    public void RestoreParty(List<UnitBrain> members, Vector3 at, string title, string message)
+    {
+        if (members == null || grid == null) return;
+
+        var alive = new List<UnitBrain>();
+        foreach (var m in members) if (m != null) alive.Add(m);
+        if (alive.Count == 0) return;
+
+        var party = new ExpeditionParty(grid.TryNodeAt(at, out var node) ? node : StartNode());
+        foreach (var m in alive)
+        {
+            party.Members.Add(m);
+            m.gameObject.SetActive(false);   // 지도 위에 있는 동안은 필드에서 빠져 있다
+        }
+
+        var pt = SpawnToken(party);
+        pt.Go.transform.position = GroundedTokenPos(new Vector3(at.x, 0f, at.z), pt);
+
+        if (!string.IsNullOrEmpty(title))
+            EventNotificationUI.Notify(title, message, holdWhenHidden: true);
+    }
+
+    // **도망은 발이 정한다.** 우리가 빠르면 뿌리치고, 느리면 붙잡혀 그대로 싸운다 —
+    // 무조건 도망칠 수 있으면 조우가 아무 일도 아니게 되고, 무조건 못 도망치면 선택지가 아니다.
+    void Flee(PartyToken pt, WorldBand band)
+    {
+        float mine = partySpeed;
+        float them = band.Data.Speed;
+
+        // 같은 속도 근처에서는 굴린다 — 딱 잘라 갈리면 무리 하나를 만나본 뒤로는
+        // 결과가 뻔해서 고를 이유가 없어진다.
+        bool escaped = Random.value < Mathf.Clamp01(0.15f + (mine - them) * 0.35f);
+
+        if (escaped)
+        {
+            WorldBandManager.Instance?.PushApart(band);
+            CloseMenu();
+            EventNotificationUI.Notify("도주", $"{band.Name}을(를) 뿌리쳤습니다.");
+            return;
+        }
+
+        // 잡혔다 — 등을 보인 채 붙었으므로 그대로 전투로 넘어간다.
+        EventNotificationUI.Notify("추격", $"{band.Name}에게 따라잡혔습니다.");
+        Fight(pt, band);
+    }
+
+    // 포로 옆에 붙는 한 줄 — **흥정이 되는가, 얼마인가.** 값을 미리 알아야 돈을 챙겨 갈지
+    // 병력을 챙겨 갈지 정할 수 있다. 안 되는 상대라면 값은 적어 봐야 소용이 없다.
+    static string CaptiveHint(FactionData faction, List<UnitBrain> captives)
+    {
+        if (faction != null && !faction.AcceptsRansom)
+            return "\n<color=#FFFFFF80>몸값을 받지 않는 자들이다 — 쳐들어가는 수밖에 없다</color>";
+
+        return $"\n<color=#FFFFFF80>몸값 {WorldRansom.PriceFor(captives)} G</color>";
+    }
+
+    // ── 몸값 ─────────────────────────────────────────────────────────────────
+    //
+    // 쳐들어가 구하는 것과 **나란한 길**이다 — 어느 쪽이 싼가가 판단거리가 된다.
+    // 다만 아무와나 흥정이 되지는 않는다: 세력이 그걸 정한다(`FactionData.AcceptsRansom`).
+    //
+    // `release`를 밖에서 받는 이유: 풀려나는 자리가 무리일 수도 소굴일 수도 있는데,
+    // 여기서 그걸 갈라 물으면 되찾는 길이 늘 때마다 이 함수를 고쳐야 한다.
+    WorldMenuOption RansomOption(PartyToken pt, FactionData faction,
+                                 List<UnitBrain> captives, System.Action release)
+    {
+        int price = WorldRansom.PriceFor(captives);
+        string label = $"몸값을 치른다 — {price} G ({captives.Count}명)";
+
+        if (faction != null && !faction.AcceptsRansom)
+            return WorldMenuOption.Blocked(label, "몸값을 받지 않는 자들이다");
+
+        int have = WorldRansom.Available();
+        if (have < price)
+            return WorldMenuOption.Blocked(label, $"골드 부족 ({have}/{price})");
+
+        return WorldMenuOption.Ready(label, () =>
+        {
+            // **먼저 값을 치르고 놓아준다.** 순서가 뒤집히면 값을 못 치렀을 때 이미 풀린
+            // 사람을 도로 넣어야 하고, 그건 되돌릴 곳을 모르는 상태다(`TradeAccount`와 같은 규칙).
+            if (!WorldRansom.TryPay(price))
+            {
+                EventNotificationUI.Notify("몸값", "값을 치르지 못했습니다.");
+                return;
+            }
+            release?.Invoke();
+            CloseMenu();
+        });
+    }
+
+    // 항복 — 짐을 내주고 풀려난다. **유예를 길게 준다**: 얻을 것을 다 얻은 무리가
+    // 몇 초 뒤에 또 붙어 오면 항복이 아무것도 해결하지 못한 것이 된다.
+    const float SurrenderGrace = 90f;
+
+    void Surrender(PartyToken pt, WorldBand band)
+    {
+        var result = WorldBattle.Surrender(pt.Party, band);
+        WorldBandManager.Instance?.PushApart(band, SurrenderGrace);
+        ShowBattleResult(pt, result, "항복");
+    }
+
+    void Leave(WorldBand band)
+    {
+        WorldBandManager.Instance?.PushApart(band);
+        CloseMenu();
+    }
+
+    // 길 위의 거래 — 마을 시장과 **같은 창**을 쓴다. 지갑도 창고도 원정대 배낭이다.
+    void TradeWithBand(PartyToken pt, WorldBand band)
+    {
+        CloseMenu();   // 상점 창이 메뉴를 가린다
+
+        var members = pt.Party.Members;
+        MerchantUI.OpenFor(band.Shop,
+                           new PartyAccount(members),
+                           members,
+                           $"{band.Name} · 길 위의 거래");
+
+        WorldBandManager.Instance?.PushApart(band);
+    }
+
+    // 싸운 뒤 — 결과를 그 자리에서 읽히게 한다. 알림으로만 띄우면 사라진 뒤에는
+    // 누가 다쳤는지 확인할 길이 없다.
+    void ShowBattleResult(PartyToken pt, WorldBattleResult result, string title = null)
+    {
+        if (menuPanel == null) return;
+
+        var options = new List<WorldMenuOption>
+        {
+            WorldMenuOption.Ready("계속한다", CloseMenu),
+        };
+
+        var tile = TileAt(pt);
+        _bandMenuOpen = true;
+        // 항복은 진 것이 아니라 **안 싸운 것**이라 제목이 달라야 한다 — "패배"라고 쓰면
+        // 사람이 다쳤을 거라고 읽힌다.
+        menuPanel.Open(title ?? (result.PlayerWon ? "승리" : "패배"), result.Summary,
+                       MenuArtFor(tile), tile.Biome.Color(), options);
+    }
 
     // ── 도착 메뉴 ─────────────────────────────────────────────────────────────
 
@@ -390,9 +1069,15 @@ public class WorldMapView : MonoBehaviour
                 break;
 
             case WorldNodeContent.EnemyLair:
-                options.Add(WorldMenuOption.Blocked("소굴을 정찰한다", "준비 중"));
-                options.Add(WorldMenuOption.Blocked("습격한다",        "준비 중"));
+            {
+                var lair = WorldLairs.At(node);
+                if (pt != null && lair != null && lair.Captives.Count > 0)
+                    options.Add(RansomOption(pt, lair.Band != null ? lair.Band.Faction : null,
+                                             lair.Captives, () => FreeInto(lair.Captives, pt)));
+                options.Add(ScoutOption(pt, node));
+                options.Add(AssaultOption(pt, node));
                 break;
+            }
 
             case WorldNodeContent.Outpost:
                 options.Add(LoadOption(pt, node));
@@ -470,6 +1155,38 @@ public class WorldMapView : MonoBehaviour
             return sb.ToString();
         }
 
+        // 소굴은 매장이 아니라 **누가 얼마나 있는가**가 볼 것이다. 정찰 전에는 감춘다 —
+        // 그걸 알아내는 것이 곧 정찰이라 미리 보여주면 갈 이유가 없어진다.
+        if (tile.Content == WorldNodeContent.EnemyLair)
+        {
+            var lair = WorldLairs.At(node);
+            sb.Append('\n');
+
+            if (lair == null)               sb.Append("<color=#FFFFFF80>비어 있다</color>");
+            else if (!wm.IsSurveyed(node))  sb.Append($"{lair.Name}\n<color=#FFFFFF80>얼마나 있는지는 가봐야 안다</color>");
+            else                            sb.Append($"{lair.Name}\n병력 {lair.Strength}명 — {lair.ThreatLabel}");
+
+            // **예고된 습격은 조사와 무관하게 보인다.** 습격은 저쪽이 알려온 것이지 우리가
+            // 알아낸 것이 아니다. 그리고 알림은 사라지므로 **여기 계속 남아 있어야** 대비가
+            // 된다 — "며칠 뒤 온다"를 다시 확인할 데가 없으면 예고가 아니라 한 번의 소음이다.
+            // 갇혀 있는 사람은 **정찰 여부와 무관하게** 보인다. 우리 사람이 어디 있는지는
+            // 끌려가는 것을 봐서 아는 것이지 소굴을 뒤져서 아는 것이 아니다.
+            if (lair != null && lair.Captives.Count > 0)
+            {
+                sb.Append($"\n<color=#FFD060>우리 쪽 {lair.Captives.Count}명이 갇혀 있다</color>");
+                sb.Append(CaptiveHint(lair.Band != null ? lair.Band.Faction : null, lair.Captives));
+            }
+
+            var mgr = WorldBandManager.Instance;
+            if (mgr != null && mgr.TryGetRaidFrom(node, out int raidCount, out float left))
+            {
+                int days = Mathf.Max(1, Mathf.CeilToInt(left / GameTimeManager.DayDuration));
+                sb.Append($"\n<color=#FF8080>{raidCount}명이 {days}일 뒤 습격해 온다</color>");
+            }
+
+            return sb.ToString();
+        }
+
         sb.Append('\n');
         if (!wm.IsSurveyed(node))
         {
@@ -517,9 +1234,8 @@ public class WorldMapView : MonoBehaviour
 
         var wm      = WorldMap.Instance;
         var tile    = wm.GetTile(node);
-        var gold    = TownMarket.GoldAt(node);
         var party   = pt.Party;
-        var account = gold != null ? new PartyAccount(gold, party.Members) : null;
+        var account = new PartyAccount(party.Members);
         var options = new List<WorldMenuOption>();
 
         var recruits = TownRecruits.At(node);
@@ -532,9 +1248,7 @@ public class WorldMapView : MonoBehaviour
 
             string label = $"{r.Name}을(를) 고용한다 — {r.Summary}";
 
-            if (account == null)
-                options.Add(WorldMenuOption.Blocked(label, "이 마을엔 오가는 돈이 없다"));
-            else if (account.GoldAmount < r.Cost)
+            if (account.GoldAmount < r.Cost)
                 options.Add(WorldMenuOption.Blocked(label, "골드 부족"));
             else
             {
@@ -550,9 +1264,8 @@ public class WorldMapView : MonoBehaviour
 
         var sb = new System.Text.StringBuilder();
         sb.Append($"{tile.Content.DisplayName()} · {tile.Biome.DisplayName()} · ({node.x}, {node.y})\n");
-        sb.Append(account != null
-            ? $"원정대 골드 — {account.GoldAmount} G\n"
-            : "<color=#FFFFFF80>이 마을엔 오가는 돈이 없다</color>\n");
+        // 지갑이 하나뿐이라 "이 마을엔 오가는 돈이 없다"가 성립하지 않는다.
+        sb.Append($"골드 — {account.GoldAmount} G\n");
         sb.Append(standing > 0
             ? $"<color=#FFFFFF80>나설 사람 {standing}명 — 하루가 지나면 바뀐다</color>"
             : "<color=#FFFFFF80>오늘은 나설 사람이 없다 — 하루가 지나면 바뀐다</color>");
@@ -633,19 +1346,14 @@ public class WorldMapView : MonoBehaviour
         var tile    = wm.GetTile(node);
         var party   = pt.Party;
         var shops   = TownMarket.ShopsAt(node);
-        var gold    = TownMarket.GoldAt(node);
-        var account = gold != null ? new PartyAccount(gold, party.Members) : null;
+        var account = new PartyAccount(party.Members);
         var options = new List<WorldMenuOption>();
 
         foreach (var shop in shops)
         {
             string label = $"{shop.DisplayName}에게 간다";
 
-            if (shop.Data == null || shop.Data.GoldItem == null)
-            {
-                options.Add(WorldMenuOption.Blocked(label, "이 상인에겐 골드 설정이 없다"));
-                continue;
-            }
+            if (shop.Data == null) continue;
 
             var captured = shop;
             options.Add(WorldMenuOption.Ready(label, () =>
@@ -654,7 +1362,7 @@ public class WorldMapView : MonoBehaviour
 
                 MerchantUI.OpenFor(
                     captured,
-                    new PartyAccount(captured.Data.GoldItem, party.Members),
+                    new PartyAccount(party.Members),
                     party.Members,
                     $"{captured.DisplayName} · ({node.x}, {node.y})");
             }));
@@ -664,13 +1372,96 @@ public class WorldMapView : MonoBehaviour
 
         var sb = new System.Text.StringBuilder();
         sb.Append($"{tile.Content.DisplayName()} 시장 · {tile.Biome.DisplayName()} · ({node.x}, {node.y})\n");
-        sb.Append(account != null
-            ? $"원정대 골드 — {account.GoldAmount} G\n"
-            : "<color=#FFFFFF80>이 마을엔 오가는 돈이 없다</color>\n");
+        // 지갑이 하나뿐이라 "이 마을엔 오가는 돈이 없다"가 성립하지 않는다.
+        sb.Append($"골드 — {account.GoldAmount} G\n");
         sb.Append($"<color=#FFFFFF80>상인 {shops.Count}명 — 진열은 하루가 지나면 바뀐다</color>");
 
         grid.SetHighlight(node);
         menuPanel.Open(MarketLabel, sb.ToString(), MenuArtFor(tile), tile.Biome.Color(), options);
+    }
+
+    // ── 적 소굴 ───────────────────────────────────────────────────────────────
+    //
+    // **정찰과 습격을 나눈 이유**: 소굴은 "보이지만 못 감"의 자리다(안개 대신 위험도로 거는
+    // 게이팅). 얼마나 있는지 모르는 채로 뛰어들면 판단이 아니라 도박이 되고, 처음부터 다
+    // 보이면 소굴 앞까지 가 볼 이유가 없다. 그래서 **가야 알 수 있게** 하고, 알고 나서
+    // 붙을지 고르게 한다 — 매장 자원의 `탐험한다`와 같은 규칙이다.
+
+    WorldMenuOption ScoutOption(PartyToken pt, Vector2Int node)
+    {
+        var lair = WorldLairs.At(node);
+        if (lair == null)                return WorldMenuOption.Blocked("소굴을 정찰한다", "빈 소굴이다");
+        if (pt == null || pt.Party.Members.Count == 0)
+            return WorldMenuOption.Blocked("소굴을 정찰한다", "여기 온 원정대가 없다");
+        if (WorldMap.Instance.IsSurveyed(node))
+            return WorldMenuOption.Blocked("소굴을 정찰한다", "이미 살펴봤다");
+
+        return WorldMenuOption.Ready("소굴을 정찰한다", () =>
+        {
+            WorldMap.Instance.MarkSurveyed(node);
+            OpenMenu(pt, node);   // 알아낸 것을 그 자리에서 보여준다
+        });
+    }
+
+    WorldMenuOption AssaultOption(PartyToken pt, Vector2Int node)
+    {
+        var lair = WorldLairs.At(node);
+        if (lair == null) return WorldMenuOption.Blocked("습격한다", "빈 소굴이다");
+        if (pt == null || pt.Party.Members.Count == 0)
+            return WorldMenuOption.Blocked("습격한다", "여기 온 원정대가 없다");
+
+        return WorldMenuOption.Ready("습격한다", () => Assault(pt, lair));
+    }
+
+    // 소굴 습격 — **길 위의 조우와 같은 판정**을 쓴다. 규칙이 둘이면 "밖에서 잡는 게 나은가
+    // 소굴을 치는 게 나은가"가 계산이 아니라 눈치가 된다.
+    //
+    // 소굴이 내놓는 것은 그 소굴에 사는 무리와 같지만, **남은 병력만큼** 한 번에 나온다 —
+    // 지도에서 만나는 한 무리보다 크고, 그래서 소굴은 마지막에 치는 곳이 된다.
+    void Assault(PartyToken pt, WorldLair lair)
+    {
+        var band = WorldBand.Roll(lair.Band, lair.Node, unchecked(lair.Node.x * 7919 + lair.Node.y * 104729
+                                                               + GameTimeManager.CurrentDay));
+        if (band == null)
+        {
+            WorldLairs.Clear(lair);   // 세울 무리가 없는 소굴은 빈 소굴이다
+            CloseMenu();
+            return;
+        }
+
+        // 남은 병력이 정원보다 적으면 그만큼만 나오고, 많으면 여러 겹으로 채운다 —
+        // 병력 30인 소굴이 다섯만 내보내면 정찰로 본 숫자가 거짓말이 된다.
+        // 겹쳐 채우는 데 상한을 둔다. 저작 실수로 병력이 수백인 소굴이 생기면 명세를 그만큼
+        // 굴리느라 한 프레임이 멈춘다(한 사람당 스탯 51개를 굴린다).
+        const int MaxAssaultRolls = 40;
+        for (int guard = 0; guard < MaxAssaultRolls && band.Count < lair.Strength; guard++)
+        {
+            var more = WorldBand.Roll(lair.Band, lair.Node,
+                                      unchecked(band.Count * 31 + lair.Node.x * 6151));
+            if (more == null) break;
+            band.Members.AddRange(more.Members);
+        }
+        if (band.Count > lair.Strength) band.TakeLosses(band.Count - lair.Strength);
+
+        var result = WorldBattle.Resolve(pt.Party, band);
+
+        // **소굴의 병력이 실제로 준다.** 결과가 상태로 남지 않으면 습격은 알림일 뿐이고,
+        // 몇 번을 쳐도 다음 날 같은 무리가 또 나온다.
+        lair.Strength = band.Count;
+
+        ShowBattleResult(pt, result);
+
+        if (!result.PlayerWon)
+        {
+            // **소굴이 가둔다** — 위의 `band`는 등록되지 않은 로컬 개체라 거기 넣으면 사라진다.
+            Capture(pt, lair.Captives, lair.Name);
+            return;
+        }
+
+        // **이겼으면 갇혀 있던 사람들이 풀려난다.** 소굴이 아직 안 무너졌어도 그렇다 —
+        // 문을 열고 들어간 마당에 사람을 두고 나올 이유가 없다.
+        FreeInto(lair.Captives, pt);
+        if (lair.IsCleared) WorldLairs.Clear(lair);
     }
 
     // ── 탐험(조사) ────────────────────────────────────────────────────────────
@@ -776,7 +1567,8 @@ public class WorldMapView : MonoBehaviour
     void CloseMenu()
     {
         if (menuPanel != null) menuPanel.Close();
-        _menuParty = null;
+        _menuParty    = null;
+        _bandMenuOpen = false;
         grid?.ClearHighlight();
     }
 

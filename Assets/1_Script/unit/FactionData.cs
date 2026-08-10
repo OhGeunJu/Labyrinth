@@ -30,6 +30,13 @@ public class FactionData : ScriptableObject
     [Tooltip("플레이어가 조작하는 세력인가 (선택/명령/우선순위 UI 대상). 보통 한 세력만 켠다.")]
     [SerializeField] bool playerControlled;
 
+    [Tooltip("붙잡은 사람을 **돈을 받고 놓아주는가.** 끄면 몸값 협상 자체가 없다 — " +
+             "쳐들어가서 되찾는 수밖에 없다.\n" +
+             "이건 무리가 아니라 **세력의 성질**이다: 산적은 돈이 목적이라 흥정이 되지만, " +
+             "고블린 같은 것들과는 애초에 말이 통하지 않는다. 무리마다 따로 적으면 " +
+             "같은 세력인데 어떤 무리는 흥정이 되고 어떤 무리는 안 되는 꼴이 된다.")]
+    [SerializeField] bool acceptsRansom = true;
+
     [Header("관계")]
     [Tooltip("아래 목록에 없는 세력을 대하는 기본 태도.")]
     [SerializeField] FactionStance defaultStance = FactionStance.Neutral;
@@ -38,6 +45,7 @@ public class FactionData : ScriptableObject
 
     public string FactionName     => string.IsNullOrEmpty(factionName) ? name : factionName;
     public bool   PlayerControlled => playerControlled;
+    public bool   AcceptsRansom    => acceptsRansom;
     public FactionStance DefaultStance => defaultStance;
     public IReadOnlyList<Relation> Relations => relations;
 

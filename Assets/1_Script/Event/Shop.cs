@@ -77,7 +77,7 @@ public class Shop
     // 값을 못 치르는 경우(= 되돌릴 곳을 모르는 경우)가 아예 생기지 않는다.
     public bool TryBuy(MerchantStockEntry entry, TradeAccount account, Inventory buyer = null)
     {
-        if (Data?.GoldItem == null || account == null) return false;
+        if (Data == null || account == null) return false;
         if (entry == null || entry.Stock <= 0) return false;
         if (account.TakeGold(entry.Price) < entry.Price) return false;
 
@@ -102,7 +102,7 @@ public class Shop
     // 한꺼번에 계산하면 "절반만 팔린" 상태를 되돌릴 방법이 없다. 개당 원자성을 지킨다.
     public int TrySell(ItemInstance inst, Inventory sourceInv, TradeAccount account, int count = 1)
     {
-        if (Data?.GoldItem == null || inst == null || sourceInv == null || account == null) return 0;
+        if (Data == null || inst == null || sourceInv == null || account == null) return 0;
 
         int price = Data.CalcSellPrice(inst.Data, inst.Quality);
         if (price <= 0) return 0;

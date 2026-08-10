@@ -21,6 +21,15 @@ public class GameTimeManager : MonoBehaviour
     public static int   CurrentDay     { get; private set; }
     public static bool  IsDay          => NormalizedTime < DayFraction;
 
+    // 게임이 시작하고 흐른 **게임 내 시간(초)**. 하루보다 짧은 주기를 재는 것들이 쓴다
+    // (소굴 출격 간격 등) — `OnDayChanged`만으로는 하루에 한 번밖에 못 재고, `Time.time`을
+    // 쓰면 배속·일시정지가 반영되지 않아 멈춰 둔 사이에도 시계가 도는 축이 하나 더 생긴다.
+    public static float Elapsed { get; private set; }
+
+    // 하루 길이(초). **모든 지속시간 데이터의 기준 축**이라 밖에서도 물을 수 있어야 한다 —
+    // "반나절마다"를 900이라고 적으면 하루 길이를 바꿨을 때 같이 안 따라온다.
+    public static float DayDuration => Instance != null ? Instance.dayDuration : 1800f;
+
     // 인스턴스 필드를 static에서 읽기 위한 통로. 씬에 매니저가 없으면 절반으로 가정.
     static float DayFraction => Instance != null ? Instance.dayFraction : 0.5f;
 
@@ -73,6 +82,7 @@ public class GameTimeManager : MonoBehaviour
     void Update()
     {
         _elapsed += Time.deltaTime;
+        Elapsed   = _elapsed;
         float prev    = NormalizedTime;
         NormalizedTime = _elapsed % dayDuration / dayDuration;
 

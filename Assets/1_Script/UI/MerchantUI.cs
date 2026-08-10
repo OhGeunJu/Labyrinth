@@ -94,6 +94,19 @@ public class MerchantUI : MonoBehaviour
         Merchant.OnSelected              += OpenForMerchant;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
         GameModeManager.OnModeChanged    += OnGameModeChanged;
+
+        // **지갑이 밖에서도 바뀐다.** 사고파는 것 말고도 — 옆에 열린 배낭 창에서 동전 뭉치를
+        // 더블클릭하면 잔고가 는다(`InventoryUI.TryClaimCoins`). 구독하지 않으면 `골드: N G`가
+        // 옛 액수로 남고, **이제 살 수 있는 물건인데 [구매]가 잠긴 채**로 있다.
+        // `InventoryUI`는 같은 이유로 이미 구독하고 있었다.
+        Wallet.OnChanged += OnWalletChanged;
+    }
+
+    void OnWalletChanged(int _)
+    {
+        if (panel == null || !panel.activeSelf) return;
+        RefreshGold();
+        RefreshBuyButton();
     }
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }
@@ -114,6 +127,7 @@ public class MerchantUI : MonoBehaviour
         Merchant.OnSelected              -= OpenForMerchant;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
         GameModeManager.OnModeChanged    -= OnGameModeChanged;
+        Wallet.OnChanged                 -= OnWalletChanged;
     }
 
     void Update()
@@ -410,7 +424,7 @@ public class MerchantUI : MonoBehaviour
     void RefreshBuyButton()
     {
         if (buyButton == null) return;
-        if (_selectedBuy == null || _account == null || _shop?.Data?.GoldItem == null)
+        if (_selectedBuy == null || _account == null || _shop?.Data == null)
         { buyButton.interactable = false; return; }
         buyButton.interactable = _selectedBuy.Stock > 0 && _account.GoldAmount >= _selectedBuy.Price;
     }

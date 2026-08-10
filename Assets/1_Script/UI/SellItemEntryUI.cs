@@ -78,9 +78,10 @@ public class SellItemEntryUI : MonoBehaviour,
 
     public void OnPointerEnter(PointerEventData _)
     {
+        // `owner: this` — 팔아서 이 행이 사라지면 툴팁도 같이 닫힌다(`ItemInfoUI` 참고).
         if (_inst?.Data != null)
             ItemInfoUI.Show(_inst.Data, _inst.Quality, _sellPrice > 0 ? _sellPrice : -1, "판매가",
-                               _inst.Locked);
+                               _inst.Locked, this);
     }
 
     public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();

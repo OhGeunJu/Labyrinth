@@ -37,7 +37,7 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
     public List<MerchantStockEntry> CurrentStock => Shop.Stock;
 
     // 이 상인의 지갑은 **거점 창고**다. 상인이 선 자리에서 가장 가까운 창고로 넣고 뺀다.
-    public TradeAccount Account => new StorageAccount(_data?.GoldItem, transform.position);
+    public TradeAccount Account => new StorageAccount(transform.position);
 
     void Awake()
     {

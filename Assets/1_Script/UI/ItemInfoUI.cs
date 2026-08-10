@@ -63,14 +63,32 @@ public class ItemInfoUI : MonoBehaviour
 
     const string LockedNote = "<color=#FAC759>잠김 — 자동 운반·재료·판매·버리기에서 빠집니다</color>";
 
+    // **띄운 놈이 사라지면 툴팁도 사라진다.**
+    //
+    // `OnPointerExit`는 **오브젝트가 파괴되면 오지 않는다.** 그래서 커서를 얹은 채로 격자
+    // 아이콘이나 상점 행이 없어지면(동전 더블클릭으로 잔고에 넣기, 구매, 판매, 목록 갱신)
+    // 툴팁이 그 자리에 영영 남았다.
+    //
+    // **띄우는 쪽마다 `OnDestroy`를 다는 대신 여기서 지켜본다** — 부르는 곳이 넷이고 앞으로
+    // 늘 텐데, 하나가 빠뜨리면 그 경로에서만 툴팁이 남아 원인을 찾기 어렵다.
+    Component _owner;
+
     // priceLabel: null이면 "상점가"/"가치" 자동 결정
+    // owner: 이 툴팁을 띄운 컴포넌트. 넘기면 그게 사라질 때 툴팁도 같이 닫힌다.
     public static void Show(ItemData item, ItemQuality quality, int price = -1,
-                            string priceLabel = null, bool locked = false)
-        => Instance?.ShowInternal(item, quality, price, priceLabel, locked);
+                            string priceLabel = null, bool locked = false,
+                            Component owner = null)
+    {
+        if (Instance == null) return;
+        Instance._owner = owner;
+        Instance.ShowInternal(item, quality, price, priceLabel, locked);
+    }
 
     public static void Hide()
     {
-        if (Instance != null && Instance.panel != null) Instance.panel.SetActive(false);
+        if (Instance == null) return;
+        Instance._owner = null;
+        if (Instance.panel != null) Instance.panel.SetActive(false);
     }
 
     void ShowInternal(ItemData item, ItemQuality quality, int price, string priceLabel, bool locked)
@@ -166,7 +184,21 @@ public class ItemInfoUI : MonoBehaviour
 
     void LateUpdate()
     {
-        if (panel != null && panel.activeSelf) FollowCursor();
+        if (panel == null || !panel.activeSelf) return;
+
+        // 띄운 놈이 파괴됐거나(유니티 null) 꺼졌으면 거둔다.
+        // **`_owner`를 안 넘긴 곳은 예전 그대로** 스스로 `Hide()`를 부른다(장비칸처럼 사라지지
+        // 않는 것들) — 안 넘겼다고 곧바로 닫으면 그쪽이 통째로 못 뜨게 된다.
+        // **`ReferenceEquals`로 "안 넘겼다"를 가른다.** 유니티의 `== null`은 파괴된 것에도
+        // 참이라, 그걸로 물으면 "안 넘긴 것"과 "죽은 것"이 같아 보인다.
+        bool hadOwner = !ReferenceEquals(_owner, null);
+        if (hadOwner && (_owner == null || !_owner.gameObject.activeInHierarchy))
+        {
+            Hide();
+            return;
+        }
+
+        FollowCursor();
     }
 
     void FollowCursor()

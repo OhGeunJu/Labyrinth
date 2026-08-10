@@ -60,6 +60,7 @@ public class Inventory : MonoBehaviour
     public int TryAdd(ItemData data, int amount, ItemQuality quality = ItemQuality.Common)
     {
         if (data == null || amount <= 0) return 0;
+
         int remaining = amount;
 
         // 1) 기존 인스턴스에 스택 채우기 (같은 등급끼리만)

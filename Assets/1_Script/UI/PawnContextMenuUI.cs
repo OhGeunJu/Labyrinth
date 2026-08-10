@@ -49,6 +49,10 @@ public class PawnContextMenuUI : MonoBehaviour
     void LateUpdate()
     {
         if (!IsOpen) return;
+
+        // **그리던 카메라가 꺼지면 닫는다.** 필드↔월드를 오갈 때 반대편 카메라가 꺼지는데,
+        // 그대로 두면 없어진 시점 기준으로 좌표를 풀어 창이 엉뚱한 자리에 붙는다.
+        if (_cam != null && !_cam.isActiveAndEnabled) { Close(); return; }
         if (_cam == null) _cam = Camera.main;
         if (_cam == null) return;
 
@@ -62,9 +66,17 @@ public class PawnContextMenuUI : MonoBehaviour
 
     void OnDestroy() { if (Instance == this) Instance = null; }
 
+    // **연 그 프레임의 클릭은 무시한다.**
+    //
+    // 이 창은 우클릭으로 열리는데, 아래 "밖을 누르면 닫는다"가 같은 프레임의 그 우클릭을
+    // 그대로 집어 즉시 닫아 버린다. 필드에서 멀쩡했던 건 `MoveController`와 실행 순서가
+    // 우연히 맞아서였다 — 창이 먼저 돌아 아직 안 열린 상태로 클릭을 흘려보냈다.
+    // `WorldMapView`는 -40이라 순서가 뒤집혀 그 우연이 깨진다. 순서에 기대지 않고 못 박는다.
+    int _openedFrame = -1;
+
     void Update()
     {
-        if (!IsOpen) return;
+        if (!IsOpen || Time.frameCount == _openedFrame) return;
 
         // Esc 또는 **메뉴 밖 클릭**으로 닫는다. 좌우 어느 버튼이든 닫는다 —
         // 열어 둔 채로 다른 조작을 하면 그 조작이 메뉴 뒤에서 일어나 혼란스럽다.
@@ -87,7 +99,11 @@ public class PawnContextMenuUI : MonoBehaviour
 
     // title = 무엇에 대한 명령인가. options = (문구, 눌렀을 때).
     // worldAnchor = **우클릭한 월드 지점.** 화면 좌표가 아니다 — 카메라를 움직여도 그 자리에 남는다.
-    public void Open(string title, List<(string label, Action action)> options, Vector3 worldAnchor)
+    //
+    // `cam`은 그 월드 지점을 보는 카메라. **월드맵도 이 창을 쓴다** — 거기선 `Camera.main`이
+    // 필드 카메라(꺼져 있다)라 그대로 두면 좌표를 못 푼다. 비우면 `Camera.main`.
+    public void Open(string title, List<(string label, Action action)> options, Vector3 worldAnchor,
+                     Camera cam = null)
     {
         if (panel == null || optionContainer == null || optionTemplate == null) return;
         if (options == null || options.Count == 0) { Close(); return; }
@@ -113,6 +129,15 @@ public class PawnContextMenuUI : MonoBehaviour
         }
 
         _worldAnchor = worldAnchor;
+        _openedFrame = Time.frameCount;
+
+        // **매번 다시 정한다 — 비워서 부르면 `Camera.main`으로 되돌린다.**
+        //
+        // 전에는 `if (cam != null)`이라 **월드맵이 한 번 쓰고 나면 그 카메라가 눌러앉았다.**
+        // 필드로 돌아와 우클릭하면(`MoveController`는 `cam`을 안 넘긴다) 꺼진 월드 카메라로
+        // 자리를 풀고, 아래 `LateUpdate`가 "그리던 카메라가 꺼졌다"며 **연 그 프레임에 닫았다** —
+        // 그 뒤로 세션 내내 우클릭 창이 안 떴다.
+        _cam = cam != null ? cam : Camera.main;
         panel.SetActive(true);
 
         // 크기는 여는 순간 한 번만 확정하면 된다(줄 수가 안 바뀐다).

@@ -96,8 +96,9 @@ public class MerchantData : ScriptableObject
         foreach (var p in ExtraPools)
             if (p != null) p.Collect(into, seen);
     }
-    [Tooltip("골드 아이템 (구매 시 Storage에서 차감)")]
-    public ItemData GoldItem;
+    // **골드 아이템 필드는 없앴다**(2026-08-10). 값은 숫자고 지갑은 전역 잔고(`Wallet`)라
+    // 상인이 "무엇이 돈인가"를 들고 있을 이유가 없다. 남겨 두면 안 채운 상인이
+    // "이 상인에겐 골드 설정이 없다"로 조용히 거래 불가가 된다.
 
     [Header("가격 조정")]
     [Tooltip("마을 전체 구매가 배율. 1.0=기본, 1.5=비싼 마을, 0.8=싼 마을")]

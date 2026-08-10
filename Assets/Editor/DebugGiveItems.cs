@@ -8,53 +8,170 @@ using UnityEngine;
 // 빌드에서 빼는 것도 잊는다. `Assets/Editor/`에 있는 것은 **빌드에 아예 안 들어간다.**
 public static class DebugGiveItems
 {
-    const int DefaultAmount = 20;
-
-    // 전부 담는 데 **190칸**이 필요하다(89종, 그중 33종이 2칸 이상 — 장비는 한 종에 2×4).
-    // 큰 창고(192칸)는 숫자로는 딱 맞지만 조각이 남아 실제론 몇 종이 밀린다. 넉넉히 잡는다.
     const int ChestW = 20, ChestH = 14;   // 280칸
+    const int MaxChests = 12;             // 안전장치 — 무한히 만들지 않는다
     const string ChestName = "[DebugChest]";
+
+    // **등급은 장비에만 준다.**
+    //
+    // `StatMultiplier`(1.0~3.0)가 실제로 바꾸는 것은 셋뿐이다 — 무기 피해(`SyncBlackboard`),
+    // 갑옷 감소(`GetArmorQualityMult`), 값(`CalcSellPrice`·툴팁). 앞의 둘이 장비 전용이므로
+    // **광석·음식은 등급이 달라도 값만 오르고 하는 일이 같다.**
+    //
+    // 그런 것까지 여섯 벌씩 주면 상자만 여섯 배로 불고, 정작 비교해야 할 장비가 그 사이에
+    // 묻힌다. 값 확인은 장비로도 충분하다.
+    static readonly ItemQuality[] GearQualities =
+    {
+        ItemQuality.Common, ItemQuality.Uncommon, ItemQuality.Rare,
+        ItemQuality.Unique, ItemQuality.Epic,     ItemQuality.Legendary,
+    };
+
+    static readonly ItemQuality[] PlainQuality = { ItemQuality.Common };
+
+    static readonly List<Storage> _chests = new();
 
     [MenuItem("DungeonColony/Debug: Give All Items")]
     static void GiveAllToStorage()
     {
         if (!EnsurePlaying()) return;
 
-        var chest = EnsureDebugChest();
+        _chests.Clear();
         var items = CollectItems();
         int placed = 0;
         var failed = new List<string>();
 
         foreach (var item in items)
         {
-            // 스택이 큰 것은 한 칸에 다 들어가지만, 장비(스택 1)는 하나가 한 자리를 먹는다.
-            // 장비를 20개씩 주면 창고가 그것만으로 꽉 찬다 — **스택 없는 것은 하나만**.
-            int want = item.MaxStack > 1 ? Mathf.Min(DefaultAmount, item.MaxStack) : 1;
+            // 장비(스택 1)는 하나가 한 자리를 먹으므로 **등급마다 하나씩**,
+            // 그 밖은 **일반 등급으로 최대치까지 꽉** 채운다 — 재료가 모자라 제작을 끝까지
+            // 못 돌려 보는 일이 없게.
+            bool gear = item is WeaponData || item is ArmorData;
+            var qualities = gear ? GearQualities : PlainQuality;
+            int want      = gear ? 1 : Mathf.Max(1, item.MaxStack);
 
-            // **디버그 상자에 먼저** 넣는다 — 넉넉하고, 창고 필터에 걸리지 않는다.
-            int got = chest != null ? chest.TryAdd(item, want) : 0;
+            bool any = false;
+            foreach (var q in qualities)
+                if (Give(item, want, q) > 0) any = true;
 
-            // 그래도 남으면(상자도 꽉 찼으면) 평소 창고로.
-            if (got < want)
-                foreach (var st in Storage.All)
-                {
-                    if (st == null || st == chest || !st.IsActive) continue;
-                    got += st.TryAdd(item, want - got);
-                    if (got >= want) break;
-                }
-
-            if (got > 0) placed++;
+            if (any) placed++;
             else failed.Add(item.ItemName);
         }
 
-        Debug.Log($"[Debug] {placed}/{items.Count}종 지급 — 디버그 상자를 클릭해 확인하세요.");
+        Debug.Log($"[Debug] {placed}/{items.Count}종 지급 (장비는 등급 6종 각 1개, 그 밖은 최대 스택). " +
+                  $"디버그 상자 {_chests.Count}개 — 클릭해 확인하세요.");
+
         if (failed.Count > 0)
-            // 아이템이 89종인데 기본 창고는 80칸이고, **장비 한 종이 2×4(8칸)** 를 먹는다.
-            // 다 받으려면 창고가 여러 개 필요하다 — 그걸 모르면 "치트가 안 먹는다"로 보인다.
-            Debug.LogWarning($"[Debug] 못 넣은 것 {failed.Count}종(자리 없음 또는 창고 필터): " +
+            Debug.LogWarning($"[Debug] 못 넣은 것 {failed.Count}종: " +
                              string.Join(", ", failed.GetRange(0, Mathf.Min(12, failed.Count))) +
                              (failed.Count > 12 ? " 외" : "") +
-                             "\n장비는 한 종이 2×4칸을 먹습니다 — 큰 창고를 더 지으면 나머지가 들어갑니다.");
+                             $"\n상자를 {MaxChests}개까지만 만듭니다(무한 생성 방지).");
+    }
+
+    // **자리가 모자라면 상자를 하나 더 만든다.**
+    //
+    // 등급을 곱하면서 한 상자로는 어림도 없어졌다(장비 한 종이 6개가 되고, 그 하나가 2×4칸을
+    // 먹는다). 크기를 키우는 대신 **개수를 늘린다** — 격자가 화면보다 커지면 열어 봐도 못 본다.
+    //
+    // "치트를 쓰려면 먼저 큰 창고를 두 개 지으세요"는 테스트 도구가 할 말이 아니다.
+    static int Give(ItemData item, int amount, ItemQuality quality)
+    {
+        int got = 0;
+
+        for (int i = 0; i < MaxChests && got < amount; i++)
+        {
+            if (i >= _chests.Count)
+            {
+                var made = EnsureDebugChest(i);
+                if (made == null) break;
+                _chests.Add(made);
+            }
+
+            var chest = _chests[i];
+            if (chest != null) got += chest.TryAdd(item, amount - got, quality);
+        }
+        return got;
+    }
+
+    // **고른 폰에게 장비를 채워 준다** — 하이어라키에서 폰을 고르고 실행.
+    //
+    // 왜 필요했나: 적은 맨몸으로 태어나서 **죽여도 시체에서 아무것도 안 나온다.** 그러면
+    // 시체 창·약탈·되팔기·`ResaleFactor`를 확인할 길이 없다(창을 열어도 늘 비어 있으니
+    // "창이 고장 났나 물건이 없나"조차 못 가른다).
+    //
+    // `Debug: Give All Items`와 다른 축이다 — 그건 **내 창고**를 채우고, 이건 **저 폰**을 채운다.
+    // 상대에게 물건을 쥐여 주는 길은 그것 말고는 없다.
+    [MenuItem("DungeonColony/Debug: Arm Selected Pawn")]
+    static void ArmSelectedPawn()
+    {
+        if (!EnsurePlaying()) return;
+
+        var pawns = new List<UnitBrain>();
+        foreach (var go in Selection.gameObjects)
+        {
+            var brain = go != null ? go.GetComponentInParent<UnitBrain>() : null;
+            if (brain != null && !pawns.Contains(brain)) pawns.Add(brain);
+        }
+
+        if (pawns.Count == 0)
+        {
+            Debug.LogWarning("[Debug] 하이어라키에서 폰을 고르고 실행하세요 " +
+                             "(Play 중 씬 뷰에서 클릭하거나 하이어라키에서 선택).");
+            return;
+        }
+
+        // **이름순으로 고른다.** 레지스트리는 Dictionary라 순서가 실행마다 흔들리는데,
+        // 그러면 같은 폰을 두 번 무장시켰을 때 다른 장비가 나와 무엇을 보고 있는지 헷갈린다.
+        var items = CollectItems();
+        items.Sort((a, b) => string.CompareOrdinal(a.ItemName, b.ItemName));
+
+        foreach (var brain in pawns) Arm(brain, items);
+    }
+
+    static void Arm(UnitBrain brain, List<ItemData> items)
+    {
+        var inv = brain.Inventory;
+        var eq  = brain.Equipment;
+        if (inv == null) { Debug.LogWarning($"[Debug] {brain.name}: Inventory가 없습니다."); return; }
+
+        int worn = 0, carried = 0;
+
+        // ── 장비 — **인벤토리에 넣은 뒤 장착한다.**
+        // `Equipment.Equip*`은 `FindInInventory` + `RemoveOne`으로 동작한다(배낭에서 꺼내 차는 것).
+        // 바로 장착시키는 길은 없고, 있으면 안 된다 — 손으로 차는 것과 다른 경로가 생긴다.
+        if (eq != null)
+        {
+            var weapon = items.Find(i => i is WeaponData w && w.Type != WeaponType.Shield) as WeaponData;
+            if (weapon != null && inv.TryAdd(weapon, 1) > 0 && eq.Equip(weapon)) worn++;
+
+            // 방패는 **양손 무기를 들면 못 찬다**(`OffHandLocked`) — 실패해도 정상이다.
+            var shield = items.Find(i => i is WeaponData w && w.Type == WeaponType.Shield) as WeaponData;
+            if (shield != null && inv.TryAdd(shield, 1) > 0 && eq.EquipOffHand(shield)) worn++;
+
+            foreach (ArmorSlot slot in System.Enum.GetValues(typeof(ArmorSlot)))
+            {
+                var s = slot;
+                var armor = items.Find(i => i is ArmorData a && a.Slot == s) as ArmorData;
+                if (armor != null && inv.TryAdd(armor, 1) > 0 && eq.EquipArmor(armor)) worn++;
+            }
+        }
+
+        // ── 소지품 — 약탈해서 되팔 것이 있어야 `ResaleFactor`가 눈에 보인다.
+        // 장비만 주면 등급 배율만 확인되고, 자원만 주면 감가가 안 보인다.
+        int want = 6;
+        foreach (var item in items)
+        {
+            if (want <= 0) break;
+            if (item is WeaponData || item is ArmorData) continue;   // 위에서 이미 다뤘다
+            if (Wallet.IsCurrency(item)) continue;                   // 동전은 아래에서 따로
+            if (inv.TryAdd(item, Mathf.Min(5, item.MaxStack)) > 0) { carried++; want--; }
+        }
+
+        // 동전 — 시체에서 주워 **더블클릭으로 잔고가 되는지**까지 확인하려면 필요하다.
+        var coin = Wallet.Coin;
+        if (coin != null && inv.TryAdd(coin, 25) > 0) carried++;
+
+        Debug.Log($"[Debug] {brain.UnitName ?? brain.name}: 착용 {worn}점 · 소지품 {carried}종. " +
+                  "쓰러뜨린 뒤 시체를 우클릭 → [뒤진다].");
     }
 
     [MenuItem("DungeonColony/Debug: Complete All Research")]
@@ -85,18 +202,21 @@ public static class DebugGiveItems
     // "치트를 쓰려면 먼저 큰 창고를 두 개 지으세요"는 테스트 도구가 할 말이 아니다.
     //
     // 이미 있으면 그걸 쓴다(다시 눌러도 상자가 늘지 않는다).
-    static Storage EnsureDebugChest()
+    // `index`는 몇 번째 상자인가 — 등급까지 주면서 한 상자로는 모자라졌다.
+    static Storage EnsureDebugChest(int index)
     {
+        string name = index == 0 ? ChestName : $"{ChestName} {index + 1}";
+
         foreach (var st in Storage.All)
-            if (st != null && st.name == ChestName) return st;
+            if (st != null && st.name == name) return st;
 
-        var go = new GameObject(ChestName);
+        var go = new GameObject(name);
 
-        // 던전 핵 옆에 놓는다 — 폰이 운반해 갈 수 있어야 하므로 손 닿는 곳이어야 한다.
+        // 던전 핵 옆에 **한 줄로** 늘어놓는다 — 폰이 운반해 갈 수 있어야 하므로 손 닿는 곳이어야
+        // 하고, 겹쳐 놓으면 어느 것을 클릭했는지 알 수 없다.
         var core = Object.FindFirstObjectByType<DungeonCore>();
-        go.transform.position = core != null
-            ? core.transform.position + new Vector3(3f, 0f, 3f)
-            : Vector3.zero;
+        go.transform.position = (core != null ? core.transform.position : Vector3.zero)
+                              + new Vector3(3f + index * 2f, 0f, 3f);
 
         // 눈에 보이고 클릭도 되게 — 안 그러면 어디 생겼는지 알 수 없다.
         var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -118,7 +238,7 @@ public static class DebugGiveItems
         var storage = go.AddComponent<Storage>();
         storage.BuildingName = "디버그 상자";
 
-        Debug.Log($"[Debug] {ChestName} 생성 ({ChestW}×{ChestH} = {ChestW * ChestH}칸). 핵 옆에 있습니다.");
+        Debug.Log($"[Debug] {name} 생성 ({ChestW}×{ChestH} = {ChestW * ChestH}칸). 핵 옆에 있습니다.");
         return storage;
     }
 

@@ -133,6 +133,7 @@ public class WorldMap : MonoBehaviour
         // 상점이 엉뚱한 마을에 붙는다(도메인 리로드를 끄면 플레이 정지 뒤에도 살아남는다).
         TownMarket.Clear();
         TownRecruits.Clear();
+        WorldLairs.Clear();
 
         if (mapData != null && mapData.IsSized) LoadAuthored();
         else                                    BuildEmpty();

@@ -140,8 +140,10 @@ public class PawnSpec
     //
     //   F- 한 사람 1000G에서 시작해 **등급 한 칸당 500G.**
     //   마을 후보 범위(F- ~ E)면 대략 **1000 ~ 3000G**, 그 위 등급이 열리면 그만큼 더 든다.
-    const float PriceBase     = 1000f;
-    const float PricePerGrade = 500f;
+    // **몸값도 같은 축을 쓴다**(`WorldRansom`) — 사람 값이 두 벌이면 "고용은 싼데 되찾는 건
+    // 비싸다"가 설명이 아니라 사고가 된다. 그래서 공개해 둔다.
+    public const float PriceBase     = 1000f;
+    public const float PricePerGrade = 500f;
 
     // **같은 등급이라도 값은 다르다** — 급한 사람은 싸게 나오고 자기 값을 아는 사람은 비싸게
     // 부른다. 흔들림이 없으면 값이 곧 스탯 표가 되어 굳이 볼 이유가 없어진다.

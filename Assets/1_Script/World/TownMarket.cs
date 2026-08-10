@@ -55,15 +55,6 @@ public static class TownMarket
         return shops;
     }
 
-    // 그 마을에서 오가는 돈. **상인의 `GoldItem`이 이 프로젝트에서 "무엇이 돈인가"의 유일한
-    // 출처다** — 전역 골드 참조가 없다. 시장이 없는 마을은 돈도 안 도는 것으로 본다.
-    public static ItemData GoldAt(Vector2Int node)
-    {
-        foreach (var s in ShopsAt(node))
-            if (s.Data != null && s.Data.GoldItem != null) return s.Data.GoldItem;
-        return null;
-    }
-
     // 씬을 다시 시작해도 static은 살아남는다(도메인 리로드를 끈 경우). 남은 마을이
     // 옛 월드맵 좌표를 물고 있으면 엉뚱한 상인이 서므로, 월드맵을 새로 지을 때 비운다.
     public static void Clear()

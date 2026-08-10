@@ -435,6 +435,46 @@ public class BodyPartSystem : MonoBehaviour
         BloodCap = Mathf.Min(maxBlood, BloodCap + amount);
     }
 
+    // ── 치료 ────────────────────────────────────────────────────────────────
+    //
+    // **자연 회복·휴식이 못 하는 몫까지 끌어올린다.** 누워 있으면 저절로 낫긴 하지만
+    // (`RestNode`), 그건 시간이 지나는 것이지 누가 무엇을 한 것이 아니다. 치료는 사람이
+    // 개입하는 자리라 **한 번에 크게, 그리고 즉시 지혈**한다.
+
+    // 손댈 것이 남았는가. **파괴된 부위는 안 센다** — `HealBodyParts`가 건너뛰므로
+    // 세어 봐야 영원히 끝나지 않는 일감이 된다(의족은 후유증 축의 일이다).
+    public bool NeedsTreatment
+    {
+        get
+        {
+            if (BloodCap < maxBlood - 0.5f) return true;
+            foreach (var part in _parts.Values)
+                if (!part.IsDestroyed && part.CurrentHP < part.MaxHP - 0.5f) return true;
+            return false;
+        }
+    }
+
+    // 치료 한 회차. `TreatJob`이 약을 하나 소모하면서 부른다.
+    //
+    // **혈액은 캡을 안 깎는다**(`degradeCap: false`) — 캡이 주는 것은 "억지로 끌어올린 값"이라는
+    // 뜻인데, 치료는 그 캡 자체를 되돌리는 일이다. 깎으면서 되돌리면 제자리걸음이 된다.
+    public void Treat(float partHeal, float capHeal)
+    {
+        HealBodyParts(partHeal);
+        RestoreBloodCap(capHeal);
+        HealBlood(partHeal, degradeCap: false);
+        StopBleeding();
+    }
+
+    // **즉시 지혈.** 출혈은 `LastWoundTime`부터 `clotSeconds`에 걸쳐 저절로 멎는데,
+    // 그 시각을 과거로 밀어 지금 멎게 한다. 휴식은 못 하고 치료만 하는 일이다 —
+    // 연타로 계속 터지는 출혈을 끊는 것이 치료의 가장 급한 몫이라서.
+    public void StopBleeding()
+    {
+        foreach (var part in _parts.Values)
+            part.LastWoundTime = Time.time - clotSeconds;
+    }
+
     public void HealBodyParts(float amount)
     {
         foreach (var part in _parts.Values)

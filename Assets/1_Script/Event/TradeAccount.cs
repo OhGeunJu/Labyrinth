@@ -12,20 +12,33 @@ using UnityEngine;
 // 실제로 받은 개수를 돌려주면 호출자가 거기까지만 값을 치르면 된다.
 public abstract class TradeAccount
 {
-    protected readonly ItemData GoldItem;
-
-    protected TradeAccount(ItemData goldItem) { GoldItem = goldItem; }
-
     // UI에 "누구의 지갑인가"를 적는다 — 창고 돈과 원정대 돈을 헷갈리면 안 산 물건을 샀다고 믿는다.
     public abstract string Label { get; }
 
-    public abstract int GoldAmount { get; }
+    // ── 돈은 하나다 ───────────────────────────────────────────────────────────
+    //
+    // **누가 사러 왔든 지갑은 같다**(`Wallet`). 예전엔 창고 골드와 배낭 골드가 따로 놀아서
+    // 같은 물건을 거점에선 살 수 있고 지도에선 못 사는 일이 났고, 돈을 묻는 곳이 생길 때마다
+    // "배낭 먼저, 그다음 창고"를 다시 짜야 했다.
+    //
+    // **갈리는 것은 돈이 아니라 물건이다** — 산 것이 창고로 가느냐 배낭으로 가느냐는 여전히
+    // 누가 사러 왔느냐의 문제다. 그래서 `Receive`만 하위가 정한다.
+    public int GoldAmount => Wallet.Balance;
 
     // 실제로 뺀 금액. 전액을 못 대면 **아무것도 빼지 않고** 0.
-    public abstract int TakeGold(int amount);
+    public int TakeGold(int amount)
+    {
+        if (amount <= 0) return 0;
+        return Wallet.TrySpend(amount) ? amount : 0;
+    }
 
-    // 실제로 넣은 금액. 넣을 곳이 없으면 0.
-    public abstract int GiveGold(int amount);
+    // 실제로 넣은 금액. 잔고는 늘 받는다 — 넣을 자리라는 개념이 없다.
+    public int GiveGold(int amount)
+    {
+        if (amount <= 0) return 0;
+        Wallet.Add(amount);
+        return amount;
+    }
 
     // 산 물건을 받는다. 실제로 받은 개수(0 = 받을 곳 없음).
     public abstract int Receive(ItemData item, int amount, ItemQuality quality);
@@ -37,28 +50,12 @@ public class StorageAccount : TradeAccount
     // 창고를 고를 기준점. 상인이 서 있는 자리에서 가장 가까운 창고로 넣고 뺀다.
     readonly Vector3 _origin;
 
-    public StorageAccount(ItemData goldItem, Vector3 origin) : base(goldItem)
+    public StorageAccount(Vector3 origin)
     {
         _origin = origin;
     }
 
     public override string Label => "창고";
-
-    public override int GoldAmount => GoldItem != null ? Storage.GetTotalByItem(GoldItem) : 0;
-
-    public override int TakeGold(int amount)
-    {
-        if (GoldItem == null || amount <= 0) return 0;
-        // `ConsumeByItem`은 총량을 먼저 확인하므로 부분 차감이 없다 — 계약과 맞는다.
-        return Storage.ConsumeByItem(GoldItem, amount) ? amount : 0;
-    }
-
-    public override int GiveGold(int amount)
-    {
-        if (GoldItem == null || amount <= 0) return 0;
-        var dest = Storage.FindNearest(_origin, GoldItem, amount);
-        return dest != null ? dest.Inventory.TryAdd(GoldItem, amount) : 0;
-    }
 
     public override int Receive(ItemData item, int amount, ItemQuality quality)
     {
@@ -83,50 +80,12 @@ public class PartyAccount : TradeAccount
 {
     readonly IReadOnlyList<UnitBrain> _members;
 
-    public PartyAccount(ItemData goldItem, IReadOnlyList<UnitBrain> members) : base(goldItem)
+    public PartyAccount(IReadOnlyList<UnitBrain> members)
     {
         _members = members;
     }
 
     public override string Label => "원정대";
-
-    public override int GoldAmount
-    {
-        get
-        {
-            if (GoldItem == null || _members == null) return 0;
-            int sum = 0;
-            foreach (var m in _members)
-            {
-                var inv = Inv(m);
-                if (inv != null) sum += inv.GetUnlockedQuantity(GoldItem);
-            }
-            return sum;
-        }
-    }
-
-    public override int TakeGold(int amount)
-    {
-        if (GoldItem == null || amount <= 0 || _members == null) return 0;
-        if (GoldAmount < amount) return 0;     // 전액 아니면 손대지 않는다
-
-        int left = amount;
-        foreach (var m in _members)
-        {
-            if (left <= 0) break;
-            var inv = Inv(m);
-            if (inv != null) left -= inv.RemoveUnlocked(GoldItem, left);
-        }
-
-        // 위에서 총량을 확인했으므로 여기 남는 일은 없다. 남았다면 세는 쪽과 빼는 쪽의
-        // 기준이 어긋난 것이므로 조용히 넘기지 않고 드러낸다.
-        if (left > 0)
-            Debug.LogWarning($"[PartyAccount] 골드 차감이 {left} 모자랍니다 — 세는 기준과 빼는 기준이 어긋났습니다.");
-
-        return amount - left;
-    }
-
-    public override int GiveGold(int amount) => Receive(GoldItem, amount, ItemQuality.Common);
 
     public override int Receive(ItemData item, int amount, ItemQuality quality)
     {

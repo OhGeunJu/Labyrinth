@@ -43,9 +43,23 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
         if (_data?.Prefab == null) return;
 
         var ghost = Instantiate(_data.Prefab);
-        ghost.transform.SetParent(transform, false);   // 프리팹의 저작 부양 높이는 로컬 Y로 보존됨
+        ghost.transform.SetParent(transform, false);
+
+        // **루트 로컬 위치를 실제 배치와 같게 맞춘다.**
+        //
+        // `SetParent(transform, false)`는 프리팹 루트의 `localPosition`을 **그대로 물려받는다.**
+        // 그런데 완성될 때는 `Instantiate(prefab, pos, rot)`라 그 값이 **버려진다** — 그래서
+        // 루트가 0이 아닌 프리팹은 청사진과 완성품이 그만큼 어긋나 보였다
+        // (`Bed.prefab` 루트가 z = 0.5라, 침대가 청사진보다 반 칸 뒤에 놓였다).
+        //
+        // 부양 높이만 다시 얹는다 — `SpawnOnSurface`가 배치 때 하는 것과 같다.
+        // 배치 미리보기(`BuildModeManager.EnsureGhost`)는 처음부터 이렇게 하고 있었다.
+        float hover = BuildModeManager.AuthoredHover(_data.Prefab);
+        ghost.transform.localPosition = new Vector3(0f, hover, 0f);
+        ghost.transform.localRotation = Quaternion.identity;
+
         // 완성 후 모습과 같은 높이로 — 부양 프리팹이 아니면 렌더러 바닥면을 표면에 맞춘다.
-        if (MapManager.Instance != null && BuildModeManager.AuthoredHover(_data.Prefab) <= 0f)
+        if (MapManager.Instance != null && hover <= 0f)
             BuildModeManager.SnapOnSurface(
                 ghost, MapManager.Instance.SurfaceHeight(MapManager.Instance.WorldToTile(transform.position)));
 

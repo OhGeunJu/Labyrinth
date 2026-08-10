@@ -280,6 +280,7 @@ public static class DataManager
                     "armor"    => BuildArmor(   JsonUtility.FromJson<ArmorSchema>(json),        contentRoot),
                     "resource" => BuildResource(JsonUtility.FromJson<ResourceItemSchema>(json), contentRoot),
                     "food"     => BuildFood(    JsonUtility.FromJson<FoodSchema>(json),         contentRoot),
+                    "medicine" => BuildMedicine(JsonUtility.FromJson<MedicineSchema>(json),     contentRoot),
                     _          => BuildItem(    JsonUtility.FromJson<ItemSchema>(json),         contentRoot),
                 };
                 RegisterItem(item);   // Id 색인 + 표시명 보조 색인 + 충돌 경고
@@ -482,5 +483,14 @@ public static class DataManager
         f.NutritionValue = s.nutritionValue;
         f.EatTime        = s.eatTime;
         return f;
+    }
+
+    static MedicineData BuildMedicine(MedicineSchema s, string root)
+    {
+        var m = ScriptableObject.CreateInstance<MedicineData>();
+        ApplyBase(m, s, root);
+        m.Potency    = s.potency;
+        m.TreatSpeed = s.treatSpeed;
+        return m;
     }
 }

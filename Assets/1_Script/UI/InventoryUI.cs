@@ -108,6 +108,7 @@ public class InventoryUI : MonoBehaviour
         if (_instance == this) _instance = null;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
         if (_weightInventory != null) _weightInventory.OnChanged -= RefreshWeight;
+        if (_walletHooked) Wallet.OnChanged -= OnWalletChanged;
     }
 
     void OnBuildModeChanged(bool active) { if (active && panel != null) panel.SetActive(false); }
@@ -255,6 +256,8 @@ public class InventoryUI : MonoBehaviour
     UnitBrain _weightPawn;
     Inventory _weightInventory;
 
+    bool _walletHooked;
+
     void BindWeight(UnitBrain brain)
     {
         // 인벤토리가 바뀔 때만 다시 그린다 — 매 프레임 무게를 합산할 이유가 없다.
@@ -264,8 +267,18 @@ public class InventoryUI : MonoBehaviour
         _weightInventory = brain != null ? brain.Inventory : null;
         if (_weightInventory != null) _weightInventory.OnChanged += RefreshWeight;
 
+        // 잔고는 배낭과 무관하게 움직인다(시체 루팅·거래·몸값) — 따로 구독해야 같은 줄이
+        // 뒤처지지 않는다. **한 번만 건다**: 폰을 바꿀 때마다 걸면 중복으로 쌓인다.
+        if (!_walletHooked)
+        {
+            Wallet.OnChanged += OnWalletChanged;
+            _walletHooked = true;
+        }
+
         RefreshWeight();
     }
+
+    void OnWalletChanged(int _) => RefreshWeight();
 
     // ── 짐내림 토글 ──────────────────────────────────────────────────────────
     // P키 무리 관리에도 있지만, **짐을 보면서 정하는 설정**이라 배낭 창에도 둔다.
@@ -354,7 +367,10 @@ public class InventoryUI : MonoBehaviour
         float load = CarryCapacity.Load(_weightPawn);
         float cap  = CarryCapacity.For(_weightPawn);
 
-        weightText.text  = $"무게 {load:0.#}/{cap:0.#}kg";
+        // **잔고를 같은 줄에 붙인다.** 돈이 아이템이던 시절엔 배낭 격자에서 눈으로 셌는데,
+        // 전역 잔고가 되면서 상시로 볼 데가 사라졌다. 새 칸을 만들려면 씬을 고쳐야 하고,
+        // 무게와 돈은 둘 다 "지금 얼마나 지고 다니나"라 같은 줄에 있어도 어색하지 않다.
+        weightText.text  = $"무게 {load:0.#}/{cap:0.#}kg   골드 {Wallet.Balance:N0}";
         // 과적은 색으로 알린다 — 숫자만으로는 넘겼는지 눈에 안 들어온다.
         weightText.color = load > cap
             ? new Color(0.95f, 0.55f, 0.40f)
@@ -452,10 +468,39 @@ public class InventoryUI : MonoBehaviour
         // 잠그려다 물건을 팔아 버린다.
         if (_lockMode) return;
 
+        // **동전은 쓰는 물건이다.** 어느 모드든 여기서 먼저 잡는다 —
+        // 판매 모드에서 동전을 팔거나, 루팅 모드에서 동전을 배낭 칸으로 옮기는 것은
+        // 둘 다 할 이유가 없는 짓이다. 시체에서 바로 챙기는 것도 이 길로 된다.
+        if (TryClaimCoins(inst, sourceGrid)) return;
+
         _selectedItem       = inst;
         _selectedSourceGrid = sourceGrid;
         if (_mode == ActionMode.Sell) ExecuteSell();
         else if (_mode == ActionMode.Loot) ExecuteLoot();
+    }
+
+    // 동전 뭉치를 잔고로 바꾼다. 아이템이 아니었으면 거짓.
+    //
+    // **자동으로 빨아들이지 않는다**(사용자 결정 2026-08-10): 동전은 세상에 아이템으로 남고,
+    // 눌러야 우리 것이 된다. 그래서 시작할 때 이미 놓여 있던 동전을 걷어들이는 전환도,
+    // "어느 인벤토리가 우리 것인가"를 가리는 스위치도 필요 없다 — **누르는 사람이 곧 임자다.**
+    bool TryClaimCoins(ItemInstance inst, InventoryGridUI sourceGrid)
+    {
+        if (inst == null || !Wallet.IsCurrency(inst.Data)) return false;
+
+        var inv = sourceGrid != null ? sourceGrid.Inventory : null;
+        if (inv == null) return false;
+
+        int amount = inst.Quantity;
+        if (amount <= 0) return false;
+
+        inv.RemoveInstance(inst);
+        Wallet.Add(amount);
+
+        // 고른 것이 사라졌으므로 액션 바를 다시 그린다 — 안 그러면 없는 물건에 [판매]가 남는다.
+        if (_selectedItem == inst) _selectedItem = null;
+        RefreshActionBar();
+        return true;
     }
 
     // ── 액션 버튼 ────────────────────────────────────────────────────────────

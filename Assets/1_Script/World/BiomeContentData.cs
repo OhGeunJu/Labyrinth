@@ -74,6 +74,68 @@ public class BiomeContentData : ScriptableObject
     [Tooltip("비어 있으면 그 바이옴의 마을엔 구할 사람이 없다.")]
     public List<RecruitEntry> TownRecruits = new();
 
+    // ── 적 소굴 (월드맵 EnemyLair 칸) ────────────────────────────────────────
+    // "이 지역 소굴엔 누가 사는가". 상인·인력과 같은 방식으로 **칸 좌표 + 시드**에서
+    // 결정적으로 고른다(`WorldLairs`) — 소굴을 하나하나 저작하지 않아도 지역색이 생긴다.
+    //
+    // **소굴은 무리의 출처다.** 소굴이 없으면 지도에 약탈대가 나올 데가 없고, 약탈대가
+    // 없으면 소굴은 그냥 붉은 표식이다 — 둘은 서로의 이유가 된다.
+    [System.Serializable]
+    public class LairEntry
+    {
+        [Tooltip("이 소굴이 내보내는 무리. **Behavior가 Roam인 것**을 쓴다. " +
+                 "예고된 습격도 이 구성으로 온다 — 소굴 하나에 무리 종류가 둘이면 " +
+                 "'떠돌던 그놈들이 쳐들어왔다'가 성립하지 않는다.")]
+        public WorldBandData Band;
+
+        [Tooltip("소굴 이름. 비우면 무리 이름을 쓴다.")]
+        public string LairName;
+
+        [Tooltip("소굴이 품은 총 병력. 내보낼 때마다 줄고, 다 떨어지면 소굴이 사라진다.")]
+        [Min(1)] public int MinStrength = 8;
+        [Min(1)] public int MaxStrength = 18;
+
+        [Tooltip("몇 **일**마다 떠돌이 무리를 내보내는가. 하루 길이(`GameTimeManager.DayDuration`)를 " +
+                 "축으로 쓰므로 하루를 늘리면 같이 늘어난다. 0.5 = 반나절마다.")]
+        [Min(0.05f)] public float SortieDays = 0.5f;
+
+        [Tooltip("내보낸 무리가 밖에서 떠도는 기간(일). 지나면 근거지로 돌아가고 병력이 복귀한다.")]
+        [Min(0.1f)] public float RoamDays = 1.5f;
+
+        // ── 예고된 습격 ──────────────────────────────────────────────────────
+        // 떠돌이와 **다른 축**이다. 떠돌이는 마주쳐야 사건이 되지만, 습격은 작정하고 온다 —
+        // 대신 **미리 알려 준다.** 예고가 없으면 대비할 수 없어 그냥 재해가 되고,
+        // 예고가 있으면 "그 전에 소굴을 친다"가 선택이 된다.
+
+        [Tooltip("몇 일마다 습격을 계획하는가. 0이면 이 소굴은 습격을 오지 않는다(떠돌기만 한다).")]
+        [Min(0f)] public float RaidIntervalDays = 3f;
+
+        [Tooltip("예고에서 실제 도착까지의 시간(일). **막을 시간이 여기서 나온다** — " +
+                 "짧으면 예고가 통보가 되고, 길면 잊어버린다.")]
+        [Min(0.1f)] public float RaidWarningDays = 1f;
+
+        [Tooltip("습격에 병력의 몇 할을 보내는가. 1이면 소굴을 비우고 전부 온다.")]
+        [Range(0.1f, 1f)] public float RaidPortion = 0.6f;
+
+        [Tooltip("하루에 회복하는 병력. 0이면 한 번 깎인 소굴은 영영 안 돌아온다 — " +
+                 "습격이 되돌릴 수 없는 성과가 되지만, 지도가 조용해지는 속도도 빨라진다.")]
+        [Min(0)] public int RegenPerDay = 1;
+
+        [Tooltip("뽑기 가중치.")]
+        [Min(0f)] public float Weight = 1f;
+    }
+
+    [Header("이 바이옴 소굴에 사는 무리")]
+    [Tooltip("비어 있으면 그 바이옴의 소굴은 비어 있다(아무도 안 나온다).")]
+    public List<LairEntry> Lairs = new();
+
+    // ── 마을이 내보내는 무리 (월드맵 Town 칸) ────────────────────────────────
+    // 상단(Caravan)과 순찰대(Patrol). **행동 종류당 하나씩** 선다 —
+    // `TownMarket`이 상인 종류당 하나를 세우는 것과 같은 규칙이다.
+    [Header("이 바이옴 마을이 내보내는 무리")]
+    [Tooltip("비어 있으면 그 마을에선 상단도 순찰대도 나오지 않는다.")]
+    public List<WorldBandData> TownBands = new();
+
     [Header("이 바이옴에서 소환 가능한 하수인")]
     [Tooltip("비어있으면 제한 없음(모든 하수인 허용)")]
     public List<MinionData> SummonableMinions = new();

@@ -77,6 +77,12 @@ public class UnitBlackboard
     public bool IsUnarmed  = true;
     public bool IsKnockedOut;
 
+    // **콕 집어 마무리하라고 지목한 대상.** `BTTargetUtil.IsAttackable`이 기절한 폰을 모든
+    // 자동 경로(탐지·반격)에서 빼는 것은 KO가 사형선고가 되지 않게 하려는 것이고(켄시식),
+    // 그 규칙은 그대로 둔다 — 대신 **사람이 우클릭으로 지목한 하나만** 예외로 통과시킨다.
+    // 자동으로는 절대 붙지 않으므로 "내버려 두면 일어난다"가 그대로 성립한다.
+    public GameObject FinishTarget;
+
     // 순찰
     public PatrolZone AssignedPatrolZone;
 
