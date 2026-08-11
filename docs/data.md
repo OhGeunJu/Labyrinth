@@ -311,7 +311,7 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 
 **두 갈래를 구분할 것** — 같은 자원이라도 얻는 경로가 다르다.
 - `Deposits` = **월드맵 칸에 묻힌 양**. 채집기지가 매일 캐서 쌓고, 원정대가 실어온다.
-- `ResourceNodes` = **필드맵에 서는 채굴 대상**. 폰이 직접 캔다(`MineJob`/`Mining`).
+- `ResourceNodes` = **필드맵에 서는 채굴 대상**. 폰이 직접 캔다(노드 배정 → `WorkNode.TickAssigned`).
 
 ## 바이옴별 성격
 

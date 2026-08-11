@@ -121,6 +121,17 @@ public class PawnContextMenuUI : MonoBehaviour
             var txt = row.GetComponentInChildren<TextMeshProUGUI>(true);
             if (txt != null) txt.text = label;
 
+            // **동작이 없는 줄은 눌리지 않는다.** 지금 못 하는 일을 알려 주는 자리다
+            // (`설득한다 (40% — 12초 뒤)`) — 빼 버리면 왜 안 되는지가 화면에서 사라지고,
+            // 그대로 두면 눌러도 아무 일이 없는 줄이 된다.
+            if (action == null)
+            {
+                row.interactable = false;
+                if (txt != null) txt.color = new Color(txt.color.r, txt.color.g, txt.color.b, 0.45f);
+                _rows.Add(row.gameObject);
+                continue;
+            }
+
             var captured = action;   // 클로저 캡처 — 루프 변수를 그대로 쓰면 전부 마지막 것이 된다
             row.onClick.RemoveAllListeners();
             row.onClick.AddListener(() => { Close(); captured?.Invoke(); });

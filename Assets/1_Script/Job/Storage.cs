@@ -165,6 +165,68 @@ public class Storage : MonoBehaviour, IWorldClickable
         return FindNearestFitting(position, item, 1, quality);
     }
 
+    // **부린 짐이 증발하지 않게 하는 사슬 — 한 곳에서 돈다.**
+    //
+    // `HaulJob`·`GroundHaulJob`·`FarmHarvestJob`이 이걸 각자 적어 두었고, **셋이 조금씩
+    // 달랐다.** 다른 것이 규칙이었으면 어딘가에 적혀 있어야 하는데 아무 데도 없었고,
+    // 실제로는 하나가 문서화된 규칙을 어기고 있었다:
+    //
+    //  · `FarmHarvestJob`은 `FindNearest`에 **수량·등급을 안 넘겼다.** CLAUDE.md가 콕 집어
+    //    막아 둔 것이다 — 기본값(1개·일반)으로 물으면 "한 개는 들어간다"만 확인하고 50을
+    //    지고 가서, 도착해 못 넣고 줍고 떨구기를 반복한다.
+    //  · `HaulJob`은 `storage.Inventory.TryAdd`로 **창고 필터를 우회**했다(`CanAccept`를 손으로
+    //    한 번 더 물어 가려 놓았지만, 폴백 창고에는 그 검사도 없었다).
+    //  · 마지막 처리도 셋이 달랐다 — 배낭 복귀만, 바닥 드롭만, 둘 다.
+    //
+    // **순서: 지정한 창고 → 받아 줄 다른 창고 → 배낭 → 바닥.** 뒤로 갈수록 나쁜 결과라
+    // 이 차례가 곧 "덜 나쁜 쪽부터"다. 배낭이 바닥보다 앞인 이유는, 들고 있으면 짐내림이
+    // 나중에 옮겨 주지만 바닥에 떨구면 그것이 다시 운반 일감이 되기 때문이다.
+    //
+    // 반환값은 **끝내 아무 데도 못 넣은 수량**(정상이면 0).
+    public static int Deliver(Storage preferred, ItemData item, int amount, ItemQuality quality,
+                              UnitBrain carrier, Vector3 dropAt)
+    {
+        if (item == null || amount <= 0) return 0;
+
+        int left = amount;
+
+        // ① 지정한 창고. **`Storage.TryAdd`로 넣는다** — 필터는 그쪽이 본다.
+        if (preferred != null) left -= preferred.TryAdd(item, left, quality);
+
+        // ② 받아 줄 다른 창고. `FindNearest`가 필터와 **자리까지** 본다.
+        if (left > 0)
+        {
+            var fallback = FindNearest(dropAt, item, left, quality);
+            if (fallback != null && fallback != preferred) left -= fallback.TryAdd(item, left, quality);
+        }
+
+        // ③ 배낭. 방금 뺀 자리라 대개 그대로 들어간다.
+        if (left > 0 && carrier != null && carrier.Inventory != null)
+            left -= carrier.Inventory.TryAdd(item, left, quality);
+
+        // ④ 바닥. 여기까지 왔으면 창고가 다 찼다는 뜻이라 알린다 —
+        //    조용히 떨구면 "물건이 왜 밖에 있지"의 답이 화면에 없다.
+        if (left > 0)
+        {
+            DroppedItem.Spawn(item, left, dropAt, quality);
+            Debug.Log($"[Storage] {item.ItemName} {left}개를 받아 줄 곳이 없어 바닥에 두었습니다.");
+            left = 0;
+        }
+
+        return left;
+    }
+
+    // **운반 목적지는 도중에 사라진다.** 일감을 만들 땐 있던 창고가 폰이 걸어가는 사이에
+    // 철거될 수 있다 — 그걸 안 보고 `_storage.transform`을 만지면 `MissingReferenceException`으로
+    // BT가 통째로 멎는다(`GroundHaulJob`·`HaulJob`이 둘 다 이랬다. 후자는 부릴 때만 봤고
+    // 목적지 칸을 정할 때는 안 봤다).
+    //
+    // 살아 있으면 그대로, 아니면 받아 줄 다른 창고로 갈아탄다. 그마저 없으면 null —
+    // 부르는 쪽이 "가져갈 데가 없다"를 처리해야 한다(짐은 출처나 배낭에 남긴다).
+    public static Storage Rebind(Storage current, Vector3 from, ItemData item, int amount,
+                                 ItemQuality quality = ItemQuality.Common)
+        => current != null ? current : FindNearest(from, item, amount, quality);
+
     static Storage FindNearestFitting(Vector3 position, ItemData item, int amount, ItemQuality quality)
     {
         Storage nearest = null;

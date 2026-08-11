@@ -55,6 +55,10 @@ public class TreatJob : JobBase
     public UnitBrain      Patient     => _bed != null ? _bed.Occupant : _patient;
     public BodyPartSystem PatientBody => Patient != null ? Patient.GetComponent<BodyPartSystem>() : null;
 
+    // **단계마다 다르다.** 창고에서 약을 챙길 때는 손만 닿으면 되지만, 환자 앞에서는
+    // 그 자리에 서야 한다 — 두 칸 떨어져 붕대를 감을 수는 없다.
+    public override float Reach => _phase == Phase.GoToStorage ? HandReach : StandReach;
+
     // 환자가 자리에 없거나 다 나았으면 큐에서 기다린다(취소가 아니라 대기 —
     // 재료 부족과 같은 정책. `Bed`가 필요 없어지면 그때 지운다).
     public override bool IsReady

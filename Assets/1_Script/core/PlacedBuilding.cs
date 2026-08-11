@@ -10,7 +10,11 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     public static readonly List<PlacedBuilding> All = new();
 
     [SerializeField] BuildingData data;
-    [SerializeField, Range(0f, 1f)] float refundRatio = 0.75f;
+    // **전액 환불.** 75%였는데, 손실을 물리면 "지어 놓고 아니다 싶으면 옮긴다"가 벌칙이 된다 —
+    // 배치는 되돌릴 수 있어야 시험해 볼 수 있고, 잘못 놓은 값은 자재가 아니라 **들인 시간**으로
+    // 이미 치른다(폰이 자재를 지고 걸어왔고 그동안 다른 일을 못 했다).
+    // 청사진 취소(`BuildingBlueprint.Cancel`)와 같은 값이라 둘을 헷갈릴 일도 없어졌다.
+    [SerializeField, Range(0f, 1f)] float refundRatio = 1f;
 
     public BuildingData Data => data;
 
@@ -136,18 +140,10 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         }
     }
 
-    // 표면 **위에** 내려놓는다. `TileToGround`는 바닥 윗면이라 그대로 쓰면 `CharacterController`의
-    // 아래 절반이 파묻히고, 유니티가 겹침을 풀며 옆으로 밀어낸다 — 그 자리가 가장자리면 그대로
-    // 떨어진다(`EventManager.SpawnPawn`이 스폰에서 같은 보정을 한다, 2026-08-08).
+    // 표면 **위에** 내려놓는다 — 파묻힘·되밀림 두 함정은 `PawnPlacement`가 한 곳에서 다룬다.
     static void Teleport(UnitBrain brain, Vector3 groundPos)
     {
-        var cc     = brain.GetComponent<CharacterController>();
-        float lift = cc != null ? cc.height * 0.5f - cc.center.y : 1f;
-
-        // 켜진 채로 옮기면 콜라이더가 제자리로 되민다.
-        if (cc != null) cc.enabled = false;
-        brain.transform.position = new Vector3(groundPos.x, groundPos.y + lift + 0.05f, groundPos.z);
-        if (cc != null) cc.enabled = true;
+        PawnPlacement.PlaceOnGround(brain.gameObject, groundPos);
 
         // 걸어오던 경로는 여기서 쓸모없다. 목표를 지우면 BT가 다음 틱에 새 자리에서 다시 계획한다.
         brain.GetComponent<PawnMover>()?.StopMovement();
@@ -170,16 +166,47 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         var pos = transform.position;
 
         Refund();
-
-        // 자기가 등록한 점유 타일만 해제 → 같은 타일을 막고 있는 자원노드 등 타 점유는 건드리지 않음.
-        if (MapManager.Instance != null)
-            foreach (var t in _occupiedTiles)
-                MapManager.Instance.SetTile(t, TileData.MakePassable());
-
+        ReleaseTiles();
         Destroy(gameObject);
 
         // 벽 등 철거 후 메소 격자 복구
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
+    }
+
+    // 자기가 등록한 점유 타일만 해제 → 같은 타일을 막고 있는 자원노드 등 타 점유는 건드리지 않음.
+    // 철거와 **이전**이 같은 것을 쓴다 — 옮기면서 옛 칸을 안 풀면 그 자리가 영영 막힌다.
+    public void ReleaseTiles()
+    {
+        if (MapManager.Instance != null)
+            foreach (var t in _occupiedTiles)
+                MapManager.Instance.SetTile(t, TileData.MakePassable());
+        _occupiedTiles.Clear();
+    }
+
+    // ── 이전 ────────────────────────────────────────────────────────────────
+    //
+    // **자재를 안 받고 안 돌려준다** — 옮기는 것은 짓는 것도 부수는 것도 아니다. 값을 물리면
+    // 배치를 고쳐 보는 일에 벌칙이 붙고, 환불이 전액인 마당에 "철거 후 재건축"이 늘 더 싸지므로
+    // 값을 받아 봐야 조작만 늘어난다(부수고 다시 짓기).
+    //
+    // 안에 든 것도 그대로 간다 — 창고 내용물·작업대 산출물·연구 진행은 컴포넌트가 들고 있고
+    // 우리는 `transform`만 옮긴다.
+    public void MoveTo(Vector3 pos, Quaternion rot)
+    {
+        var from = transform.position;
+
+        ReleaseTiles();
+        transform.SetPositionAndRotation(pos, rot);
+        OccupyFootprint();          // 새 칸을 막고, 거기 서 있던 폰을 밖으로 내보낸다
+
+        // 벽처럼 장애물인 건물은 **떠난 자리와 새 자리 둘 다** 다시 구워야 한다.
+        HierarchicalPathfinder.Instance?.RebakeObstacleAt(from);
+        HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
+
+        // 영역은 그대로고 건물만 움직였다 — `OnTerritoryChanged`가 안 뜨므로 스스로 다시 본다.
+        GetComponent<BuildingDormancy>()?.Reevaluate();
+
+        Debug.Log($"[PlacedBuilding] {(data != null ? data.BuildingName : name)} 이전 — {from} → {pos}");
     }
 
     void Refund()
@@ -191,8 +218,10 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         var item = data.CostItem;
         if (item == null) return; // 비용 아이템이 없는 건물(무료) → 환불할 것도 없다
 
-        // 철거 위치에 드랍 → 자동으로 가장 가까운 창고로 운반.
-        DroppedItem.Spawn(item, refund, transform.position);
+        // **창고로 먼저, 바닥은 최후 수단**(`MaterialPool.Refund`) — 청사진 취소와 같은 길이다.
+        // 전엔 곧장 바닥에 떨궜는데, 그러면 그 짐이 다시 운반 일감이 되고 나르는 동안 창고
+        // 집계에서 빠져 있어 같은 자재를 기다리던 작업이 "재료 부족"으로 죽는다.
+        MaterialPool.Refund(item, refund, transform.position);
     }
 
     // ── 철거 예정 빨간 표시 ─────────────────────────────────────────────────
@@ -202,15 +231,24 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         _highlighted = on;
 
         _renderers ??= GetComponentsInChildren<Renderer>();
+        ApplyTint(_renderers, on, PendingColor);
+    }
+
+    // **청사진도 같은 표시를 쓴다** — 철거 모드가 둘을 같이 집으므로 색이 다르면 무엇이 잡혔는지
+    // 눈으로 못 가른다. 색만 인자로 받는다(청사진 고스트는 반투명이라 알파가 다르다).
+    public static void ApplyTint(Renderer[] renderers, bool on, Color color)
+    {
+        if (renderers == null) return;
+
         var mpb = new MaterialPropertyBlock();
-        foreach (var r in _renderers)
+        foreach (var r in renderers)
         {
             if (r == null) continue;
             if (on)
             {
                 r.GetPropertyBlock(mpb);
-                mpb.SetColor(BaseColorId, PendingColor);
-                mpb.SetColor(ColorId,     PendingColor);
+                mpb.SetColor(BaseColorId, color);
+                mpb.SetColor(ColorId,     color);
                 r.SetPropertyBlock(mpb);
             }
             else

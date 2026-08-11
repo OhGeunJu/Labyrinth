@@ -314,7 +314,22 @@ public class BodyPartSystem : MonoBehaviour
          || _parts[BodyPartType.Abdomen].IsDisabled) return;
 
         _brain.Blackboard.IsKnockedOut = false;
-        transform.rotation = _preKoRotation;   // 눕는 포즈 복구
+
+        // ── 기절 자세를 되돌린다 — **다만 지금 누울 자리가 있으면 아니다** ──────────
+        //
+        // 깨어나는 것과 일어서는 것은 다른 일이다. 침대에 눕혀 둔 폰은 다 나아도 **누워
+        // 있어야** 한다(배정이 곧 "쉬어라"라는 명령이고, 포로는 자리가 자세를 정한다).
+        //
+        // 전에는 무조건 되돌렸고, 우리 폰은 다음 틱에 `RestNode`가 다시 눕혀서 가려졌다 —
+        // **한 프레임 벌떡 섰다가 도로 눕는** 것을 아무도 못 본 것뿐이다. 포로는 BT가 안 돌아
+        // 그 복구가 없으니 선 채로 남았고, 그제야 드러났다.
+        //
+        // 고치는 자리는 여기다. 누운 상태를 아는 것이 둘(`PawnMover.IsSleeping` = 침대,
+        // `IsPrisoner` = 갇힌 자리)뿐이므로 여기서 한 번 묻고 만다 — 되돌린 뒤에 누가
+        // 다시 눕혀 주기를 기대하면 그 "누가"가 없는 경로에서 반드시 드러난다.
+        bool lyingSomewhere = (_mover != null && _mover.IsSleeping)
+                           || _brain.Blackboard.IsPrisoner;
+        if (!lyingSomewhere) transform.rotation = _preKoRotation;
         OnRecovered?.Invoke(this);
         Debug.Log($"[BodyPart] {gameObject.name} 기상 (기절 {_koTimer:F0}초)");
     }

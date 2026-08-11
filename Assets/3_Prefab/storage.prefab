@@ -192,6 +192,7 @@ GameObject:
   - component: {fileID: 1497257893635511695}
   - component: {fileID: 7078074226735401326}
   - component: {fileID: 1181965188360477489}
+  - component: {fileID: 126230289961206480}
   m_Layer: 0
   m_Name: storage
   m_TagString: Untagged
@@ -235,7 +236,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 0.66, z: 1}
+  m_Size: {x: 1.8, y: 0.66, z: 1.8}
   m_Center: {x: 0, y: 0.33, z: 0}
 --- !u!114 &7078074226735401326
 MonoBehaviour:
@@ -266,3 +267,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Inventory
   width: 10
   height: 10
+--- !u!114 &126230289961206480
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8966668425763606030}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 7f711bcdd0905264b88b1d787344612b, type: 2}
+  refundRatio: 1

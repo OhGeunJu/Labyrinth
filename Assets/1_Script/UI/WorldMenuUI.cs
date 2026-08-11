@@ -55,6 +55,9 @@ public class WorldMenuUI : MonoBehaviour
         // 템플릿은 원본이라 화면에 보이면 안 된다 — 껐다 켜는 건 복제본만.
         if (optionTemplate != null) optionTemplate.gameObject.SetActive(false);
 
+        var pr = panel.transform as RectTransform;
+        if (pr != null) _authoredPanelH = pr.sizeDelta.y;
+
         panel.SetActive(false);
     }
 
@@ -99,7 +102,16 @@ public class WorldMenuUI : MonoBehaviour
 
     void BuildOptions(IList<WorldMenuOption> options)
     {
-        foreach (var b in _spawned) if (b != null) Destroy(b.gameObject);
+        // **끄고 나서 지운다.** `Destroy`는 프레임 끝에야 반영되므로, 지우기만 하면 아래
+        // `FitToContent`가 재는 순간 **지난 메뉴의 줄들이 아직 목록에 붙어 있다** — 그만큼
+        // 창이 더 길게 잡히고, 다음 번에야 제 크기로 돌아온다(한 박자 늦게 따라온다).
+        // 레이아웃 그룹은 꺼진 자식을 안 세므로 끄는 것만으로 계산에서 빠진다.
+        foreach (var b in _spawned)
+        {
+            if (b == null) continue;
+            b.gameObject.SetActive(false);
+            Destroy(b.gameObject);
+        }
         _spawned.Clear();
 
         if (optionTemplate == null || options == null) return;
@@ -129,5 +141,71 @@ public class WorldMenuUI : MonoBehaviour
 
             _spawned.Add(btn);
         }
+
+        FitToContent();
+    }
+
+    // ── 글자가 길면 창이 늘어난다 ────────────────────────────────────────────
+    //
+    // 줄 높이도 패널 높이도 씬에 **고정값**으로 박혀 있었다(760×420). 그래서 두 줄짜리 문구가
+    // 들어오면 — 포로 안내가 그랬다("몸값을 받지 않는 자들이다 — 쳐들어가는 수밖에 없다") —
+    // 글자가 칸 안에서 잘리고 목록이 패널 밖으로 넘쳤다.
+    //
+    // **문구를 줄이는 쪽으로 풀지 않는다.** 여기 뜨는 말은 `WorldMapView`가 정하고 앞으로도
+    // 늘 텐데, 그때마다 글자 수를 세게 되면 UI가 내용을 검열하는 꼴이 된다.
+    //
+    // 두 번 재는 이유: 첫 패스에서는 칸 **너비**가 아직 안 잡혀 TMP가 높이를 못 낸다.
+    // 레이아웃을 한 번 확정하고 나서 높이를 얹고, 다시 확정한다.
+    const float RowPadding = 14f;    // 글자 위아래 여백
+    const float MinRowH    = 34f;    // 한 줄짜리는 지금 모양 그대로
+    const float PanelPad   = 24f;
+    const float MaxPanelH  = 900f;   // 화면을 넘지 않게 — 넘으면 그때 스크롤을 붙인다
+
+    float _authoredPanelH;           // 씬에 저작된 높이. 매번 여기서 다시 잰다
+
+    void FitToContent()
+    {
+        if (optionTemplate == null || panel == null) return;
+
+        var listRect = optionTemplate.transform.parent as RectTransform;
+        if (listRect == null) return;
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(listRect);
+
+        foreach (var btn in _spawned)
+        {
+            if (btn == null) continue;
+
+            var labelTr = btn.transform.Find("Label");
+            var label   = labelTr != null ? labelTr.GetComponent<TextMeshProUGUI>()
+                                          : btn.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label == null) continue;
+
+            float w = ((RectTransform)label.transform).rect.width;
+            if (w <= 1f) continue;   // 아직 너비가 없다 — 고정 높이 그대로 둔다
+
+            float need = label.GetPreferredValues(label.text, w, 0f).y + RowPadding;
+
+            var le = btn.GetComponent<LayoutElement>();
+            if (le == null) le = btn.gameObject.AddComponent<LayoutElement>();
+            le.preferredHeight = Mathf.Max(MinRowH, need);
+        }
+
+        var panelRect = panel.transform as RectTransform;
+        if (panelRect == null) return;
+
+        // **저작한 크기에서 다시 잰다.** 늘리기만 하면 긴 메뉴를 한 번 본 뒤로는 선택지가
+        // 둘뿐인 칸에서도 창이 계속 크게 남는다 — 창 크기가 지금 내용과 무관해진다.
+        panelRect.sizeDelta = new Vector2(panelRect.sizeDelta.x, _authoredPanelH);
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(listRect);
+
+        // 목록 위(제목·구분선·정보)는 그대로 두고 넘치는 만큼만 키운다.
+        float above  = -listRect.anchoredPosition.y;
+        float needed = above + listRect.rect.height + PanelPad;
+
+        if (needed > _authoredPanelH)
+            panelRect.sizeDelta = new Vector2(panelRect.sizeDelta.x,
+                                              Mathf.Min(MaxPanelH, needed));
     }
 }

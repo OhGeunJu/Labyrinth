@@ -55,6 +55,13 @@ public class Faction : MonoBehaviour
 
     public FactionData Data => data;
 
+    // **세력은 바뀔 수 있다** — 회유(포로가 우리 편이 된다)가 그 길이다.
+    //
+    // 여기서는 값만 갈아 끼운다. 세력에 딸린 것들(BT·성장 잠금·작업 설정·허기)은
+    // `Awake`에서 한 번 정해지므로 **`UnitBrain.ChangeFaction`이 다시 세운다** —
+    // 이 setter를 직접 부르면 적 트리를 그대로 든 아군이 된다.
+    public void SetData(FactionData to) => data = to;
+
     // 플레이어 조작 세력인가 — 선택/명령/우선순위 등 UI·입력 게이트용.
     public bool IsPlayer => data != null && data.PlayerControlled;
 

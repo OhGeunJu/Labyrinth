@@ -246,7 +246,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 587b0546c35149546b421b31d6161770, type: 2}
+  - {fileID: 2100000, guid: 76236b7691f748d7a0e1b76f2823353c, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -281,6 +281,7 @@ GameObject:
   - component: {fileID: 1555383390026538859}
   - component: {fileID: 8770175454642934852}
   - component: {fileID: 661822894028811797}
+  - component: {fileID: 7244172309811987223}
   m_Layer: 0
   m_Name: Bed
   m_TagString: Untagged
@@ -321,11 +322,11 @@ BoxCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.85, y: 0.6, z: 1}
+  m_Size: {x: 0.8, y: 0.6, z: 1.8}
   m_Center: {x: 0, y: 0.3, z: 0}
 --- !u!114 &661822894028811797
 MonoBehaviour:
@@ -340,7 +341,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Bed
   BedName: "\uCE68\uB300"
+  forPrisoners: 0
+  tintTarget: {fileID: 3797499319897350486}
+  normalTint: {fileID: 2100000, guid: 76236b7691f748d7a0e1b76f2823353c, type: 2}
+  prisonTint: {fileID: 2100000, guid: 20c05d0fec044e44868a2b11e0e54748, type: 2}
   sleepAnchor: {fileID: 0}
   lieHeight: 0.35
   pillowYaw: 0
   approachMargin: 0.8
+--- !u!114 &7244172309811987223
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7044960591686030136}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: aee785b7d7d696547883615ddde0c53a, type: 2}
+  refundRatio: 1

@@ -1,64 +1,68 @@
 ﻿Id,이름,결과,개수,재료,재료비(G),산출값(G),배수,스킬,레벨,시간(초),선행 연구,출처
-alch_essence,정수 정제,alch_essence,1,herbs x2,12,18,1.5,Alchemy,0,6,Res_Alchemy,JSON
-alch_potion_stamina,활력 물약 조제,potion_stamina,1,alch_essence x1 + vegetables x2,34,51,1.5,Alchemy,0,8,Res_Alchemy,JSON
-alch_potion_heal,치유 물약 조제,potion_heal,1,alch_essence x2 + herbs x1,42,69,1.64,Alchemy,15,10,Res_Alchemy,JSON
-alch_potion_antidote,해독제 조제,potion_antidote,1,alch_essence x2 + herbs x3,54,94,1.74,Alchemy,25,12,Res_Alchemy,JSON
-craft_iron_hands,철 건틀릿 제작,Arm_IronHands,1,Res_IronOre x3 + leather x1,84,143,1.7,ArmorCrafting,20,14,Res_WeaponSmithing,JSON
-craft_iron_head,철 투구 제작,Arm_IronHead,1,Res_IronOre x3,60,102,1.7,ArmorCrafting,20,14,Res_WeaponSmithing,JSON
-craft_iron_shield,철 방패 제작,Wpn_IronShield,1,Res_IronOre x4 + Res_Lumber x2,96,163,1.7,ArmorCrafting,20,15,Res_WeaponSmithing,JSON
-craft_steel_head,강철 투구 제작,arm_steel_head,1,Res_Steel x3 + leather x1,414,704,1.7,ArmorCrafting,20,15,Res_Steelmaking,JSON
-craft_iron_legs,철 각반 제작,Arm_IronLegs,1,Res_IronOre x4 + leather x1,104,179,1.72,ArmorCrafting,22,16,Res_WeaponSmithing,JSON
-craft_steel_chest,강철 흉갑 제작,arm_steel_chest,1,Res_Steel x5 + leather x2,698,1256,1.8,ArmorCrafting,30,22,Res_Steelmaking,JSON
-cook_dried_meat,고기 말리기,food_dried_meat,2,Food_RawMeat x2,16,24,1.5,Cooking,0,9,Res_Cooking,JSON
-cook_flour,밀가루 빻기,flour,2,Crop_Wheat x3,12,18,1.5,Cooking,0,4,,JSON
-cook_herbal_tea,허브차 만들기,food_herbal_tea,2,herbs x2,12,18,1.5,Cooking,0,3,Res_Cooking,JSON
-cook_vegetable_soup,채소 수프 끓이기,food_vegetable_soup,1,vegetables x2,16,24,1.5,Cooking,0,7,Res_Cooking,JSON
-cook_cheese,치즈 만들기,food_cheese,1,vegetables x2 + herbs x1,22,36,1.64,Cooking,15,10,Res_Cooking,JSON
-cook_stew,스튜 끓이기,food_stew,1,Food_RawMeat x1 + vegetables x2,24,40,1.67,Cooking,15,12,Res_Cooking,JSON
-cook_feast,진수성찬 준비,food_feast,1,Food_CookedMeat x2 + vegetables x2 + Food_Bread x2,58,110,1.9,Cooking,40,20,Res_Cooking,JSON
-gem_elemental_fire,원소 화염 결정 제작,crystal_elemental_fire,1,Res_Ruby x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10,,JSON
-gem_elemental_ice,원소 냉기 결정 제작,crystal_elemental_ice,1,Res_Sapphire x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10,,JSON
-gem_elemental_lightning,원소 번개 결정 제작,crystal_elemental_lightning,1,Res_Topaz x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10,,JSON
-gem_elemental_poison,원소 독 결정 제작,crystal_elemental_poison,1,Res_Emerald x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10,,JSON
-gem_dark_fire,암흑 화염 결정 제작,crystal_dark_fire,1,Res_Ruby x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-gem_dark_ice,암흑 냉기 결정 제작,crystal_dark_ice,1,Res_Sapphire x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-gem_dark_lightning,암흑 번개 결정 제작,crystal_dark_lightning,1,Res_Topaz x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-gem_dark_poison,암흑 독 결정 제작,crystal_dark_poison,1,Res_Emerald x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-gem_holy_fire,신성 화염 결정 제작,crystal_holy_fire,1,Res_Ruby x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-gem_holy_ice,신성 냉기 결정 제작,crystal_holy_ice,1,Res_Sapphire x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-gem_holy_lightning,신성 번개 결정 제작,crystal_holy_lightning,1,Res_Topaz x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-gem_holy_poison,신성 독 결정 제작,crystal_holy_poison,1,Res_Emerald x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12,,JSON
-craft_cloth,천 짜기,cloth,2,herbs x3,18,28,1.56,Labor,0,5,,JSON
-craft_cloth_chest,천 옷 제작,arm_cloth_chest,1,cloth x4,56,84,1.5,Labor,0,7,,JSON
-craft_leather,가죽 무두질,leather,1,Food_RawMeat x2,16,24,1.5,Labor,0,6,,JSON
-craft_rope,밧줄 꼬기,rope,1,cloth x2,28,42,1.5,Labor,0,4,,JSON
-craft_leather_hands,가죽 장갑 제작,Arm_LeatherHands,1,leather x2,48,74,1.54,Labor,5,8,,JSON
-craft_leather_head,가죽 모자 제작,Arm_LeatherHead,1,leather x2,48,74,1.54,Labor,5,8,,JSON
-craft_wood_shield,나무 방패 제작,Wpn_WoodShield,1,Res_Lumber x4,32,50,1.56,Labor,5,8,,JSON
-craft_leather_legs,가죽 각반 제작,Arm_LeatherLegs,1,leather x3,72,114,1.58,Labor,8,10,,JSON
-craft_short_bow,단궁 제작,Wpn_ShortBow,1,Res_Lumber x3 + rope x1,66,106,1.61,Labor,10,12,,JSON
-craft_leather_chest,가죽 갑옷 제작,Arm_LeatherChest,1,leather x5,120,194,1.62,Labor,12,16,,JSON
-craft_longbow,장궁 제작,wpn_longbow,1,Res_Lumber x4 + rope x1,74,122,1.65,Labor,15,13,Res_WeaponSmithing,JSON
-craft_bronze_sword,청동검 제작,Wpn_BronzeSword,1,Res_Bronze x3 + Res_Lumber x1,281,450,1.6,WeaponCrafting,10,12,Res_Smelting,JSON
-craft_spear,장창 제작,Wpn_Spear,1,Res_IronOre x2 + Res_Lumber x4,72,118,1.64,WeaponCrafting,14,12,,JSON
-craft_iron_axe,철도끼 제작,Wpn_IronAxe,1,Res_IronOre x3 + Res_Lumber x2,76,129,1.7,WeaponCrafting,20,14,Res_WeaponSmithing,JSON
-craft_iron_mace,철 철퇴 제작,Wpn_IronMace,1,Res_IronOre x4 + Res_Lumber x1,88,150,1.7,WeaponCrafting,20,14,Res_WeaponSmithing,JSON
-craft_steel_spear,강철 창 제작,wpn_steel_spear,1,Res_Steel x2 + Res_Lumber x3,284,483,1.7,WeaponCrafting,20,14,Res_WeaponSmithing,JSON
-craft_crossbow,석궁 제작,Wpn_Crossbow,1,Res_Lumber x4 + Res_IronOre x2 + rope x1,114,200,1.75,WeaponCrafting,25,18,Res_WeaponSmithing,JSON
-craft_steel_axe,강철 도끼 제작,wpn_steel_axe,1,Res_Steel x3 + Res_Lumber x2,406,710,1.75,WeaponCrafting,25,16,Res_WeaponSmithing,JSON
-craft_silver_dagger,은 단검 제작,wpn_silver_dagger,1,Res_SilverIngot x2 + Res_Lumber x1,394,709,1.8,WeaponCrafting,30,12,Res_WeaponSmithing,JSON
-craft_flame_staff,화염 지팡이 제작,wpn_flame_staff,1,crystal_elemental_fire x1 + Res_Lumber x3,309,572,1.85,WeaponCrafting,35,20,Res_ElementalCraft,JSON
-craft_frost_staff,냉기 지팡이 제작,wpn_frost_staff,1,crystal_elemental_ice x1 + Res_Lumber x3,309,572,1.85,WeaponCrafting,35,20,Res_ElementalCraft,JSON
-craft_steel_sword,강철 대검 제작,Wpn_SteelSword,1,Res_Steel x4 + Res_Lumber x2,536,992,1.85,WeaponCrafting,35,20,Res_Steelmaking,JSON
-craft_venom_staff,맹독 지팡이 제작,wpn_venom_staff,1,crystal_elemental_poison x1 + Res_Lumber x2,301,557,1.85,WeaponCrafting,35,18,Res_ElementalCraft,JSON
-craft_storm_staff,뇌전 지팡이 제작,wpn_storm_staff,1,crystal_elemental_lightning x1 + Res_Lumber x3,309,587,1.9,WeaponCrafting,40,22,Res_ElementalCraft,JSON
-Rec_Lumber,판자,Res_Lumber,2,Res_Wood x3,9,16,1.78,목공,3,12,,SO
-Rec_IronSword,철검,Wpn_IronSword,1,Res_IronOre x4 + Res_Lumber x1,88,144,1.64,무기제작,14,90,,SO
-Rec_IronChest,철 갑옷,Arm_IronChest,1,Res_Steel x3 + Res_Lumber x1,398,669,1.68,방어구제작,18,120,,SO
-Rec_CutStone,다듬은 돌,Res_CutStone,1,Res_Stone x2,4,6,1.5,석공,4,15,,SO
-Rec_Bread,빵,Food_Bread,2,Crop_Wheat x3,12,18,1.5,요리,3,18,,SO
-Rec_CookedMeat,구운 고기,Food_CookedMeat,1,Food_RawMeat x1,8,12,1.5,요리,6,15,,SO
-Rec_Bronze,청동 주괴,Res_Bronze,1,Res_CopperOre x3 + Res_TinOre x1 + Res_Coal x1,60,91,1.52,제련,2,25,,SO
-Rec_Steel,강철 주괴,Res_Steel,1,Res_IronOre x3 + Res_Coal x2,80,130,1.62,제련,12,35,,SO
-Rec_SilverIngot,은 주괴,Res_SilverIngot,1,Res_SilverOre x3 + Res_Coal x1,115,193,1.68,제련,18,40,,SO
-Rec_GoldIngot,금 주괴,Res_GoldIngot,1,Res_GoldOre x3 + Res_Coal x2,185,326,1.76,제련,26,55,,SO
+alch_essence,정수 정제,alch_essence,1,herbs x2,12,18,1.5,Alchemy,0,6.0,Res_Alchemy,JSON
+alch_medkit,구급낭 꾸리기,med_kit,1,med_bandage x3 + herbs x2 + alch_essence x1,96,165,1.72,Alchemy,0,14.0,,JSON
+alch_potion_stamina,활력 물약 조제,potion_stamina,1,alch_essence x1 + vegetables x2,34,51,1.5,Alchemy,0,8.0,Res_Alchemy,JSON
+alch_poultice,약초 습포,med_poultice,2,herbs x3 + med_bandage x1,40,116,2.9,Alchemy,0,8.0,,JSON
+alch_potion_heal,치유 물약 조제,potion_heal,1,alch_essence x2 + herbs x1,42,69,1.64,Alchemy,15,10.0,Res_Alchemy,JSON
+alch_potion_antidote,해독제 조제,potion_antidote,1,alch_essence x2 + herbs x3,54,94,1.74,Alchemy,25,12.0,Res_Alchemy,JSON
+craft_cloth_chest,천 옷 제작,arm_cloth_chest,1,cloth x4,56,84,1.5,ArmorCrafting,0,7.0,,JSON
+craft_leather_hands,가죽 장갑 제작,Arm_LeatherHands,1,leather x2,48,74,1.54,ArmorCrafting,5,8.0,,JSON
+craft_leather_head,가죽 모자 제작,Arm_LeatherHead,1,leather x2,48,74,1.54,ArmorCrafting,5,8.0,,JSON
+craft_leather_legs,가죽 각반 제작,Arm_LeatherLegs,1,leather x3,72,114,1.58,ArmorCrafting,8,10.0,,JSON
+craft_leather_chest,가죽 갑옷 제작,Arm_LeatherChest,1,leather x5,120,194,1.62,ArmorCrafting,12,16.0,,JSON
+craft_iron_hands,철 건틀릿 제작,Arm_IronHands,1,Res_IronOre x3 + leather x1,84,143,1.7,ArmorCrafting,20,14.0,Res_WeaponSmithing,JSON
+craft_iron_head,철 투구 제작,Arm_IronHead,1,Res_IronOre x3,60,102,1.7,ArmorCrafting,20,14.0,Res_WeaponSmithing,JSON
+craft_iron_shield,철 방패 제작,Wpn_IronShield,1,Res_IronOre x4 + Res_Lumber x2,96,163,1.7,ArmorCrafting,20,15.0,Res_WeaponSmithing,JSON
+craft_steel_head,강철 투구 제작,arm_steel_head,1,Res_Steel x3 + leather x1,414,704,1.7,ArmorCrafting,20,15.0,Res_Steelmaking,JSON
+craft_iron_legs,철 각반 제작,Arm_IronLegs,1,Res_IronOre x4 + leather x1,104,179,1.72,ArmorCrafting,22,16.0,Res_WeaponSmithing,JSON
+craft_steel_chest,강철 흉갑 제작,arm_steel_chest,1,Res_Steel x5 + leather x2,698,1256,1.8,ArmorCrafting,30,22.0,Res_Steelmaking,JSON
+cook_dried_meat,고기 말리기,food_dried_meat,2,Food_RawMeat x2,16,24,1.5,Cooking,0,9.0,Res_Cooking,JSON
+cook_flour,밀가루 빻기,flour,2,Crop_Wheat x3,12,18,1.5,Cooking,0,4.0,,JSON
+cook_herbal_tea,허브차 만들기,food_herbal_tea,2,herbs x2,12,18,1.5,Cooking,0,3.0,Res_Cooking,JSON
+cook_vegetable_soup,채소 수프 끓이기,food_vegetable_soup,1,vegetables x2,16,24,1.5,Cooking,0,7.0,Res_Cooking,JSON
+cook_cheese,치즈 만들기,food_cheese,1,vegetables x2 + herbs x1,22,36,1.64,Cooking,15,10.0,Res_Cooking,JSON
+cook_stew,스튜 끓이기,food_stew,1,Food_RawMeat x1 + vegetables x2,24,40,1.67,Cooking,15,12.0,Res_Cooking,JSON
+cook_feast,진수성찬 준비,food_feast,1,Food_CookedMeat x2 + vegetables x2 + Food_Bread x2,58,110,1.9,Cooking,40,20.0,Res_Cooking,JSON
+gem_elemental_fire,원소 화염 결정 제작,crystal_elemental_fire,1,Res_Ruby x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
+gem_elemental_ice,원소 냉기 결정 제작,crystal_elemental_ice,1,Res_Sapphire x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
+gem_elemental_lightning,원소 번개 결정 제작,crystal_elemental_lightning,1,Res_Topaz x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
+gem_elemental_poison,원소 독 결정 제작,crystal_elemental_poison,1,Res_Emerald x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
+gem_dark_fire,암흑 화염 결정 제작,crystal_dark_fire,1,Res_Ruby x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_dark_ice,암흑 냉기 결정 제작,crystal_dark_ice,1,Res_Sapphire x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_dark_lightning,암흑 번개 결정 제작,crystal_dark_lightning,1,Res_Topaz x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_dark_poison,암흑 독 결정 제작,crystal_dark_poison,1,Res_Emerald x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_holy_fire,신성 화염 결정 제작,crystal_holy_fire,1,Res_Ruby x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_holy_ice,신성 냉기 결정 제작,crystal_holy_ice,1,Res_Sapphire x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_holy_lightning,신성 번개 결정 제작,crystal_holy_lightning,1,Res_Topaz x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_holy_poison,신성 독 결정 제작,crystal_holy_poison,1,Res_Emerald x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+craft_bandage,붕대 만들기,med_bandage,2,cloth x2,28,44,1.57,Labor,0,5.0,,JSON
+craft_cloth,천 짜기,cloth,2,herbs x3,18,28,1.56,Labor,0,5.0,,JSON
+craft_leather,가죽 무두질,leather,1,Food_RawMeat x2,16,24,1.5,Labor,0,6.0,,JSON
+craft_rag,넝마 찢기,med_rag,3,cloth x1,14,18,1.29,Labor,0,2.0,,JSON
+craft_rope,밧줄 꼬기,rope,1,cloth x2,28,42,1.5,Labor,0,4.0,,JSON
+craft_wood_shield,나무 방패 제작,Wpn_WoodShield,1,Res_Lumber x4,32,50,1.56,Labor,5,8.0,,JSON
+craft_short_bow,단궁 제작,Wpn_ShortBow,1,Res_Lumber x3 + rope x1,66,106,1.61,Labor,10,12.0,,JSON
+craft_longbow,장궁 제작,wpn_longbow,1,Res_Lumber x4 + rope x1,74,122,1.65,Labor,15,13.0,Res_WeaponSmithing,JSON
+craft_bronze_sword,청동검 제작,Wpn_BronzeSword,1,Res_Bronze x3 + Res_Lumber x1,281,450,1.6,WeaponCrafting,10,12.0,Res_Smelting,JSON
+craft_spear,장창 제작,Wpn_Spear,1,Res_IronOre x2 + Res_Lumber x4,72,118,1.64,WeaponCrafting,14,12.0,,JSON
+craft_iron_axe,철도끼 제작,Wpn_IronAxe,1,Res_IronOre x3 + Res_Lumber x2,76,129,1.7,WeaponCrafting,20,14.0,Res_WeaponSmithing,JSON
+craft_iron_mace,철 철퇴 제작,Wpn_IronMace,1,Res_IronOre x4 + Res_Lumber x1,88,150,1.7,WeaponCrafting,20,14.0,Res_WeaponSmithing,JSON
+craft_steel_spear,강철 창 제작,wpn_steel_spear,1,Res_Steel x2 + Res_Lumber x3,284,483,1.7,WeaponCrafting,20,14.0,Res_WeaponSmithing,JSON
+craft_crossbow,석궁 제작,Wpn_Crossbow,1,Res_Lumber x4 + Res_IronOre x2 + rope x1,114,200,1.75,WeaponCrafting,25,18.0,Res_WeaponSmithing,JSON
+craft_steel_axe,강철 도끼 제작,wpn_steel_axe,1,Res_Steel x3 + Res_Lumber x2,406,710,1.75,WeaponCrafting,25,16.0,Res_WeaponSmithing,JSON
+craft_silver_dagger,은 단검 제작,wpn_silver_dagger,1,Res_SilverIngot x2 + Res_Lumber x1,394,709,1.8,WeaponCrafting,30,12.0,Res_WeaponSmithing,JSON
+craft_flame_staff,화염 지팡이 제작,wpn_flame_staff,1,crystal_elemental_fire x1 + Res_Lumber x3,309,572,1.85,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_frost_staff,냉기 지팡이 제작,wpn_frost_staff,1,crystal_elemental_ice x1 + Res_Lumber x3,309,572,1.85,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_steel_sword,강철 대검 제작,Wpn_SteelSword,1,Res_Steel x4 + Res_Lumber x2,536,992,1.85,WeaponCrafting,35,20.0,Res_Steelmaking,JSON
+craft_venom_staff,맹독 지팡이 제작,wpn_venom_staff,1,crystal_elemental_poison x1 + Res_Lumber x2,301,557,1.85,WeaponCrafting,35,18.0,Res_ElementalCraft,JSON
+craft_storm_staff,뇌전 지팡이 제작,wpn_storm_staff,1,crystal_elemental_lightning x1 + Res_Lumber x3,309,587,1.9,WeaponCrafting,40,22.0,Res_ElementalCraft,JSON
+Rec_Lumber,판자,Res_Lumber,2,Res_Wood x3,9,16,1.78,목공,3,12.0,,SO
+Rec_IronSword,철검,Wpn_IronSword,1,Res_IronOre x4 + Res_Lumber x1,88,144,1.64,무기제작,14,90.0,,SO
+Rec_IronChest,철 갑옷,Arm_IronChest,1,Res_Steel x3 + Res_Lumber x1,398,669,1.68,방어구제작,18,120.0,,SO
+Rec_CutStone,다듬은 돌,Res_CutStone,1,Res_Stone x2,4,6,1.5,석공,4,15.0,,SO
+Rec_Bread,빵,Food_Bread,2,Crop_Wheat x3,12,18,1.5,요리,3,18.0,,SO
+Rec_CookedMeat,구운 고기,Food_CookedMeat,1,Food_RawMeat x1,8,12,1.5,요리,6,15.0,,SO
+Rec_Bronze,청동 주괴,Res_Bronze,1,Res_CopperOre x3 + Res_TinOre x1 + Res_Coal x1,60,91,1.52,제련,2,25.0,,SO
+Rec_Steel,강철 주괴,Res_Steel,1,Res_IronOre x3 + Res_Coal x2,80,130,1.62,제련,12,35.0,,SO
+Rec_SilverIngot,은 주괴,Res_SilverIngot,1,Res_SilverOre x3 + Res_Coal x1,115,193,1.68,제련,18,40.0,,SO
+Rec_GoldIngot,금 주괴,Res_GoldIngot,1,Res_GoldOre x3 + Res_Coal x2,185,326,1.76,제련,26,55.0,,SO

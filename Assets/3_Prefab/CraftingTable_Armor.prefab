@@ -597,6 +597,7 @@ GameObject:
   - component: {fileID: 236995845243947778}
   - component: {fileID: 2429996125083022096}
   - component: {fileID: 3274388513000911862}
+  - component: {fileID: 2163533573189062287}
   m_Layer: 0
   m_Name: CraftingTable_Armor
   m_TagString: Untagged
@@ -665,3 +666,17 @@ MonoBehaviour:
   _acceptedFuels: []
   allowHaulOut: 1
   outputSize: {x: 8, y: 3}
+--- !u!114 &2163533573189062287
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8790246685532847186}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 0d4bd050bff3be9418f204f6ef8e7ab5, type: 2}
+  refundRatio: 1

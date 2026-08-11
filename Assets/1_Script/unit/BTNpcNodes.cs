@@ -59,22 +59,12 @@ public class FleeNode : BTNode
     GameObject FindThreat(UnitBlackboard bb, float range)
     {
         Vector3 selfPos = bb.Self.transform.position;
-        var myF = bb.Self.GetComponent<Faction>();
 
-        GameObject threat = null;
-        float bestDistSqr = float.MaxValue;
-
-        // 가장 가까운 위협 — 나를 적대하는 쪽(방향별 관계: 내가 상대를 어떻게 보든 무관).
-        foreach (var c in Physics.OverlapSphere(selfPos, range))
-        {
-            if (c.gameObject == bb.Self) continue;
-            var f = c.GetComponent<Faction>();
-            if (f == null || myF == null || !f.IsHostileTo(myF)) continue;
-            if (!BTTargetUtil.IsAttackable(c.gameObject)) continue;   // 시체·기절한 적에게서 도망치지 않는다
-
-            float d = (c.transform.position - selfPos).sqrMagnitude;
-            if (d < bestDistSqr) { bestDistSqr = d; threat = c.gameObject; }
-        }
+        // 가장 가까운 위협 — **나를 적대하는 쪽**(방향별 관계: 내가 상대를 어떻게 보든 무관).
+        // 시체·기절·갇힌 것에게서는 도망치지 않는다(`IsAttackable`이 같이 걸러 준다).
+        var threat = FactionScan.NearestHostile(bb.Self, bb.Faction, range, theirsToMine: true);
+        float bestDistSqr = threat != null
+                          ? (threat.transform.position - selfPos).sqrMagnitude : float.MaxValue;
 
         // 나를 때린 상대는 관계와 무관하게 위협 — 중립 세력에게 선공당한 경우.
         if (bb.HasFreshAttacker && bb.LastAttacker.activeInHierarchy)
@@ -190,6 +180,87 @@ public class WanderNode : BTNode
 }
 
 // EventMerchant: 목적지까지 이동 → 대기 → 홈으로 귀환 → 소멸
+// **풀려난 사람이 맵을 떠난다.** 가장자리로 걸어가 사라진다(행상인의 퇴장과 같은 모양).
+//
+// 성향만 도주로 바꿔서는 놓아 준 것이 아니다 — 우리 폰을 피해 달아나다 구석에서 서성이고,
+// 결국 그 자리에 적이 하나 남는다. **살려 보냈으면 실제로 가야** 그 선택에 값이 붙는다.
+//
+// ── 때리면 어떻게 하나 ────────────────────────────────────────────────────
+//
+// **싸운다. 확률로 굴리지 않는다.**
+//
+// 확률이면 "때렸는데 왜 어떤 놈은 반격하고 어떤 놈은 안 하지"가 되고, 그건 플레이어가
+// 통제할 수 없는 눈치 싸움이다. 그리고 **살려 보내는 선택의 값은 "안 때리면 안 싸운다"에
+// 있다** — 때리면 싸우는 것은 그 선택을 무르는 것이고, 무를 수 있어야 선택이 진짜다.
+//
+// 무엇보다 **이미 이 게임의 규칙이다**: 반격은 세력 관계와 무관하게 `LastAttacker`로 돈다
+// (중립을 때려도 되받아친다). 풀어 준 포로만 예외로 둘 이유가 없다.
+//
+// 되돌아가는 것도 공짜다 — 15초(`RetaliationMemory`) 동안 안 맞으면 `HasFreshAttacker`가
+// 꺼져 **다시 떠난다.** 확률로는 못 만드는 "때리면 돌아서고, 놓아주면 다시 간다"가 저절로 나온다.
+public class LeaveMapNode : BTNode
+{
+    // **가장자리 칸 위에 올라섰을 때** 사라진다. 넉넉히 잡으면 판이 작을수록 맵 한가운데서
+    // 사라지는 꼴이 된다 — 칸 반대각선(≈0.71)을 조금 넘는 정도면 그 칸에 선 것이다.
+    const float ArrivalDist   = 0.9f;
+    const float RepathSeconds = 2f;    // 길이 막혔을 때 다시 잡아 본다
+
+    // **더는 못 가면 거기서 사라진다.** 좁혀지지 않는데 계속 걷게 두면, 나가는 길이 반 칸
+    // 모자란 지형에서 폰이 가장자리에 붙어 영원히 서 있는다(`WorkNode`의 정체 처리와 같은 축).
+    const float StuckSeconds  = 8f;
+    const float ProgressEps   = 0.3f;
+
+    float _nextRepath;
+    float _stuckTimer;
+    float _bestDist = float.MaxValue;
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        // **떠나는 중이 아니면 진행 기록을 지운다.** 노드는 트리에 계속 살아 있어서, 안 지우면
+        // 다시 붙잡혔다 풀려났을 때 지난번의 `_bestDist`가 남아 **출발하자마자 "더는 못 간다"로
+        // 사라진다.**
+        if (!bb.LeavingMap) { _bestDist = float.MaxValue; _stuckTimer = 0f; return BTStatus.Failure; }
+
+        // **맞으면 돌아선다.** 여기서 끝내면 아래 전투 분기가 평소대로 받는다.
+        if (bb.HasFreshAttacker)
+        {
+            bb.LeavingMap = false;
+            bb.Brain?.ClearStanceOverride();
+            bb.Mover?.StopMovement();
+            return BTStatus.Failure;
+        }
+
+        if (bb.Mover == null) { bb.LeavingMap = false; return BTStatus.Failure; }
+
+        var pos  = bb.Self.transform.position;
+        float d  = Vector3.Distance(new Vector3(pos.x, 0f, pos.z),
+                                    new Vector3(bb.LeaveTarget.x, 0f, bb.LeaveTarget.z));
+
+        if (d < ArrivalDist) { Object.Destroy(bb.Self); return BTStatus.Running; }
+
+        // 가까워지고 있나 — 아니면 얼마나 오래 제자리인가.
+        if (d < _bestDist - ProgressEps) { _bestDist = d; _stuckTimer = 0f; }
+        else                             _stuckTimer += bb.TickDelta;
+
+        if (_stuckTimer >= StuckSeconds)
+        {
+            Debug.Log($"[Leave] {bb.Self.name}: 더는 가장자리로 다가갈 수 없어 여기서 떠납니다.");
+            Object.Destroy(bb.Self);
+            return BTStatus.Running;
+        }
+
+        // 막혀 서 있으면 다시 잡는다 — 나가는 길이 하나뿐이라 벽 하나에 갇히면 영영 못 간다.
+        if (!bb.Mover.IsMoving() && Time.time >= _nextRepath)
+        {
+            _nextRepath = Time.time + RepathSeconds;
+            if (EventManager.TryFindExit(pos, out var exit)) bb.LeaveTarget = exit;
+            bb.Mover.SetDestination(bb.LeaveTarget);
+        }
+
+        return BTStatus.Running;
+    }
+}
+
 public class NpcEventMerchantNode : BTNode
 {
     readonly float _stayDuration;

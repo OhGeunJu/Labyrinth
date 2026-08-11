@@ -17,6 +17,11 @@ public partial class UnitBrain
     {
         _roleStanceFallback = fallback;   // 프로필도 오버라이드도 없을 때 쓰는 값
 
+        // **떠나는 것이 도망보다 위다.** 풀려난 사람은 위협을 피해 서성이는 게 아니라
+        // 가장자리로 가서 사라진다 — 도주가 먼저 잡으면 구석에서 맴돌기만 한다.
+        // (맞으면 `LeaveMapNode`가 스스로 꺼지고 아래 분기가 평소대로 받는다.)
+        root.Add(new LeaveMapNode());
+
         // 성향은 **매 틱** 읽는다(런타임 변경 즉시 반영). 거리 값만 조립 시점에 고정.
         root.Add(new FleeNode(FleeRange(fleeRange), FleeDist(), _ => ShouldFleeNow()));
 

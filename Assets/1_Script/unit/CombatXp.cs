@@ -38,19 +38,13 @@ public static class CombatXp
     public static float Calculate(float mySkill, float opponentSkill, int enemyCount = 1)
         => ChallengeMult(mySkill, opponentSkill) * Sol(mySkill) * OutnumberedMult(enemyCount);
 
-    // 주변 적 수 카운트 (수적 보너스용)
-    public static int CountNearbyEnemies(GameObject self, float radius = 6f)
-    {
-        var myFaction = self.GetComponent<Faction>();
-        if (myFaction == null) return 1;
-
-        int count = 0;
-        foreach (var col in Physics.OverlapSphere(self.transform.position, radius))
-        {
-            if (col.gameObject == self) continue;
-            var f = col.GetComponent<Faction>();
-            if (f != null && myFaction.IsHostileTo(f)) count++;
-        }
-        return Mathf.Max(1, count);
-    }
+    // 주변 적 수 카운트 (수적 보너스용).
+    //
+    // **공격 한 번에 네 번쯤 불린다**(공격자·방어자 양쪽의 XP를 여러 스탯에 나눠 주므로).
+    // 그래서 여기가 전투 중 가장 자주 도는 자리 중 하나다 — 훑는 일은 `FactionScan`에 맡긴다
+    // (탐지·도주와 같은 한 벌이고 매번 배열을 만들지 않는다).
+    //
+    // 곁따라 고쳐진 것: 예전에는 콜라이더를 셌기 때문에 **콜라이더가 둘인 폰이 둘로 세어졌다.**
+    public static int CountNearbyEnemies(GameObject self, float radius = 6f) =>
+        FactionScan.CountHostiles(self, self != null ? self.GetComponent<Faction>() : null, radius);
 }

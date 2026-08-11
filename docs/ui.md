@@ -30,7 +30,7 @@
 | `CraftingTableUI` | CraftingTable 좌클릭 | 마스터-디테일. 왼쪽 RecipeEntryUI 목록, 오른쪽 디테일. ESC로 닫기 |
 | `ResearchTableUI` | ResearchTable 좌클릭 | 마스터-디테일. 선행연구/재료/시간 표시 |
 | `FarmUI` | FarmPlot 좌클릭 | 씨앗 선택 + 상태/성장/수분 표시. ESC로 닫기 |
-| `BedUI` | Bed 좌클릭 | 선택 유닛 배정/해제 버튼 |
+| ~~`BedUI`~~ | — | **없앴다**(2026-08-12). 배정/해제·치료·죄수용 전환은 **우클릭**, 용도와 누가 누웠는지는 **`UnitHP_Panel`**(건물 정보) |
 | `PatrolZoneUI` | PatrolZone 좌클릭 | 모드 전환 버튼 3개 + 배정 유닛 목록 |
 | `ColonyUI` | P키 | **무리 관리** — 폰 전체를 한 표에서. 행=폰, 열=작업 on/off + 현재 배정 + 전투 성향 |
 | `BuildModeUI` | B키 | 화면 하단 건설 바. 왼쪽 카테고리, 오른쪽 건물 목록 |

@@ -28,6 +28,20 @@ public class SelectionManager : MonoBehaviour
     // 다른 것을 클릭하거나 빈 곳을 클릭하면 null로 해제된다.
     public static event Action<UnitBrain> OnPawnInspected;
 
+    // **짓는 중인 청사진.** 다른 건물은 저마다 패널이 있는데(창고·침대·농지·작업대·연구대)
+    // 청사진만 없었다 — 콜라이더가 없어 클릭 자체가 안 됐기 때문이다.
+    // 폰 정보 패널(`UnitHPUI`)이 이걸 받아 같은 자리에 진행 상황을 띄운다.
+    public static event Action<BuildingBlueprint> OnBlueprintInspected;
+
+    // **다 지은 건물.** 저마다의 패널(창고·침대·농지…)을 **대신하지 않고 곁들인다** —
+    // 그쪽은 그 건물로 무엇을 하는지를 다루고, 여기는 **건물 자체**를 다룬다(이름·이전·분해).
+    // 그래서 둘이 같이 뜬다. 벽처럼 제 패널이 없는 건물은 이것만 뜬다.
+    public static event Action<PlacedBuilding> OnBuildingInspected;
+
+    // **던전 핵은 `PlacedBuilding`이 아니다** — 배치로 지은 물건이 아니라 씬에 놓인 축이라
+    // 분해도 환불도 없다. 그래도 "이게 무엇이고 무엇을 할 수 있는가"는 같은 자리에서 답한다.
+    public static event Action<DungeonCore> OnCoreInspected;
+
     // 좌클릭 경로 **밖에서** 같은 패널을 열어야 할 때 쓰는 통로(우클릭 선택지 창 등).
     // 이벤트는 선언한 클래스에서만 발행할 수 있어서 이렇게 문을 내야 한다 —
     // 부르는 쪽이 자기 이벤트를 따로 만들면 패널을 여는 길이 둘이 되어 어긋난다.
@@ -128,13 +142,22 @@ public class SelectionManager : MonoBehaviour
     {
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
 
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f))
+        // 건물·청사진 조사는 **한 클릭짜리**다 — 여기서 먼저 지우고, 실제로 눌렀을 때만 다시
+        // 켠다. 분기마다 해제를 적으면 새 분기가 생길 때 하나가 반드시 빠진다
+        // (`OnPawnInspected`가 지금 그 꼴이다 — 노드 분기에서는 안 지운다).
+        OnBlueprintInspected?.Invoke(null);
+        OnBuildingInspected?.Invoke(null);
+        OnCoreInspected?.Invoke(null);
+
+        bool hasHit = Physics.Raycast(ray, out RaycastHit hit, 500f);
+        if (hasHit)
         {
-            var core = hit.collider.GetComponent<DungeonCore>();
+            var core = hit.collider.GetComponentInParent<DungeonCore>();
             if (core != null)
             {
                 // 핵도 선택을 유지한다 — 소환·핵 이전을 고른 폰과 함께 다루게 된다.
                 OnNodeSelected?.Invoke(null);
+                OnCoreInspected?.Invoke(core);   // 정보 패널에도 "이게 무엇인가"를 띄운다
                 core.Select();
                 return;
             }
@@ -214,13 +237,52 @@ public class SelectionManager : MonoBehaviour
                 DungeonCore.Instance?.Deselect();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
-                // 휴면(핵 영역 밖) 건물은 사용 불가 → 패널도 열지 않는다.
+
+                // **건물 자체를 다루는 줄은 늘 뜬다** — 휴면이라 제 패널을 못 열어도
+                // 옮기거나 분해할 수는 있어야 한다(오히려 그때 제일 필요하다).
+                OnBuildingInspected?.Invoke(hit.collider.GetComponentInParent<PlacedBuilding>());
+
+                // 휴면(핵 영역 밖) 건물은 사용 불가 → 그 건물의 패널은 열지 않는다.
                 if (BuildingDormancy.IsDormantAt(hit.collider))
                 {
                     Debug.Log("[Selection] 핵 영역 밖 건물은 사용할 수 없습니다(휴면).");
                     return;
                 }
                 clickable.OnWorldClick();
+                return;
+            }
+
+            // **제 패널이 없는 건물**(벽 등) — 지금까지는 눌러도 아무 일도 안 일어났다.
+            // 이름·이전·분해는 어느 건물에나 있는 일이라 여기서 받는다.
+            //
+            // **바닥은 뺀다.** 바닥도 `PlacedBuilding`이지만 그건 밟고 다니는 substrate라,
+            // 세면 **빈 땅을 누를 때마다 건물 창이 뜬다** — 가장 잦은 클릭이 망가진다.
+            // 바닥을 걷어내는 길은 건설 모드의 철거가 이미 맡고 있다.
+            var plain = hit.collider.GetComponentInParent<PlacedBuilding>();
+            if (plain != null && (plain.Data == null || !plain.Data.IsFloor))
+            {
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                OnBuildingInspected?.Invoke(plain);
+                return;
+            }
+        }
+
+        // **청사진은 콜라이더가 없어 위의 어느 분기에도 안 걸린다** — 고스트는 콜라이더를
+        // 일부러 다 껐다(통행을 안 막아야 하고, 켜면 그 위로 폰을 보낼 수가 없다).
+        // 레이는 밑의 지형을 맞았을 테니, 그 지점을 타일로 바꿔 그 칸의 청사진을 찾는다.
+        //
+        // **폰 선택은 유지한다** — 다른 건물·노드·시체와 같은 규칙이다.
+        if (hasHit && MapManager.Instance != null)
+        {
+            var bp = BuildingBlueprint.PickAt(MapManager.Instance.WorldToTile(hit.point));
+            if (bp != null)
+            {
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                OnBlueprintInspected?.Invoke(bp);
                 return;
             }
         }

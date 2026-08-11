@@ -26,6 +26,29 @@ public class CombatHandler : MonoBehaviour
 
     bool IsMinion => _brain?.Data is MinionData;
 
+    // ── 한 손이 막혔을 때 ─────────────────────────────────────────────────
+    //
+    // **어깨에 사람을 메면 남는 손은 하나다.** 양손 무기(`IsLargeWeapon`)는 휘두를 수 없고
+    // 방패도 못 든다 — 그 손으로 사람을 붙들고 있기 때문이다.
+    //
+    // **장비를 벗기지는 않는다.** 벗기면 내려놓을 때 돌려 입히는 길이 필요하고, 그 사이
+    // 배낭이 꽉 차 있으면 물건이 새어 나간다. 차고 있되 **지금은 못 쓰는 것**으로 본다.
+    //
+    // 무기를 묻는 곳이 여덟 군데라 여기 하나로 모은다 — 한 군데만 빠뜨려도 "업고도
+    // 대검을 휘두르는" 구멍이 남고, 그 구멍은 눈에 잘 안 띈다.
+    bool OneHanded => _brain?.Blackboard?.Carrying != null;
+
+    WeaponData Weapon
+    {
+        get
+        {
+            var w = _equipment?.MainHand;
+            return OneHanded && w != null && w.IsLargeWeapon ? null : w;
+        }
+    }
+
+    WeaponData Shield => OneHanded ? null : _equipment?.OffHand;
+
     void Start()
     {
         _brain     = GetComponent<UnitBrain>();
@@ -43,7 +66,7 @@ public class CombatHandler : MonoBehaviour
         if (_attackTimer >= CalcAttackInterval())
         {
             _attackTimer = 0f;
-            WeaponData weapon = _equipment?.MainHand;
+            WeaponData weapon = Weapon;
             var target = _brain.Blackboard.Target;
             if (weapon != null && weapon.IsRanged)
             {
@@ -131,7 +154,7 @@ public class CombatHandler : MonoBehaviour
             targetBrain.TakeDamage(dmgInfo);
 
         // 신성 무기: 공격 성공 시 힐/버프 발동
-        var weapon = _equipment?.MainHand;
+        var weapon = Weapon;
         if (weapon != null && weapon.EffectiveDamageCategory == DamageCategory.Holy
             && weapon.EffectChance > 0f && UnityEngine.Random.value < weapon.EffectChance)
             ApplyHolyEffect(weapon, target);
@@ -158,7 +181,7 @@ public class CombatHandler : MonoBehaviour
         float damage = baseDamage * (1f + weaponSkill / 100f);
 
         // 절단 무기(검/도끼) → 손재주 보정
-        WeaponData weapon = _equipment?.MainHand;
+        WeaponData weapon = Weapon;
         if (weapon != null && weapon.IsBladed)
             damage *= 1f + _stats.Dexterity / 100f * 0.5f;
 
@@ -197,7 +220,7 @@ public class CombatHandler : MonoBehaviour
         if (IsDown(defender)) return false;
         bool defUnarmed    = defender.GetWeaponType() == WeaponType.Unarmed;
         float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
-        float shieldBonus  = defender._equipment?.OffHand?.BlockBonus ?? 0f;
+        float shieldBonus  = defender.Shield?.BlockBonus ?? 0f;
         float effective    = defenseSkill + shieldBonus;
         float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
         if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
@@ -208,7 +231,7 @@ public class CombatHandler : MonoBehaviour
     {
         if (IsDown(defender)) return false;
         float defenseSkill = defender._stats.RangedDefense;
-        float shieldBonus  = defender._equipment?.OffHand?.RangedBlockBonus ?? 0f;
+        float shieldBonus  = defender.Shield?.RangedBlockBonus ?? 0f;
         float effective    = defenseSkill + shieldBonus;
         float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
         if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
@@ -333,7 +356,7 @@ public class CombatHandler : MonoBehaviour
     // ── 공격 속도 ────────────────────────────────────────────────────
     float CalcAttackInterval()
     {
-        WeaponData weapon  = _equipment?.MainHand;
+        WeaponData weapon  = Weapon;
         float interval     = weapon != null ? weapon.BaseAttackInterval : baseAttackInterval;
 
         float dexBonus      = 1f + _stats.Dexterity / 100f;
@@ -347,11 +370,12 @@ public class CombatHandler : MonoBehaviour
         return interval / (dexBonus * strengthBonus * statusCorrection * weightCorrection) * sfxMult;
     }
 
-    // 무게 보정: 적재 한도(`CarryCapacity`) 초과 시 1/비율로 감소
+    // 무게 보정: 적재 한도(`CarryCapacity`) 초과 시 1/비율로 감소.
+    // **적재도 `CarryCapacity`가 답한다** — 배낭만 세면 어깨에 멘 사람이 빠진다.
     float CalcWeightCorrection()
     {
         float maxWeight     = CarryCapacity.For(_stats);
-        float currentWeight = _brain.Inventory.GetTotalWeight();
+        float currentWeight = CarryCapacity.Load(_brain);
         if (maxWeight <= 0f || currentWeight <= maxWeight) return 1f;
         return maxWeight / currentWeight;
     }
@@ -442,7 +466,7 @@ public class CombatHandler : MonoBehaviour
     // ── 유틸 ─────────────────────────────────────────────────────────
     DamageInfo BuildDamageInfo(float amount)
     {
-        WeaponData weapon = _equipment?.MainHand;
+        WeaponData weapon = Weapon;
         if (weapon == null)
             return DamageInfo.MakePhysical(amount, PhysicalType.Blunt, gameObject);
 
@@ -457,5 +481,5 @@ public class CombatHandler : MonoBehaviour
         };
     }
 
-    WeaponType GetWeaponType() => _equipment?.MainHand?.Type ?? WeaponType.Unarmed;
+    WeaponType GetWeaponType() => Weapon?.Type ?? WeaponType.Unarmed;
 }

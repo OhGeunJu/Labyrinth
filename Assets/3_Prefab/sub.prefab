@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 7465824267055418165}
   - component: {fileID: 9210696445211049616}
   - component: {fileID: -2725380961037805990}
+  - component: {fileID: 6484618787344050423}
   m_Layer: 0
   m_Name: sub
   m_TagString: Untagged
@@ -129,3 +130,17 @@ MonoBehaviour:
   minionCapBonus: 3
   moveSpeedModifier: 0
   damagePerSecond: 0
+--- !u!114 &6484618787344050423
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4474733231155221554}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 49e2ae6949e16924e8589837ad3f0840, type: 2}
+  refundRatio: 1

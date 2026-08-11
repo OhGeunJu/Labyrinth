@@ -375,6 +375,39 @@ public class EventManager : MonoBehaviour
     // 그래서 **핵에서 바깥으로 걸어 나가며** 설 수 있는 마지막 칸을 가장자리로 삼는다.
     // 설 수 없는 칸을 만나면 거기서 멈추므로 고른 칸은 **핵과 이어져 있는 것이 보장된다** —
     // 좌표를 굴린 뒤 유효성만 검사하는 방식엔 이 보장이 없다(바닥 밖 섬도 통과한다).
+    // **나가는 길도 같은 자를 쓴다.** 풀려난 포로가 맵을 떠날 때(`LeaveMapNode`) 어디가
+    // 가장자리인지는 스폰이 쓰던 것과 같은 답이어야 한다 — 답이 두 벌이면 한쪽은 바닥 밖을
+    // 가리키고 폰이 낭떠러지로 걸어간다.
+    //
+    // `from`에서 **핵 반대 방향**으로 걸어 나간다. 그쪽이 그 폰이 이미 밖에 가까운 쪽이다.
+    public static bool TryFindExit(Vector3 from, out Vector3 exit)
+    {
+        exit = from;
+
+        var mgr = Instance;
+        var map = MapManager.GetForPosition(from) ?? MapManager.Instance;
+        if (mgr == null || map == null) return false;
+
+        var core = DungeonCore.Instance;
+        var away = core != null ? from - core.transform.position : Vector3.forward;
+        away.y = 0f;
+        if (away.sqrMagnitude < 0.01f) away = Vector3.forward;
+        away.Normalize();
+
+        // 바로 뒤가 막혔을 수 있으니 몇 방향 돌려 본다 — 스폰이 방향을 굴리는 것과 같은 이유.
+        for (int i = 0; i < 8; i++)
+        {
+            var dir = Quaternion.Euler(0f, (i % 2 == 0 ? 1 : -1) * 45f * ((i + 1) / 2), 0f) * away;
+            // **끝까지 간다**(`inset: 0`) — 스폰은 낭떠러지 앞에서 물러서야 하지만 나가는
+            // 것은 반대다. 세 칸 안쪽(`spawnEdgeInset`)에 멈추면 판이 작을수록 맵 한가운데서
+            // 사라지는 꼴이 된다.
+            if (!mgr.WalkToEdge(map, from, dir, out var tile, out _, insetOverride: 0)) continue;
+            exit = map.TileToGround(tile);
+            return true;
+        }
+        return false;
+    }
+
     bool TryFindEdgeSpawn(out Vector3 spawn)
     {
         spawn = Vector3.zero;
@@ -419,7 +452,13 @@ public class EventManager : MonoBehaviour
     // origin에서 dir 방향으로 한 칸씩 나아가며 **설 수 있는 마지막 칸**을 찾는다.
     // 설 수 없는 칸(공허)이나 지형 밖을 만나면 멈춘다. 건물에 점유된 칸은 지나치기만 한다 —
     // 벽 하나가 그 방향을 통째로 지우면 안 되고, 우회는 길찾기 몫이다.
-    bool WalkToEdge(MapManager map, Vector3 origin, Vector3 dir, out Vector2Int found, out float dist)
+    // `insetOverride`가 음수면 스폰용 기본값(`spawnEdgeInset`)을 쓴다.
+    //
+    // **들어올 때와 나갈 때의 물러섬이 다르다.** 스폰은 가장자리에서 몇 칸 안쪽에 세워야
+    // 한다(아래 주석) — 하지만 **나가는 것은 반대다.** 안쪽에 멈추면 맵 한가운데서 사람이
+    // 사라지고, 판이 작을수록 더 이상해진다. 나갈 때는 끝까지 간다(`inset = 0`).
+    bool WalkToEdge(MapManager map, Vector3 origin, Vector3 dir, out Vector2Int found, out float dist,
+                    int insetOverride = -1)
     {
         found = default;
         dist  = 0f;
@@ -429,7 +468,7 @@ public class EventManager : MonoBehaviour
         // (`ExpeditionFormation.approachInset`이 집결 원에서 배운 것과 같다:
         //  판정선 위에 세우면 경계에서 아슬아슬해진다.)
         // 그래서 걸어 나가며 **최근 몇 칸을 기억**했다가 그중 가장 안쪽 것을 쓴다.
-        int inset = Mathf.Max(0, spawnEdgeInset);
+        int inset = Mathf.Max(0, insetOverride >= 0 ? insetOverride : spawnEdgeInset);
         var recent = new List<(Vector2Int tile, float dist)>();
         var last   = map.WorldToTile(origin);
 
@@ -470,12 +509,7 @@ public class EventManager : MonoBehaviour
     static GameObject SpawnPawn(GameObject prefab, Vector3 groundPos)
     {
         var go = Instantiate(prefab, groundPos, Quaternion.identity);
-
-        var cc = go.GetComponent<CharacterController>();
-        float lift = cc != null ? cc.height * 0.5f - cc.center.y : 1f;
-
-        var p = go.transform.position;
-        go.transform.position = new Vector3(p.x, groundPos.y + lift + 0.05f, p.z);
+        go.transform.position = PawnPlacement.StandingPos(go, groundPos);
         return go;
     }
 

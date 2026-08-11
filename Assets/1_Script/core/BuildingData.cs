@@ -13,6 +13,12 @@ public class BuildingData : ScriptableObject
 
     [Tooltip("화면에 보이는 이름. 번역 대상이므로 **식별자로 쓰지 말 것**.")]
     public string           BuildingName  = "건물";
+
+    [Tooltip("이게 무엇을 하는 물건인가. 이름만으로는 '보석 연마대'가 무엇을 만드는지 알 수 없고, " +
+             "'서브코어'는 이름 자체가 설명을 요구한다. 한두 문장으로 짧게.")]
+    [TextArea(2, 4)]
+    public string           Description;
+
     public BuildCategory    Category      = BuildCategory.Building;
 
     [Tooltip("건설 목록 안에서의 순서. 작을수록 앞. 같으면 이름순. " +
@@ -44,6 +50,18 @@ public class BuildingData : ScriptableObject
     public bool             UsesBlueprint = false;
     [Tooltip("바닥(floor) substrate. 코어 무관·공허에 배치 가능(바닥 요구 우회), 휴면/장애물 처리 안 함. 프리팹에 Floor 컴포넌트 필요.")]
     public bool             IsFloor = false;
-    [Tooltip("타일 점유: 배치 시 footprint 타일을 통행 불가로 등록(유닛이 못 지나감). 벽·작업대 등 실체 건물은 true, 창고·침대·농지처럼 유닛이 밟는 건물은 false. 철거 시 자동 해제. 중복 배치는 이 값과 무관하게 금지됨.")]
+    [Tooltip("타일 점유: 배치 시 footprint 타일을 통행 불가로 등록(유닛이 못 지나감). " +
+             "벽·작업대·자원 노드·창고처럼 **몸이 부딪히는 것**은 true. " +
+             "침대·농지는 false — 폰이 그 위에 눕고 그 위에서 일해야 한다. " +
+             "\n\n**콜라이더 크기와는 다른 축이다.** 콜라이더는 '어디를 눌러야 잡히나'(클릭 " +
+             "판정)이고 이 값은 '길을 막나'다 — 길찾기는 여기서 등록한 타일 점유를 보지 " +
+             "콜라이더를 안 본다(obstacleLayer는 Wall뿐). 둘을 같은 것으로 보면 " +
+             "'2×2 창고인데 콜라이더가 1×1이라 가운데만 눌린다'가 된다(2026-08-12). " +
+             "\n\n**대신 둘은 짝을 맞춰야 한다: 이 값이 false면 콜라이더는 트리거여야 한다.** " +
+             "안 그러면 지도는 '빈 칸'이라 하는데 몸은 부딪혀, 길찾기가 통과하는 경로를 내고 " +
+             "폰이 거기 처박힌다. 침대의 ApproachPosition이 '길찾기 그래프에 없는 장애물'을 " +
+             "피하려고 옆면을 고르던 것이 그 증상이었다. 크기는 늘 발자국에 맞추고(클릭), " +
+             "막을지 말지는 이 값 하나로 정한다(길). " +
+             "\n\n철거 시 자동 해제. 중복 배치는 이 값과 무관하게 금지됨.")]
     public bool             OccupiesTile = false;
 }

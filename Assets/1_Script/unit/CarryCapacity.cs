@@ -24,8 +24,17 @@ public static class CarryCapacity
     public static float For(UnitBrain brain) =>
         brain == null ? 0f : For(brain.Stats);
 
-    public static float Load(UnitBrain brain) =>
-        brain == null || brain.Inventory == null ? 0f : brain.Inventory.GetTotalWeight();
+    // **업고 있는 사람도 짐이다.** 배낭 무게만 세면 어깨에 사람을 메고도 빈손처럼 걷는다 —
+    // 업기가 값을 치르는 유일한 방법이 무게라서, 여기서 안 세면 규칙이 통째로 사라진다.
+    // (이동·전투 속도 보정이 전부 이 값을 거치므로, 한 곳만 고치면 둘 다 따라온다.)
+    public static float Load(UnitBrain brain)
+    {
+        if (brain == null) return 0f;
+
+        float total = brain.Inventory != null ? brain.Inventory.GetTotalWeight() : 0f;
+        if (brain.Blackboard?.Carrying != null) total += PawnCarry.WeightOf(brain.Blackboard.Carrying);
+        return total;
+    }
 
     public static float Free(UnitBrain brain) => Mathf.Max(0f, For(brain) - Load(brain));
 

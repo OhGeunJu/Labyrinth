@@ -237,6 +237,10 @@ public partial class UnitBrain : MonoBehaviour
         {
             Self         = gameObject,
             Mover        = _mover,
+            Brain        = this,
+            Body         = _body,
+            Combat       = GetComponent<CombatHandler>(),
+            Faction      = GetComponent<Faction>(),
             DetectRange  = unitData != null ? unitData.DetectRange  : 10f,
             AttackRange  = unitData != null ? unitData.AttackRange  : 1.5f,
             AttackDamage = unitData != null ? unitData.AttackDamage : 10f,
@@ -266,7 +270,14 @@ public partial class UnitBrain : MonoBehaviour
         HookUnloadSignals();
     }
 
-    void OnDestroy() => UnhookUnloadSignals();
+    void OnDestroy()
+    {
+        UnhookUnloadSignals();
+
+        // 파괴 경로가 `Die`만은 아니다(원정 정리·씬 언로드) — 어느 쪽으로 사라지든
+        // 업고 있던 사람이 부모째 딸려 가면 안 된다.
+        PawnCarry.DropOnDestroy(this);
+    }
 
     // 인스펙터에 적어 둔 고정값을 입힌다. **밖에서 명세를 주는 경우**(마을 고용)는
     // 스폰 직후 `ApplySpec`이 이 위에 덮으므로 둘이 다투지 않는다 — 저작은 기본값이고
@@ -314,6 +325,11 @@ public partial class UnitBrain : MonoBehaviour
         UpdateHunger();
 
         if (_bb.IsKnockedOut) return;
+
+        // **업혀 있거나 갇혀 있으면 제 뜻대로 못 움직인다.** 업힌 쪽은 어깨에 붙어 따라가고,
+        // 갇힌 쪽은 자리를 지킨다 — BT를 돌리면 깨어나는 순간 걸어 나간다.
+        if (_bb.CarriedBy != null) return;
+        if (_bb.IsPrisoner) { Imprisonment.Hold(this); return; }
 
         _tickTimer += Time.deltaTime;
         if (_tickTimer < tickInterval) return;
@@ -442,6 +458,17 @@ public partial class UnitBrain : MonoBehaviour
         var faction = GetComponent<Faction>();
         if (faction == null || !faction.IsPlayer) return;
 
+        // **갇힌 사람은 굶지 않는다 — 먹일 길이 없어서다.**
+        //
+        // 갇히면 BT가 안 도니 `EatNode`도 안 돈다. 그런데 허기는 `UpdateHunger`가 BT 밖에서
+        // 깎으므로, 우리 폰을 가둬 두면 **먹을 방법이 없는 채로 굶어 죽는다.** 알림도 없다.
+        // 적을 가두면 그쪽은 애초에 허기가 안 도니, 같은 우리에 넣어도 **우리 폰만 죽는다.**
+        //
+        // "먹여야 산다"는 포로를 유지하는 값으로 좋지만, 그건 **먹이는 일감**이 생긴 뒤의
+        // 이야기다. 지금 굶기는 것은 규칙이 아니라 사고다 — 길이 생기면 여기서 풀면 된다.
+        // (업혀 있는 동안도 마찬가지다. 남의 어깨 위에서 밥을 먹을 수는 없다.)
+        if (_bb.IsPrisoner || _bb.CarriedBy != null) return;
+
         float rate = BaseHungerDecayRate;
 
         // DungeonCore의 HungerRateModifier 반영
@@ -474,6 +501,15 @@ public partial class UnitBrain : MonoBehaviour
     {
         if (_isDead) return;
         _isDead = true;
+
+        // **업고 있던 사람을 먼저 내려놓는다.** 안 내려놓으면 시체의 자식으로 남아 같이
+        // 굳고, 시체를 치우면 산 사람이 함께 사라진다. 업혀 있었다면 그 사실도 지운다 —
+        // 업은 폰이 계속 무게를 지고 다니게 된다.
+        PawnCarry.DropOnDestroy(this);
+        if (_bb.CarriedBy != null) PawnCarry.PutDown(_bb.CarriedBy, transform.position);
+
+        // 갇힌 채 죽으면 자리를 비운다 — 안 비우면 그 우리를 다시 못 쓴다.
+        PrisonCage.HolderOf(this)?.Release();
 
         // 진행 중인 작업이 있으면 취소해서 pending 플래그 해제 + 노드 배정 정리
         AbandonWork();
@@ -647,6 +683,18 @@ public partial class UnitBrain : MonoBehaviour
         _bb.AssignedNode?.Unassign(this);
     }
 
+    // ── 소집(Draft) — **아직 아무도 안 부른다** ──────────────────────────────
+    //
+    // BT의 맨 위 분기이고(`BuildWandererTree`) 상태 표시(`PawnStatusText`)와 도주 억제
+    // (`PlayerFleeNode`)까지 갖춰져 있지만, **`Draft()`를 호출하는 입력이 없다.**
+    // 즉 지금은 어떤 폰도 소집 상태가 되지 않으며, 그 분기는 한 번도 안 돈다.
+    //
+    // 지우지 않고 남기는 이유: 설계상 "플레이어가 전투 대형으로 붙든다"는 축이 필요하고
+    // (림월드의 징집), 트리에서 자리를 빼면 나중에 다시 넣을 때 **우선순위를 또 정해야
+    // 한다** — 지금 자리가 맞다는 것은 이미 정한 것이다.
+    //
+    // 붙일 때 같이 볼 것: `DraftedNode`가 `Running`만 돌려주므로 소집 중에는 **반격도 안 한다**
+    // (그 노드 안의 TODO). 그리고 `AbandonWork`를 안 부르므로 하던 일이 남는다.
     public void Draft()
     {
         _bb.IsDrafted = true;
@@ -656,6 +704,55 @@ public partial class UnitBrain : MonoBehaviour
     public void Undraft()
     {
         _bb.IsDrafted = false;
+    }
+
+    // ── 세력을 바꾼다 (회유) ─────────────────────────────────────────────────
+    //
+    // **세력에 딸린 것이 넷인데 전부 `Awake`에서 한 번 정해진다.** `Faction.Data`만 갈아
+    // 끼우면 **적 트리를 그대로 든 아군**이 된다 — 우리 폰을 적으로 알고 덤빈다.
+    // 그래서 세력을 바꾸는 길은 여기 하나뿐이고, 넷을 같이 다시 세운다:
+    //
+    //  ① **BT** — 적 트리 → (종족에 따라) 하수인/방랑자 트리
+    //  ② **성장 잠금** — 하수인 종족이 우리 편이 되면 잠긴다(소환물과 같은 규칙)
+    //  ③ **작업 설정** — 플레이어 세력 일꾼만 갖는다. 없으면 만들어 붙인다
+    //  ④ **허기** — `UpdateHunger`가 플레이어 세력만 도므로 저절로 시작된다
+    //
+    // **종족이 무엇이 될지를 정한다**(2026-08-12 결정): 하수인 종족(`MinionData`)이면
+    // 회유해도 하수인이다 — 명령 못 받고, 안 자라고, 소환 한도를 차지한다. 사람 종족이면
+    // 방랑자가 된다. 그래서 "누구를 붙잡을 것인가"에 뜻이 생긴다.
+    public void ChangeFaction(FactionData to)
+    {
+        var faction = GetComponent<Faction>();
+        if (faction == null || to == null || faction.Data == to) return;
+
+        faction.SetData(to);
+
+        // 하던 것을 끊는다 — 적으로서 하던 표적·추격을 들고 넘어오면 안 된다.
+        _bb.Target       = null;
+        _bb.FinishTarget = null;
+        _bb.LastAttacker = null;
+        _bb.FollowTarget = null;
+        _bb.LeavingMap   = false;
+        ClearStanceOverride();
+        GetComponent<CombatHandler>()?.ExitCombat();
+        _mover?.StopMovement();
+
+        // ① BT — `UsesEnemyAi`가 세력을 보므로 다시 지으면 알아서 갈린다.
+        _root = BuildTree();
+
+        // ② 성장 잠금 — `Awake`와 **같은 식**이어야 한다(답이 두 벌이면 어긋난다).
+        Stats.IsLocked = unitData is MinionData && !UsesEnemyAi;
+
+        // ③ 작업 설정 — 적일 땐 안 붙어 있었다. 붙이면서 짐내림 신호도 같이 건다.
+        if (!UsesEnemyAi && npcData == null && Work == null)
+        {
+            Work = gameObject.AddComponent<WorkSettings>();
+            if (unitData is MinionData minionData) Work.InitFromAllowed(minionData.AllowedJobs);
+            HookUnloadSignals();
+        }
+
+        Debug.Log($"[세력] {UnitName} → {to.FactionName} " +
+                  $"({(unitData is MinionData ? "하수인" : "방랑자")}, 성장잠금 {Stats.IsLocked})");
     }
 
     // 적 AI(감지→전투) 대상인가 — 역할이 없고(NPC 아님) 플레이어 조작 세력도 아닌 전투 유닛.

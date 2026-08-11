@@ -147,6 +147,15 @@ public class InventoryUI : MonoBehaviour
     {
         bool open = !panel.activeSelf;
         panel.SetActive(open);
+
+        // **닫으면 남의 배낭에서 손을 뗀다.** 포로 소지품처럼 밖에서 지정해 연 것은
+        // **한 번 보는 것**이라, 안 풀면 다음에 I를 눌렀을 때 내 폰 대신 그 포로의 배낭이
+        // 열린다 — 왜 내 물건이 안 보이는지 알 방법이 없다.
+        //
+        // **원정 배낭 돌려보기(`_cycle`)는 예외다** — 거기서는 지정이 곧 화면의 상태이고
+        // [이전]/[다음]으로 계속 갈아탄다. 그쪽은 `ClearPawnCycle`이 따로 거둔다.
+        if (!open && _cycle == null) _boundPawn = null;
+
         if (open) BindToSelected();
         else if (_mode == ActionMode.None) ClearActionMode();
     }

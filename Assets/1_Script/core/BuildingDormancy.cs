@@ -44,6 +44,11 @@ public class BuildingDormancy : MonoBehaviour
         DungeonCore.OnTerritoryChanged -= Evaluate;
     }
 
+    // **건물이 움직였을 때 스스로 다시 본다.** 영역이 바뀌면 `OnTerritoryChanged`가 전부를
+    // 재평가하지만, 이전(`BuildingRelocator`)은 **영역은 그대로고 건물만** 옮긴다 — 그때는
+    // 아무 이벤트도 안 뜨므로 옮겨 간 건물이 옛 판정을 그대로 들고 있게 된다.
+    public void Reevaluate() => Evaluate();
+
     void Evaluate()
     {
         var core = DungeonCore.Instance;

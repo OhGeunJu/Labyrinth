@@ -22,9 +22,29 @@ public class DungeonCore : MonoBehaviour
 
     // ── 하수인 캡 ────────────────────────────────────────────────────────────
     readonly List<SubCore> _subCores = new();
-    int _currentMinionCount;
 
-    public int CurrentMinionCount => _currentMinionCount;
+    // **셀 때마다 다시 센다.** 예전엔 `OnUnitSpawned`/`OnUnitDied`로 더하고 뺐는데, 그러면
+    // **그 두 문을 안 지나는 변화**를 놓친다:
+    //  · 회유해서 우리 편이 된 하수인은 스폰된 적이 없다 — 영영 안 세어진다.
+    //  · 원정 나간 하수인은 꺼지기만 하고 죽지는 않는다 — 카운트에 남는다.
+    //
+    // 세력 레지스트리(`Faction.All`)가 이미 "지금 살아 있고 켜져 있는 것"을 들고 있으므로
+    // 거기서 세면 두 구멍이 함께 사라진다. 폰 수는 적고 읽는 곳은 UI·소환뿐이라 값도 싸다.
+    public int CurrentMinionCount
+    {
+        get
+        {
+            int n = 0;
+            var all = Faction.All;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var f = all[i];
+                if (f == null || !f.IsPlayer) continue;
+                if (f.GetComponent<UnitBrain>()?.Data is MinionData) n++;
+            }
+            return n;
+        }
+    }
     public int TotalMinionCap => (data != null ? data.BaseMinionCap : 5)
                                  + GetSubCoreMinionBonus();
 
@@ -47,8 +67,6 @@ public class DungeonCore : MonoBehaviour
     void Awake()
     {
         Instance = this;
-        UnitBrain.OnUnitSpawned += OnUnitSpawned;
-        UnitBrain.OnUnitDied    += OnUnitDied;
         _mat = new Material(Shader.Find("Hidden/Internal-Colored"))
         {
             hideFlags = HideFlags.HideAndDontSave
@@ -62,32 +80,39 @@ public class DungeonCore : MonoBehaviour
     void OnEnable()  => RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
     void OnDisable() => RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
 
+    // ── 갇힌 하수인 종족을 지배한다 ──────────────────────────────────────────
+    //
+    // **폰이 갈 필요가 없다** — 핵이 하는 일이다. 영역 안 우리에 가둬 두면 시간이 지나며
+    // 회유 게이지가 찬다(`Conversion.TickCore`). 사람 종족은 이 길로 안 온다(말로 설득한다).
+    //
+    // 갇힌 폰만 훑으므로 대개 0~2명이다 — 세력 레지스트리를 도는 값이 아깝지 않다.
+    // 1초에 한 번이면 충분하다(게이지는 분 단위로 찬다).
+    const float DominateInterval = 1f;
+    float _nextDominate;
+
+    void Update()
+    {
+        if (Time.time < _nextDominate) return;
+        float dt = Time.time - _nextDominate + DominateInterval;
+        _nextDominate = Time.time + DominateInterval;
+
+        var all = Faction.All;
+        for (int i = all.Count - 1; i >= 0; i--)
+        {
+            var f = all[i];
+            if (f == null || f.IsPlayer) continue;                 // 이미 우리 편이면 볼 것 없다
+
+            var brain = f.GetComponent<UnitBrain>();
+            if (brain?.Blackboard == null || !brain.Blackboard.IsPrisoner) continue;
+
+            Conversion.TickCore(brain, dt);
+        }
+    }
+
     void OnDestroy()
     {
-        UnitBrain.OnUnitSpawned -= OnUnitSpawned;
-        UnitBrain.OnUnitDied    -= OnUnitDied;
         Destroy(_mat);
         Release();   // 막아 두었던 칸을 돌려준다 — 안 풀면 핵이 사라진 자리가 영영 막힌다
-    }
-
-    // 한도가 세는 것은 **내가 소환한** 하수인이다. 같은 종족 에셋(`MinionData`)을 쓰는 야생
-    // 개체가 습격으로 들어와도 세면, 적이 몰려올수록 내 소환 한도가 줄어든다.
-    // 종족 데이터의 형태가 아니라 세력이 소속을 정한다.
-    static bool IsMyMinion(UnitBrain unit)
-    {
-        if (unit == null || !(unit.Data is MinionData)) return false;
-        var faction = unit.GetComponent<Faction>();
-        return faction != null && faction.IsPlayer;
-    }
-
-    void OnUnitSpawned(UnitBrain unit)
-    {
-        if (IsMyMinion(unit)) _currentMinionCount++;
-    }
-
-    void OnUnitDied(UnitBrain unit)
-    {
-        if (IsMyMinion(unit)) _currentMinionCount = Mathf.Max(0, _currentMinionCount - 1);
     }
 
     // 씬에 저작된 부양 높이(표면 위로 얼마나 떠 있는가). 핵 이전 시 이 높이를 유지한다.
@@ -240,9 +265,9 @@ public class DungeonCore : MonoBehaviour
     {
         if (minionData == null) return false;
 
-        if (_currentMinionCount >= TotalMinionCap)
+        if (CurrentMinionCount >= TotalMinionCap)
         {
-            Debug.Log($"[DungeonCore] 하수인 한도 초과 ({_currentMinionCount}/{TotalMinionCap})");
+            Debug.Log($"[DungeonCore] 하수인 한도 초과 ({CurrentMinionCount}/{TotalMinionCap})");
             return false;
         }
 
@@ -277,7 +302,7 @@ public class DungeonCore : MonoBehaviour
         var spawned = Instantiate(prefab, spawnPosition, Quaternion.identity);
         spawned.SetActive(true);
 
-        Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 ({_currentMinionCount + 1}/{TotalMinionCap})");
+        Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 ({CurrentMinionCount}/{TotalMinionCap})");
         return true;
     }
 

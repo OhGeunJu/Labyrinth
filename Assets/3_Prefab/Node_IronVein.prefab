@@ -101,6 +101,7 @@ GameObject:
   - component: {fileID: 8137575534889136615}
   - component: {fileID: 1296891526430054776}
   - component: {fileID: 6498750743331772214}
+  - component: {fileID: 8566872679167691921}
   m_Layer: 0
   m_Name: Node_IronVein
   m_TagString: Untagged
@@ -165,6 +166,20 @@ MonoBehaviour:
   data: {fileID: 11400000, guid: 39a8731ba5d24bc459fe9082bf24c0b1, type: 2}
   haulThreshold: 10
   size: {x: 2, y: 2}
+--- !u!114 &8566872679167691921
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1978046424788585643}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 9fc659d941e3da040b38e94e4ef04379, type: 2}
+  refundRatio: 1
 --- !u!1 &3353308736099554177
 GameObject:
   m_ObjectHideFlags: 0

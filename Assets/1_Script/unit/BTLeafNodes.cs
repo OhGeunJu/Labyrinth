@@ -16,8 +16,22 @@ public static class BTTargetUtil
         if (go == null || !go.activeInHierarchy) return false;
         if (go.GetComponent<Corpse>() != null) return false;   // 죽었으면 더 때릴 것이 없다
 
-        bool down = go.GetComponent<UnitBrain>()?.Blackboard?.IsKnockedOut ?? false;
-        return !down || (bb != null && bb.FinishTarget == go);
+        var board = go.GetComponent<UnitBrain>()?.Blackboard;
+
+        // **업힌 사람은 지목해도 못 친다.** 어깨 위에 있어 사거리가 업은 폰과 같아서,
+        // 노린 것이 짐인지 사람인지 구별이 안 된다.
+        if (board != null && board.CarriedBy != null) return false;
+
+        // **갇힌 사람과 떠나는 사람은 쓰러진 사람과 같은 규칙**이다 — 자동으로는 아무도
+        // 안 건드리고, 콕 집어 지목했을 때만 통과한다(`FinishTarget`).
+        //
+        // 떠나는 쪽을 안 빼면 **놓아 주는 것이 성립하지 않는다**: 푸는 순간 우리 폰이
+        // 자동으로 탐지해 쫓아가 죽인다. 저쪽은 도주 성향이라 안 덤비므로 일방적인 사냥이다.
+        // 마음이 바뀌면 지목해서 치면 된다(그때는 `LeaveMapNode`가 꺼지고 저쪽도 되받아친다).
+        bool down  = board?.IsKnockedOut ?? false;
+        bool held  = board?.IsPrisoner   ?? false;
+        bool going = board?.LeavingMap   ?? false;
+        return !(down || held || going) || (bb != null && bb.FinishTarget == go);
     }
 }
 
@@ -31,8 +45,23 @@ public class ConditionNode : BTNode
 }
 
 // 적 감지
+//
+// **`retaliateOnly`면 먼저 걸지 않는다** — 나를 때린 상대만 표적으로 잡는다.
+//
+// 방랑자가 이쪽이다. 하수인·적처럼 범위 안의 적대를 모두 훑으면 **직접 제어가 성립하지
+// 않는다**: 지나가는 적을 보고 저 혼자 달려 나가면, 어디에 세워 둘지가 명령이 아니라 지형의
+// 문제가 된다. 그렇다고 아무것도 안 하면 **맞으면서 가만히 서 있는다**(실제로 그랬다 —
+// 방랑자 트리에 `DetectNode`가 없어 `bb.Target`이 저 혼자 붙는 길이 아예 없었다).
+//
+// 그래서 **반격만** 한다. 규칙을 새로 만들지 않고 여기 스위치를 두는 이유는, 반격 대상을
+// 고르는 규칙(15초 기억 · 감지 범위 2배 · 쓰러진 놈 제외)이 이미 아래에 있어서다 —
+// 노드를 따로 만들면 그 셋이 두 벌이 된다.
 public class DetectNode : BTNode
 {
+    readonly bool _retaliateOnly;
+
+    public DetectNode(bool retaliateOnly = false) => _retaliateOnly = retaliateOnly;
+
     public override BTStatus Tick(UnitBlackboard bb)
     {
         Vector3 selfPos = bb.Self.transform.position;
@@ -44,25 +73,17 @@ public class DetectNode : BTNode
         GameObject current = bb.Target != null && BTTargetUtil.IsAttackable(bb.Target, bb) ? bb.Target : null;
         float currentDistSqr = current != null ? SqrDist(selfPos, current) : float.MaxValue;
 
-        var myFaction = bb.Self.GetComponent<Faction>();
-        if (myFaction == null) { bb.Target = current; return current != null ? BTStatus.Success : BTStatus.Failure; }
+        var myFaction = bb.Faction;
 
         // 후보: 감지 범위 내 적대 유닛 + 나를 때린 상대(관계 무관, 감지 범위 2배까지).
-        GameObject best = null;
-        float bestDistSqr = float.MaxValue;
-
-        foreach (var hit in Physics.OverlapSphere(selfPos, bb.DetectRange))
-        {
-            if (hit.gameObject == bb.Self) continue;
-
-            var otherFaction = hit.GetComponent<Faction>();
-            if (otherFaction == null) continue;
-            if (!myFaction.IsHostileTo(otherFaction)) continue;
-            if (!BTTargetUtil.IsAttackable(hit.gameObject)) continue;
-
-            float d = SqrDist(selfPos, hit.gameObject);
-            if (d < bestDistSqr) { bestDistSqr = d; best = hit.gameObject; }
-        }
+        // 훑는 일은 `FactionScan`이 한다 — 도주·수적 보너스와 **같은 한 벌**이고,
+        // `Faction.All`을 직접 돌아 매 틱 배열을 만들지 않는다.
+        //
+        // **반격 전용이면 이 훑기를 건너뛴다** — 먼저 거는 것이 곧 이 스캔이다.
+        GameObject best = _retaliateOnly || myFaction == null
+            ? null
+            : FactionScan.NearestHostile(bb.Self, myFaction, bb.DetectRange, theirsToMine: false);
+        float bestDistSqr = best != null ? SqrDist(selfPos, best) : float.MaxValue;
 
         // 반격 대상 — 중립이라 위 스캔에 안 걸리지만 대응해야 한다. 거리 비교에 함께 넣는다.
         if (bb.HasFreshAttacker && BTTargetUtil.IsAttackable(bb.LastAttacker))
@@ -156,6 +177,126 @@ public class FollowNode : BTNode
 
 // 우클릭 [줍는다] — 지정한 드롭까지 걸어가 배낭에 담는다.
 // 큐를 안 타므로 운반 작업을 꺼 둔 폰에게도 시킬 수 있다(직접 명령이므로).
+// **사람을 업으러 가고, 지정한 곳에 내려놓는다.** 명령 하나에 두 걸음이 들어 있다 —
+// 업으라고만 시키고 끝내면 폰이 사람을 진 채로 서 있고, 내려놓으라고만 시키면 어디로
+// 데려갈지를 매번 다시 눌러야 한다.
+//
+// `PickUpNode`와 같은 규약: 목표가 사라지면 **여기서 꺼 준다**(안 꺼 주면 없는 것을 향해
+// 영영 Running을 돌려 폰이 아무것도 안 하게 된다).
+public class CarryPawnNode : BTNode
+{
+    const float ReachDistance = 1.4f;   // 사람은 물건보다 크다
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        var self = bb.Brain;
+        if (self == null) return BTStatus.Failure;
+
+        // ── 1) 업으러 간다 ────────────────────────────────────────────────
+        var target = bb.CarryTarget;
+        if (target != null && bb.Carrying == null)
+        {
+            // 그새 깨어났거나 남이 업어 갔으면 명령을 접는다 — 데려가려던 것도 같이 접는다
+            // (업지도 못했는데 목적지만 남으면 다음에 다른 사람을 업었을 때 딸려 간다).
+            if (!PawnCarry.CanCarry(self, target))
+            {
+                bb.CarryTarget = null;
+                bb.EscortTo    = EscortDest.None;
+                return BTStatus.Failure;
+            }
+
+            if (Vector3.Distance(bb.Self.transform.position, target.transform.position) > ReachDistance)
+            {
+                bb.Mover.SetMoveTarget(target.transform.position);
+                return BTStatus.Running;
+            }
+
+            bb.Mover.StopMovement();
+            bb.CarryTarget = null;
+            return PawnCarry.TryPickUp(self, target) ? BTStatus.Running : BTStatus.Failure;
+        }
+
+        if (bb.Carrying == null) return BTStatus.Failure;
+
+        // ── 2) 자리로 데려간다 (간수) ─────────────────────────────────────
+        //
+        // 콕 집은 자리가 없을 때만 스스로 정한다 — 손으로 고른 자리가 있으면 그쪽이 이긴다.
+        //
+        // **매 틱 다시 정한다.** 자리를 미리 못 박으면 걸어가는 사이에 그 칸이 차도 계속
+        // 그리로 가고, 도착해서야 "자리 없음"이 뜬다. 종류만 정해 두면 다음 칸으로 갈아탄다.
+        if (!bb.HasPutDown)
+        {
+            bool escorting = bb.EscortTo != EscortDest.None
+                          || (PrisonEscort.IsWarden(self) && PrisonEscort.IsCaptive(bb.Carrying));
+
+            if (!escorting) return BTStatus.Failure;   // 간수가 꺼져 있으면 그냥 업고 있는다
+
+            if (!PrisonEscort.Resolve(bb.Carrying, bb.EscortTo, self.transform.position,
+                                      out var toBed, out var toCage))
+                return BTStatus.Failure;               // 빈 자리가 없다 — 업은 채로 기다린다
+
+            bb.HasPutDown  = true;
+            bb.PutDownBed  = toBed;
+            bb.PutDownCage = toCage;
+            bb.PutDownAt   = toBed != null ? toBed.SleepPosition : toCage.HoldPosition;
+        }
+
+        // 목적지가 사라졌으면(침대 철거·우리 파괴) 발밑에 내려놓고 끝낸다 — 업은 채로
+        // 영영 서 있는 것보다 낫다.
+        Vector3 spot = bb.PutDownBed  != null ? bb.PutDownBed.SleepPosition
+                     : bb.PutDownCage != null ? bb.PutDownCage.HoldPosition
+                     : bb.PutDownAt;
+
+        if (Vector3.Distance(bb.Self.transform.position, spot) > ReachDistance)
+        {
+            bb.Mover.SetMoveTarget(spot);
+            return BTStatus.Running;
+        }
+
+        bb.Mover.StopMovement();
+
+        var carried = bb.Carrying;
+        var bed     = bb.PutDownBed;
+        var cage    = bb.PutDownCage;
+
+        bb.HasPutDown  = false;
+        bb.PutDownBed  = null;
+        bb.PutDownCage = null;
+
+        // **자리가 남아 있는지 도착해서 다시 본다.** 선택지를 고를 때는 비어 있었어도, 걸어오는
+        // 사이에 다른 폰이 먼저 넣었을 수 있다 — 안 보면 **한 우리에 여럿이 겹쳐 선다**
+        // (등록은 하나만 되고 나머지는 갇히지도 않은 채 그 자리에 서 있는다).
+        bool cageFull = cage != null && cage.IsOccupied;
+        // 자리가 찼거나, **그 자리가 이 사람을 안 받거나**(보통 침대 × 붙잡은 사람).
+        bool bedTaken = bed  != null && (bed.IsOccupied || !bed.Accepts(carried));
+
+        if (cageFull || bedTaken)
+        {
+            // 자리가 없으면 **거기 두지 않는다.** 업은 폰 발밑에 내려놓고 알린다 —
+            // 겹쳐 세우면 무슨 일이 일어난 건지 화면에 안 남는다.
+            PawnCarry.PutDown(self);
+            EventNotificationUI.Notify("자리 없음",
+                $"{(cageFull ? "우리" : "죄수 침대")}에 이미 다른 사람이 있어 " +
+                $"{carried?.UnitName}을(를) 그 앞에 내려놓았습니다.", holdWhenHidden: true);
+            return BTStatus.Failure;
+        }
+
+        // 침대에 눕힐 때는 **베개 쪽을 침대가 정한다**(`SleepRotation` — `RestNode`가 제 발로
+        // 누울 때 쓰는 것과 같은 값). 안 그러면 발이 베개를 벤다.
+        PawnCarry.PutDown(self, spot, bed != null ? bed.SleepRotation : (Quaternion?)null);
+        if (carried == null) return BTStatus.Failure;
+
+        // **놓는 자리가 곧 그다음 상태다.** 우리·죄수 침대면 갇히고, 보통 침대면 배정만
+        // 해 준다(그러면 `RestNode`가 회복을 맡는다). 맨바닥이면 그냥 누워 있는다.
+        // **점유·배정·갇힘을 침대가 한 번에 세운다**(`PlacePrisoner`) — 여기서 셋을 따로
+        // 부르면 하나가 빠졌을 때 조용히 어긋난다.
+        if (cage != null) cage.TryPut(carried);
+        else if (bed != null) bed.PlacePrisoner(carried);
+
+        return BTStatus.Success;
+    }
+}
+
 public class PickUpNode : BTNode
 {
     const float ReachDistance = 1.2f;
@@ -182,7 +323,7 @@ public class PickUpNode : BTNode
         bb.PickUpIgnoreLimit = false;
         bb.PickUpThenEquip   = false;
 
-        var brain = bb.Self.GetComponent<UnitBrain>();
+        var brain = bb.Brain;
         if (brain == null || brain.Inventory == null) return BTStatus.Failure;
 
         // **한 명만 골라 시켰으면 한도를 넘겨서라도 든다**(`PickUpIgnoreLimit`) — 손으로 배낭에
@@ -228,7 +369,7 @@ public class FightNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
     {
-        var combat = bb.Self.GetComponent<CombatHandler>();
+        var combat = bb.Combat;
         if (combat == null) return BTStatus.Failure;
 
         // 타겟이 없거나 죽었으면(시체 포함) 전투 종료.
@@ -283,8 +424,10 @@ public class WorkNode : BTNode
     // 그렇다고 0.9만 두면 **못 서는 상황이 곧 교착**이다(그 칸에 다른 폰이 서 있거나 반 칸
     // 어긋난 건물이 물고 있을 때). 그래서 **가까이 와서 더는 못 좁히면 거기서라도 한다** —
     // 일이 아예 안 되는 것보다 한 발 떨어져 하는 편이 낫다. 완전히 못 가면 6초 뒤 포기는 그대로다.
-    const float WorkRadius    = 0.9f;   // 저작된 자리에 선다
-    const float ReachRadius   = 2.0f;   // 더는 못 좁힐 때 받아들이는 한계
+    // **얼마나 가까이 가야 하는지는 일감이 정한다**(`JobBase.Reach`) — 작업대는 저작된 자리에
+    // 서야 하지만 창고는 손만 닿으면 된다. 여기 상수로 못 박아 두었더니 **모든 건물 일감이
+    // 한 자리에 붙어야** 했고, 창고를 여럿이 쓸 때 서로 비켜서느라 오래 걸렸다.
+    const float ReachRadius   = JobBase.HandReach;  // 더는 못 좁힐 때 받아들이는 한계
     const float SettleSeconds = 2f;     // 이만큼 못 좁히면 "더는 못 간다"로 본다
 
     // **자원 노드는 이 규약을 안 쓴다.** 바위·나무에는 저작된 자리가 없고 `MaxWorkers`만큼
@@ -309,7 +452,7 @@ public class WorkNode : BTNode
         // 기존 JobManager 경로
         if (bb.CurrentJob == null)
         {
-            var brain = bb.Self.GetComponent<UnitBrain>();
+            var brain = bb.Brain;
             var job   = JobManager.Instance.RequestJob(brain);
 
             if (job == null) return BTStatus.Failure;
@@ -347,7 +490,7 @@ public class WorkNode : BTNode
         float dist    = Vector2.Distance(new Vector2(pos.x, pos.z),
                                          new Vector2(jobCenter.x, jobCenter.z));
 
-        if (!Arrived(dist, currentJob.TileCoord))
+        if (!Arrived(dist, currentJob.TileCoord, currentJob.Reach))
         {
             // 이동 중이 아닐 때만 목표 재설정 (이미 이동 중이면 기다림)
             if (!bb.Mover.HasTarget())
@@ -383,7 +526,7 @@ public class WorkNode : BTNode
         {
             ResetProgress();
             bb.Mover.StopMovement();
-            currentJob.Tick(bb.Self.GetComponent<UnitBrain>());
+            currentJob.Tick(bb.Brain);
             if (currentJob.IsComplete())
             {
                 JobManager.Instance.CompleteJob(currentJob);
@@ -422,7 +565,7 @@ public class WorkNode : BTNode
         else
         {
             bb.Mover.StopMovement();
-            var brain = bb.Self.GetComponent<UnitBrain>();
+            var brain = bb.Brain;
             bool isCutting = node.Data != null && node.Data.IsTree;
             StatName workStat = isCutting ? StatName.Cutting : StatName.Mining;
             float skill = brain.Stats.GetStat(workStat);
@@ -444,10 +587,12 @@ public class WorkNode : BTNode
     bool       _settled;
     Vector2Int _settledFor;
 
-    // 저작된 자리에 섰거나(WorkRadius), 가까이 와서 더는 못 좁히거나(ReachRadius + 정체).
-    bool Arrived(float dist, Vector2Int tile)
+    // 일감이 요구하는 거리 안에 들었거나(`JobBase.Reach`), 가까이 와서 더는 못 좁히거나
+    // (`ReachRadius` + 정체). 후자는 **저작된 자리에 서야 하는 일**에만 뜻이 있다 —
+    // 손만 닿으면 되는 일(`HandReach`)은 이미 첫 줄에서 통과한다.
+    bool Arrived(float dist, Vector2Int tile, float reach)
     {
-        if (dist <= WorkRadius) return true;
+        if (dist <= reach) return true;
         if (dist > ReachRadius) return false;
 
         if (_settled && _settledFor == tile) return true;
@@ -550,7 +695,7 @@ public class RestNode : BTNode
 
     public override BTStatus Tick(UnitBlackboard bb)
     {
-        var brain    = bb.Self.GetComponent<UnitBrain>();
+        var brain    = bb.Brain;
         var assigned = Bed.FindAssigned(brain);
 
         // 배정 해제됐거나 배가 고프면 일어난다
@@ -594,7 +739,7 @@ public class RestNode : BTNode
         bb.RestTicked = true;   // 이번 틱에 쉬고 있음 (상위 분기로 넘어가면 UnitBrain이 깨운다)
 
         // 누워 있는 동안 회복 (캡 감소 없이, 부위 HP 포함)
-        var body = bb.Self.GetComponent<BodyPartSystem>();
+        var body = bb.Body;
         if (body != null)
         {
             body.HealBlood(BloodHealRate * bb.TickDelta, degradeCap: false);
@@ -655,7 +800,7 @@ public class RestNode : BTNode
     {
         if (bb.Mover != null) bb.Mover.SetSleeping(false);
         if (_bed == null) return;
-        _bed.Vacate(bb.Self.GetComponent<UnitBrain>());
+        _bed.Vacate(bb.Brain);
         _bed = null;
         _tendEndTime = 0f;   // 일어나면 하던 회차는 없던 일이다
     }
@@ -676,7 +821,7 @@ public class EatNode : BTNode
     {
         if (bb.Hunger >= HungerThreshold) { Reset(); return BTStatus.Failure; }
 
-        var brain = bb.Self.GetComponent<UnitBrain>();
+        var brain = bb.Brain;
 
         if (!_hasFood)
         {

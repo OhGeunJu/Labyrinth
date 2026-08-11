@@ -39,6 +39,11 @@ public class HaulJob : JobBase
         Priority  = 5;
     }
 
+    // **집고 내려놓는 일은 손만 닿으면 된다** — 출처(바위·나무·작업대 산출물)도 목적지(창고)도
+    // 폰이 그 자리에 서 있어야 할 이유가 없다. 좁게 잡으면 같은 창고를 여럿이 쓸 때 서로
+    // 비켜서느라 오래 걸린다(자원 노드를 둘러서서 캐게 한 것과 같은 축).
+    public override float Reach => HandReach;
+
     // 질 자리가 없는 폰에게는 주지 않는다. 배정해 놓고 도착해서 못 싣는 것보다
     // 애초에 안 주는 편이 낫다 — 헛걸음이 없고, 일감은 큐에 남아 여유 있는 폰이 가져간다.
     // **무게와 격자를 둘 다 본다** — 무게가 남아도 격자가 꽉 차면 한 개도 못 싣는다.
@@ -103,30 +108,25 @@ public class HaulJob : JobBase
                 return;
             }
 
+            // **목적지가 사라졌으면 그냥 들고 있는다.** 이 일감은 받아 줄 창고가 있어야만
+            // 발행되므로(`HaulDispatcher`), 여기서 없다는 건 폰이 걸어오는 사이에 철거됐다는
+            // 뜻이다 — 이미 실은 것을 도로 내려놓을 이유가 없다. 짐은 배낭에 남고, 창고가
+            // 생기면 짐내림(`UnloadJob`)이 알아서 옮긴다.
+            //
+            // (`transform`을 만지기 전에 반드시 확인할 것 — 파괴된 컴포넌트를 건드리면
+            //  `MissingReferenceException`이 `UnitBrain.Update`까지 올라가 BT가 통째로 멎는다.)
+            _storage = Storage.Rebind(_storage, unit.transform.position, _itemData, _amount, _quality);
+            if (_storage == null) { Status = JobStatus.Done; return; }
+
             _phase    = Phase.GoToStorage;
-            TileCoord = MapManager.Instance.WorldToTile(_storage.transform.position);
+            TileCoord = WorkSpot.TileFor(_storage);   // 창고 자기 칸이 아니라 폰이 서는 자리
         }
         else
         {
+            // 실제 꺼낸 수량 기준으로 입고. 못 들어간 잔량은 다른 창고 → 배낭 → 바닥 순으로
+            // 보존한다 — 그 사슬은 `Storage.Deliver` 한 곳이 돈다(운반·수확이 같은 것을 쓴다).
             int removed = unit.Inventory.Remove(_itemData, _amount, _quality);
-            // 실제 꺼낸 수량 기준으로 입고. 못 들어간 잔량은 인벤 복귀 → 드롭 순으로 보존.
-            int leftover = removed;
-            if (leftover > 0 && _storage != null && _storage.CanAccept(_itemData))
-                leftover -= _storage.Inventory.TryAdd(_itemData, leftover, _quality);
-
-            if (leftover > 0)
-            {
-                var fallback = Storage.FindNearest(unit.transform.position, _itemData, leftover, _quality);
-                if (fallback != null)
-                    leftover -= fallback.Inventory.TryAdd(_itemData, leftover, _quality);
-            }
-
-            if (leftover > 0)
-            {
-                leftover -= unit.Inventory.TryAdd(_itemData, leftover, _quality);
-                if (leftover > 0)
-                    DroppedItem.Spawn(_itemData, leftover, unit.transform.position, _quality);
-            }
+            Storage.Deliver(_storage, _itemData, removed, _quality, unit, unit.transform.position);
 
             Status = JobStatus.Done;
             ReleaseAll();

@@ -18,6 +18,10 @@ public static class JobCategoryInfo
         // **치료가 맨 앞이다.** 다른 일은 늦어도 되지만 피 흘리는 사람은 기다릴 수 없고,
         // 치료 일감은 다친 폰이 침대에 누워 있을 때만 생기므로 늘 있는 일도 아니다.
         JobCategory.Medical,
+        // **간수는 치료 바로 뒤다.** 붙잡아 온 적은 **깨어나면 걸어 나간다**(기절 회복은
+        // 시간이 정한다) — 자리에 넣는 일이 늦으면 붙잡은 것 자체가 없던 일이 된다.
+        // 설득 회차도 여기 있다: 게이지가 도중에 줄지는 않지만, 우리 한 칸이 그동안 묶여 있다.
+        JobCategory.Warden,
         JobCategory.Construction,
         JobCategory.Farming,
         JobCategory.Crafting,
@@ -57,6 +61,7 @@ public static class JobCategoryInfo
         JobCategory.Research     => "연구",
         JobCategory.Unload       => "짐내림",
         JobCategory.Medical      => "치료",
+        JobCategory.Warden       => "간수",
         _                        => "-",
     };
 }

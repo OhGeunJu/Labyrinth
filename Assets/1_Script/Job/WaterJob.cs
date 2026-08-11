@@ -4,6 +4,9 @@ public class WaterJob : JobBase
 {
     public override JobCategory Category => JobCategory.Farming;
 
+    // 물을 긷고 붓는 일이라 **손만 닿으면 된다** — 우물이든 밭이든 서 있을 자리가 아니다.
+    public override float Reach => HandReach;
+
     enum Phase { GoToWell, GoToPlot }
 
     FarmPlot    _plot;
@@ -46,7 +49,9 @@ public class WaterJob : JobBase
                     return;
                 }
                 _phase    = Phase.GoToWell;
-                TileCoord = MapManager.Instance.WorldToTile(_well.transform.position);
+                // 우물 자기 칸이 아니라 **폰이 서는 자리** — 우물이 칸을 막으므로
+                // 자기 칸은 설 수 없는 자리다(창고와 같은 규약).
+                TileCoord = WorkSpot.TileFor(_well);
                 return; // 우물로 먼저 이동
             }
         }

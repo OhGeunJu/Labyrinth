@@ -191,6 +191,7 @@ GameObject:
   - component: {fileID: 1701771959317130543}
   - component: {fileID: 5768859967882771624}
   - component: {fileID: 4703291955402698081}
+  - component: {fileID: 8731517525108021736}
   m_Layer: 0
   m_Name: FarmPlot
   m_TagString: Untagged
@@ -232,11 +233,11 @@ BoxCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 0.18, z: 1}
+  m_Size: {x: 0.8, y: 0.18, z: 0.8}
   m_Center: {x: 0, y: 0.09, z: 0}
 --- !u!114 &4703291955402698081
 MonoBehaviour:
@@ -251,6 +252,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FarmPlot
   availableSeeds: []
+--- !u!114 &8731517525108021736
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2276845459903854475}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 97ca1ce52bf81c642b7a3499897aafb1, type: 2}
+  refundRatio: 1
 --- !u!1 &4683502801363396448
 GameObject:
   m_ObjectHideFlags: 0

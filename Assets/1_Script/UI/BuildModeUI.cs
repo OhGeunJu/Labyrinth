@@ -65,9 +65,21 @@ public class BuildModeUI : MonoBehaviour
         if (active) ShowCategory(_selectedCat);
     }
 
+    // **자금 색은 매 프레임 다시 계산할 것이 아니다.** `CanAfford`가 건물마다
+    // `MaterialPool.AvailableAnywhere`를 부르는데, 그건 창고 집계 + **플레이어 폰 전부의
+    // 배낭**을 훑는 일이다 — 목록에 서른세 개가 있으니 프레임마다 서른세 번이 된다.
+    //
+    // 고른 것이 바뀌는 것은 즉시 보여야 하므로 **선택 표시는 매 프레임**, 자금 색만 늦춘다.
+    [SerializeField] float fundsInterval = 0.25f;
+    float _fundsTimer;
+
     void Update()
     {
         if (panel == null || !panel.activeSelf) return;
+
+        _fundsTimer -= Time.unscaledDeltaTime;
+        if (_fundsTimer <= 0f) { _fundsTimer = fundsInterval; RefreshFunds(); }
+
         RefreshCatColors();
         RefreshItemColors();
     }
@@ -90,6 +102,10 @@ public class BuildModeUI : MonoBehaviour
         _selectedCat = cat;
         foreach (Transform child in buildingContainer) Destroy(child.gameObject);
         _itemBtns.Clear();
+
+        // 목록을 새로 지었으면 자금 캐시도 **곧바로** 다시 잰다 — 다음 주기까지 기다리면
+        // 카테고리를 바꾼 순간 지난 목록의 색이 잠깐 남는다(항목 번호가 그대로 재사용된다).
+        _fundsTimer = 0f;
 
         var mgr = BuildModeManager.Instance;
         if (mgr == null || buildingItemPrefab == null) return;
@@ -127,6 +143,20 @@ public class BuildModeUI : MonoBehaviour
             if (bg != null) bg.color = cat == _selectedCat ? colCatSelected : colCatNormal;
     }
 
+    // 자금이 되는가 — **비싼 쪽만 캐시한다.** 색칠 자체는 매 프레임 해야 고른 항목이 곧바로
+    // 파래지는데, 그 안의 `CanAfford`는 목록 전체를 훑으므로 늦춰 둔다.
+    readonly HashSet<int> _unaffordable = new();
+
+    void RefreshFunds()
+    {
+        var mgr = BuildModeManager.Instance;
+        if (mgr == null) return;
+
+        _unaffordable.Clear();
+        foreach (var (_, idx) in _itemBtns)
+            if (!CanAfford(mgr, idx)) _unaffordable.Add(idx);
+    }
+
     void RefreshItemColors()
     {
         var mgr = BuildModeManager.Instance;
@@ -140,14 +170,19 @@ public class BuildModeUI : MonoBehaviour
             if (bd != null && !bd.IsUnlocked) { item.SetColor(colItemLocked); continue; }
 
             bool sel   = idx == mgr.SelectedIndex;
-            bool funds = CanAfford(mgr, idx);
+            bool funds = !_unaffordable.Contains(idx);
             item.SetColor(sel ? colItemSelected : funds ? colItemNormal : colItemNoFunds);
         }
     }
 
+    // **자재가 부족해도 놓을 수는 있다** — 청사진은 계획이고, 모자라면 폰이 안 갈 뿐이다.
+    // 이 색은 막는 표시가 아니라 "지금 지어지진 않는다"는 알림이다.
+    //
+    // 세는 축은 `MaterialPool` — 창고만 세면 폰이 사 온 목재를 안 보고 붉게 물든다.
     bool CanAfford(BuildModeManager mgr, int idx)
     {
         var bd = mgr.GetBuilding(idx);
-        return bd == null || bd.CostAmount <= 0 || Storage.GetTotalByItem(bd.CostItem) >= bd.CostAmount;
+        return bd == null || bd.CostAmount <= 0
+            || MaterialPool.AvailableAnywhere(bd.CostItem) >= bd.CostAmount;
     }
 }

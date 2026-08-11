@@ -4,6 +4,9 @@ public class FarmHarvestJob : JobBase
 {
     public override JobCategory Category => JobCategory.Farming;
 
+    // 거두고 창고에 부리는 일이라 **손만 닿으면 된다**(운반과 같은 축).
+    public override float Reach => HandReach;
+
     enum Phase { GoToPlot, GoToStorage }
 
     FarmPlot _plot;
@@ -59,25 +62,19 @@ public class FarmHarvestJob : JobBase
             }
 
             _phase    = Phase.GoToStorage;
-            TileCoord = MapManager.Instance.WorldToTile(_storage.transform.position);
+            TileCoord = WorkSpot.TileFor(_storage);   // 창고 자기 칸이 아니라 폰이 서는 자리
         }
         else
         {
+            // 잔량 보존 사슬은 `Storage.Deliver` 한 곳이 돈다(운반과 같은 것).
+            //
+            // 전에는 여기서 `FindNearest`에 **수량을 안 넘겨** 기본값(1개)으로 물었다 —
+            // "한 개는 들어간다"만 확인하고 수확물을 통째로 지고 가는 셈이라, 도착해서 못 넣고
+            // 줍고 떨구기를 반복할 수 있었다(CLAUDE.md가 콕 집어 막아 둔 함정).
             int removed = unit.Inventory.Remove(_seed.HarvestItem, _harvested);
-            if (removed > 0)
-            {
-                int leftover = removed - _storage.TryAdd(_seed.HarvestItem, removed);
+            Storage.Deliver(_storage, _seed.HarvestItem, removed, ItemQuality.Common,
+                            unit, unit.transform.position);
 
-                // 부분 입고 시 남은 양을 다른 창고로, 그래도 남으면 땅에 드롭 → 증발 방지.
-                if (leftover > 0)
-                {
-                    var fallback = Storage.FindNearest(unit.transform.position, _seed.HarvestItem);
-                    if (fallback != null)
-                        leftover -= fallback.TryAdd(_seed.HarvestItem, leftover);
-                }
-                if (leftover > 0)
-                    DroppedItem.Spawn(_seed.HarvestItem, leftover, unit.transform.position);
-            }
             Status = JobStatus.Done;
         }
     }

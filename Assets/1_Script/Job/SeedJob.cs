@@ -56,7 +56,7 @@ public class SeedJob : JobBase
         // 오히려 탈락한다 — 정확히 가야 할 곳이 걸러지는 셈이다.
         var storage = Storage.FindStorageWithItem(_seed);
         if (storage != null)
-            TileCoord = MapManager.Instance.WorldToTile(storage.transform.position);
+            TileCoord = WorkSpot.TileFor(storage);   // 창고 자기 칸이 아니라 폰이 서는 자리
     }
 
     protected override void Execute(UnitBrain unit)

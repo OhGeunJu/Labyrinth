@@ -101,6 +101,7 @@ GameObject:
   - component: {fileID: 3670650079472186902}
   - component: {fileID: 6946791653517487715}
   - component: {fileID: 3525364795825508055}
+  - component: {fileID: 8297211133731536187}
   m_Layer: 0
   m_Name: WaterSource
   m_TagString: Untagged
@@ -147,7 +148,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1.3, z: 1}
+  m_Size: {x: 0.8, y: 1.3, z: 0.8}
   m_Center: {x: 0, y: 0.65, z: 0}
 --- !u!114 &3525364795825508055
 MonoBehaviour:
@@ -161,6 +162,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1560e67d662dda545bd83c5dee862bb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WaterSource
+--- !u!114 &8297211133731536187
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4652254238737930578}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 192df36c9f3fd61498ea42f6cf9ecdcf, type: 2}
+  refundRatio: 1
 --- !u!1 &5857217687322552222
 GameObject:
   m_ObjectHideFlags: 0

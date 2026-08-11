@@ -174,6 +174,21 @@ public static class DebugGiveItems
                   "쓰러뜨린 뒤 시체를 우클릭 → [뒤진다].");
     }
 
+    // **지갑에 바로 넣는다.** `Give All Items`는 상자에 **동전을** 넣어 주는데, 그건 더블클릭해야
+    // 잔고가 된다(`InventoryUI.TryClaimCoins`) — 그리고 몸값·시장은 상자가 아니라
+    // `Wallet.Balance`를 본다. 월드맵에서 흥정을 시험하려는데 배낭 창을 열어 동전을 눌러야
+    // 하는 건 시험이 아니라 준비 작업이다.
+    const int DebugGold = 5000;
+
+    [MenuItem("DungeonColony/Debug: Add Gold")]
+    static void AddGold()
+    {
+        if (!EnsurePlaying()) return;
+
+        Wallet.Add(DebugGold);
+        Debug.Log($"[Debug] 골드 +{DebugGold} → 잔고 {Wallet.Balance} G");
+    }
+
     [MenuItem("DungeonColony/Debug: Complete All Research")]
     static void CompleteAllResearch()
     {

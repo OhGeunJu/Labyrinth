@@ -2,10 +2,24 @@ using System.Collections;
 using UnityEngine;
 using TMPro;
 
-// 유닛의 등급 승급 시 머리 위에 월드 공간 텍스트가 떠오르며 사라짐.
+// 유닛 머리 위에 월드 공간 텍스트가 떠오르며 사라짐.
 // 사용법: 씬에 빈 GameObject + 이 컴포넌트 부착. 폰트는 인스펙터에서 지정.
+//
+// **떠오르는 글자의 단일 출처다.** 이름은 등급 승급에서 시작했지만(그때는 그것뿐이었다)
+// 지금은 설득 성공·실패도 여기로 온다 — 같은 자리에 같은 모양으로 떠야 하고, 폰트·크기·
+// 지속시간이 씬에 하나만 있어야 한다. 두 벌을 만들면 하나가 반드시 다르게 보인다.
 public class GradeUpNotificationUI : MonoBehaviour
 {
+    // **폰 머리 위에 한 줄 띄운다.** 씬에 이 컴포넌트가 없으면 조용히 아무 일도 안 한다 —
+    // 알림이 없다고 게임 로직이 멈출 이유는 없다.
+    public static void Popup(Transform follow, string text, Color color)
+    {
+        if (_instance == null || follow == null || string.IsNullOrEmpty(text)) return;
+        _instance.StartCoroutine(_instance.Animate(_instance.CreatePopup(follow, text, color)));
+    }
+
+    static GradeUpNotificationUI _instance;
+
     [Header("월드 텍스트 설정")]
     [SerializeField] TMP_FontAsset font;
     [SerializeField] float         heightOffset  = 2.2f;   // 유닛 머리 위 시작 높이
@@ -16,21 +30,27 @@ public class GradeUpNotificationUI : MonoBehaviour
 
     Camera _cam;
 
-    void Awake() => _cam = Camera.main;
+    void Awake()
+    {
+        _cam = Camera.main;
+        _instance = this;
+    }
 
     void OnEnable()  => UnitStats.OnAnyGradeUp += HandleGradeUp;
     void OnDisable() => UnitStats.OnAnyGradeUp -= HandleGradeUp;
+
+    void OnDestroy() { if (_instance == this) _instance = null; }
 
     void HandleGradeUp(UnitStats stats, StatName stat, StatGrade newGrade)
     {
         if (stats.Owner == null) return;
 
         string text = $"{StatDisplayName(stat)} {newGrade.ToDisplay()} ↑";
-        var popup = CreatePopup(stats.Owner.transform, text, newGrade);
+        var popup = CreatePopup(stats.Owner.transform, text, newGrade.GetColor());
         StartCoroutine(Animate(popup));
     }
 
-    GameObject CreatePopup(Transform follow, string text, StatGrade grade)
+    GameObject CreatePopup(Transform follow, string text, Color color)
     {
         var go = new GameObject($"GradeUpPopup_{follow.name}");
         go.transform.position = follow.position + Vector3.up * heightOffset;
@@ -55,7 +75,7 @@ public class GradeUpNotificationUI : MonoBehaviour
         tmp.text          = text;
         tmp.fontSize      = fontSize;
         tmp.alignment     = TextAlignmentOptions.Center;
-        tmp.color         = grade.GetColor();
+        tmp.color         = color;
         tmp.raycastTarget = false;
         tmp.fontStyle     = FontStyles.Bold;
         if (font != null) tmp.font = font;

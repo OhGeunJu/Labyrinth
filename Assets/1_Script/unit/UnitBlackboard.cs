@@ -5,6 +5,17 @@ public class UnitBlackboard
     public GameObject Self;
     public PawnMover Mover;
 
+    // **자주 묻는 컴포넌트는 여기 붙여 둔다.** BT는 폰마다 초당 열 번 도는데, 노드들이
+    // `bb.Self.GetComponent<UnitBrain>()`을 매번 다시 물었다 — 한 파일에서만 일곱 군데였다.
+    // `Mover`를 캐시해 둔 것과 같은 이유이고, 같은 자리에 있어야 다음 사람이 찾는다.
+    //
+    // (`Brain.Blackboard`가 이 객체이므로 서로를 가리킨다 — 순환이지만 둘 다 폰과 수명이
+    //  같아서 끊어질 일이 없다.)
+    public UnitBrain          Brain;
+    public BodyPartSystem     Body;
+    public CombatHandler      Combat;
+    public Faction            Faction;
+
     // 이번 BT 틱까지 실제로 흐른 시간(초). BT는 tickInterval마다 돌므로 노드 안에서
     // Time.deltaTime(한 프레임)을 누적하면 시간이 tickInterval/frameTime 배만큼 느리게 간다.
     // 시간을 다루는 노드는 반드시 이 값을 쓸 것.
@@ -76,6 +87,55 @@ public class UnitBlackboard
     public bool IsDrafted;
     public bool IsUnarmed  = true;
     public bool IsKnockedOut;
+
+    // ── 업기 ────────────────────────────────────────────────────────────────
+    // **어깨에 멘 사람 / 나를 메고 있는 사람.** 둘을 같이 두는 이유는 어느 쪽에서 물어도
+    // 답이 나와야 해서다 — 업은 폰은 느려지고 한 손이 막히고(`Carrying`), 업힌 폰은
+    // 자동 탐지·일감에서 빠져야 한다(`CarriedBy`).
+    public UnitBrain Carrying;
+    public UnitBrain CarriedBy;
+
+    // 업으러 가라는 명령(우클릭). 닿으면 업고 지워진다 — `PickUpTarget`과 같은 규약이다.
+    public UnitBrain CarryTarget;
+
+    // 내려놓을 곳 — **한 자리를 콕 집은 것**(우리·침대를 우클릭해서 고른 그것).
+    // 침대·우리면 그 자리에 눕히고, 맨바닥이면 그냥 내린다.
+    public Vector3    PutDownAt;
+    public bool       HasPutDown;
+    public Bed        PutDownBed;
+    public PrisonCage PutDownCage;
+
+    // 데려갈 **자리의 종류**(`PrisonEscort`). 위와 다른 축이다 — 저쪽은 "저 우리"고
+    // 이쪽은 "우리". 종류로 두면 걸어가는 사이 그 칸이 차도 다음 칸으로 갈아탄다.
+    //
+    // **업기를 거쳐도 살아남는다** — `[우리로 옮긴다]`는 업기와 데려가기가 한 동작이라,
+    // `PawnCarry.TryPickUp`이 지우는 `PutDown*`(지난 명령의 잔재)와 달리 여기 남아 있어야
+    // 업은 다음에 그대로 이어진다.
+    public EscortDest EscortTo;
+
+    // ── 갇힘 ────────────────────────────────────────────────────────────────
+    // **BT가 안 돈다 + 자동 표적에서 빠진다 + 제자리를 지킨다.** 우리든 죄수 침대든 같은
+    // 플래그를 쓴다 — 가두는 물건마다 규칙을 따로 두면 한쪽에서 포로가 걸어 나간다.
+    public bool       IsPrisoner;
+    public Vector3    PrisonSpot;
+
+    // **자세도 가둔 자리가 정한다.** 죄수 침대는 눕히고(베개 쪽), 우리는 세운다.
+    // 안 들고 있으면 기절에서 깨어날 때 `BodyPartSystem`이 **기절 직전 자세**로 되돌려
+    // 침대에 누워 있던 포로가 벌떡 일어선다.
+    public Quaternion PrisonPose = Quaternion.identity;
+
+    // 회유 진행도(0~1). **길이 둘이어도 게이지는 하나다** — 핵이 채우든(하수인 종족)
+    // 폰이 설득해서 채우든(사람 종족) 100%가 되면 같은 문으로 들어온다(`Conversion`).
+    public float ConvertProgress;
+
+    // 다음 설득 회차를 걸 수 있는 시각(`Conversion.PersuadeCooldown`). **설득당하는 쪽이
+    // 들고 있다** — 누가 말을 붙이든 같은 쿨타임이어야 하고(사람을 바꿔 가며 누르면 쉬지 않고
+    // 도는 것이 되면 안 된다), 폰이 사라지면 같이 사라져야 한다.
+    public float NextPersuadeTime;
+
+    // 풀려나 맵을 떠나는 중. **맞으면 꺼진다**(`LeaveMapNode`) — 살려 보낸 것을 무르는 길.
+    public bool    LeavingMap;
+    public Vector3 LeaveTarget;
 
     // **콕 집어 마무리하라고 지목한 대상.** `BTTargetUtil.IsAttackable`이 기절한 폰을 모든
     // 자동 경로(탐지·반격)에서 빼는 것은 KO가 사형선고가 되지 않게 하려는 것이고(켄시식),

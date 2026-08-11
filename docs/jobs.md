@@ -14,7 +14,6 @@ Job score = `JobCategoryInfo.Weight(category) × 100 + job.Priority`. 폰이 그
 
 | Job | Category | 흐름 |
 |---|---|---|
-| `MineJob` | Mining | **현재 미사용** — 어디서도 생성되지 않는다. 채굴은 노드 직접 배정(`WorkNode.TickAssigned`) 경로로만 돌아간다 |
 | `HaulJob` | Hauling | GoToSource(**맡은 몫**만 수거) → GoToStorage(TryAdd) |
 | `GroundHaulJob` | Hauling | GoToItem(DroppedItem.PickUp) → GoToStorage |
 | `UnloadJob` | Unload | 배낭의 잉여를 창고로. **주인만 할 수 있다**(`CanAssignTo`) — 짐이 그 폰 배낭에 있다. **잠근 뭉치는 뺀다**(`ItemInstance.Locked`) — 아래 참조 |

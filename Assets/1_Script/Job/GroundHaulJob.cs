@@ -24,6 +24,9 @@ public class GroundHaulJob : JobBase
         Priority     = 4;  // ResourceNode HaulJob(5)보다 낮음
     }
 
+    // 줍고 내려놓는 일이라 **손만 닿으면 된다**(`HaulJob`과 같은 규약).
+    public override float Reach => HandReach;
+
     // 질 자리가 없는 폰에게는 주지 않는다(`HaulJob`과 같은 규칙).
     //
     // **무게와 격자를 둘 다 본다.** 무게만 보면 배낭 격자가 꽉 찬 폰이 통과하는데,
@@ -47,23 +50,22 @@ public class GroundHaulJob : JobBase
             _amount = _droppedItem.PickUp(unit.Inventory, CarryCapacity.RoomFor(unit, _itemData));
             if (_amount <= 0) { Status = JobStatus.Done; return; }
 
+            // **목적지가 사라졌으면 그냥 들고 있는다.** 이 일감은 받아 줄 창고가 있어야만
+            // 만들어지므로(`DroppedItem`), 여기서 없다는 건 폰이 걸어오는 사이에 철거됐다는
+            // 뜻이다 — 이미 간 걸음을 버리고 도로 내려놓을 이유가 없다. 짐은 배낭에 남고,
+            // 창고가 생기면 짐내림(`UnloadJob`)이 알아서 옮긴다.
+            _storage = Storage.Rebind(_storage, unit.transform.position, _itemData, _amount, _quality);
+            if (_storage == null) { Status = JobStatus.Done; return; }
+
             _phase    = Phase.GoToStorage;
-            TileCoord = MapManager.Instance.WorldToTile(_storage.transform.position);
+            TileCoord = WorkSpot.TileFor(_storage);   // 창고 자기 칸이 아니라 폰이 서는 자리
         }
         else
         {
-            int removed  = unit.Inventory.Remove(_itemData, _amount);
-            int leftover = removed - _storage.TryAdd(_itemData, removed, _quality);
-
-            // 부분 입고 시 남은 양을 다른 창고로, 그래도 남으면 인벤 복귀(방금 뺀 공간이라 반드시 수용) → 증발 방지.
-            if (leftover > 0)
-            {
-                var fallback = Storage.FindNearest(unit.transform.position, _itemData, leftover, _quality);
-                if (fallback != null)
-                    leftover -= fallback.TryAdd(_itemData, leftover, _quality);
-            }
-            if (leftover > 0)
-                unit.Inventory.TryAdd(_itemData, leftover, _quality);
+            // 여기까지 오는 동안 창고가 사라졌을 수 있다 — `Deliver`가 `null`도 받아 다른
+            // 창고 → 배낭 → 바닥 순으로 넘긴다(운반·수확이 같은 사슬을 쓴다).
+            int removed = unit.Inventory.Remove(_itemData, _amount);
+            Storage.Deliver(_storage, _itemData, removed, _quality, unit, unit.transform.position);
 
             Status = JobStatus.Done;
         }

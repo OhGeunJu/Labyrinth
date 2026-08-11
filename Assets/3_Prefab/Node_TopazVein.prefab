@@ -551,6 +551,7 @@ GameObject:
   - component: {fileID: 7022058838945027924}
   - component: {fileID: 41503987711374521}
   - component: {fileID: 6318213117011574668}
+  - component: {fileID: 8303183504620629153}
   m_Layer: 0
   m_Name: Node_TopazVein
   m_TagString: Untagged
@@ -617,6 +618,20 @@ MonoBehaviour:
   data: {fileID: 11400000, guid: 5c9b044bef38f7341a5926bbd523015b, type: 2}
   haulThreshold: 10
   size: {x: 2, y: 1}
+--- !u!114 &8303183504620629153
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6542809555801234535}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 8592f803f4d102b4587aa677f8e11a68, type: 2}
+  refundRatio: 1
 --- !u!1 &7293744506746873931
 GameObject:
   m_ObjectHideFlags: 0

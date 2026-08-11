@@ -88,7 +88,22 @@ public static class BuildingGridFixer
         {
             var data = AssetDatabase.LoadAssetAtPath<BuildingData>(
                 AssetDatabase.GUIDToAssetPath(guid));
-            if (data == null || data.Prefab == null || !data.OccupiesTile) continue;
+            if (data == null || data.Prefab == null) continue;
+
+            // **바닥만 뺀다.** 바닥은 드래그로 칠하는 substrate라 콜라이더가 서로 맞닿아야
+            // 한다 — 0.2를 깎으면 타일 사이에 틈이 생기고, 배치 미리보기의 지면 레이캐스트가
+            // 그 틈으로 빠져 커서가 헛돈다.
+            if (data.IsFloor) continue;
+
+            // **`OccupiesTile`로 거르지 않는다.**
+            //
+            // 전에는 걸렀는데, 그건 다른 물음이다: `OccupiesTile`은 "길을 막나"이고 콜라이더
+            // 크기는 "어디를 눌러야 잡히나"다(길찾기는 `PlacedBuilding`이 등록한 타일 점유를
+            // 보지 콜라이더를 안 본다 — `obstacleLayer`는 Wall뿐이다).
+            //
+            // 그 게이트 때문에 **창고가 2×2인데 콜라이더가 1×1로 남아**, 눈에 보이는 상자의
+            // 바깥 절반이 클릭에 안 잡혔다. 문서가 "옛 리사이즈 도구가 모델만 키우고 콜라이더는
+            // 두고 갔다"고 적어 둔 그 사고인데, 정작 고치는 도구가 그것만 건너뛰고 있었다.
 
             string path = AssetDatabase.GetAssetPath(data.Prefab);
             if (string.IsNullOrEmpty(path)) continue;

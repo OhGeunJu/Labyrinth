@@ -15,17 +15,31 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
     int          _costRequired;
     int          _costDelivered;
     bool         _jobPending;
+    bool         _cancelled;
 
-    Material _ghostMat;
+    ConstructionJob _job;      // 지금 걸려 있는 일감 — 취소할 때 거둔다
+    Material        _ghostMat;
+    Renderer[]      _renderers;
+    bool            _highlighted;
 
-    public bool     IsComplete => _costDelivered >= _costRequired;
-    public int      Remaining  => Mathf.Max(0, _costRequired - _costDelivered);
-    public ItemData CostItem   => _costItem;
+    public bool         IsComplete   => _costDelivered >= _costRequired;
+    public int          Remaining    => Mathf.Max(0, _costRequired - _costDelivered);
+    public ItemData     CostItem     => _costItem;
+    public BuildingData Data         => _data;
+    public int          Delivered    => _costDelivered;
+    public int          CostRequired => _costRequired;
 
     // 완성되면 막을 칸들 — 계산은 `PlacedBuilding`과 같은 것을 쓴다(답이 두 벌이면 어긋난다).
     // 칸을 안 막는 건물(`OccupiesTile` false)은 발자국도 비운다 — 그 위에 서도 갇히지 않는다.
     public IEnumerable<Vector2Int> Footprint =>
         _data != null && _data.OccupiesTile
+            ? PlacedBuilding.FootprintAt(transform.position, _data.Size, transform.rotation)
+            : System.Array.Empty<Vector2Int>();
+
+    // **커서로 집을 수 있는 칸들 — `Footprint`와 다른 축이다.** 발자국은 "완성되면 막을 칸"이라
+    // 창고·침대·농지처럼 안 막는 건물은 비어 있는데, 그 칸에 놓인 청사진도 집을 수 있어야 한다.
+    public IEnumerable<Vector2Int> Area =>
+        _data != null
             ? PlacedBuilding.FootprintAt(transform.position, _data.Size, transform.rotation)
             : System.Array.Empty<Vector2Int>();
 
@@ -116,21 +130,112 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
 
     void OnStorageChanged() => TryRegisterJob();
 
+    // **배낭이 바뀌는 것은 이벤트로 못 듣는다.** `Storage.OnChanged`는 static이지만
+    // `Inventory.OnChanged`는 인스턴스 단위라, 청사진마다 플레이어 폰 전부를 구독했다
+    // 끊어야 한다(폰은 늘어나고 죽고 원정을 떠난다). 자재를 사 오거나 주워 오는 건 드문
+    // 일이므로 주기 점검으로 족하다 — `ResourceNode`가 잔량을 다시 집는 것과 같은 방식.
+    const float RetryInterval = 2f;
+    float _retryTimer;
+
+    void Update()
+    {
+        if (_jobPending || IsComplete) return;
+
+        _retryTimer -= Time.deltaTime;
+        if (_retryTimer > 0f) return;
+        _retryTimer = RetryInterval;
+
+        TryRegisterJob();
+    }
+
     void TryRegisterJob()
     {
+        // **취소된 뒤에도 불린다.** 일감을 거두면 `OnCancelled`가 `OnJobEnded`로 돌아오는데,
+        // `IsComplete`는 미완이라 그대로 두면 사라지는 청사진이 새 일감을 또 등록한다.
+        if (_cancelled) return;
         if (_jobPending || IsComplete || JobManager.Instance == null || _costItem == null) return;
-        int available = Storage.GetTotalByItem(_costItem);
+
+        // **창고만 세면 손에 든 자재가 없는 것이 된다.** `MaterialPool`이 답하는 것과 같은
+        // 축으로 본다 — 창고 + 플레이어 폰들의 배낭. 등록 시점엔 누가 지을지 모르므로
+        // 넓게 보고, 폰별 판정은 `ConstructionJob.CanAssignTo`가 다시 한다.
+        int available = MaterialPool.AvailableAnywhere(_costItem);
         if (available <= 0) return;
 
         _jobPending = true;
-        JobManager.Instance.RegisterJob(
-            new ConstructionJob(this, _costItem, Mathf.Min(Remaining, available)));
+        _job        = new ConstructionJob(this, _costItem, Mathf.Min(Remaining, available));
+        JobManager.Instance.RegisterJob(_job);
     }
 
     public void OnJobEnded()
     {
         _jobPending = false;
         TryRegisterJob();
+    }
+
+    // ── 취소 ────────────────────────────────────────────────────────────────
+    //
+    // **취소는 철거가 아니다 — 납품된 자재를 전액 돌려준다.** 철거가 75%만 주는 건 지어진
+    // 것을 부수기 때문이고, 청사진은 아직 아무것도 아니라 깎을 손실이 없다. 깎으면
+    // **계획을 세우는 일에 벌칙이 붙는다** — 놓아 보고 아니면 물리는 것이 청사진의 쓸모다.
+    //
+    // 돌아가는 곳은 **창고 먼저**(`MaterialPool.Refund`). 바닥에 떨구면 그 짐이 다시 운반
+    // 일감이 되고, 나르는 동안 창고 집계에서 빠져 있어 다른 작업이 "재료 부족"으로 죽는다.
+    public void Cancel()
+    {
+        if (_cancelled) return;
+        _cancelled = true;
+
+        DropJob();
+
+        if (_costItem != null && _costDelivered > 0)
+        {
+            MaterialPool.Refund(_costItem, _costDelivered, transform.position);
+            Debug.Log($"[Blueprint] 취소 — {_costItem.ItemName} ×{_costDelivered} 환불");
+        }
+        _costDelivered = 0;
+
+        Destroy(gameObject);
+    }
+
+    // **하던 일감도 거둔다** — `Bed`는 진행 중인 치료를 안 뺏지만(약만 버려진다) 여기는
+    // 청사진 자체가 사라진다. 그냥 두면 폰이 끝까지 걸어가 `Execute`에서 실패할 뿐이라,
+    // 지금 놓게 하는 편이 헛걸음을 던다.
+    //
+    // **이미 배낭에 실은 자재는 안 건드린다.** 그건 폰의 짐이고 짐내림(`UnloadJob`)이
+    // 창고로 돌려놓는다 — 여기서 뺏으면 어느 인벤토리에서 사라졌는지가 화면에 안 남는다.
+    void DropJob()
+    {
+        if (_job == null) return;
+        JobManager.Instance?.RemoveJob(_job);
+        if (_job.Status is JobStatus.Available or JobStatus.Reserved or JobStatus.InProgress)
+            _job.Cancel();
+        _job = null;
+    }
+
+    // 그 칸에 걸쳐 있는 청사진 — **콜라이더가 아니라 타일로 집는다.** 고스트는 콜라이더를
+    // 일부러 다 꺼 두었다(청사진은 통행을 안 막고, 켜면 선택·이동 명령의 레이캐스트에 걸린다).
+    public static BuildingBlueprint PickAt(Vector2Int tile)
+    {
+        foreach (var bp in All)
+        {
+            if (bp == null) continue;
+            foreach (var t in bp.Area)
+                if (t == tile) return bp;
+        }
+        return null;
+    }
+
+    // 철거 모드의 빨간 표시 — 완성 건물과 **같은 표시**를 쓴다(색이 다르면 무엇이 잡혔는지
+    // 눈으로 못 가른다). 고스트가 반투명이라 알파만 낮춰 넘긴다.
+    static readonly Color PendingColor = new(1f, 0.3f, 0.3f, 0.45f);
+
+    public void SetPendingHighlight(bool on)
+    {
+        if (on == _highlighted) return;
+        _highlighted = on;
+
+        _renderers ??= GetComponentsInChildren<Renderer>();
+        PlacedBuilding.ApplyTint(_renderers, on, PendingColor);
     }
 
     public void Deliver(ItemData item, int amount)

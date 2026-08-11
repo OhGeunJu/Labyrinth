@@ -507,6 +507,7 @@ GameObject:
   - component: {fileID: 1872335654342813103}
   - component: {fileID: 1987219017973340777}
   - component: {fileID: 5689626411061498623}
+  - component: {fileID: 3994703906418075825}
   m_Layer: 0
   m_Name: CraftingTable_Alchemy
   m_TagString: Untagged
@@ -575,6 +576,20 @@ MonoBehaviour:
   _acceptedFuels: []
   allowHaulOut: 1
   outputSize: {x: 8, y: 3}
+--- !u!114 &3994703906418075825
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6388735652006846745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a8dea482c1f31547bb4b0ec95e19870, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
+  data: {fileID: 11400000, guid: 8ba58bf0891719e43aca2d0138cb8f52, type: 2}
+  refundRatio: 1
 --- !u!1 &8571703762018865908
 GameObject:
   m_ObjectHideFlags: 0

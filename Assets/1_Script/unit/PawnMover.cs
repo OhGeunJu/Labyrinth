@@ -129,6 +129,15 @@ public class PawnMover : MonoBehaviour
         // 기절 중엔 이동 명령 무시 (기상하면 IsKnockedOut이 풀려 복귀 이동은 정상 동작)
         if (IsKnockedOut) return;
 
+        // **갇혀 있거나 업혀 있으면 제 발로 안 간다.**
+        //
+        // BT는 이미 `UnitBrain.Update`에서 막았지만 **직접 명령은 BT를 안 거친다** —
+        // 우클릭 이동은 `MoveController`가 여기로 곧장 들어온다. 그래서 우리 폰을 우리에
+        // 가둬 놓고 우클릭하면 갇힌 채로 걸어 나갔다(`Imprisonment.Hold`가 매 프레임 도로
+        // 끌어와 부들부들 떨었다). 막는 자리는 기절과 같은 여기다.
+        if (_brain?.Blackboard != null &&
+            (_brain.Blackboard.IsPrisoner || _brain.Blackboard.CarriedBy != null)) return;
+
         // 이동 명령 = 일어난다. 누운 자세(침대 위)에서 경로를 잡지 않도록 먼저 내려온다.
         if (IsSleeping) SetSleeping(false);
 
@@ -447,6 +456,15 @@ public class PawnMover : MonoBehaviour
         // 누워 있는 동안은 중력·조향 모두 정지 (위치는 SetSleeping이 고정해뒀다)
         if (IsSleeping) return;
 
+        // **업혀 있으면 제 발로 안 움직인다.** 업는 쪽이 `CharacterController`를 끄고
+        // 어깨에 붙이는데(켠 채로 부모에 붙이면 콜라이더가 제자리로 되민다), 그 상태로
+        // `Move`를 부르면 `CharacterController.Move called on inactive controller`가
+        // **매 프레임** 쏟아진다. 위치는 부모(업은 폰)가 정한다.
+        //
+        // 갇힌 폰도 같은 이유로 뺀다 — `Imprisonment.Hold`가 자리를 잡아 주려고 컨트롤러를
+        // 잠깐 껐다 켜는데, 그 사이 프레임에 걸리면 같은 경고가 난다.
+        if (_cc == null || !_cc.enabled) return;
+
         if (_cc.isGrounded)
         {
             _verticalVel = groundStickForce;
@@ -558,12 +576,13 @@ public class PawnMover : MonoBehaviour
                         strengthGrowthRate * Time.deltaTime * ratio * CombatXp.Sol(_stats.Strength));
     }
 
-    // 한도(`CarryCapacity`)를 넘긴 만큼 느려진다. 한도 자체는 한 곳에서만 답한다.
+    // 한도(`CarryCapacity`)를 넘긴 만큼 느려진다. **한도도 적재도 한 곳에서만 답한다** —
+    // 배낭 무게를 직접 세면 어깨에 멘 사람이 빠져서, 사람을 업고도 빈손처럼 걷는다.
     float CalcWeightCorrection()
     {
-        if (_stats == null || _inventory == null) return 1f;
+        if (_stats == null || _brain == null) return 1f;
         float maxWeight     = CarryCapacity.For(_stats);
-        float currentWeight = _inventory.GetTotalWeight();
+        float currentWeight = CarryCapacity.Load(_brain);
         if (maxWeight <= 0f || currentWeight <= maxWeight) return 1f;
         return maxWeight / currentWeight;
     }
@@ -593,8 +612,8 @@ public class PawnMover : MonoBehaviour
         }
 
         // 표면 **위에** 세운다 — 표면 Y에 그대로 놓으면 캡슐 아래 절반이 파묻혀 또 밀려난다.
-        var ground = map.TileToGround(safe);
-        return new Vector3(ground.x, ground.y + _cc.height * 0.5f - _cc.center.y + 0.05f, ground.z);
+        // 띄우는 값은 `PawnPlacement`가 답한다(스폰·밀어내기·업기와 같은 한 벌).
+        return PawnPlacement.StandingPos(gameObject, map.TileToGround(safe));
     }
     // 지금 로컬 정밀 경로를 들고 있는가. 없으면 직선 폴백으로 가는 중이라 물체에 처박힌다 —
     // 포기 진단이 "길을 못 찾은 것"과 "길은 있는데 못 간 것"을 가르는 데 쓴다.

@@ -10,6 +10,7 @@ public class BuildModeManager : MonoBehaviour
     public static bool IsActive => Instance != null && Instance._active;
     public static event Action<bool> OnActiveChanged;
 
+
     public enum PlacementMode { Grid, Free }
 
     [Header("참조")]
@@ -46,7 +47,10 @@ public class BuildModeManager : MonoBehaviour
     bool    _demolish;
     bool    _dragging;
     Vector2 _dragStart;
-    readonly HashSet<PlacedBuilding> _pending = new();
+    readonly HashSet<PlacedBuilding>    _pending   = new();
+    // **청사진도 같은 모드로 지운다** — 지우는 길이 둘이면 하나가 어긋난다. 다만 결과는
+    // 다르다: 완성 건물은 부수는 것이라 75%, 청사진은 무효화라 전액 환불(`Cancel`).
+    readonly HashSet<BuildingBlueprint> _pendingBp = new();
 
     GameObject _ghost;
     GameObject _ghostSourcePrefab;
@@ -188,25 +192,42 @@ public class BuildModeManager : MonoBehaviour
 
     void RefreshPending(Vector2 cur)
     {
-        var next = new HashSet<PlacedBuilding>();
+        var next   = new HashSet<PlacedBuilding>();
+        var nextBp = new HashSet<BuildingBlueprint>();
 
         if (_dragging)
         {
             float minX = Mathf.Min(_dragStart.x, cur.x), maxX = Mathf.Max(_dragStart.x, cur.x);
             float minY = Mathf.Min(_dragStart.y, cur.y), maxY = Mathf.Max(_dragStart.y, cur.y);
-            foreach (var pb in PlacedBuilding.All)
+
+            bool InBox(Vector3 world)
             {
-                if (pb == null) continue;
-                var sp = _cam.WorldToScreenPoint(pb.transform.position);
-                if (sp.z < 0f) continue;
-                if (sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY)
-                    next.Add(pb);
+                var sp = _cam.WorldToScreenPoint(world);
+                return sp.z >= 0f && sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY;
             }
+
+            foreach (var pb in PlacedBuilding.All)
+                if (pb != null && InBox(pb.transform.position)) next.Add(pb);
+
+            foreach (var bp in BuildingBlueprint.All)
+                if (bp != null && InBox(bp.transform.position)) nextBp.Add(bp);
         }
         else
         {
             var hit = PlacedBuilding.PickUnderCursor(_cam, cur);
             if (hit != null) next.Add(hit);
+
+            // **청사진은 콜라이더로 못 집는다** — 고스트가 콜라이더를 다 꺼 두었기 때문이다
+            // (청사진은 통행을 안 막고, 켜면 선택·이동 명령의 레이캐스트에 걸린다).
+            // 커서 아래 지면 지점을 타일로 바꿔 그 칸의 청사진을 찾는다.
+            //
+            // 완성 건물이 잡혔으면 안 찾는다 — 다 지어진 건물이 청사진 자리에 겹쳐 있을 리
+            // 없지만, 겹쳤다면 눈에 보이는 쪽(실체)이 이기는 게 맞다.
+            if (hit == null && TryCursorGround(cur, out var point) && MapManager.Instance != null)
+            {
+                var bp = BuildingBlueprint.PickAt(MapManager.Instance.WorldToTile(point));
+                if (bp != null) nextBp.Add(bp);
+            }
         }
 
         // diff: 빠진 건 해제, 새로 든 건 표시
@@ -215,8 +236,16 @@ public class BuildModeManager : MonoBehaviour
         foreach (var pb in next)
             if (!_pending.Contains(pb)) pb.SetPendingHighlight(true);
 
+        foreach (var bp in _pendingBp)
+            if (bp != null && !nextBp.Contains(bp)) bp.SetPendingHighlight(false);
+        foreach (var bp in nextBp)
+            if (!_pendingBp.Contains(bp)) bp.SetPendingHighlight(true);
+
         _pending.Clear();
         foreach (var pb in next) _pending.Add(pb);
+
+        _pendingBp.Clear();
+        foreach (var bp in nextBp) _pendingBp.Add(bp);
     }
 
     void ExecuteDemolish()
@@ -224,6 +253,10 @@ public class BuildModeManager : MonoBehaviour
         foreach (var pb in _pending)
             if (pb != null) pb.Demolish(); // 파괴되면서 All/하이라이트도 정리됨
         _pending.Clear();
+
+        foreach (var bp in _pendingBp)
+            if (bp != null) bp.Cancel();   // 납품된 자재는 전액 창고로
+        _pendingBp.Clear();
     }
 
     void ClearPending()
@@ -231,6 +264,10 @@ public class BuildModeManager : MonoBehaviour
         foreach (var pb in _pending)
             if (pb != null) pb.SetPendingHighlight(false);
         _pending.Clear();
+
+        foreach (var bp in _pendingBp)
+            if (bp != null) bp.SetPendingHighlight(false);
+        _pendingBp.Clear();
     }
 
     void OnGUI()
@@ -241,7 +278,7 @@ public class BuildModeManager : MonoBehaviour
         {
             GUI.color = new Color(1f, 0.7f, 0.7f, 1f);
             GUI.Label(new Rect(10, 10, 600, 24),
-                "[철거] 클릭=단일 / 드래그=일괄 (건설비 75% 환불)  X=철거 끄기  Esc=나가기");
+                "[철거] 클릭=단일 / 드래그=일괄 (자재 전액 환불)  X=철거 끄기  Esc=나가기");
             GUI.color = Color.white;
             DrawDemolishBox();
             return;
@@ -402,6 +439,29 @@ public class BuildModeManager : MonoBehaviour
         if (_ghostHover <= 0f) SnapOnSurface(_ghost, pos.y);
     }
 
+    // 커서 아래의 지면 지점. 배치 미리보기와 철거 모드의 청사진 픽킹이 **같은 조준**을 쓴다 —
+    // 답이 두 벌이면 미리보기가 가리키는 칸과 실제로 집히는 칸이 어긋난다.
+    bool TryCursorGround(Vector2 screenPos, out Vector3 point)
+    {
+        point = default;
+        if (_cam == null) return false;
+
+        Ray ray = _cam.ScreenPointToRay(screenPos);
+        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+        {
+            point = hit.point;
+            return true;
+        }
+
+        // 공허(던전 씬): 콜라이더가 없어도 y=0 평면 교차로 조준 — 바닥을 공허에 깔 수 있어야 함.
+        if (new Plane(Vector3.up, 0f).Raycast(ray, out float enter) && enter <= 500f)
+        {
+            point = ray.GetPoint(enter);
+            return true;
+        }
+        return false;
+    }
+
     void UpdatePreview()
     {
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
@@ -411,14 +471,7 @@ public class BuildModeManager : MonoBehaviour
             return;
         }
 
-        Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
-        Vector3 point;
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
-            point = hit.point;
-        // 공허(던전 씬): 콜라이더가 없어도 y=0 평면 교차로 조준 — 바닥을 공허에 깔 수 있어야 함.
-        else if (new Plane(Vector3.up, 0f).Raycast(ray, out float enter) && enter <= 500f)
-            point = ray.GetPoint(enter);
-        else
+        if (!TryCursorGround(Mouse.current.position.ReadValue(), out var point))
         {
             if (_previewShown) { gridRenderer.HidePreview(); _previewShown = false; }
             HideGhost();
@@ -561,12 +614,6 @@ public class BuildModeManager : MonoBehaviour
             return;
         }
 
-        if (data.CostAmount > 0 && !Storage.ConsumeByItem(data.CostItem, data.CostAmount))
-        {
-            Debug.Log($"[Build] 자원 부족 — {data.CostItem?.ItemName} ×{data.CostAmount}");
-            return;
-        }
-
         // 바닥(모델 A): 코어 무관 substrate. 휴면/장애물 처리 없음. Floor 컴포넌트가 바닥 자동 등록.
         if (data.IsFloor)
         {
@@ -579,11 +626,26 @@ public class BuildModeManager : MonoBehaviour
             return;
         }
 
+        // **청사진은 여기서 자재를 안 낸다** — 폰이 나중에 지고 와 납품한다(`ConstructionJob`).
+        // 전엔 배치 시점에 한 번 빼고 청사진이 또 걷어 **두 번 냈다.** 즉시 배치가 28종이던
+        // 동안엔 비용 있는 건물이 대부분 그 길로 갔고, 청사진 다섯(침대·밭·창고·서브코어·물)에서만
+        // 나던 일이라 눈에 덜 띄었다 — 13종을 청사진으로 돌리면서 전면화됐다.
+        //
+        // 자재가 없어도 놓을 수 있다. 청사진은 **계획**이고, 모자라면 폰이 안 갈 뿐
+        // 자재가 들어오는 순간 저절로 재개된다(`BuildingBlueprint.TryRegisterJob`).
         if (data.UsesBlueprint)
         {
             var bp = new GameObject($"[Blueprint] {data.BuildingName}");
             bp.transform.SetPositionAndRotation(pos, rot);
             bp.AddComponent<BuildingBlueprint>().Init(data);
+            return;
+        }
+
+        // 즉시 배치만 그 자리에서 값을 치른다. 지금 남은 즉시 배치(바닥·돌·광맥 15종)는 전부
+        // 비용 0이라 실제로는 안 걸리지만, 비용 있는 건물을 즉시 배치로 되돌려도 맞게 돈다.
+        if (data.CostAmount > 0 && !Storage.ConsumeByItem(data.CostItem, data.CostAmount))
+        {
+            Debug.Log($"[Build] 자원 부족 — {data.CostItem?.ItemName} ×{data.CostAmount}");
             return;
         }
 
@@ -630,13 +692,22 @@ public class BuildModeManager : MonoBehaviour
         return _footprint;
     }
 
+    // **지금 미리보기가 쓰는 각도.** 자유 모드는 `_freeYaw`로 돌리는데 발자국은 `_gridYaw`만
+    // 보고 있었다 — 그래서 자유 모드에서 Q/E로 침대를 돌려도 **밑의 초록색 미리보기가 그대로**였다
+    // (1×2가 2×1이 되지 않는다). 바닥은 자유 모드여도 그리드로 강제되므로 그때는 `_gridYaw`다.
+    float PreviewYaw =>
+        _mode == PlacementMode.Grid || (SelectedBuilding != null && SelectedBuilding.IsFloor)
+            ? _gridYaw : _freeYaw;
+
     Vector2Int FootprintSize()
     {
         var s = SelectedBuilding != null ? SelectedBuilding.Size : Vector2Int.one;
         s = new Vector2Int(Mathf.Max(1, s.x), Mathf.Max(1, s.y));
 
-        // 90°/270° 회전이면 축이 바뀐다.
-        int quarter = Mathf.RoundToInt(_gridYaw / 90f) & 3;
+        // 90°/270° 회전이면 축이 바뀐다. **자유 모드는 15° 단위**라 반올림으로 가장 가까운
+        // 직각에 붙인다 — 45° 근처에서는 어느 쪽으로 재도 반 칸씩 어긋나므로, 어긋나더라도
+        // 눈에 보이는 모델과 같은 쪽으로 어긋나는 편이 낫다.
+        int quarter = Mathf.RoundToInt(PreviewYaw / 90f) & 3;
         return (quarter % 2 == 1) ? new Vector2Int(s.y, s.x) : s;
     }
 

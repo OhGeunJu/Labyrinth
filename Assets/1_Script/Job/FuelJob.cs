@@ -22,6 +22,10 @@ public class FuelJob : JobBase
         SetSite(table);   // 목표 칸(WorkSpot)도 여기서 정해진다
     }
 
+    // **넣고 꺼내기만 하는 일이라 손만 닿으면 된다** — 창고에서 석탄을 집는 것도, 용광로
+    // 아궁이에 붓는 것도 그 자리에 서서 하는 작업이 아니다(제작은 `CraftJob`이 따로 한다).
+    public override float Reach => HandReach;
+
     protected override void OnStart()
     {
         _sourceStorage = null;
@@ -39,10 +43,10 @@ public class FuelJob : JobBase
             return;
         }
 
+        // 창고 자기 칸이 아니라 **폰이 서는 자리**(`WorkSpot`) — 창고는 칸을 막으므로
+        // 자기 칸은 설 수 없는 자리다.
         _phase    = Phase.GoToStorage;
-        TileCoord = MapManager.Instance != null
-            ? MapManager.Instance.WorldToTile(_sourceStorage.transform.position)
-            : Vector2Int.zero;
+        TileCoord = WorkSpot.TileFor(_sourceStorage);
     }
 
     protected override void Execute(UnitBrain unit)
@@ -63,10 +67,10 @@ public class FuelJob : JobBase
             unit.Inventory.TryAdd(_fuel.Item, toTake);
             _carryAmount = toTake;
 
+            // **작업대 칸은 원래부터 못 서는 자리다**(`OccupiesTile: true`). 그런데도 여기서
+            // 자기 칸을 겨누고 있었다 — 도착 판정이 늘 건물 한복판까지의 거리로 재어졌다는 뜻이다.
             _phase    = Phase.GoToFurnace;
-            TileCoord = MapManager.Instance != null
-                ? MapManager.Instance.WorldToTile(_table.transform.position)
-                : Vector2Int.zero;
+            TileCoord = WorkSpot.TileFor(_table);
         }
         else
         {
