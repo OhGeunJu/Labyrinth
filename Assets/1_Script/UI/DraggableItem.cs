@@ -47,17 +47,110 @@ public class DraggableItem : MonoBehaviour,
 
     public void OnPointerClick(PointerEventData e)
     {
+        // **우클릭 = 한 번에 보내기.** 반대편 통이 열려 있으면 그리로, 아니면 장비는 입는다
+        // (판단은 `InventoryUI`가 한다 — 무엇이 열려 있는지를 아는 것은 그쪽이다).
+        if (e.button == PointerEventData.InputButton.Right)
+        {
+            InventoryUI.NotifyItemRightClick(_instance, _sourceGrid);
+            return;
+        }
+
+        // **Shift/Ctrl은 클릭이 아니라 드래그에서 갈린다**(`OnBeginDrag`) — 그냥 누르기만
+        // 하면 평소대로 고르거나 더블클릭 동작이 돈다.
         if (e.clickCount == 2)
             InventoryUI.NotifyItemDoubleAction(_instance, _sourceGrid);
         else
             InventoryUI.NotifyItemSelected(_instance, _sourceGrid);
     }
 
+    // ── 얼마를 끌고 갈 것인가 ────────────────────────────────────────────────
+    //
+    // **Shift = 절반, Ctrl = 하나, 그냥 = 전부.**
+    //
+    // 쪼개는 시점이 **드래그를 시작할 때**인 것이 요점이다. 클릭으로 그 자리에서 쪼개면
+    // "쪼갠 다음 그걸 다시 끌어야" 해서 두 동작이 되고, 무엇보다 **어디에 놓을지가 안 정해진
+    // 채로** 격자에 새 뭉치가 생긴다. 시작할 때 갈라 두면 그 뒤로는 평범한 드래그라
+    // **놓을 수 있는 곳이 전부 그대로 통한다** — 격자·장비칸·상인 창·바닥까지.
+    //
+    // (커서에 얹어 두고 다음 클릭에 놓는 마인크래프트식도 생각했지만, 그건 "지금 커서가 무엇을
+    //  들고 있나"라는 상태를 새로 만들고 **받는 쪽을 전부 고쳐야** 한다. 여기서는 드래그가
+    //  이미 그 상태를 들고 있다.)
+    int DragAmount()
+    {
+        var kb = Keyboard.current;
+        if (kb == null || _instance == null || _instance.Quantity < 2) return int.MaxValue;
+
+        if (kb.ctrlKey.isPressed)  return 1;
+        if (kb.shiftKey.isPressed) return _instance.Quantity / 2;
+        return int.MaxValue;   // 전부
+    }
+
+    // **집어 든 쪽이 새 뭉치다 — 남는 쪽이 원래 자리를 지킨다.**
+    //
+    // 처음엔 반대로 했다(끌던 인스턴스를 남기고 나머지를 떼어 냄). 그러면 **안 집은 절반이
+    // 첫 빈 칸으로 튀어 간다** — 20개를 정리해 둔 자리에서 절반만 집었을 뿐인데 남은 것이
+    // 배낭 맨 앞으로 옮겨 앉는다. 집어 든 것은 어차피 커서를 따라가므로 **어디에 있든
+    // 상관없는 쪽은 그쪽**이다.
+    void SplitForDrag()
+    {
+        _splitPending = false;
+
+        int take = DragAmount();
+        if (take == int.MaxValue) return;
+
+        var inv = _sourceGrid != null ? _sourceGrid.Inventory : null;
+        if (inv == null) return;
+
+        // **알리지 않고 쪼갠다** — 지금 알리면 격자가 아이콘을 다시 만들면서 **끌고 있는
+        // 이것**이 파괴된다. `OnBeginDrag` 끝(캔버스로 옮긴 뒤)에 알린다.
+        var taken = inv.SplitInstance(_instance, take, notify: false);
+
+        if (taken == null)
+        {
+            // **자리가 없어도 쪼갠다 — 격자에 놓지 않고 손에 든다.**
+            //
+            // 꽉 찬 상자에서 절반만 배낭으로 옮기는 것이 가장 흔한 쓰임인데, 그때 **갈라 나온
+            // 쪽이 놓일 빈 칸이 그 상자에 없어서** 통째로 끌렸다. 어차피 커서를 따라가는
+            // 물건이라 격자에 자리를 잡을 이유가 없다.
+            //
+            // 대신 **놓기에 실패하면 되돌려야 한다**(`OnEndDrag`) — 격자에 없으므로 그냥 두면
+            // 그만큼이 조용히 사라진다.
+            _instance.Quantity -= take;
+            taken = new ItemInstance(_instance.Data, take,
+                                     _instance.GridX, _instance.GridY,
+                                     _instance.Rotated, _instance.Quality)
+            {
+                Locked = _instance.Locked,
+            };
+            _detached = true;
+        }
+
+        _instance     = taken;   // 이제 이 아이콘이 끌고 가는 것은 갈라 나온 쪽이다
+        _splitPending = true;
+        RefreshCountLabel();
+    }
+
+    // 격자에 등록되지 않은 채 끌고 있는가(위의 폴백). 놓기에 실패하면 출처로 되돌린다.
+    bool _detached;
+
+    // 쪼갠 직후의 개수를 아이콘에 반영한다 — 안 하면 10을 끌면서 20이라고 적혀 있다.
+    void RefreshCountLabel()
+    {
+        var label = GetComponentInChildren<TMPro.TextMeshProUGUI>(true);
+        if (label != null) label.text = _instance.Quantity > 1 ? _instance.Quantity.ToString() : "";
+    }
+
+    bool _splitPending;
+
     public void OnBeginDrag(PointerEventData e)
     {
         ItemInfoUI.Hide();
         if (_canvas == null) _canvas = GetComponentInParent<Canvas>();
         if (_canvas == null || _sourceGrid == null) return;
+
+        // **끌 만큼만 남기고 나머지를 떼어 놓는다**(Shift=절반 / Ctrl=하나). 여기서 갈라 두면
+        // 그 뒤로는 평범한 드래그라 놓을 수 있는 곳이 전부 그대로 통한다.
+        SplitForDrag();
 
         DraggedInstance   = _instance;
         DraggedSourceGrid = _sourceGrid;
@@ -66,8 +159,10 @@ public class DraggableItem : MonoBehaviour,
         _origParent  = transform.parent;
         _dragRotated = _instance.Rotated;
 
+        // **쪼갠 것은 잡은 자리가 없다.** `_instance`가 방금 갈라 나온 새 뭉치라 격자 좌표가
+        // 사용자가 누른 칸과 무관하다 — 그 차이를 오프셋으로 쓰면 엉뚱한 칸에 놓인다.
         var clickGrid = _sourceGrid.ScreenToGrid(e.position);
-        _clickCellOffset = clickGrid.x != int.MinValue
+        _clickCellOffset = !_splitPending && clickGrid.x != int.MinValue
             ? new Vector2Int(clickGrid.x - _instance.GridX, clickGrid.y - _instance.GridY)
             : Vector2Int.zero;
 
@@ -82,6 +177,16 @@ public class DraggableItem : MonoBehaviour,
 
         var c = _img.color; c.a = 0.7f; _img.color = c;
         _img.raycastTarget = false;
+
+        // **이제 알린다 — 아이콘을 캔버스로 옮긴 뒤다.**
+        //
+        // 쪼갤 때 바로 알리면 격자가 아이콘을 전부 다시 만들면서 **지금 끌고 있는 이것**이
+        // 파괴된다. 그래서 옮기고 나서 알린다 — `ClearItems`는 격자 안의 것만 지우므로
+        // 캔버스로 나온 이 아이콘은 살아남는다.
+        //
+        // 이 한 줄이 있어야 **남은 절반이 원래 자리에 곧바로 보인다.** 드롭할 때까지 빈칸이면
+        // 얼마가 남았는지 알 수 없어서, 반을 집었는지 전부를 집었는지도 확인할 수가 없다.
+        if (_splitPending) _sourceGrid.Inventory?.NotifyChanged();
     }
 
     public void OnDrag(PointerEventData e)
@@ -157,9 +262,37 @@ public class DraggableItem : MonoBehaviour,
         _img.raycastTarget = true;
         _rt.localRotation = Quaternion.identity;
 
+        // **손에 든 채 갈 곳을 못 찾았으면 출처로 되돌린다.** 격자에 등록돼 있지 않으므로
+        // 그냥 두면 그만큼이 조용히 사라진다(개수가 새는 것은 가장 나쁜 종류의 버그다).
+        //
+        // **넣은 만큼만 세고, 못 넣은 것은 바닥에 놓는다.** 출처가 꽉 차서 갈라진 것이라
+        // 되돌릴 자리도 없을 수 있다 — `TryAdd`의 반환값을 안 보면 그 차이만큼이 증발한다.
+        // (여기서는 떨구는 것이 맞다: 거절할 조작이 이미 끝났고, 되돌릴 곳이 없다.)
+        if (_detached && !placed)
+        {
+            var back = _sourceGrid != null ? _sourceGrid.Inventory : null;
+            int kept  = back != null ? back.TryAdd(_instance.Data, _instance.Quantity, _instance.Quality) : 0;
+            int spill = _instance.Quantity - kept;
+
+            if (spill > 0)
+            {
+                var at = back != null ? back.transform.position : Vector3.zero;
+                DroppedItem.Spawn(_instance.Data, spill, at + Vector3.up * 0.15f, _instance.Quality);
+            }
+        }
+        _detached = false;
+
         var grid = _sourceGrid;
         Destroy(gameObject);
-        if (grid != null && !placed) grid.RefreshItems();
+
+        // **쪼갠 것을 여기서 갚는다.** 시작할 때 `notify: false`로 갈랐으므로(끌던 아이콘이
+        // 파괴되지 않게) 떼어 놓은 나머지가 아직 화면에 없다. 놓기에 실패했든 성공했든
+        // 다시 그려야 한다 — 실패했으면 갈라진 채로 제자리에 남는 것이 맞다(끌어다 놓기를
+        // 무르는 것과 쪼개기를 무르는 것은 다른 일이다).
+        if (_splitPending) grid?.Inventory?.NotifyChanged();
+        else if (grid != null && !placed) grid.RefreshItems();
+
+        _splitPending = false;
     }
 
     // ── 그리드 배치 ───────────────────────────────────────────────────────────
@@ -187,6 +320,16 @@ public class DraggableItem : MonoBehaviour,
         {
             var inv = _sourceGrid.Inventory;
             if (inv == null) return false;
+
+            // **갈라 든 것은 격자에 없다**(꽉 찬 통에서 쪼갠 경우 — `_detached`).
+            // `MoveItem`·`SwapItems`는 `_items`에 있는 것만 옮기므로 **늘 실패**하고,
+            // 그러면 되돌리기가 원래 뭉치에 도로 합쳐 **쪼갠 것이 없던 일**이 된다
+            // (놓은 칸이 아니라 원래 자리로 돌아가서 "왜 안 옮겨지지"가 된다).
+            // 격자에 없으니 옮기는 것이 아니라 **놓는 것**이 맞다.
+            if (_detached)
+                return inv.TryAddAt(_instance.Data, _instance.Quantity, newX, newY,
+                                    _dragRotated, _instance.Quality, _instance.Locked);
+
             if (inv.MoveItem(_instance, newX, newY, _dragRotated)) return true;
 
             // 못 옮겼다면 대개 **다른 물건이 그 자리에 있어서**다(합칠 수 없는 것이거나 꽉 찬 것).
@@ -296,11 +439,10 @@ public class DraggableItem : MonoBehaviour,
         var dropPos = inv.transform.position + Vector3.up * 0.15f;
         inv.RemoveInstance(_instance);
 
-        // **손으로 내려놓은 것은 자동 운반에서 뺀다.** 그러지 않으면 운반을 켠 폰이 곧바로
-        // 주워 창고에 넣어, 내려놓기가 사실상 "창고로 보내기"가 된다 — 어디에 두고 싶어도
-        // 둘 수가 없다. 다시 나르게 하려면 그 물건을 우클릭해 [창고로 옮긴다].
-        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality,
-                          noAutoHaul: true);
+        // **자동 운반은 안 켜진 채로 떨어진다** — 이제 그게 모든 드롭의 기본이라 여기서
+        // 따로 끌 것이 없다(예전엔 손 드롭만 예외로 껐다). 나르게 하려면 그 물건을
+        // 우클릭해 [창고로 옮긴다].
+        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality);
         return true;
     }
 }

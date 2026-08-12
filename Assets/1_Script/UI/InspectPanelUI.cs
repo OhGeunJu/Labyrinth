@@ -10,7 +10,7 @@ using TMPro;
 // **폰만 뜨는 창이 아니다.** 청사진을 누르면 같은 자리에 건설 진행이 뜬다 — 청사진은 다른
 // 건물과 달리 제 패널이 없고(콜라이더가 없어 클릭 자체가 안 됐다), 그렇다고 그것 하나 때문에
 // 패널을 새로 세우면 화면에 창만 는다. **고른 것을 보는 자리**는 하나면 족하다.
-public class UnitHPUI : MonoBehaviour
+public class InspectPanelUI : MonoBehaviour
 {
     [SerializeField] GameObject      panel;
     [SerializeField] TextMeshProUGUI infoText;
@@ -37,6 +37,10 @@ public class UnitHPUI : MonoBehaviour
     // 자원 노드. **이미 있던 `OnNodeSelected`를 같이 듣는다** — 노드 패널을 여는 이벤트가
     // 이미 있는데 여기에 또 만들면 둘이 어긋난다.
     ResourceNode _node;
+
+    // 바닥에 떨어진 물건. **자동 운반이 켜졌는지**를 볼 자리가 여기다 — 초록 구슬만으로는
+    // "왜 안 실려 가지"에 답이 안 된다(구슬이 없는 것과 창고가 없는 것이 같아 보인다).
+    readonly List<DroppedItem> _items = new();
 
     readonly List<Button> _actions = new();
 
@@ -67,7 +71,86 @@ public class UnitHPUI : MonoBehaviour
         SelectionManager.OnBuildingInspected  += OnBuildingInspected;
         SelectionManager.OnCoreInspected      += OnCoreInspected;
         SelectionManager.OnNodeSelected       += OnNodeSelected;
+        SelectionManager.OnItemsInspected     += OnItemsInspected;
         BuildModeManager.OnActiveChanged      += OnBuildModeChanged;
+
+        BuildHaulToggle();
+    }
+
+    // ── 이름 옆의 운반 스위치 ─────────────────────────────────────────────────
+    //
+    // **글자가 아니라 진짜 버튼이다.** 처음엔 TMP `<mark>`으로 판을 깔아 알약처럼 그렸는데,
+    // 색이 글자색과 뒤엉켜 꺼짐 상태가 **회색 판에 회색 글씨**로 안 보였다. 무엇보다 글자는
+    // 눌러 보기 전에는 눌리는지 알 수가 없다.
+    //
+    // **씬의 버튼 템플릿을 그대로 복제한다**(`actionTemplate` — 아래 동작 줄이 쓰는 것과 같은
+    // 원본). 모양이 다른 버튼과 저절로 같아지고, 코드가 정하는 것은 **자리와 글자와 색**뿐이다
+    // ("모양은 씬이, 코드는 데이터만"). 자리를 코드가 잡는 것은 씬에 앵커를 새로 파지 않기
+    // 위해서다 — `ResearchTableUI`가 게이지를 런타임에 버튼 자리로 옮기는 것과 같은 길.
+    Button          _haulToggle;
+    TextMeshProUGUI _haulLabel;
+    Image           _haulBg;
+
+    void BuildHaulToggle()
+    {
+        if (actionTemplate == null || panel == null) return;
+        if (panel.transform is not RectTransform panelRect) return;
+
+        var btn = Instantiate(actionTemplate, panelRect);
+        btn.name = "HaulToggle";
+
+        if (btn.transform is RectTransform rt)
+        {
+            // 패널 **오른쪽 위**. 이름줄과 같은 높이라 "이 물건의 스위치"로 읽힌다.
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot     = new Vector2(1f, 1f);
+            rt.anchoredPosition = new Vector2(-12f, -10f);
+            rt.sizeDelta = new Vector2(88f, 28f);
+        }
+
+        _haulToggle = btn;
+        _haulLabel  = btn.GetComponentInChildren<TextMeshProUGUI>(true);
+        _haulBg     = btn.GetComponent<Image>();
+
+        btn.gameObject.SetActive(false);
+    }
+
+    // `on == null`이면 숨긴다(고른 것이 바닥 물건이 아닐 때).
+    void SetHaulToggle(bool? on)
+    {
+        if (_haulToggle == null) return;
+
+        if (on == null) { _haulToggle.gameObject.SetActive(false); return; }
+
+        _haulToggle.gameObject.SetActive(true);
+
+        // **꺼짐도 읽혀야 한다.** 판과 글자가 둘 다 회색이면 무슨 글자인지 안 보인다 —
+        // 판은 어둡게, 글자는 밝게 둔다(켜짐은 초록 판 + 흰 글자).
+        bool value = on.Value;
+        if (_haulBg    != null) _haulBg.color    = value ? new Color(0.18f, 0.42f, 0.22f)
+                                                         : new Color(0.20f, 0.20f, 0.22f);
+        if (_haulLabel != null)
+        {
+            _haulLabel.text  = value ? "운반 V" : "운반";
+            _haulLabel.color = value ? new Color(0.85f, 0.98f, 0.87f) : new Color(0.80f, 0.80f, 0.82f);
+        }
+
+        _haulToggle.onClick.RemoveAllListeners();
+        _haulToggle.onClick.AddListener(ToggleHaulOnSelection);
+    }
+
+    // **여럿을 고르면 한 번에 뒤집는다.** 하나라도 꺼져 있으면 전부 켜고, 전부 켜져 있을 때만
+    // 끈다 — 섞여 있을 때 "누르면 무엇이 되나"가 애매하면 두 번 눌러 확인하게 된다.
+    void ToggleHaulOnSelection()
+    {
+        bool anyOff = false;
+        foreach (var d in _items)
+            if (d != null && !d.HaulAllowed) { anyOff = true; break; }
+
+        foreach (var d in _items)
+            if (d != null) d.SetHaulAllowed(anyOff);
+
+        Refresh();
     }
 
     void OnDestroy()
@@ -77,7 +160,16 @@ public class UnitHPUI : MonoBehaviour
         SelectionManager.OnBuildingInspected  -= OnBuildingInspected;
         SelectionManager.OnCoreInspected      -= OnCoreInspected;
         SelectionManager.OnNodeSelected       -= OnNodeSelected;
+        SelectionManager.OnItemsInspected     -= OnItemsInspected;
         BuildModeManager.OnActiveChanged      -= OnBuildModeChanged;
+    }
+
+    void OnItemsInspected(IReadOnlyList<DroppedItem> items)
+    {
+        _items.Clear();
+        if (items != null)
+            foreach (var d in items) if (d != null) _items.Add(d);
+        Refresh();
     }
 
     void OnPawnInspected(UnitBrain brain)
@@ -117,7 +209,8 @@ public class UnitHPUI : MonoBehaviour
         // 상태라 그대로 두고, 건설을 빠져나오면 Refresh가 알아서 패널을 되살린다.
         if (active)
         {
-            _inspected = null; _blueprint = null; _building = null; _core = null; _node = null;
+            _inspected = null; _blueprint = null; _building = null;
+            _core = null; _node = null; _items.Clear();
         }
         Refresh();
     }
@@ -146,11 +239,19 @@ public class UnitHPUI : MonoBehaviour
 
     void Refresh()
     {
+        // 운반 스위치는 **바닥 물건을 골랐을 때만** 뜬다 — 여기서 한 번 내리고
+        // `ShowItems`만 다시 올린다(분기마다 끄면 새 분기가 하나 빠뜨린다).
+        SetHaulToggle(null);
+
         if (_buildMode) { panel?.SetActive(false); return; }
 
         // **방금 누른 것이 먼저다**(조사와 같은 규칙). 청사진이 다 지어지거나 취소되면,
         // 건물이 분해되면 `== null`이 되어 저절로 폰 쪽으로 돌아간다.
         if (_blueprint != null) { ShowBlueprint(_blueprint); return; }
+        // 주워 가면 파괴되므로 매번 걷어낸다 — 남겨 두면 빈 창이 뜬다.
+        for (int i = _items.Count - 1; i >= 0; i--)
+            if (_items[i] == null) _items.RemoveAt(i);
+        if (_items.Count > 0) { ShowItems();                 return; }
         if (_node      != null) { ShowNode(_node);           return; }
         if (_building  != null) { ShowBuilding(_building);   return; }
         if (_core      != null) { ShowCore(_core);           return; }
@@ -206,10 +307,15 @@ public class UnitHPUI : MonoBehaviour
                 sb.AppendLine($"부패  {BarColored(sfx.CorruptionGauge, StatusEffectSystem.MaxCorruption, "#A020F0", "#6010A0")}  {sfx.CorruptionGauge:F0}/{StatusEffectSystem.MaxCorruption:F0}");
         }
 
-        // 허기 — 플레이어 세력만 시뮬레이션되므로 그 유닛에만, 그리고 **살아 있을 때만** 표시.
-        // 전엔 `faction == null || faction.IsPlayer`였는데 시체는 `Faction`이 지워져 있어
-        // 그 `== null` 구멍으로 들어왔다. 모르는 것은 플레이어가 아니고, **죽은 자는 안 배고프다.**
-        if (corpse == null && faction != null && faction.IsPlayer)
+        // 허기 — **허기가 도는 유닛에만**, 그리고 **살아 있을 때만** 표시.
+        //
+        // 누가 굶는지는 `Feeding.Simulates`가 답한다(플레이어 세력 + 갇힌 사람). 여기서
+        // 따로 판정하면 반드시 어긋나는데, 그 어긋남은 **가장 나쁜 쪽으로** 나타난다:
+        // 붙잡아 둔 적은 굶는데 허기 바가 안 떠서 왜 죽는지 알 길이 없다.
+        //
+        // 시체 검사는 남는다 — `BecomeCorpse`가 `Faction`을 지우므로 세력으로는 걸러지지만
+        // (모르는 것은 플레이어가 아니다) **죽은 자는 안 배고프다**를 여기서 못 박아 둔다.
+        if (corpse == null && Feeding.Simulates(brain))
         {
             float hunger = brain.Blackboard.Hunger;
             string hungerColor = hunger > 60f ? "#8BC34A" : hunger > 30f ? "#FF9800" : "#F44336";
@@ -366,6 +472,91 @@ public class UnitHPUI : MonoBehaviour
     //
     // 씬에 흩어진 나무·바위는 `BuildingData`가 없어(`ResourceNodeData`만 있다) 이름을 물을
     // 데가 없다 — 그때는 나오는 물건에서 만든다.
+    // ── 바닥에 떨어진 물건 ────────────────────────────────────────────────────
+    //
+    // **답해야 하는 것은 "이게 실려 가나"다.** 초록 구슬이 안 보일 때 그것이 "안 찍었다"인지
+    // "찍었는데 창고가 없다"인지 구별이 안 됐다 — 둘은 할 일이 다르다(찍기 / 창고 짓기).
+    //
+    // 무엇이·얼마나·얼마어치인지도 여기서 답한다. 툴팁(`ItemInfoUI`)은 커서를 얹어야 뜨고
+    // 격자 위에서만 도므로, 바닥의 물건에는 볼 자리가 아예 없었다.
+    void ShowItems()
+    {
+        panel?.SetActive(true);
+        SetActions(null);   // 스위치는 **오른쪽 위 버튼**이다 — 아래 동작 줄은 안 쓴다
+        if (infoText == null) return;
+
+        // 켜진 것과 꺼진 것이 섞일 수 있다 — 체크는 **전부 켜졌을 때만** 찬 것으로 본다
+        // (누르면 `OnLinkClicked`가 "하나라도 꺼져 있으면 전부 켠다"로 받는다).
+        int on = 0;
+        foreach (var d in _items) if (d.HaulAllowed) on++;
+        bool allOn = on == _items.Count;
+
+        SetHaulToggle(allOn);
+
+        var sb = new StringBuilder();
+
+        string head = _items.Count == 1
+                    ? OneLineName(_items[0])
+                    : $"<b>바닥의 물건</b>  <color=#888>{_items.Count}종</color>";
+
+        sb.AppendLine(head);
+
+        if (_items.Count == 1)
+        {
+            var only = _items[0];
+            sb.AppendLine($"<color=#888>{only.Quality.DisplayName()} · {only.Item.TypeName}</color>");
+        }
+        sb.AppendLine();
+
+        // ── 합계 ────────────────────────────────────────────────────────────
+        int   count  = 0;
+        float weight = 0f;
+        int   value  = 0;
+        foreach (var d in _items)
+        {
+            count  += d.Amount;
+            weight += d.Item.Weight    * d.Amount;
+            value  += d.Item.BaseValue * d.Amount;
+        }
+
+        sb.AppendLine($"수량  {count}개");
+        if (weight > 0f) sb.AppendLine($"무게  {weight:F1}kg");
+        if (value  > 0)  sb.AppendLine($"가치  {value}G");
+        sb.AppendLine();
+
+        // **왜 안 실려 가는지까지 적는다.** 찍어 놨는데 받아 줄 창고가 없으면 아무 일도
+        // 안 일어나는데, 그건 찍기를 잊은 것과 화면에서 똑같이 보인다.
+        if (on == 0)
+        {
+            sb.AppendLine("<color=#888>운반 지정 안 됨 — 아무도 건드리지 않습니다.</color>");
+        }
+        else
+        {
+            int stranded = 0;
+            foreach (var d in _items)
+                if (d.HaulAllowed &&
+                    Storage.FindNearest(d.transform.position, d.Item, d.Amount, d.Quality) == null)
+                    stranded++;
+
+            string scope = allOn ? "" : $" ({on}/{_items.Count})";
+            if (stranded > 0)
+            {
+                sb.AppendLine($"<color=#F44336>운반 지정됨{scope} — 그중 {stranded}종은 받아 줄 창고가 없습니다.</color>");
+                sb.AppendLine("<color=#888>창고를 짓거나 비우면 저절로 실려 갑니다.</color>");
+            }
+            else
+                sb.AppendLine($"<color=#8BC34A>운반 지정됨{scope} — 폰이 창고로 옮깁니다.</color>");
+        }
+
+        infoText.text = sb.ToString();
+    }
+
+    // 이름줄은 **이름만**, 아랫줄이 `등급 · 종류` — `ItemInfoUI`와 같은 규약이다
+    // (창마다 다른 모양으로 적으면 같은 물건인지 알기 어렵다).
+    static string OneLineName(DroppedItem item)
+        => $"<b><color=#{ColorUtility.ToHtmlStringRGB(item.Quality.Color())}>" +
+           $"{item.Item.ItemName}</color></b>  <color=#888>×{item.Amount}</color>";
+
     void ShowNode(ResourceNode node)
     {
         panel?.SetActive(true);
@@ -591,11 +782,73 @@ public class UnitHPUI : MonoBehaviour
         if (bb.IsPrisoner)
         {
             sb.AppendLine("<color=#F90>갇혀 있다.</color>");
+            AppendPrisonFood(sb, brain);
+            AppendEscapeRisk(sb, brain);
             AppendConversion(sb, brain);
         }
 
         if (bb.LeavingMap)
             sb.AppendLine("<color=#8BC34A>풀려나 떠나는 중이다. 건드리지 않으면 그냥 간다.</color>");
+    }
+
+    // **왜 굶고 있는지 적는다.**
+    //
+    // 갇힌 사람은 제 발로 먹으러 못 간다 — 남이 가져다 먹여야 한다(`FeedJob`). 그래서
+    // 허기 바가 줄어드는 것만 보이고 **아무 일도 안 일어나는 이유는 안 보인다.** 답은
+    // 셋뿐이니 그것을 적는다: 먹일 것이 없거나, 간수가 없거나, 오는 중이거나.
+    //
+    // 배가 안 고프면 아무 줄도 안 뜬다 — 늘 떠 있으면 읽지 않게 된다.
+    static void AppendPrisonFood(StringBuilder sb, UnitBrain brain)
+    {
+        if (!PrisonFeeding.NeedsFood(brain)) return;
+
+        if (!Feeding.ExistsAnywhere())
+            sb.AppendLine("<color=#F44336>먹일 것이 없다 — 창고에 음식이 있어야 먹인다.</color>");
+        else if (!PrisonEscort.AnyWarden())
+            sb.AppendLine("<color=#F90>간수를 맡은 폰이 없다(P키) — 우클릭 [먹인다]로도 시킬 수 있다.</color>");
+        else
+            sb.AppendLine("<color=#888>간수가 밥을 가져오는 중.</color>");
+    }
+
+    // **도망칠 것 같은지 적는다.**
+    //
+    // 안 적으면 간수를 켤 이유가 없다 — 어느 날 포로가 사라지고, 그게 간수를 안 둬서인지
+    // 원래 그런 것인지 알 길이 없다. 지키는 사람이 있으면 **그래서 낮다**는 것까지 적는다
+    // (설정을 켠 값이 화면에 안 보이면 켠 줄도 모른다).
+    //
+    // 기절해 누워 있으면 시도 자체가 없다 — 그 사실이 곧 "지금은 안전하다"의 답이다.
+    static void AppendEscapeRisk(StringBuilder sb, UnitBrain brain)
+    {
+        // 우리 폰은 갇혀 있어도 도망치지 않는다 — 줄 자체를 안 낸다(없는 위험을 적으면
+        // 간수를 켤 이유가 엉뚱한 데서 생긴다).
+        if (!PrisonEscort.IsCaptive(brain)) return;
+
+        var bb = brain.Blackboard;
+        sb.AppendLine($"탈출  {BarColored(bb.EscapeProgress, 1f, "#F44336", "#4A2A2A")}  " +
+                      $"{bb.EscapeProgress * 100f:F0}%");
+
+        if (bb.IsKnockedOut)
+        {
+            sb.AppendLine("<color=#888>쓰러져 있어 도망칠 궁리를 못 한다 — 게이지가 멈춰 있다.</color>");
+            return;
+        }
+
+        // **얼마나 남았는지 적는다.** 게이지만 보이면 "지금 이 속도로 얼마나 버티나"에
+        // 답이 없어서, 간수를 켤지 말지를 눈대중으로 정하게 된다. 남은 시간은
+        // `PrisonBreak.RateFor` 하나로 낸다 — 보이는 수와 실제가 갈리면 안 된다.
+        float rate = PrisonBreak.RateFor(brain);
+        string left = rate > 0f
+                    ? $" — 이대로면 {(PrisonBreak.Complete - bb.EscapeProgress) / rate / 1800f:F1}일 뒤"
+                    : "";
+
+        if (PrisonBreak.Watched)
+            sb.AppendLine($"<color=#8BC34A>간수가 지키고 있다{left}.</color>");
+        else
+            sb.AppendLine($"<color=#F44336>지키는 사람이 없다{left} (P키에서 간수).</color>");
+
+        // 굶기면 빨라진다 — 먹이기를 게을리하는 것도 관리를 안 하는 것이다.
+        if (Feeding.IsHungry(brain))
+            sb.AppendLine("<color=#F90>굶주려 필사적이다 — 탈출이 배로 빨라진다.</color>");
     }
 
     // 회유 진행 — **길이 둘이라 무엇이 채우는지도 같이 적는다.** 게이지만 보이면 "왜 안

@@ -55,10 +55,35 @@ public class EquipSlotUI : MonoBehaviour,
         if (eq == _equipment) Refresh();
     }
 
+    // 양손 무기가 이 칸을 잡아먹고 있을 때의 색 — 빈 칸도 찬 칸도 아니라 따로 둔다.
+    [SerializeField] Color twoHandedColor = new(0.24f, 0.22f, 0.14f, 0.95f);
+
     public void Refresh()
     {
         ItemData item = GetCurrentItem();
         bool equipped = item != null;
+
+        // ── 양손 무기가 보조손을 쓰고 있다 ──────────────────────────────────
+        //
+        // **비어 보이면 안 된다.** 대검을 들면 보조손 칸이 그냥 빈 칸으로 보여서, 방패를
+        // 끼우려다 "왜 안 껴지지"가 됐다(이제는 대검이 벗겨지므로 더 나쁘다 — 왜 벗겨졌는지
+        // 모른 채 무기가 배낭으로 간다). **무엇이 그 자리를 쓰고 있는지**를 적는다.
+        //
+        // 아이콘은 주손 무기 것을 흐리게 빌려 쓴다 — 그림이 곧 "저것이 두 손을 쓴다"는 말이다.
+        bool twoHanded = _kind == SlotKind.OffHand && _equipment != null && _equipment.OffHandLocked;
+
+        if (twoHanded)
+        {
+            var main = _equipment.MainHand;
+            if (bg) bg.color = twoHandedColor;
+            if (icon)
+            {
+                icon.sprite = main?.Icon;
+                icon.color  = main?.Icon != null ? new Color(1f, 1f, 1f, 0.35f) : new Color(1, 1, 1, 0);
+            }
+            if (itemNameText) itemNameText.text = "양손 사용 중";
+            return;
+        }
 
         if (bg)   bg.color = equipped ? equippedColor : emptyColor;
         if (icon)

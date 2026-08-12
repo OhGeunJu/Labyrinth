@@ -42,6 +42,11 @@ public static class PrisonEscort
     {
         if (brain == null || brain.Blackboard == null) return false;
 
+        // **시체는 붙잡은 사람이 아니다.** 시체도 `Faction`이 지워져 있고(우리 편이 아니고)
+        // 죽는 방식에 따라 `IsKnockedOut`이 참으로 남는다 — 안 가르면 간수가 시체를 업고
+        // 우리로 걸어간다. 시체를 옮기는 것은 치우는 일이지 붙잡아 오는 일이 아니다.
+        if (PawnCarry.IsCorpse(brain)) return false;
+
         var faction = brain.GetComponent<Faction>();
         if (faction != null && faction.IsPlayer) return false;
 
@@ -53,6 +58,19 @@ public static class PrisonEscort
     {
         var work = brain != null ? brain.Work : null;
         return work != null && work.IsEnabled(JobCategory.Warden);
+    }
+
+    // **간수를 맡은 폰이 하나라도 있나.** 없으면 붙잡은 사람은 자리로도 안 가고 밥도 못
+    // 먹는데, 화면에는 아무 일도 안 일어나는 것으로만 보인다 — 패널이 그 이유를 적는다
+    // (자원 노드의 "배정된 폰이 없습니다"와 같은 자리).
+    public static bool AnyWarden()
+    {
+        foreach (var faction in Faction.All)
+        {
+            if (faction == null || !faction.IsPlayer) continue;
+            if (IsWarden(faction.GetComponent<UnitBrain>())) return true;
+        }
+        return false;
     }
 
     // ── 자리 찾기 ────────────────────────────────────────────────────────────

@@ -87,6 +87,22 @@ public class PawnSpec
         // 같은 수준 안의 들쭉날쭉함(무엇을 잘하나)을 만든다.
         int tier = rng.Next(lo, hi + 1);
 
+        // ── 굴리는 순서가 곧 호환성이다 ──────────────────────────────────────
+        //
+        // 난수열은 **부르는 횟수**로 자리가 정해진다. 그래서 앞에서 한 번 더 뽑으면 뒤가 통째로
+        // 밀린다 — 같은 시드가 다른 사람을 낳는다.
+        //
+        // **스탯 굴림이 맨 끝이다.** 스탯은 앞으로도 늘어날 축이라(오늘 `Warden`을 더했다)
+        // 그 앞에 무엇을 두면 그것들이 전부 밀린다. 실제로 밀렸다: `Warden` 하나를 더한 것만으로
+        // 몸집·이름·특성이 전부 달라졌다(마을 후보도 함께).
+        //
+        // 끝으로 옮기면 **`StatName`에 값을 뒤에 붙이는 한**(직렬화 규칙과 같은 조건)
+        // 앞의 것들은 물론 **기존 스탯의 굴림까지 그대로**다 — 새 스탯이 뽑는 것은 꼬리에
+        // 하나 붙는 것뿐이다.
+        spec.BodyScale = 0.94f + (float)rng.NextDouble() * 0.12f;   // 0.94 ~ 1.06
+        spec.Name      = PickName(data, rng, nameCandidates);
+        spec.Traits.AddRange(TraitPool.RollForPawn(rng));            // 개수(0~3)도 여기서
+
         int sum = 0, count = 0;
         foreach (StatName stat in Enum.GetValues(typeof(StatName)))
         {
@@ -100,13 +116,6 @@ public class PawnSpec
             count++;
         }
         spec.GradeAverage = count > 0 ? sum / (float)count : 0f;
-
-        spec.BodyScale = 0.94f + (float)rng.NextDouble() * 0.12f;   // 0.94 ~ 1.06
-        spec.Name      = PickName(data, rng, nameCandidates);
-
-        // **맨 끝에서 뽑는다.** 앞의 굴림 순서를 건드리지 않으므로, 특성이 생기기 전에
-        // 뽑아 둔 사람도 시드만 같으면 이름·스탯이 그대로다. 개수(0~3)도 여기서 굴린다.
-        spec.Traits.AddRange(TraitPool.RollForPawn(rng));
 
         return spec;
     }

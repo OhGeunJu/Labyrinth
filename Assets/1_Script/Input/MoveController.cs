@@ -21,6 +21,10 @@ public class MoveController : MonoBehaviour
         if (!Mouse.current.rightButton.wasPressedThisFrame) return;
         if (CoreRelocator.IsActive) return;   // 이전 모드에선 우클릭 = 취소
 
+        // 운반 지정 모드에서 우클릭은 **지정을 지우는 것**이다 — 안 막으면 그 클릭이 월드로
+        // 새어 이동 명령까지 나간다(지우려 눌렀는데 폰이 그리로 걸어간다).
+        if (HaulDesignator.IsActive) return;
+
         // **UI 위에서 누른 우클릭은 월드로 새지 않는다.** 창을 열어 둔 채 그 위를 우클릭하면
         // 뒤의 땅으로 이동 명령이 나가거나 뒤에 선 것을 겨눴다 — 배낭·상점을 다루는 내내
         // 발밑을 조심해야 했다. 월드맵(`WorldMapView`)은 이미 `OverUI()`로 막고 있었다.
@@ -163,7 +167,7 @@ public class MoveController : MonoBehaviour
     //
     // 종족만 띄우면 **어느 놈을 눌렀는지 알 수 없다** — 고블린이 셋 서 있으면 셋 다 "고블린"이고,
     // 겨냥이 빗나가 엉뚱한 것을 눌러도 그럴듯해 보여서 드러나지 않는다.
-    // `UnitHPUI`가 이미 개체 이름을 먼저 쓰므로 규약도 그쪽에 맞춘다(창마다 다른 이름으로
+    // `InspectPanelUI`가 이미 개체 이름을 먼저 쓰므로 규약도 그쪽에 맞춘다(창마다 다른 이름으로
     // 불리면 같은 폰인지 알 수 없다).
     static string PawnTitle(UnitBrain brain, GameObject go)
     {
@@ -255,7 +259,27 @@ public class MoveController : MonoBehaviour
         var core    = go.GetComponent<DungeonCore>();
         var clickable = go.GetComponent<IWorldClickable>();
 
-        if (brain != null)
+        // **누운 폰은 여기서 그냥 잡힌다** — `PawnMover`가 눕는 동안 트리거 캡슐을 켜 둔다.
+        // 몸통 크기라 침대보다 작으므로, **몸을 겨누면 사람이 침대를 겨누면 침대가** 눌린다.
+        // 한때 "침대를 누르면 누운 사람"으로 우회했는데 그러면 **침대 자체를 누를 길이 없다.**
+
+        // **시체를 먼저 본다.** 시체도 `UnitBrain`을 그대로 갖고 있어서(`BecomeCorpse`는
+        // 컴포넌트를 끄기만 한다) 아래 `brain != null`이 먼저 걸렸고, 그래서 시체 가지는
+        // **한 번도 안 도는 죽은 코드**였다 — 우클릭하면 [뒤진다] 대신 `따라간다`·`공격한다`가
+        // 떴다(따라갈 수도 칠 수도 없는 것에게). 죽은 것은 무엇보다 먼저 시체다.
+        if (corpse != null)
+        {
+            // 이름을 적는다 — 시체가 여럿 쌓이면 "시체"만으로는 어느 것을 눌렀는지 모른다
+            // (산 폰의 창 제목과 같은 규약).
+            title = string.IsNullOrWhiteSpace(corpse.UnitName) ? "시체" : $"{corpse.UnitName}의 시체";
+
+            options.Add(("뒤진다", () => SelectionManager.InspectCorpse(corpse)));
+
+            // **업어서 치운다.** 산 사람을 옮기는 것과 같은 동작이라 같은 길을 쓴다
+            // (무게도 한 손 제약도 그대로 걸린다).
+            AddCarryOption(brain, commanders, options);
+        }
+        else if (brain != null)
         {
             title = PawnTitle(brain, go);
             bool down = IsDown(go);
@@ -377,13 +401,12 @@ public class MoveController : MonoBehaviour
             if (anyRoom) options.Add(("줍는다", () => PickUpWith(commanders, drop)));
             else         options.Add(("줍는다 - 배낭에 자리가 없음", () => { }));
 
-            // 손으로 내려놓은 것은 아무도 안 건드린다 — 되돌리는 길을 여기 둔다.
-            if (drop.NoAutoHaul) options.Add(("창고로 옮긴다", drop.AllowAutoHaul));
-        }
-        else if (corpse != null)
-        {
-            title = "시체";
-            options.Add(("뒤진다", () => SelectionManager.InspectCorpse(corpse)));
+            // **자동 운반은 물건마다 켜고 끈다** — 기본은 꺼짐이고, 켠 것에는 표식이 뜬다.
+            // **양방향이어야 한다**: 예전엔 켜는 길만 있어서, 저절로 실려 가는 물건을
+            // "여기 둬라"라고 할 방법이 없었다(그게 규칙을 고칠 수 없는 것으로 보이게 했다).
+            options.Add(drop.HaulAllowed
+                ? ("여기 둔다",     () => drop.SetHaulAllowed(false))
+                : ("창고로 옮긴다", () => drop.SetHaulAllowed(true)));
         }
         else if (core != null)
         {
@@ -400,7 +423,12 @@ public class MoveController : MonoBehaviour
             string verb = go.GetComponent<Storage>() != null ? "연다" : "살펴본다";
 
             // 휴면(핵 영역 밖) 건물은 열어도 아무것도 못 한다 — 선택지에서 뺀다.
-            if (!BuildingDormancy.IsDormantAt(hit.collider))
+            //
+            // **침대도 뺀다.** `Bed.OnWorldClick`은 일부러 비어 있다(전용 패널을 없앴고, 침대로
+            // 하는 일은 전부 아래 [여기 눕는다]·[치료한다]…에 있다). 눌러도 아무 일이 안
+            // 일어나는 줄은 "먹혔나?"를 남길 뿐이고, 침대가 무엇인지는 좌클릭이 답한다.
+            bool opensSomething = go.GetComponent<Bed>() == null;
+            if (opensSomething && !BuildingDormancy.IsDormantAt(hit.collider))
                 options.Add((verb, clickable.OnWorldClick));
 
             // **침대는 명령을 받는 물건이다.** 눕히는 것도 치료를 시키는 것도 고른 폰에게
@@ -606,6 +634,32 @@ public class MoveController : MonoBehaviour
                 inv.ForceOpen();   // 묶기만 하면 창이 닫힌 채로 바뀌어 아무 일도 안 한 것처럼 보인다
             }));
 
+        // **먹인다** — 갇힌 사람은 제 발로 못 먹으러 간다.
+        //
+        // 간수를 켜 뒀으면 자리(`PrisonFeeding.Tick`)가 저절로 일감을 내지만, 꺼 뒀거나
+        // 지금 당장 먹여야 할 때의 길이 있어야 한다(자원 노드 직접 배정·[치료한다]와 같은
+        // 규칙 — 손으로 시킨 일은 작업 설정을 안 본다). **일감은 자리가 들고 있는 것을
+        // 넘긴다**(`RequestBy`) — 누를 때마다 만들면 한 사람에게 여럿이 붙는다.
+        if (PrisonFeeding.NeedsFood(prisoner))
+        {
+            float hunger = prisoner.Blackboard.Hunger;
+
+            // **먹일 것이 없으면 그렇게 적는다.** 눌러도 안 되는 줄을 그대로 두면 "왜 안
+            // 가지"가 되고, 아예 빼면 허기를 볼 자리가 사라진다(설득의 쿨타임 표시와 같은 꼴).
+            options.Add(!Feeding.ExistsAnywhere()
+                ? ($"먹인다 (허기 {hunger:F0}) - 음식 없음", (System.Action)null)
+                : ($"먹인다 (허기 {hunger:F0})", (System.Action)(() =>
+                {
+                    var feeder = Nearest(commanders, prisoner.transform.position,
+                                         b => b != prisoner
+                                           && (b.Blackboard == null || !b.Blackboard.IsKnockedOut));
+                    if (feeder == null) return;
+
+                    feeder.AbandonWork();   // 하던 일을 놓아야 이 일감을 집는다
+                    PrisonFeeding.RequestBy(prisoner, feeder);
+                })));
+        }
+
         // **지배는 도박이라 사람이 눌러야 한다.** 게이지가 다 차도 저절로 넘어오지 않는다 —
         // 확률을 적어 두고 누를지 말지를 맡긴다(실패하면 그 자리에서 죽는다).
         if (Conversion.CanDominateNow(prisoner))
@@ -747,8 +801,11 @@ public class MoveController : MonoBehaviour
             options.Add(($"{held.UnitName}을(를) 풀어 준다", () => Imprisonment.Release(held)));
         }
         else
+            // **시체를 업고 있으면 안 띄운다**(`PrisonCage.TryPut`이 거절한다 — 침대와 같은
+            // 규칙). 눌러도 아무 일이 안 일어나면 명령이 먹혔는지 알 길이 없다.
             AddPutDownOption(commanders, options, "업은 사람을 여기 가둔다",
-                             cage.HoldPosition, cage: cage);
+                             cage.HoldPosition, cage: cage,
+                             accepts: b => !PawnCarry.IsCorpse(b));
     }
 
     static void AddBedOptions(Bed bed, List<PawnMover> commanders,

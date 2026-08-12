@@ -33,7 +33,12 @@ public static class Conversion
     // 확률이 여기 있는 것은 앞서 "확률로 굴리지 말자"고 한 것과 어긋나지 않는다:
     // 그때 막은 것은 **플레이어 모르게** 굴리는 것이었다. 이건 확률을 보여 주고 누를지
     // 말지를 사람이 정한다 — 굴림이 곧 결정이다.
-    const float CoreSeconds = 240f;   // 다 차기까지. 누구든 같다.
+    // 다 차기까지. 누구든 같다.
+    //
+    // **하루다 — 4분이 아니었다.** 설득이 이틀 남짓인데(아래) 핵이 4분이면, 하수인 종족을
+    // 잡아 오는 것이 사실상 즉시였다. 사람보다 빠른 것은 맞다(폰이 갈 필요가 없다) —
+    // 대신 다 차도 **도박 한 번**이 남고 실패하면 죽는다. 그 값이 시간 차이를 갚는다.
+    const float CoreSeconds = 1800f;
 
     // ── 회유는 **우리에서만** 한다 ────────────────────────────────────────
     //
@@ -133,7 +138,13 @@ public static class Conversion
     //
     // 쿨타임이 있으면 회차 사이에 다른 일감이 끼어들 수 있고, **결과가 회차 단위로 읽힌다** —
     // 성공·실패가 뜨고 잠깐 쉬었다 다시 온다.
-    public const float PersuadeCooldown = 20f;
+    // **3분이다 — 20초가 아니다.** 20초일 때는 간수 하나가 우리 앞을 거의 떠나지 않았고,
+    // 무엇보다 **회유 한 판이 몇 분 만에 끝나서** 붙잡아 두는 일에 아무 무게가 없었다.
+    // 3분이면 하루(1800초)에 열 번 남짓 — 간수가 다른 일을 하다 들르는 그림이 된다.
+    //
+    // 이 값이 **회유 전체 길이의 축**이다(회차 수 × 이 값 ≈ 이틀). 바꾸면 `PersuadeGain`도
+    // 같이 옮겨야 한다.
+    public const float PersuadeCooldown = 180f;
 
     // 다음 회차를 걸 수 있는 시각은 **포로가 들고 있다**(`UnitBlackboard.NextPersuadeTime`).
     // 여기 정적 표로 두면 죽거나 넘어온 폰의 항목이 남아 새고, 무엇보다 **누가 설득하든
@@ -145,31 +156,51 @@ public static class Conversion
         target?.Blackboard == null ? 0f
             : Mathf.Max(0f, target.Blackboard.NextPersuadeTime - Time.time);
 
-    // 한 회차에 오르는 양. 인지력 0이면 열 번, 130이면 네 번쯤에 끝난다(**성공했을 때**).
+    // ── 한 회차에 오르는 양 ──────────────────────────────────────────────
+    //
+    // **설득하는 쪽의 인지력은 여기 안 들어간다 — 성공률에만 든다**(`PersuadeChance`).
+    // 한 스탯이 "얼마나 오르나"와 "먹히나"를 둘 다 정하면 **같은 값이 두 번 곱해져** 잘하는
+    // 폰과 못하는 폰의 차이가 쓸데없이 벌어진다(다섯 배가 넘었다). 하나만 고르는 편이
+    // 화면에 적기도 쉽다: "말이 먹히느냐"가 인지력이다.
+    //
+    // **버티는 쪽의 인지력은 든다.** 머리가 좋은 사람은 좀처럼 안 넘어온다 — 설득하는 쪽과
+    // 같은 스탯을 마주 세우는 것이 대칭이라 읽기 쉽다.
+    //
+    // 한때 강인함으로 버티게 했다가 걷어냈었다("저 놈은 왜 느리지"를 스탯 창을 열어야
+    // 알게 될 뿐이었다). 지금은 **포로 패널이 회유·탈출 게이지를 둘 다 띄우고** 갇힌 사람도
+    // 눌러서 스탯을 볼 수 있으므로(2026-08-13), 그때의 반대 이유가 사라졌다.
+    const float BaseGain      = 0.11f;   // 저항 0일 때 아홉 회차쯤
+    const float MindResist    = 1f;      // 포로 인지 130이면 배로 걸린다
+
     public static float PersuadeGain(UnitBrain speaker, UnitBrain target)
     {
-        float mind = speaker != null && speaker.Stats != null ? speaker.Stats.Cognition : 0f;
-        return 0.10f + mind / 100f * 0.15f;
+        float mind = target != null && target.Stats != null ? target.Stats.Cognition : 0f;
+        return BaseGain / (1f + mind / 130f * MindResist);
     }
 
-    // 한 회차에 걸리는 시간(초) — 말을 붙이는 데 드는 시간. 인지력이 높으면 짧다.
+    // **설득하는 쪽은 간수 솜씨로 잰다**(`StatName.Warden`).
+    //
+    // 인지력을 빌려 쓰고 있었는데, 그러면 **학자가 곧 간수가 된다** — 연구를 시키려고 올린
+    // 스탯이 설득까지 잘하게 만들고, 반대로 간수를 키우면 연구 속도가 딸려 온다. 작업
+    // 카테고리마다 노동 스탯이 하나씩 있는데(치료=의료, 연구=연구) 간수만 없었던 것이다.
+    //
+    // **버티는 쪽은 여전히 인지력이다**(`PersuadeGain`) — 설득은 **기술**이고 버티는 것은
+    // **머리**다. 같은 스탯을 마주 세우면 대칭이 예쁘지만, 포로에게 "간수 솜씨"를 물을 수는 없다.
+    static float WardenSkill(UnitBrain speaker)
+        => speaker != null && speaker.Stats != null ? speaker.Stats.Warden : 0f;
+
+    // 한 회차에 걸리는 시간(초) — 말을 붙이는 데 드는 시간. 솜씨가 좋으면 짧다.
     public static float PersuadeSeconds(UnitBrain speaker)
-    {
-        float mind = speaker != null && speaker.Stats != null ? speaker.Stats.Cognition : 0f;
-        return 8f / (0.5f + mind / 100f);
-    }
+        => 8f / (0.5f + WardenSkill(speaker) / 100f);
 
-    // **말이 안 먹힐 수도 있다.** 인지력 0이면 40%, 130이면 90%쯤 통한다.
+    // **말이 안 먹힐 수도 있다.** 간수 솜씨 0이면 40%, 130이면 90%쯤 통한다.
     //
     // 여기 확률을 둔 것은 앞서 "확률로 굴리지 말자"고 한 것과 안 어긋난다 — 그때 막은 것은
     // **모르게** 굴리는 것이었다. 이건 굴린 결과가 그 자리에서 글자로 뜨고(성공/실패),
     // 실패해도 **잃는 것은 시간뿐**이라 무엇이 일어났는지도 무엇을 잃었는지도 분명하다.
     // (지배 실패는 죽지만 그건 도박이라고 적어 두고 사람이 누르는 것이다.)
     public static float PersuadeChance(UnitBrain speaker)
-    {
-        float mind = speaker != null && speaker.Stats != null ? speaker.Stats.Cognition : 0f;
-        return Mathf.Clamp01(0.40f + mind / 130f * 0.50f);
-    }
+        => Mathf.Clamp01(0.40f + WardenSkill(speaker) / 130f * 0.50f);
 
     // **한 회차를 치른다.** 굴리고, 알리고, 쿨타임을 건다.
     //

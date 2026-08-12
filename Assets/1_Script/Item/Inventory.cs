@@ -56,10 +56,22 @@ public class Inventory : MonoBehaviour
 
     // ── 배치 ──────────────────────────────────────────────────────────────────
 
+    // **등급을 갖지 않는 물건은 등급을 지운다**(`ItemData.HasQuality` — 장비만 참).
+    //
+    // 스택은 같은 등급끼리만 합쳐지므로, 저작 실수 하나로(상인 목록에 "희귀 붕대", 전리품
+    // 표에 "고급 빵") **같은 물건이 두 뭉치로 갈라진다** — 창고가 조각나고, 창고에서 꺼내
+    // 넣는 코드가 등급을 안 넘기면 그 뭉치는 영영 안 쓰인다.
+    //
+    // **들어오는 문에서 한 번 누른다.** 읽는 쪽마다 "이 물건은 등급이 있나"를 묻게 하면
+    // 반드시 한 곳이 빠진다.
+    static ItemQuality Normalize(ItemData data, ItemQuality quality)
+        => data != null && data.HasQuality ? quality : ItemQuality.Common;
+
     // 빈 자리를 자동 탐색하여 추가. 일부만 들어가면 그만큼만. 반환: 실제 추가 수량.
     public int TryAdd(ItemData data, int amount, ItemQuality quality = ItemQuality.Common)
     {
         if (data == null || amount <= 0) return 0;
+        quality = Normalize(data, quality);
 
         int remaining = amount;
 
@@ -108,6 +120,7 @@ public class Inventory : MonoBehaviour
     public bool CanFit(ItemData data, int amount = 1, ItemQuality quality = ItemQuality.Common)
     {
         if (data == null || amount <= 0) return false;
+        quality = Normalize(data, quality);   // `TryAdd`와 같은 답을 해야 한다
 
         int remaining = amount;
 
@@ -139,6 +152,8 @@ public class Inventory : MonoBehaviour
                          ItemQuality quality = ItemQuality.Common, bool locked = false)
     {
         if (data == null || amount <= 0) return false;
+        quality = Normalize(data, quality);   // `TryAdd`와 같은 문이어야 한다 — 아래 참고
+
         int w = rotated ? data.Height : data.Width;
         int h = rotated ? data.Width  : data.Height;
         if (!CanPlace(x, y, w, h, null)) return false;
@@ -218,6 +233,46 @@ public class Inventory : MonoBehaviour
     }
 
     // ── 제거 ──────────────────────────────────────────────────────────────────
+
+    // ── 뭉치 쪼개기 ───────────────────────────────────────────────────────────
+    //
+    // **왜 필요한가.** 스택은 같은 것끼리 저절로 합쳐지는데(`TryAdd`), 한 번 합쳐지면 도로
+    // 가를 길이 없었다. 그래서 "빵 20개 중 5개만 저 폰에게" 같은 일을 하려면 창고를 거쳐
+    // 하나씩 옮겨야 했다 — 상인에게 일부만 팔거나, 원정대에 나눠 싣거나, 바닥에 조금만
+    // 내려놓는 것이 전부 같은 벽에 막혔다.
+    //
+    // 갈라 나온 **새 뭉치를 돌려준다**(자리가 없으면 `null`이고 **아무것도 안 바뀐다** —
+    // 반쯤 갈라진 상태로 두면 개수가 조용히 새는 것과 같다).
+    // (격자를 다시 그리게 하는 `NotifyChanged`는 이미 위에 있다 — `notify: false`로 쪼갠 뒤
+    //  드래그가 끝나면 그것으로 갚는다.)
+
+    // `notify: false` — **끌고 있는 동안에는 알리지 않는다.** `InventoryGridUI`가 `OnChanged`에서
+    // 아이콘을 전부 다시 만드는데, 그러면 **지금 끌고 있는 아이콘이 파괴되어** 드롭이 통째로
+    // 사라진다(놓을 곳에 아무 일도 안 일어난다). 드래그가 끝난 뒤 `NotifyChanged`로 갚는다.
+    public ItemInstance SplitInstance(ItemInstance inst, int take, bool notify = true)
+    {
+        if (inst == null || inst.Data == null || !_items.Contains(inst)) return null;
+
+        // 전부를 떼는 것은 쪼개는 것이 아니다(원래 자리가 빈 뭉치로 남는다).
+        if (take <= 0 || take >= inst.Quantity) return null;
+
+        var slot = FindEmptySlot(inst.Data.Width, inst.Data.Height, out bool rotated);
+        if (slot == null) return null;
+
+        inst.Quantity -= take;
+
+        var half = new ItemInstance(inst.Data, take, slot.Value.x, slot.Value.y, rotated, inst.Quality)
+        {
+            // **잠금은 뭉치가 아니라 그 물건에 걸린 뜻이다** — 쪼갠 쪽만 자동 처분 대상이
+            // 되면 "잠갔는데 절반이 실려 갔다"가 된다.
+            Locked = inst.Locked,
+        };
+
+        PlaceCells(half);
+        _items.Add(half);
+        if (notify) OnChanged?.Invoke();
+        return half;
+    }
 
     public void RemoveInstance(ItemInstance inst)
     {

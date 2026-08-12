@@ -454,20 +454,19 @@ public partial class UnitBrain : MonoBehaviour
 
     void UpdateHunger()
     {
-        // 플레이어 세력(방랑자/하수인)만 허기 적용
-        var faction = GetComponent<Faction>();
-        if (faction == null || !faction.IsPlayer) return;
-
-        // **갇힌 사람은 굶지 않는다 — 먹일 길이 없어서다.**
+        // **누가 굶는가는 `Feeding.Simulates` 하나가 답한다** — 플레이어 세력, 그리고
+        // **갇힌 사람은 세력을 안 가린다**(업혀 있는 동안은 아무도 안 굶는다).
         //
-        // 갇히면 BT가 안 도니 `EatNode`도 안 돈다. 그런데 허기는 `UpdateHunger`가 BT 밖에서
-        // 깎으므로, 우리 폰을 가둬 두면 **먹을 방법이 없는 채로 굶어 죽는다.** 알림도 없다.
-        // 적을 가두면 그쪽은 애초에 허기가 안 도니, 같은 우리에 넣어도 **우리 폰만 죽는다.**
+        // 한동안 갇힌 사람은 아예 굶지 않았다. 갇히면 BT가 안 돌아 `EatNode`도 안 도는데
+        // 허기는 BT 밖에서 깎이므로, 우리 폰을 가둬 두면 **먹을 방법이 없는 채로 굶어
+        // 죽었다.** 그건 규칙이 아니라 사고였다 — 이제 먹이는 일감(`FeedJob`)이 있다.
         //
-        // "먹여야 산다"는 포로를 유지하는 값으로 좋지만, 그건 **먹이는 일감**이 생긴 뒤의
-        // 이야기다. 지금 굶기는 것은 규칙이 아니라 사고다 — 길이 생기면 여기서 풀면 된다.
-        // (업혀 있는 동안도 마찬가지다. 남의 어깨 위에서 밥을 먹을 수는 없다.)
-        if (_bb.IsPrisoner || _bb.CarriedBy != null) return;
+        // 되살리면서 **적 포로도 굶게 했다.** 그래야 붙잡아 두는 데 값이 든다 — 예전에는
+        // 우리에 넣어 두기만 하면 회유가 저절로 끝났다.
+        //
+        // 화면의 허기 바(`InspectPanelUI`)도 같은 답을 쓴다. 도는 것과 보이는 것이 갈리면
+        // "안 보이는데 죽는" 또는 "안 줄어드는 바"가 생긴다.
+        if (!Feeding.Simulates(this)) return;
 
         float rate = BaseHungerDecayRate;
 
@@ -497,6 +496,10 @@ public partial class UnitBrain : MonoBehaviour
         if (_hp <= 0f) Die();
     }
 
+    // **죽었나.** 시체는 `UnitBrain`을 끄지만 컴포넌트 자체는 남으므로, 이 폰을 참조하고
+    // 있던 쪽(침대·우리)에서는 `== null`로 걸러지지 않는다 — 물어볼 자리가 필요하다.
+    public bool IsDead => _isDead;
+
     public void Die()
     {
         if (_isDead) return;
@@ -508,8 +511,17 @@ public partial class UnitBrain : MonoBehaviour
         PawnCarry.DropOnDestroy(this);
         if (_bb.CarriedBy != null) PawnCarry.PutDown(_bb.CarriedBy, transform.position);
 
-        // 갇힌 채 죽으면 자리를 비운다 — 안 비우면 그 우리를 다시 못 쓴다.
+        // 자리에서 죽으면 그 자리를 비운다 — 안 비우면 다시 못 쓴다.
+        //
+        // **침대도 같이 비운다.** 예전엔 우리만 비웠는데, `Bed`는 시체를 계속 물고 있어
+        // (`_occupant`가 `== null`로 안 걸린다 — 컴포넌트는 남는다) **그 침대를 아무도 못
+        // 썼다.** 적 포로가 굶어 죽을 수 있게 되면서(2026-08-12 먹이기) 실제로 밟히는
+        // 자리가 됐다.
+        //
+        // `Imprisonment.Release`를 안 쓰는 이유: 그건 놓아 준 적에게 도주 성향을 씌우고
+        // 맵 밖으로 내보낸다 — 시체에게 시킬 일이 아니다. 자리만 비운다.
         PrisonCage.HolderOf(this)?.Release();
+        Bed.ReleaseFrom(this);
 
         // 진행 중인 작업이 있으면 취소해서 pending 플래그 해제 + 노드 배정 정리
         AbandonWork();

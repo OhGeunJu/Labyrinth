@@ -44,7 +44,9 @@ public class CraftJob : JobBase
     UnitBrain _crafter;
 
     // 등급이 있는 결과물(무기·방어구)은 **만들던 폰이 이어서** 해야 한다.
-    bool IsEquipment => _recipe != null && (_recipe.Result is WeaponData || _recipe.Result is ArmorData);
+    // **무엇이 등급을 갖는지는 물건이 답한다**(`ItemData.HasQuality`) — 여기서 `is WeaponData`로
+    // 갈라 쓰면 종류가 늘 때 이 분기를 찾아 고쳐야 하고, 빠뜨리면 조용히 등급이 사라진다.
+    bool IsEquipment => _recipe != null && _recipe.Result != null && _recipe.Result.HasQuality;
 
     float ElapsedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) : 0f;
 

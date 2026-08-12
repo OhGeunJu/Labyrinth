@@ -54,7 +54,8 @@ public class SeedJob : JobBase
         // **가지러 가는 것**이므로 "받아 줄 곳"이 아니라 "들어 있는 곳"을 찾는다.
         // `FindNearest`는 이제 남은 자리까지 보므로(입고용), 여기 쓰면 씨앗이 가득 든 창고가
         // 오히려 탈락한다 — 정확히 가야 할 곳이 걸러지는 셈이다.
-        var storage = Storage.FindStorageWithItem(_seed);
+        var origin = ReservedBy != null ? ReservedBy.transform.position : _plot.transform.position;
+        var storage = Storage.FindStorageWithItem(_seed, origin);
         if (storage != null)
             TileCoord = WorkSpot.TileFor(storage);   // 창고 자기 칸이 아니라 폰이 서는 자리
     }

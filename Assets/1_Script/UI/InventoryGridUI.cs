@@ -46,6 +46,26 @@ public class InventoryGridUI : MonoBehaviour
     // 활성 그리드 목록 — 커서 아래 그리드 탐색용
     static readonly List<InventoryGridUI> _activeGrids = new();
 
+    // **지금 같이 열려 있는 반대편 통.** 우클릭 한 번으로 물건을 건너보내는 데 쓴다
+    // (배낭 ↔ 창고·작업대·시체). 없으면 `null` — 그때 우클릭은 다른 뜻이 된다(장비 착용).
+    //
+    // "무엇이 반대편인가"를 부르는 쪽마다 따지게 하면(창고 패널이 배낭을 알고, 배낭이 창고를
+    // 알고…) 통이 하나 늘 때마다 짝이 제곱으로 는다. **열려 있는 격자 목록이 이미 있으므로**
+    // 그중 내가 아닌 것을 고르면 된다.
+    public static InventoryGridUI FindCounterpart(InventoryGridUI mine, ItemData item)
+    {
+        if (mine == null || mine.Inventory == null || item == null) return null;
+
+        foreach (var grid in _activeGrids)
+        {
+            if (grid == null || grid == mine || !grid.isActiveAndEnabled) continue;
+            if (grid.Inventory == null || grid.Inventory == mine.Inventory) continue;
+            if (!grid.CanReceiveItem(item)) continue;
+            return grid;
+        }
+        return null;
+    }
+
     public static InventoryGridUI FindUnderCursor(Vector2 screenPos, Camera uiCam)
     {
         foreach (var grid in _activeGrids)
@@ -259,7 +279,14 @@ public class InventoryGridUI : MonoBehaviour
         ClearItems();
         if (_inventory == null) return;
         EnsureItemsRoot();
-        foreach (var inst in _inventory.Items) CreateItemIcon(inst);
+        foreach (var inst in _inventory.Items)
+        {
+            // **끌고 있는 것은 안 그린다.** 그 아이콘은 이미 캔버스 위에서 커서를 따라가고 있다 —
+            // 안 거르면 뭉치를 쪼개는 순간 같은 것이 격자에도 하나 더 생겨 둘로 보인다.
+            // (드래그 중에 격자를 다시 그리는 것은 **쪼갠 나머지를 바로 보여 주기 위해서**다.)
+            if (inst == DraggableItem.DraggedInstance) continue;
+            CreateItemIcon(inst);
+        }
     }
 
     void ClearItems()

@@ -68,6 +68,13 @@ public class Equipment : MonoBehaviour
         if (weapon.Type == WeaponType.Shield) return WearOffHand(inst);
 
         Bind();
+
+        // **양손 무기는 보조손을 비운다.** 안 보면 순서에 따라 규칙이 갈렸다 — 대검을 든
+        // 채로는 방패가 안 껴지는데(`OffHandLocked`), **방패를 먼저 끼고 대검을 끼우면 둘 다
+        // 찬 상태**가 만들어졌다. 게다가 그 뒤로는 `OffHandLocked`가 참이라 방패를 바꿀 수도
+        // 없다. 순서로 갈리는 것은 규칙이 아니다.
+        if (weapon.IsLargeWeapon && !StowOffHand()) return false;
+
         if (MainHand != null)
             ReturnToInventory(MainHand, _mainHandInst?.Quality ?? ItemQuality.Common);
 
@@ -79,12 +86,47 @@ public class Equipment : MonoBehaviour
         return true;
     }
 
+    // 차고 있던 것을 **배낭으로** 옮긴다. 넣을 자리가 없으면 `false`이고 **아무것도 안 바뀐다** —
+    // 발밑에 떨구지 않는다: 바닥 물건은 이제 저절로 안 실려 가므로(체크한 것만 나른다,
+    // 2026-08-13) 무기를 바꾼 값이 **치우는 일**로 돌아온다. 못 바꾸면 안 바꾸는 편이 낫다.
+    bool StowOffHand()
+    {
+        if (OffHand == null) return true;
+        if (_inventory == null) return false;
+
+        var quality = _offHandInst?.Quality ?? ItemQuality.Common;
+        if (_inventory.TryAdd(OffHand, 1, quality) <= 0) return false;
+
+        OffHand      = null;
+        _offHandInst = null;
+        return true;   // `OnEquipChanged`는 부르는 쪽이 이어서 낸다
+    }
+
+    bool StowMainHand()
+    {
+        if (MainHand == null) return true;
+        if (_inventory == null) return false;
+
+        var quality = _mainHandInst?.Quality ?? ItemQuality.Common;
+        if (_inventory.TryAdd(MainHand, 1, quality) <= 0) return false;
+
+        MainHand      = null;
+        _mainHandInst = null;
+        SyncBlackboard();
+        return true;
+    }
+
     public bool WearOffHand(ItemInstance inst)
     {
         if (inst?.Data is not WeaponData item) return false;
-        if (OffHandLocked) return false;
 
         Bind();
+
+        // **방패를 끼면 양손 무기가 벗겨진다.** 거절만 하면 "왜 안 껴지지"가 되고, 무엇보다
+        // 반대 방향(대검을 끼면 방패가 벗겨진다)과 규칙이 갈린다.
+        // 하나로 적으면: **한 손짜리와 두 손짜리는 같이 못 든다 — 나중에 찬 쪽이 이긴다.**
+        if (OffHandLocked && !StowMainHand()) return false;
+
         if (OffHand != null)
             ReturnToInventory(OffHand, _offHandInst?.Quality ?? ItemQuality.Common);
 
@@ -151,7 +193,18 @@ public class Equipment : MonoBehaviour
         if (weapon.Type == WeaponType.Shield) return EquipOffHand(weapon);
 
         var inst = PullOne(weapon);
-        return inst != null && WearMainHand(inst);
+        return inst != null && (WearMainHand(inst) || PutBack(inst));
+    }
+
+    // **못 찼으면 도로 넣는다 — 늘 `false`를 돌려준다.**
+    //
+    // `PullOne`은 이미 배낭에서 뺐다. 예전엔 `Wear*`가 실패할 길이 사실상 없어서 그냥
+    // 두어도 됐는데, **양손 무기가 보조손을 못 비울 때 거절하도록 바꾸면서**(2026-08-13)
+    // 그 길이 생겼다 — 그대로 두면 무기가 조용히 사라진다.
+    bool PutBack(ItemInstance inst)
+    {
+        if (inst?.Data != null) _inventory?.TryAdd(inst.Data, 1, inst.Quality);
+        return false;
     }
 
     // 배낭에서 **한 개만** 빼내 독립된 인스턴스로 만든다.
@@ -184,10 +237,13 @@ public class Equipment : MonoBehaviour
     public bool EquipOffHand(WeaponData item)
     {
         Bind();
-        if (item == null || OffHandLocked) return false;
+        if (item == null) return false;
 
+        // **`OffHandLocked`를 여기서 안 막는다** — 막으면 배낭 경로만 옛 규칙을 쓴다.
+        // 아래 `WearOffHand`가 양손 무기를 배낭으로 치우고(못 치우면 거절하고) 끼운다.
+        // 규칙이 문마다 갈리지 않게 **판단은 `Wear*` 한 곳**에만 둔다.
         var inst = PullOne(item);
-        return inst != null && WearOffHand(inst);
+        return inst != null && (WearOffHand(inst) || PutBack(inst));
     }
 
     public void UnequipOffHand()
@@ -207,7 +263,7 @@ public class Equipment : MonoBehaviour
         if (armor == null) return false;
 
         var inst = PullOne(armor);
-        return inst != null && WearArmor(inst);
+        return inst != null && (WearArmor(inst) || PutBack(inst));
     }
 
     public void UnequipArmor(ArmorSlot slot)

@@ -31,12 +31,12 @@ public static class UnitHPActionRowCreator
     [MenuItem("DungeonColony/Create UnitHP Action Row")]
     static void Create()
     {
-        var ui = Object.FindFirstObjectByType<UnitHPUI>(FindObjectsInactive.Include);
-        if (ui == null) { Debug.LogError("[UnitHPActionRow] 씬에 UnitHPUI가 없습니다."); return; }
+        var ui = Object.FindFirstObjectByType<InspectPanelUI>(FindObjectsInactive.Include);
+        if (ui == null) { Debug.LogError("[UnitHPActionRow] 씬에 InspectPanelUI가 없습니다."); return; }
 
         var so      = new SerializedObject(ui);
         var panelGO = so.FindProperty("panel").objectReferenceValue as GameObject;
-        if (panelGO == null) { Debug.LogError("[UnitHPActionRow] UnitHPUI.panel이 비어 있습니다."); return; }
+        if (panelGO == null) { Debug.LogError("[UnitHPActionRow] InspectPanelUI.panel이 비어 있습니다."); return; }
 
         // 다시 돌려도 되도록 먼저 지운다.
         var old = panelGO.transform.Find("ActionRow");
@@ -92,7 +92,7 @@ public static class UnitHPActionRowCreator
         tmp.raycastTarget = false;   // 커서를 먹으면 버튼이 안 눌린다
         ApplyFont(tmp);
 
-        // 템플릿은 원본이라 꺼 둔다 — `UnitHPUI.Awake`도 끄지만, 편집 중에도 빈 버튼이
+        // 템플릿은 원본이라 꺼 둔다 — `InspectPanelUI.Awake`도 끄지만, 편집 중에도 빈 버튼이
         // 하나 떠 있으면 실제 모양과 달라 보인다.
         btnGO.SetActive(false);
 

@@ -27,7 +27,15 @@ public enum StatName
     MartialArts, Evasion, Athletics, Swimming,
     Labor, Mining, Growing, Cutting, Taming, Cooking, Medicine, Research,
     WeaponCrafting, ArmorCrafting, Alchemy,
-    Smelting, Stonecutting, Woodworking, Gemcutting
+    Smelting, Stonecutting, Woodworking, Gemcutting,
+
+    // **뒤에 붙일 것** — `UnitData.StatGrades`·`TraitData.StatOffsets`·`PawnSpecData.Grades`가
+    // 이 enum을 정수로 직렬화한다. 중간에 끼우면 이미 저작한 에셋이 통째로 밀린다.
+    //
+    // 간수(2026-08-13). 작업 카테고리마다 노동 스탯이 하나씩 있는데(치료=의료, 연구=연구,
+    // 채굴·벌목·요리…) **간수만 없어서 인지력을 빌려 쓰고 있었다.** 그러면 학자가 곧 간수가
+    // 되고, 설득을 시키려고 인지력을 올리면 연구 속도까지 딸려 온다.
+    Warden
 }
 
 // **스탯 이름의 표시명 — 여기 하나뿐이다.**
@@ -58,6 +66,7 @@ public static class StatNameExt
         StatName.Cooking           => "요리",
         StatName.Medicine          => "의료",
         StatName.Research          => "연구",
+        StatName.Warden            => "간수",
         StatName.WeaponCrafting    => "무기제작",
         StatName.ArmorCrafting     => "갑옷제작",
         StatName.Alchemy           => "연금",

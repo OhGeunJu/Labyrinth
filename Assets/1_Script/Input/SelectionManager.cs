@@ -24,13 +24,41 @@ public class SelectionManager : MonoBehaviour
     public static event Action<ResourceNode> OnNodeSelected;
     public static event Action<Corpse> OnCorpseSelected;
 
+    // 바닥에 떨어진 물건 — 청사진·건물과 같은 **한 클릭짜리 조사**다(딴 데를 누르면 풀린다).
+    //
+    // **여럿을 한 번에 고른다.** 하나씩만 되면 전투 뒤나 발견 뒤에 열 몇 개를 하나하나
+    // 눌러야 한다 — 폰을 사각으로 훑는 것과 같은 일인데 물건만 안 됐다.
+    public static event Action<IReadOnlyList<DroppedItem>> OnItemsInspected;
+
+    readonly List<DroppedItem> _items = new();
+
+    // **고른 것에는 표식이 붙는다.** 패널이 "물건 7개"라고 적어도 어느 일곱인지 모르면
+    // [전부 창고로 옮긴다]를 누르기가 무섭다. 갈아치울 때 지난 표식을 끄는 것이 여기 몫이라,
+    // 고르는 길이 여럿이어도(단일 클릭·사각 훑기·해제) 표식이 남아도는 일이 없다.
+    void SelectItems(List<DroppedItem> items)
+    {
+        foreach (var d in _items)
+            if (d != null) d.SetSelected(false);
+        _items.Clear();
+
+        if (items != null)
+            foreach (var d in items)
+            {
+                if (d == null) continue;
+                _items.Add(d);
+                d.SetSelected(true);
+            }
+
+        OnItemsInspected?.Invoke(_items);
+    }
+
     // 조작 불가 유닛(적/NPC)을 클릭했을 때 — 명령 대상은 아니지만 정보는 보여준다.
     // 다른 것을 클릭하거나 빈 곳을 클릭하면 null로 해제된다.
     public static event Action<UnitBrain> OnPawnInspected;
 
     // **짓는 중인 청사진.** 다른 건물은 저마다 패널이 있는데(창고·침대·농지·작업대·연구대)
     // 청사진만 없었다 — 콜라이더가 없어 클릭 자체가 안 됐기 때문이다.
-    // 폰 정보 패널(`UnitHPUI`)이 이걸 받아 같은 자리에 진행 상황을 띄운다.
+    // 폰 정보 패널(`InspectPanelUI`)이 이걸 받아 같은 자리에 진행 상황을 띄운다.
     public static event Action<BuildingBlueprint> OnBlueprintInspected;
 
     // **다 지은 건물.** 저마다의 패널(창고·침대·농지…)을 **대신하지 않고 곁들인다** —
@@ -87,8 +115,10 @@ public class SelectionManager : MonoBehaviour
 
     void HandleSelection()
     {
-        // 건설 모드·핵 이전 모드 중에는 클릭이 그쪽 전용 (선택으로 새어나가지 않게)
-        if (BuildModeManager.IsActive || CoreRelocator.IsActive) return;
+        // 건설·핵 이전·운반 지정 중에는 클릭이 그쪽 전용 (선택으로 새어나가지 않게).
+        // **지정 모드를 빠뜨렸었다** — 드래그로 물건을 찍으면 같은 드래그가 사각 선택으로도
+        // 들어가, 찍는 도중에 선택이 갈아치워지고 정보 패널이 튀어나왔다.
+        if (BuildModeManager.IsActive || CoreRelocator.IsActive || HaulDesignator.IsActive) return;
 
         // **UI에서 시작한 클릭은 놓는 순간까지 통째로 무시한다.**
         // 예전엔 누를 때만 UI를 보고 걸렀는데, 그러면 배낭에서 바닥으로 **드래그해 물건을
@@ -148,6 +178,7 @@ public class SelectionManager : MonoBehaviour
         OnBlueprintInspected?.Invoke(null);
         OnBuildingInspected?.Invoke(null);
         OnCoreInspected?.Invoke(null);
+        SelectItems(null);
 
         bool hasHit = Physics.Raycast(ray, out RaycastHit hit, 500f);
         if (hasHit)
@@ -183,7 +214,19 @@ public class SelectionManager : MonoBehaviour
             // 바닥에 떨어진 물건도 **선택을 유지**한다(노드·시체와 같은 이유). 이걸로 할 일은
             // 우클릭 메뉴에 있고, 그건 고른 폰에게 시키는 것이라 여기서 선택을 지우면
             // 물건을 한 번 누를 때마다 폰을 다시 골라야 한다.
-            if (hit.collider.GetComponent<DroppedItem>() != null) return;
+            //
+            // **정보 패널은 띄운다** — 바닥 물건은 자동 운반이 켜졌는지 꺼졌는지가 눈에 보여야
+            // 하는데(초록 구슬만으로는 "왜 안 실려 가지"에 답이 안 된다), 그걸 볼 자리가
+            // 없었다. 무엇이 얼마나·얼마어치 떨어져 있는지도 여기서 답한다.
+            var dropped = hit.collider.GetComponent<DroppedItem>();
+            if (dropped != null)
+            {
+                DungeonCore.Instance?.Deselect();
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                SelectItems(new List<DroppedItem> { dropped });
+                return;
+            }
 
             var pawn = hit.collider.GetComponent<PawnMover>();
             var faction = hit.collider.GetComponent<Faction>();
@@ -216,7 +259,7 @@ public class SelectionManager : MonoBehaviour
             // **폰 선택은 유지한다**(노드·시체·드롭·건물과 같은 규칙). 적을 눌러 보는 이유는
             // 대개 **그 다음에 무언가를 시키려는 것**이다 — 살펴보고 우클릭으로 친다.
             // 여기서 선택을 지우면 적을 한 번 볼 때마다 폰을 다시 골라야 한다.
-            // 정보 패널은 `UnitHPUI`가 "조사 중인 것이 있으면 그쪽"으로 가려 준다.
+            // 정보 패널은 `InspectPanelUI`가 "조사 중인 것이 있으면 그쪽"으로 가려 준다.
             if (pawn != null)
             {
                 DungeonCore.Instance?.Deselect();
@@ -231,6 +274,8 @@ public class SelectionManager : MonoBehaviour
             // 창고에 폰 인벤토리의 물건을 옮기고, 상인에게 팔고, 침대를 배정한다.
             // 클릭할 때마다 선택이 풀리면 "폰 고르기 → 건물 열기"를 매번 반대로 해야 한다.
             // (노드·시체도 같은 이유로 유지한다.)
+            // (누운 폰은 `PawnMover`가 눕는 동안 트리거 캡슐을 켜 두므로 위 폰 분기에서
+            //  이미 잡힌다 — 침대를 겨누면 침대가, 몸을 겨누면 사람이 눌린다.)
             var clickable = hit.collider.GetComponent<IWorldClickable>();
             if (clickable != null && AcceptsClick(clickable))
             {
@@ -333,6 +378,24 @@ public class SelectionManager : MonoBehaviour
             ClearSelection();
             foreach (var pawn in caught) AddToSelection(pawn);
         }
+
+        // **우리 폰이 하나도 안 잡혔을 때만 바닥 물건을 훑는다.**
+        //
+        // 섞이면 무엇을 고른 것인지 알 수 없다 — 폰과 물건은 할 수 있는 일이 아예 다르다
+        // (명령 대상 / 운반 지정). 폰이 잡혔으면 그건 **명령을 위한 선택**이므로 그쪽이 이긴다.
+        // 물건도 "잡힌 것이 있을 때만" 갈아치운다(빈 땅을 훑어도 하던 것이 안 풀린다).
+        if (caught.Count == 0)
+        {
+            var items = new List<DroppedItem>();
+            foreach (var drop in FindObjectsByType<DroppedItem>(FindObjectsSortMode.None))
+            {
+                if (drop == null) continue;
+                Vector3 sp = _cam.WorldToScreenPoint(drop.transform.position);
+                if (sp.z > 0f && screenRect.Contains((Vector2)sp, true)) items.Add(drop);
+            }
+            if (items.Count > 0) { SelectItems(items); return; }
+        }
+        else SelectItems(null);
 
         // **드래그로 남의 유닛을 훑으면 스탯을 보여준다.**
         // 좌클릭은 상인에게서 상점을 여는 데 쓰이므로(그쪽이 더 자주 하는 일),

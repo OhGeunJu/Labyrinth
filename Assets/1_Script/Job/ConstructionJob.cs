@@ -64,7 +64,10 @@ public class ConstructionJob : JobBase
             return;
         }
 
-        _source = Storage.FindStorageWithItem(_material);
+        // **짓는 사람 기준으로 가장 가까운 창고.** 청사진 기준이 아니다 — 걷는 것은 폰이고,
+        // 지금 서 있는 자리에서 재야 왕복이 줄어든다(못 물으면 청사진 옆에서 잰다).
+        var origin = builder != null ? builder.transform.position : _blueprint.transform.position;
+        _source = Storage.FindStorageWithItem(_material, origin);
         if (_source == null)
         {
             // 어디에도 없다 — 청사진이 `OnJobEnded`에서 다시 건다(취소가 아니라 대기).

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class Bed : MonoBehaviour, IWorldClickable
+public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite
 {
     static readonly List<Bed> _all = new();
 
@@ -238,8 +238,28 @@ public class Bed : MonoBehaviour, IWorldClickable
     // 이건 실제로 자리에 있느냐다. 치료는 자리에 있어야 할 수 있다.
     public UnitBrain Occupant => _occupant;
 
+    // ── `IPrisonSite` — 먹이기 일감의 자리 ───────────────────────────────
+    //
+    // **누워 있는 것만으로는 포로가 아니다.** 죄수 침대이면서 그 사람이 실제로 갇혀
+    // 있을 때만이다 — 용도를 되돌리면(`SetForPrisoners`) 갇힘이 먼저 풀리고, 그때
+    // 여기가 계속 참이면 우리 폰에게 간수가 밥을 떠먹인다(제 손으로 먹을 수 있는데).
+    public UnitBrain HeldPrisoner
+        => forPrisoners && _occupant != null && _occupant.Blackboard != null
+                        && _occupant.Blackboard.IsPrisoner
+         ? _occupant : null;
+
+    public SiteJobSlot FeedSlot { get; private set; }
+
+    // **슬롯은 여기서 묶는다** — 필드 초기화식에서는 `this`를 못 잡고(CS0236), 무엇보다
+    // 한 번만 묶어야 매 틱 클로저가 새로 안 난다(`SiteJobSlot` 주석 참고).
+    void Awake()
+    {
+        _treatSlot = new SiteJobSlot(_ => new TreatJob(this), CaresForOccupant);
+        FeedSlot   = PrisonFeeding.NewSlot(this);
+    }
+
     void OnEnable()  { _all.Add(this); RefreshTint(); }
-    void OnDisable() { _all.Remove(this); DropTreatJob(); }
+    void OnDisable() { _all.Remove(this); DropTreatJob(); PrisonFeeding.Drop(this); }
 
     // ── 치료 일감 ────────────────────────────────────────────────────────────
     //
@@ -249,42 +269,47 @@ public class Bed : MonoBehaviour, IWorldClickable
     //
     // **한 회차씩** 건다 — `TreatJob`이 끝나면 아직 나을 것이 남았을 때 다음 것이 걸린다.
     // 그래야 회차마다 약을 하나씩 쓰고, 도중에 물자가 떨어져도 맨손으로 이어진다.
+    // 걸고·넘기고·거두는 규칙 자체는 `SiteJobSlot`이 든다(우리의 설득, 갇힌 사람의 끼니와
+    // 같은 그릇). 여기서 답하는 것은 **언제 필요하고 누구를 돌보는가**뿐이다.
     const float CheckInterval = 1f;
 
-    TreatJob _treatJob;
-    float    _nextCheck;
+    SiteJobSlot _treatSlot;   // `Awake`에서 묶는다
+    float _nextCheck;
 
     void Update()
     {
         if (Time.time < _nextCheck) return;
         _nextCheck = Time.time + CheckInterval;
 
-        // 끝났거나 취소된 것은 붙들고 있어 봐야 다음 회차를 막을 뿐이다.
-        if (_treatJob != null && _treatJob.Status is JobStatus.Done or JobStatus.Cancelled)
-            _treatJob = null;
+        // **갇힌 사람 몫은 치료와 별개로 돈다**(먹이기·탈출). 아래는 다 나으면 거기서
+        // 끝나는데(`wanted`), 멀쩡한 포로도 배는 고프고 오히려 그때 걸어 나간다 —
+        // 관문 뒤에 두면 상처가 아무는 순간 굶기 시작하고 도망도 안 친다.
+        Imprisonment.TickHeld(this);
 
         var body = _occupant != null ? _occupant.GetComponent<BodyPartSystem>() : null;
         bool wanted = body != null && body.NeedsTreatment;
 
-        if (!wanted) { DropTreatJob(); return; }
-        if (_treatJob != null) return;
+        _treatSlot?.Tick(wanted);
+    }
 
-        // **우리 폰이거나, 죄수 침대에 누운 포로거나.**
-        //
-        // 예전엔 플레이어 세력만 돌봤다("붙잡아 온 적을 눕힐 길이 아직 없다"). 이제 있다 —
-        // 그리고 **죄수 침대의 존재 이유가 바로 이것**이다. 우리(`PrisonCage`)는 가두는 것이
-        // 전부고, 침대는 회복과 치료가 붙기 때문에 살려서 다룰 사람을 눕히는 자리다.
-        // 여기서 안 돌보면 죄수 침대와 우리가 같은 물건이 된다.
-        //
-        // **지나가던 적은 여전히 안 돌본다** — 갇힌 사람만이다.
+    // **우리 폰이거나, 죄수 침대에 누운 포로거나.**
+    //
+    // 예전엔 플레이어 세력만 돌봤다("붙잡아 온 적을 눕힐 길이 아직 없다"). 이제 있다 —
+    // 그리고 **죄수 침대의 존재 이유가 바로 이것**이다. 우리(`PrisonCage`)는 가두는 것이
+    // 전부고, 침대는 회복과 치료가 붙기 때문에 살려서 다룰 사람을 눕히는 자리다.
+    // 여기서 안 돌보면 죄수 침대와 우리가 같은 물건이 된다.
+    //
+    // **지나가던 적은 여전히 안 돌본다** — 갇힌 사람만이다.
+    //
+    // 이건 `wanted`와 다른 축이라 따로 둔다: 안 돌볼 사람이면 **일감을 안 낼** 뿐이고,
+    // 이미 걸린 것을 거두지는 않는다(치료 도중에 세력이 바뀌는 일은 회유뿐인데, 그때
+    // 하던 치료를 끊을 이유가 없다).
+    bool CaresForOccupant()
+    {
+        if (_occupant == null) return false;
+
         var faction = _occupant.GetComponent<Faction>();
-        bool ours   = faction != null && faction.IsPlayer;
-        bool held   = forPrisoners && _occupant.Blackboard != null && _occupant.Blackboard.IsPrisoner;
-        if (!ours && !held) return;
-        if (JobManager.Instance == null) return;
-
-        _treatJob = new TreatJob(this);
-        JobManager.Instance.RegisterJob(_treatJob);
+        return (faction != null && faction.IsPlayer) || HeldPrisoner == _occupant;
     }
 
     // 지금 이 침대에 치료가 필요한가 — 우클릭 메뉴가 선택지를 낼지 정할 때 쓴다.
@@ -298,42 +323,16 @@ public class Bed : MonoBehaviour, IWorldClickable
     }
 
     // **이 의사에게 맡긴다**(우클릭 [치료한다]).
-    //
-    // 새로 만들지 않고 **있던 일감을 그대로 넘긴다** — 침대가 일감의 주인이라, 여기서 하나
-    // 더 만들면 같은 환자에게 둘이 붙는다. 이미 남이 하고 있으면 뺏지 않는다(약만 버려진다).
     public bool RequestTreatBy(UnitBrain doctor)
     {
         if (doctor == null || doctor == _occupant || !NeedsTreatment) return false;
-        if (JobManager.Instance == null) return false;
 
-        if (_treatJob != null && _treatJob.Status == JobStatus.InProgress) return false;
-
-        if (_treatJob == null || _treatJob.Status is JobStatus.Done or JobStatus.Cancelled)
-        {
-            _treatJob = new TreatJob(this);
-            JobManager.Instance.ReserveFor(_treatJob, doctor);
-            return true;
-        }
-
-        // 아직 아무도 안 집었거나 남이 예약만 해 둔 것 — 이 의사 앞으로 다시 잡는다.
-        _treatJob.ReleaseReservation();
-        _treatJob.Reserve(doctor);
-        return true;
+        // 침대에서 나는 일감은 **누가 누웠는지를 그때그때 침대에 묻는다** — `TreatJob(Bed)`는
+        // 의사를 인자로 안 받는다(예약이 곧 배정이다).
+        return _treatSlot != null && _treatSlot.RequestBy(doctor);
     }
 
-    void DropTreatJob()
-    {
-        if (_treatJob == null) return;
-
-        // 아직 아무도 안 집었거나 예약만 된 것은 거둔다. 이미 하고 있는 것은 그대로 끝내게
-        // 둔다 — 환자가 잠깐 일어나도 하던 손을 놓게 하면 약만 버려진다.
-        if (_treatJob.Status is JobStatus.Available or JobStatus.Reserved)
-        {
-            JobManager.Instance?.RemoveJob(_treatJob);
-            _treatJob.Cancel();
-        }
-        _treatJob = null;
-    }
+    void DropTreatJob() => _treatSlot?.Drop();
 
     // SelectionManager의 단일 레이캐스트가 이 건물을 클릭 판정 시 호출.
     // **전용 패널을 더는 안 연다.**
@@ -376,7 +375,12 @@ public class Bed : MonoBehaviour, IWorldClickable
     // 받으면 갇힘이 안 걸린 채 눕기만 해서 다음 틱에 **누운 자세 그대로 걸어 나간다.**
     // 붙들자니 보통 침대가 곧 죄수 침대가 되고, 안 붙들자니 눕힌 것이 아무 뜻이 없다 —
     // 애초에 못 눕히는 것이 맞다. 우리 폰(다친 동료)은 그대로 받는다.
-    public bool Accepts(UnitBrain brain) => forPrisoners || !PrisonEscort.IsCaptive(brain);
+    // **죽은 사람은 어느 침대도 안 받는다.** 시체는 업어서 옮길 수 있지만(`PawnCarry`)
+    // 눕히는 것은 회복·치료를 얹는 일이라 뜻이 없고, 눕혀 두면 그 침대를 산 사람이 못 쓴다
+    // (`_occupant`가 시체를 물고 있으면 `== null`로 안 걸린다 — `Die`가 자리를 비우는 것도
+    // 같은 이유다). 시체는 옮겨서 아무 데나 내려놓는 것이 전부다.
+    public bool Accepts(UnitBrain brain)
+        => !PawnCarry.IsCorpse(brain) && (forPrisoners || !PrisonEscort.IsCaptive(brain));
 
     public void PlacePrisoner(UnitBrain brain)
     {
@@ -435,7 +439,11 @@ public class Bed : MonoBehaviour, IWorldClickable
             // **눕혀 둔 것은 일으켜 세운다.** 침대에서 놓아 주면서 `SetSleeping`을 안 풀면
             // 침대 밖으로 나가서도 누운 자세로 붙들려 있다(`PawnMover.Update`가 통째로
             // 멈춰 있으므로 중력도 조향도 안 돈다).
-            if (bed._occupant == unit)
+            //
+            // **죽은 사람은 안 일으킨다.** `UnitBrain.Die`가 자리를 비우려고 여기를 지나는데,
+            // 그때 자세를 풀면 시체가 침대에서 벌떡 일어선 채로 굳는다(`BecomeCorpse`는
+            // 죽은 그 순간의 자세로 멈춘다). 비우는 것과 일으키는 것은 다른 일이다.
+            if (bed._occupant == unit && !unit.IsDead)
                 unit.GetComponent<PawnMover>()?.SetSleeping(false);
 
             if (bed.AssignedUnit == unit) bed.AssignedUnit = null;

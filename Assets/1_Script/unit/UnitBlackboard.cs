@@ -133,6 +133,17 @@ public class UnitBlackboard
     // 도는 것이 되면 안 된다), 폰이 사라지면 같이 사라져야 한다.
     public float NextPersuadeTime;
 
+    // **탈출 게이지**(0~1). 다 차면 걸어 나간다 — `ConvertProgress`와 나란한 축이다:
+    // 하나는 넘어오는 쪽으로, 하나는 나가는 쪽으로 찬다. **관리가 그 경주를 정한다.**
+    //
+    // 확률로 굴리지 않는 이유는 이 저장소가 여러 번 적어 둔 그것이다 — 모르게 굴리면
+    // 어느 날 포로가 사라지고 그게 관리를 안 해서인지 운인지 알 길이 없다.
+    public float EscapeProgress;
+
+    // 게이지를 마지막으로 굴린 시각. 부르는 간격과 무관하게 정확한 델타를 재려고 든다
+    // (자리의 점검 주기가 바뀌어도 속도가 안 흔들린다). `Time.time`이라 배속도 따라온다.
+    public float LastEscapeTick;
+
     // 풀려나 맵을 떠나는 중. **맞으면 꺼진다**(`LeaveMapNode`) — 살려 보낸 것을 무르는 길.
     public bool    LeavingMap;
     public Vector3 LeaveTarget;

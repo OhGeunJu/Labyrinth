@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
-// 다 지은 건물을 다른 자리로 옮긴다. `UnitHPUI`의 [이동한다] → `Begin(pb)` →
+// 다 지은 건물을 다른 자리로 옮긴다. `InspectPanelUI`의 [이동한다] → `Begin(pb)` →
 // 커서 위치 미리보기(발자국 + 유효성) → 좌클릭 확정 / 우클릭·Esc 취소.
 //
 // **`CoreRelocator`와 나란한 물건이지 그것의 일반화가 아니다.** 핵은 한 칸짜리고 옮기면

@@ -81,8 +81,17 @@ public class Shop
         if (entry == null || entry.Stock <= 0) return false;
         if (account.TakeGold(entry.Price) < entry.Price) return false;
 
-        int stored = buyer != null ? buyer.TryAdd(entry.Item, 1, entry.Quality) : 0;
-        if (stored == 0) stored = account.Receive(entry.Item, 1, entry.Quality);
+        // **살 폰이 정해져 있으면 그 배낭에만 넣는다 — 꽉 찼으면 못 산다.**
+        //
+        // 전엔 배낭이 차면 창고로 흘려보냈다. 그러면 "누가 사러 왔나"가 뜻을 잃는다:
+        // 배낭을 비워 두고 사러 온 것과 꽉 채워 온 것이 같은 결과가 되고, 산 물건이 어디
+        // 있는지가 그때그때 달라진다(배낭에 있을 수도 창고에 있을 수도 있다).
+        // 못 사면 화면이 그렇게 말해 준다(`MerchantUI`의 구매 실패 알림).
+        //
+        // 살 폰이 없을 때만(월드맵 마을 — 거래 창을 폰 없이 연다) 계정이 받는다.
+        int stored = buyer != null
+                   ? buyer.TryAdd(entry.Item, 1, entry.Quality)
+                   : account.Receive(entry.Item, 1, entry.Quality);
 
         if (stored == 0)
         {

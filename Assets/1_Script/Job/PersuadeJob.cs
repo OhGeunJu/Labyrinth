@@ -79,10 +79,13 @@ public class PersuadeJob : JobBase
         // 생겼을 때 성공률과 문구가 두 벌이 된다.
         Conversion.PersuadeRound(unit, _target);
 
-        // **실패해도 인지력은 는다.** 해 보는 것 자체가 노동이고, 성공에만 붙이면 인지력이
-        // 낮은 폰은 늘지도 않아 영영 못 하게 된다(다른 노동과 같은 축, SOL).
+        // **실패해도 는다.** 해 보는 것 자체가 노동이고, 성공에만 붙이면 솜씨 없는 폰은
+        // 늘지도 않아 영영 못 하게 된다(다른 노동과 같은 축, SOL).
+        //
+        // 자라는 것은 **간수 솜씨**다(`StatName.Warden`) — 인지력을 올리던 시절엔 포로 앞에
+        // 세워 두는 것만으로 연구 속도가 올랐다.
         if (unit.Stats != null)
-            unit.Stats.GrowStat(StatName.Cognition, 4f * CombatXp.Sol(unit.Stats.Cognition));
+            unit.Stats.GrowStat(StatName.Warden, 4f * CombatXp.Sol(unit.Stats.Warden));
 
         Status = JobStatus.Done;   // 한 회차 = 한 일감. 쿨타임이 지나면 우리가 다음 것을 건다.
     }

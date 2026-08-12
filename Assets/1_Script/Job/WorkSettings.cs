@@ -12,8 +12,18 @@ public class WorkSettings : MonoBehaviour
 {
     public event Action OnChanged;
 
-    // 기본값은 "전부 켬" — 끈 것만 저장한다.
-    readonly HashSet<JobCategory> _disabled = new();
+    // 기본값은 "전부 켬" — 끈 것만 저장한다. **딱 하나 예외가 짐내림이다.**
+    //
+    // 짐내림은 성격이 다르다: 다른 작업은 **세상에 생긴 일감**을 집어 가는 것이라 켜 두면
+    // 할 일이 있을 때만 돈다. 짐내림은 **제 배낭을 비우는 일**이라, 켜 두면 물건이 들어오는
+    // 순간(상인에게 사거나 시체를 뒤지거나 약을 챙기거나) 하던 것을 놓고 창고로 간다 —
+    // "폰이 왜 저기 가지"의 가장 흔한 원인이었다.
+    //
+    // 그래서 **기본이 꺼짐**이고, 필요하면 켜거나 그때그때 시킨다. 바닥의 물건이 체크한
+    // 것만 실려 가는 것과 같은 축이다(2026-08-13) — **저절로 옮겨지는 것은 없다.**
+    static readonly JobCategory[] DefaultOff = { JobCategory.Unload };
+
+    readonly HashSet<JobCategory> _disabled = new(DefaultOff);
 
     public bool IsEnabled(JobCategory category)
         => JobCategoryInfo.IsQueued(category) && !_disabled.Contains(category);
@@ -61,10 +71,18 @@ public class WorkSettings : MonoBehaviour
     //
     // 큐 카테고리가 하나도 없는 목록은 큐 작업에 대해 **아무 말도 하지 않은 것**이다.
     // 그럴 땐 빈 목록과 똑같이 전부 허용으로 본다.
+    // **기본 꺼짐은 여기서도 지킨다.** `_disabled`를 비우고 다시 쌓는 자리라, 그냥 지우면
+    // 하수인만 짐내림이 켜진 채로 태어난다(같은 설정이 종족에 따라 달라진다).
+    // `MinionData.AllowedJobs`에 짐내림을 **적어 두면** 그때는 켜진다 — 저작이 기본값을 이긴다.
     public void InitFromAllowed(IReadOnlyList<JobCategory> allowed)
     {
         _disabled.Clear();
-        if (allowed == null || allowed.Count == 0) { OnChanged?.Invoke(); return; }
+        if (allowed == null || allowed.Count == 0)
+        {
+            foreach (var c in DefaultOff) _disabled.Add(c);
+            OnChanged?.Invoke();
+            return;
+        }
 
         bool mentionsQueue = false;
         for (int i = 0; i < allowed.Count; i++)
@@ -75,6 +93,7 @@ public class WorkSettings : MonoBehaviour
             Debug.LogWarning($"[WorkSettings] {name}: 허용 작업 목록에 큐 작업이 하나도 없습니다 " +
                              "(채굴·벌목·경비는 직접 배정이라 여기서 켜고 끄는 대상이 아닙니다). " +
                              "전부 허용으로 둡니다 — 의도한 제한이 있다면 MinionData에 큐 작업으로 적으세요.");
+            foreach (var c in DefaultOff) _disabled.Add(c);
             OnChanged?.Invoke();
             return;
         }

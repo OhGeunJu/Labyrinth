@@ -17,6 +17,9 @@ public class InventoryUI : MonoBehaviour
     public static void NotifyItemDoubleAction(ItemInstance inst, InventoryGridUI sourceGrid)
         => _instance?.OnItemDoubleAction(inst, sourceGrid);
 
+    public static void NotifyItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid)
+        => _instance?.OnItemRightClick(inst, sourceGrid);
+
     static InventoryUI _instance;
 
     [Header("씬 참조")]
@@ -486,6 +489,151 @@ public class InventoryUI : MonoBehaviour
         _selectedSourceGrid = sourceGrid;
         if (_mode == ActionMode.Sell) ExecuteSell();
         else if (_mode == ActionMode.Loot) ExecuteLoot();
+    }
+
+    // ── 우클릭: 한 번에 보내기 ────────────────────────────────────────────────
+    //
+    // **뜻은 무엇이 열려 있느냐가 정한다.**
+    //   · 반대편 통이 열려 있으면 → **그리로 옮긴다**(배낭 ↔ 창고·작업대·시체).
+    //   · 배낭만 열려 있으면 → **장비는 입는다**(이미 찬 것이 있으면 교체).
+    //
+    // 둘을 다른 조작으로 가르지 않는 이유: 우클릭으로 하고 싶은 일은 늘 **"이걸 저기로"**
+    // 하나인데, "저기"가 상황마다 다를 뿐이다. 통이 열려 있는데 옷을 입혀 버리면 옮기려던
+    // 사람이 놀라고, 통이 없는데 아무 일도 안 하면 배낭에서 장비를 차는 길이 드래그뿐이 된다.
+    void OnItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid)
+    {
+        // 잠금 모드에서는 누르는 일이 잠그는 것뿐이다 — 잠그려다 물건을 보내면 안 된다.
+        if (_lockMode) return;
+        if (inst?.Data == null || sourceGrid == null || sourceGrid.Inventory == null) return;
+
+        // 동전은 어느 모드에서든 잔고로 — 더블클릭과 같은 자리(옮겨 봐야 할 일이 없다).
+        if (TryClaimCoins(inst, sourceGrid)) return;
+
+        var target = InventoryGridUI.FindCounterpart(sourceGrid, inst.Data);
+        if (target != null) { QuickMove(inst, sourceGrid, target); return; }
+
+        QuickEquip(inst, sourceGrid);
+    }
+
+    // 뭉치째 반대편으로. **들어간 만큼만 뺀다** — 자리가 모자라면 나머지는 그대로 남는다
+    // (전부 못 가면 아무것도 안 보내는 것보다, 갈 수 있는 만큼 가는 편이 낫다).
+    void QuickMove(ItemInstance inst, InventoryGridUI from, InventoryGridUI to)
+    {
+        var src = from.Inventory;
+        var dst = to.Inventory;
+
+        int moved = dst.TryAdd(inst.Data, inst.Quantity, inst.Quality);
+        if (moved <= 0) return;
+
+        inst.Quantity -= moved;
+        if (inst.Quantity <= 0) src.RemoveInstance(inst);
+        else                    src.NotifyChanged();
+
+        if (_selectedItem == inst && inst.Quantity <= 0) _selectedItem = null;
+        RefreshActionBar();
+    }
+
+    // 장비면 그 자리에서 입는다. **창고의 검을 눌러 입지는 않는다** — 어느 폰이 입는지
+    // 말할 수 없다(배낭은 그 폰의 것이라 답이 하나다).
+    //
+    // ── 누른 **그것**을 입고, 벗은 것은 **그 자리**에 놓는다 ─────────────────
+    //
+    // `Equipment.Equip*`(배낭 경로)를 쓰면 안 된다 — 그쪽은 `ItemData`로 찾으므로 **배낭에서
+    // 처음 걸리는 같은 종류**를 집는다. 일반 천갑옷을 눌렀는데 위 칸의 희귀 천갑옷이 입혀졌다.
+    // 등급이 다르면 다른 물건이다(값도 성능도 다르다) — 누른 것을 입어야 한다.
+    //
+    // 그래서 **인스턴스 경로**(`Wear*`)로 간다. 대신 배낭에서 빼는 것과 벗은 것을 놓는 것을
+    // 여기서 직접 해야 한다:
+    //   · 누른 것을 배낭에서 빼고(칸이 빈다)
+    //   · 차고 있던 것을 `TakeOff`로 **배낭을 안 거치고** 빼내서
+    //   · **빈 그 칸에** 놓는다
+    //
+    // 벗은 것이 첫 빈 칸으로 튀면 정리해 둔 배낭이 누를 때마다 흐트러진다 — 갈아입는 것은
+    // **자리를 맞바꾸는 일**이지 새 물건이 생기는 일이 아니다.
+    void QuickEquip(ItemInstance inst, InventoryGridUI sourceGrid)
+    {
+        var src   = sourceGrid.Inventory;
+        var equip = src.GetComponent<UnitBrain>()?.Equipment;
+        if (equip == null) return;
+
+        // 어느 칸에 차는 물건인가 — 벗을 때도 채울 때도 같은 칸이다.
+        ArmorSlot? armorSlot = inst.Data is ArmorData a ? a.Slot : null;
+        bool offHand  = inst.Data is WeaponData sh && sh.Type == WeaponType.Shield;
+        bool mainHand = inst.Data is WeaponData && !offHand;
+        if (armorSlot == null && !offHand && !mainHand) return;   // 장비가 아니다
+
+        ItemInstance TakeOffCurrent() =>
+            armorSlot.HasValue ? equip.TakeOff(armorSlot.Value)
+            : offHand          ? equip.TakeOffOffHand()
+                               : equip.TakeOffMainHand();
+
+        bool Wear(ItemInstance it) =>
+            armorSlot.HasValue ? equip.WearArmor(it)
+            : offHand          ? equip.WearOffHand(it)
+                               : equip.WearMainHand(it);
+
+        // 누른 칸 — 벗은 것이 돌아갈 자리.
+        int  x = inst.GridX, y = inst.GridY;
+        bool rotated = inst.Rotated;
+
+        // 뭉치에서 하나만 입는다(장비는 한 칸에 하나지만, 그렇다고 나머지를 잃을 수는 없다).
+        var  toWear    = inst;
+        bool wholeCell = inst.Quantity <= 1;
+
+        if (wholeCell) src.RemoveInstance(inst);
+        else
+        {
+            inst.Quantity--;
+            toWear = new ItemInstance(inst.Data, 1, x, y, rotated, inst.Quality) { Locked = inst.Locked };
+            src.NotifyChanged();
+        }
+
+        void PutBackClicked()
+        {
+            if (wholeCell) src.TryAddAt(toWear.Data, 1, x, y, rotated, toWear.Quality, toWear.Locked);
+            else         { inst.Quantity++; src.NotifyChanged(); }
+        }
+
+        // 차고 있던 것을 먼저 빼낸다 — `Wear*`에 맡기면 그쪽이 배낭 첫 빈 칸으로 돌려보낸다.
+        var old = TakeOffCurrent();
+
+        // 못 입었다(양손 무기가 오프핸드를 잠갔다든지) — 둘 다 원래대로.
+        if (!Wear(toWear))
+        {
+            if (old != null) Wear(old);
+            PutBackClicked();
+            return;
+        }
+
+        // **벗은 것은 방금 빈 그 칸으로.** 안 되면 배낭 아무 데나.
+        if (old?.Data != null)
+        {
+            bool placed = src.TryAddAt(old.Data, 1, x, y, rotated, old.Quality, old.Locked)
+                       || src.TryAdd(old.Data, 1, old.Quality) > 0;
+
+            if (!placed)
+            {
+                // **발밑에 안 떨군다 — 아예 안 입는다.**
+                //
+                // 이 프로젝트의 증발 방지 관례는 "떨구면 눈에 보이고 운반이 알아서 창고로
+                // 옮긴다"였다. 그 전제가 사라졌다 — **바닥 물건은 이제 저절로 안 실려 간다**
+                // (체크한 것만 나른다, 2026-08-13). 떨구면 배낭이 꽉 차서 생긴 일이 **치우는
+                // 일**로 바뀐다.
+                //
+                // 거절이 맞는 자리이기도 하다: 손으로 누른 조작이고, 자리를 비우고 다시
+                // 누르면 그만이다. **아무것도 안 잃는다** — 셋 다 원래대로 돌린다.
+                TakeOffCurrent();      // 방금 입은 것을 도로 벗고
+                Wear(old);             // 원래 것을 다시 채우고
+                PutBackClicked();      // 누른 것을 제자리에
+
+                EventNotificationUI.Notify("착용 실패",
+                    $"{old.Data.ItemName}을(를) 넣을 자리가 없습니다 — 배낭을 비우고 다시 누르세요.");
+                return;
+            }
+        }
+
+        if (_selectedItem == inst) _selectedItem = null;
+        RefreshActionBar();
     }
 
     // 동전 뭉치를 잔고로 바꾼다. 아이템이 아니었으면 거짓.

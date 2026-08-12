@@ -809,24 +809,28 @@ public class RestNode : BTNode
 // 허기: 허기가 낮으면 음식을 찾아 먹는다
 public class EatNode : BTNode
 {
-    const float HungerThreshold = 60f;  // 이 이하이면 먹으러 감
-    const float ArrivalDist     = 1.5f;
+    // **창고는 손만 닿으면 된다**(`JobBase.HandReach`) — 일감들과 같은 규약을 쓴다.
+    const float ArrivalDist = JobBase.HandReach;
 
     FoodData _food;
     Storage  _sourceStorage;
+    Vector3  _approach;      // 창고 **앞의 설 수 있는 칸**(창고 자기 칸이 아니다)
+    Storage  _eatFrom;       // 창고에서 바로 먹는 중이면 그 창고 (비면 배낭에서 먹는다)
     float    _eatTimer;
-    bool     _hasFood; // true = 인벤에 음식 있음, 먹는 단계
+    bool     _hasFood; // true = 먹을 것을 확보함, 먹는 단계
 
     public override BTStatus Tick(UnitBlackboard bb)
     {
-        if (bb.Hunger >= HungerThreshold) { Reset(); return BTStatus.Failure; }
+        // **임계도 고르는 규칙도 `Feeding`이 답한다** — 먹는 길이 둘이라(제 발로 먹는 것과
+        // 남이 먹여 주는 것) 여기 따로 적으면 "포로만 다른 것을 먹는" 꼴이 된다.
+        if (!Feeding.IsHungry(bb.Brain)) { Reset(); return BTStatus.Failure; }
 
         var brain = bb.Brain;
 
         if (!_hasFood)
         {
             // 1) 인벤토리에 음식 있으면 바로 먹기
-            var invFood = FindFoodIn(brain.Inventory);
+            var invFood = Feeding.BestInBackpack(brain, bb.Hunger);
             if (invFood != null)
             {
                 _food    = invFood;
@@ -838,71 +842,77 @@ public class EatNode : BTNode
                 // 2) 창고에서 음식 찾기
                 if (_sourceStorage == null)
                 {
-                    (_sourceStorage, _food) = FindFoodInStorage(bb.Self.transform.position);
+                    _food = Feeding.BestInStorage(bb.Hunger, bb.Self.transform.position,
+                                                  out _sourceStorage);
                     if (_sourceStorage == null) return BTStatus.Failure;
-                    bb.Mover.SetMoveTarget(_sourceStorage.transform.position);
+
+                    // **창고 자기 칸이 아니라 폰이 서는 자리로 간다**(`WorkSpot`) — 창고는
+                    // 자기 칸을 막으므로 중심을 겨누면 영영 못 닿는다. 2×2 창고는 가장 가까운
+                    // 설 수 있는 칸까지가 1.5m를 넘어서, 그 앞에 서 놓고도 굶었다.
+                    // 모든 일감이 이미 이 규약을 쓴다.
+                    _approach = MapManager.Instance != null
+                              ? MapManager.Instance.TileToWorld(WorkSpot.TileFor(_sourceStorage))
+                              : _sourceStorage.transform.position;
+                    bb.Mover.SetMoveTarget(_approach);
                 }
 
-                float dist = Vector3.Distance(bb.Self.transform.position,
-                                              _sourceStorage.transform.position);
+                // **평면 거리로 잰다** — `TileToWorld`는 Y=0(길찾기용)이라 폰의 키가
+                // 그대로 거리에 얹힌다.
+                var self = bb.Self.transform.position;
+                float dist = Vector2.Distance(new Vector2(self.x, self.z),
+                                              new Vector2(_approach.x, _approach.z));
                 if (dist > ArrivalDist) return BTStatus.Running;
 
-                // 창고 도착 → 음식 꺼내기
-                int picked = _sourceStorage.Inventory.Remove(_food, 1);
-                if (picked <= 0) { Reset(); return BTStatus.Failure; }
-                if (brain.Inventory.TryAdd(_food, 1) <= 0)
-                {
-                    // 인벤 만석 — 꺼낸 음식을 창고에 되돌리고 포기 (증발 방지)
-                    _sourceStorage.Inventory.TryAdd(_food, 1);
-                    Reset();
-                    return BTStatus.Failure;
-                }
+                // 창고 도착 → **여기서 바로 먹는다. 배낭에 넣지 않는다.**
+                //
+                // 폰은 창고 앞에 서 있다 — 한 끼를 배낭에 넣었다 그 자리에서 도로 꺼내는
+                // 것은 아무것도 아닌 일이고, 그 왕복이 사고를 셋 만든다:
+                //  ① 자리가 없으면 꺼냈다 도로 넣기를 **BT 틱마다** 되풀이한다(전엔 그랬다).
+                //  ② 배낭이 바뀌므로 `UpdateUnload`가 **방금 먹으려고 꺼낸 밥**을 창고로
+                //     되돌릴 일감을 건다.
+                //  ③ 먹다 말고 명령을 받으면 밥 한 개가 배낭에 남아 따로 정리해야 한다.
+                //
+                // 창고에 그대로 두면 셋 다 없어진다. 먹는 순간에 빠지므로(`ConsumeFrom`)
+                // 그새 남이 가져갔으면 그때 접고 다시 고른다.
+                _eatFrom = _sourceStorage;
                 _hasFood = true;
                 bb.Mover.StopMovement();
             }
+        }
+
+        // **창고에서 바로 먹는 중이면 계속 그 앞에 있어야 한다.**
+        //
+        // 도착 판정은 `_hasFood`가 거짓일 때만 돌므로, 한 번 먹기 시작하면 거리를 다시 안 봤다.
+        // 배낭에서 먹을 때는 무해했지만(음식이 몸에 있다) 창고에서 먹게 되면서 길이 생겼다 —
+        // 명령을 받아 걸어간 폰이 다음에 `EatNode`로 돌아왔을 때 **맵 반대편 창고에서 원격으로
+        // 먹는다**(상위 분기가 도는 동안 이 노드는 `Reset`될 기회가 없다).
+        if (_eatFrom != null)
+        {
+            var here = bb.Self.transform.position;
+            float away = Vector2.Distance(new Vector2(here.x, here.z),
+                                          new Vector2(_approach.x, _approach.z));
+            if (away > ArrivalDist) { Reset(); return BTStatus.Failure; }
         }
 
         // 먹는 중
         _eatTimer += bb.TickDelta;
         if (_eatTimer < _food.EatTime) return BTStatus.Running;
 
-        brain.Inventory.Remove(_food, 1);
-        bb.Hunger = Mathf.Min(100f, bb.Hunger + _food.NutritionValue);
+        // 빼는 것도 허기를 채우는 것도 `Feeding`이 한 곳에서 한다.
+        // **먹은 자리에서 뺀다** — 배낭에 못 넣었으면 창고에서 바로 먹은 것이다.
+        var from = _eatFrom != null ? _eatFrom.Inventory : brain.Inventory;
+        if (!Feeding.ConsumeFrom(from, _food)) { Reset(); return BTStatus.Failure; }
+
+        Feeding.Eat(brain, _food);
         Debug.Log($"[EatNode] {bb.Self.name} 섭취 완료 — {_food.ItemName} (허기 {bb.Hunger:F0}/100)");
         Reset();
         return BTStatus.Success;
     }
 
-    FoodData FindFoodIn(Inventory inv)
-    {
-        foreach (var inst in inv.Items)
-            if (inst.Data is FoodData f && inst.Quantity > 0) return f;
-        return null;
-    }
-
-    (Storage storage, FoodData food) FindFoodInStorage(Vector3 pos)
-    {
-        Storage  nearest = null;
-        FoodData food    = null;
-        float    minDist = float.MaxValue;
-        foreach (var sb in Storage.All)
-        {
-            foreach (var inst in sb.Inventory.Items)
-            {
-                if (inst.Data is FoodData f && inst.Quantity > 0)
-                {
-                    float d = Vector3.Distance(pos, sb.transform.position);
-                    if (d < minDist) { minDist = d; nearest = sb; food = f; }
-                    break;
-                }
-            }
-        }
-        return (nearest, food);
-    }
-
     void Reset()
     {
-        _food = null; _sourceStorage = null; _eatTimer = 0f; _hasFood = false;
+        _food = null; _sourceStorage = null; _eatFrom = null;
+        _approach = Vector3.zero; _eatTimer = 0f; _hasFood = false;
     }
 }
 

@@ -10,6 +10,9 @@ public class WeaponData : ItemData
 
     public override string TypeName => Type.DisplayName();
 
+    // 잘 벼린 검과 대충 만든 검은 다른 물건이다 — 등급이 성립하는 축.
+    public override bool HasQuality => true;
+
     [Header("무기 분류")]
     public WeaponType Type;
     public bool IsLargeWeapon;  // 양손무기/폴암 → 근력 공격속도 보정

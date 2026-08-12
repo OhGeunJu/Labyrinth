@@ -171,9 +171,42 @@ public class PawnMover : MonoBehaviour
     Vector3    _wakePosition;
     Quaternion _wakeRotation;
 
+    // ── 누워 있는 동안의 클릭 판정 ────────────────────────────────────
+    //
+    // **`CharacterController`를 끄면 폰에게 콜라이더가 하나도 안 남는다.** 그게 유일한
+    // 콜라이더라 레이캐스트가 그대로 통과하고, 침대에 누운 사람은 **좌클릭도 우클릭도
+    // 안 됐다** — 눌리는 것은 늘 침대였다. 그래서 다친 포로를 살펴볼 수도, [먹인다]·
+    // [끌어낸다]를 띄울 수도 없었다.
+    //
+    // 대신 **트리거 캡슐 하나를 눕는 동안만 켠다**:
+    //  · 트리거라 아무것도 막지 않는다 — `CharacterController`를 끈 이유(침대·바닥을 뚫고
+    //    되밀린다)는 물리 충돌이지 레이캐스트가 아니다.
+    //  · **몸통 크기라 침대보다 작다** — 가장자리를 겨누면 침대가, 몸을 겨누면 사람이 눌린다.
+    //    "각도를 맞추면 침대도 눌린다"가 규칙이 아니라 **생김새**에서 나온다.
+    //
+    // **탐지에는 안 걸린다** — `FactionScan`은 콜라이더가 아니라 `Faction.All`을 훑는다
+    // (2026-08-12에 `OverlapSphere`를 버렸다). 자는 폰이 적에게 잡히는지 여부는 예전 그대로다.
+    CapsuleCollider _lyingPick;
+
+    void EnsureLyingPick()
+    {
+        if (_lyingPick != null) return;
+
+        _lyingPick = gameObject.AddComponent<CapsuleCollider>();
+        _lyingPick.isTrigger = true;
+        _lyingPick.direction = 1;      // 누우면 몸의 긴 축이 로컬 Y다
+        _lyingPick.height    = 1.8f;
+        _lyingPick.radius    = 0.35f;
+        _lyingPick.center    = Vector3.zero;
+        _lyingPick.enabled   = false;
+    }
+
     public void SetSleeping(bool sleeping, Vector3 lyingPos = default, Quaternion lyingRot = default)
     {
         if (sleeping == IsSleeping) return;
+
+        EnsureLyingPick();
+        _lyingPick.enabled = sleeping;
 
         if (sleeping)
         {

@@ -67,10 +67,17 @@ public static class Treatment
         return best;
     }
 
-    // 창고에 있는 것 중 가장 좋은 것. 의사가 **가지러 갈** 대상을 고르는 데 쓴다.
-    public static MedicineData BestInStorage(out Storage from)
+    // 창고에 있는 것 중 가장 좋은 것과, 그것이 든 **가장 가까운** 창고.
+    //
+    // **여기서는 효능이 거리를 이긴다** — 밥(`Feeding.BestInStorage`)은 반대로 가까운 창고를
+    // 먼저 고르는데, 축이 다르다: 음식은 어느 것을 먹든 허기가 차고 하루 두 끼씩 모두가
+    // 하는 일이라 왕복이 값이지만, 약은 효능 차가 크고(맨손 0.4 ↔ 구급낭 2.3) 드물게 쓴다.
+    // 구급낭을 두고 옆 창고의 넝마를 감으면 그게 더 큰 손해다.
+    //
+    // 거리는 **같은 약이 여러 창고에 있을 때** 갈린다(`FindStorageWithItem`이 가까운 쪽을 준다).
+    public static MedicineData BestInStorage(Vector3 from, out Storage source)
     {
-        from = null;
+        source = null;
         MedicineData best = null;
 
         foreach (var kv in DataManager.AllItems)
@@ -78,11 +85,11 @@ public static class Treatment
             if (kv.Value is not MedicineData med) continue;
             if (best != null && med.Potency <= best.Potency) continue;
 
-            var storage = Storage.FindStorageWithItem(med);   // **실제로 든** 창고
+            var storage = Storage.FindStorageWithItem(med, from);   // **실제로 든** 창고
             if (storage == null) continue;
 
-            best = med;
-            from = storage;
+            best   = med;
+            source = storage;
         }
         return best;
     }

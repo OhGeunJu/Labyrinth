@@ -132,17 +132,74 @@ public class Storage : MonoBehaviour, IWorldClickable
         return remaining <= 0;
     }
 
-    // ── 위치/탐색 유틸 ───────────────────────────────────────────────
-    // 그 아이템이 실제로 들어 있는 창고. 건설 자재를 가지러 갈 곳을 고를 때 쓴다.
-    public static Storage FindStorageWithItem(ItemData item)
+    // **창고에서 배낭으로 챙긴다** — 실제로 실은 개수를 돌려준다.
+    //
+    // **넣을 자리를 먼저 보고 꺼낸다.** 꺼내고 나서 `TryAdd`가 실패하면 되돌리게 되는데,
+    // 부르는 쪽은 대개 **주기적으로 다시 시도**하므로 그 되돌림이 되풀이된다 — 창고에서
+    // 물건이 나왔다 들어갔다 하는 것으로 보인다(`EatNode`가 BT 틱마다, `FeedJob`이 1초마다
+    // 그랬다). 몇 개까지 실을 수 있는지는 **한 개씩 줄여 가며** 묻는다: 무게가 아니라
+    // 격자 자리가 정하므로 나눗셈으로는 못 맞힌다.
+    //
+    // 되돌리기는 **안전망으로만** 남긴다 — 자리를 확인한 뒤라 여기까지 오면 안 된다.
+    //
+    // **등급 없는 소모품용이다**(약·음식·자재). 등급을 안 넘기므로 장비에 쓰면 등급이
+    // 일반으로 내려앉는다 — 다만 등급을 갖는 것은 장비뿐이고(`ItemData.HasQuality`)
+    // 장비를 창고에서 뭉치로 챙기는 일감은 없다.
+    public int FetchInto(Inventory into, ItemData item, int want)
     {
-        if (item == null) return null;
+        if (into == null || item == null || want <= 0) return 0;
+
+        int take = Mathf.Min(want, Inventory.GetUnlockedQuantity(item));
+        while (take > 0 && !into.CanFit(item, take)) take--;
+        if (take <= 0) return 0;
+
+        if (Inventory.RemoveUnlocked(item, take) <= 0) return 0;
+
+        int got = into.TryAdd(item, take);
+        if (got < take) Inventory.TryAdd(item, take - got);
+        return got;
+    }
+
+    // ── 위치/탐색 유틸 ───────────────────────────────────────────────
+    // 그 아이템이 실제로 들어 있는 **가장 가까운** 창고. 자재·씨앗·약을 가지러 갈 곳이다.
+    //
+    // **`FindNearest`의 짝이다 — 방향만 반대다.** 저쪽은 "받아 줄" 곳(필터+빈자리)이라
+    // 가득 든 창고가 탈락하는데, 가지러 갈 때는 정확히 그 창고에 가야 한다.
+    //
+    // **`from`은 선택 인자가 아니다.** 예전엔 위치를 아예 안 받아 `All`에서 **처음 걸리는**
+    // 창고를 돌려줬다 — 창고가 둘 이상이면 폰이 목재 한 짐에 맵을 가로지른다. 기본값을
+    // 두면 부르는 쪽이 조용히 빠뜨리므로(`ResourceNode.Work`에 델타를 못 빠뜨리게 한 것과
+    // 같은 이유) 반드시 적게 한다.
+    public static Storage FindStorageWithItem(ItemData item, Vector3 from)
+        => item == null ? null
+         : NearestWhere(from, sb => sb.Inventory.GetTotalQuantity(item) > 0);
+
+    // **조건에 맞는 가장 가까운 창고.** 훑는 규칙(휴면 제외 · 거리 비교 · 조기 탈출)을
+    // 여기 한 번만 적는다 — 부르는 쪽은 "어떤 창고인가"만 답한다.
+    //
+    // 이게 없으면 "가장 가까운 창고 고르기"가 물음마다 한 벌씩 생긴다. 실제로 그랬다:
+    // `Feeding`이 "음식이 든 가장 가까운 창고"를 찾으려고 같은 루프를 통째로 다시 썼다
+    // (`FindStorageWithItem`은 아이템 하나만 물을 수 있어 "아무 음식이나"를 못 물었다).
+    public static Storage NearestWhere(Vector3 from, Func<Storage, bool> accepts)
+    {
+        if (accepts == null) return null;
+
+        Storage best     = null;
+        float   bestDist = float.MaxValue;
+
         foreach (var sb in All)
         {
-            if (!sb.IsActive) continue;
-            if (sb.Inventory.GetTotalQuantity(item) > 0) return sb;
+            if (sb == null || !sb.IsActive || sb.Inventory == null) continue;
+
+            // 거리를 먼저 본다 — 이미 더 가까운 데서 찾았으면 **뒤져 볼 것도 없다.**
+            float dist = (sb.transform.position - from).sqrMagnitude;
+            if (dist >= bestDist) continue;
+            if (!accepts(sb)) continue;
+
+            bestDist = dist;
+            best     = sb;
         }
-        return null;
+        return best;
     }
 
     // item을 **실제로 받아 줄** 창고 중 가장 가까운 것. 필터뿐 아니라 **자리까지** 본다 —

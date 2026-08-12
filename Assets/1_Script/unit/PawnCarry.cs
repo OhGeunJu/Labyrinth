@@ -9,10 +9,20 @@ using UnityEngine;
 //  · **한 손** — 남는 손이 하나뿐이라 양손 무기도 방패도 못 쓴다. 전투 한복판에서 누군가를
 //    빼내는 것이 **선택**이 되려면, 업는 동안 약해져야 한다.
 //
-// **기절한 폰만 멘다.** 멀쩡한 사람을 업고 다니는 것은 이 게임에 필요한 동작이 아니고,
-// 시체는 이미 다른 축이다(`Corpse` — 뒤져서 물건만 꺼낸다).
+// **시체도 같은 동작으로 옮긴다.** 한때 "시체는 다른 축(뒤져서 물건만 꺼낸다)"으로 두었는데,
+// 그러면 싸움이 끝난 자리에 시체가 영영 쌓이고 치울 길이 없다. 메고 걸어가 내려놓는 것은
+// 산 사람을 옮기는 것과 **글자 그대로 같은 일**이라 규칙을 따로 만들 이유가 없다 —
+// 무게(짐까지 얹힌다)도 한 손 제약도 그대로 걸린다.
+//
+// 다만 **자리에는 안 들어간다**: 침대도 우리도 죽은 사람을 받지 않는다(`Bed.Accepts` /
+// `PrisonCage.TryPut`). 시체로 할 수 있는 것은 옮겨서 아무 데나 내려놓는 것뿐이다.
 public static class PawnCarry
 {
+    // 시체인가. `BecomeCorpse`는 `UnitBrain`을 **끄기만** 하므로(컴포넌트는 남는다)
+    // `== null`로는 산 사람과 구별되지 않는다 — 물어볼 자리가 필요하다.
+    public static bool IsCorpse(UnitBrain brain)
+        => brain != null && brain.GetComponent<Corpse>() != null;
+
     // 사람 하나의 몸무게(kg). 몸집(`PawnSpec.BodyScale`)이 곱해진다.
     //
     // 적재 한도가 `10 + 근력 × 0.5`이므로 이 값이 곧 **"몇 근력부터 편히 업나"**를 정한다 —
@@ -44,12 +54,18 @@ public static class PawnCarry
         if (carrier == null || target == null || carrier == target) return false;
         if (carrier.Blackboard == null || target.Blackboard == null) return false;
 
-        // 업은 폰은 또 못 업는다(어깨는 하나다), 기절한 폰은 남을 못 업는다.
+        // 업은 폰은 또 못 업는다(어깨는 하나다), 기절한 폰과 시체는 남을 못 업는다.
         if (carrier.Blackboard.Carrying != null) return false;
         if (carrier.Blackboard.IsKnockedOut)     return false;
+        if (IsCorpse(carrier))                   return false;
 
         // 이미 남이 업고 있는 사람은 못 뺏는다.
         if (IsCarried(target)) return false;
+
+        // **시체는 늘 업는다.** 치우는 것이 유일하게 할 수 있는 일이라 조건을 달 이유가 없다
+        // (아래 기절·소속 판정은 죽은 자에게 뜻이 없다 — `Faction`은 지워졌고 기절 여부는
+        // 죽은 방식에 따라 참일 수도 거짓일 수도 있어서, 안 가르면 답이 들쭉날쭉해진다).
+        if (IsCorpse(target)) return true;
 
         // **우리 편은 멀쩡해도 업는다.** 낭떠러지 앞에서 빼내거나 급히 옮기는 것은 명령이고,
         // 명령을 받는 쪽이 우리 폰이면 "싫다"고 할 이유가 없다.
@@ -149,10 +165,11 @@ public static class PawnCarry
         // **눕히는 방향은 자리가 정한다.** 침대는 베개 쪽이 있어서(`Bed.SleepRotation`)
         // 아무 방향으로 눕히면 발이 베개를 벤다.
         //
-        // 자리가 안 정해 주면 스스로 정한다: **깨어 있으면 세우고, 기절했으면 눕힌다** —
-        // 멀쩡한 우리 폰도 업을 수 있으므로 눕는 자세를 그대로 두면 멀쩡한 사람이 바닥에
-        // 누운 채로 걸어다닌다.
-        bool down = target.Blackboard != null && target.Blackboard.IsKnockedOut;
+        // 자리가 안 정해 주면 스스로 정한다: **깨어 있으면 세우고, 기절했거나 죽었으면
+        // 눕힌다** — 멀쩡한 우리 폰도 업을 수 있으므로 눕는 자세를 그대로 두면 멀쩡한
+        // 사람이 바닥에 누운 채로 걸어다니고, 시체를 세우면 서 있는 시체가 된다.
+        bool down = IsCorpse(target)
+                 || (target.Blackboard != null && target.Blackboard.IsKnockedOut);
         var rot   = facing ?? Quaternion.Euler(0f, target.transform.eulerAngles.y, down ? 90f : 0f);
 
         // 업을 때 꺼 둔 컨트롤러를 **여기서 되켠다.** 표면 위로 띄우는 보정(파묻힘·되밀림)은

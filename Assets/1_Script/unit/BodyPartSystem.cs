@@ -517,7 +517,7 @@ public class BodyPartSystem : MonoBehaviour
 
     // 아사(허기) — 무작위 부위/갑옷과 무관한 전신 쇠약. 혈액을 직접 깎아
     // 기존 혈액 파이프라인(기절→사망)으로 서서히 쓰러지게 한다.
-    // UnitHPUI가 Blood를 표시하므로 아사 진행이 눈에 보인다(숨은 _hp 폴백과 대조).
+    // InspectPanelUI가 Blood를 표시하므로 아사 진행이 눈에 보인다(숨은 _hp 폴백과 대조).
     public void Starve(float amount)
     {
         if (amount <= 0f) return;

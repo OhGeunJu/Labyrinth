@@ -10,22 +10,117 @@ public class DroppedItem : MonoBehaviour
     public int         Amount  { get; private set; }
     public ItemQuality Quality { get; private set; }
 
-    // **플레이어가 손으로 내려놓은 것은 자동으로 치우지 않는다.**
+    // ── 바닥의 물건은 **아무도 안 건드린다. 체크한 것만 실려 간다.** ────────────
     //
-    // 일부러 내려놓은 물건을 폰이 도로 창고에 넣으면 "내려놓기"가 곧 "창고로 보내기"가 되어,
-    // 어디에 두고 싶어도 둘 수가 없다 — 짐내림을 꺼 둔 폰의 짐도 바닥을 거쳐 창고로 흘러간다
-    // (짐내림과 운반은 다른 축이라 끈 쪽만으로는 막히지 않는다).
+    // 예전엔 "누가 놓았나"로 갈랐다 — 손으로 내려놓은 것은 두고, 사건으로 떨어진 것(발견·
+    // 철거 환불·작업대/수확 넘침)은 날랐다. 규칙 자체는 말이 됐지만 **화면에서 구별이 안 되고
+    // 되돌리는 스위치도 한 방향뿐**이라(켤 수는 있는데 끌 수는 없었다), "왜 이건 나르고
+    // 저건 안 나르지"가 고칠 수 없는 것으로 보였다.
     //
-    // 사건으로 떨어진 것(발견·철거 환불·작업대 넘침·수확 넘침)은 그대로 운반된다 — 그건
-    // **아무도 의도하지 않은 자리**라서 치우는 것이 맞다. 다시 나르게 하려면 우클릭 [창고로 옮긴다].
-    public bool NoAutoHaul { get; private set; }
+    // 지금은 **기본이 전부 꺼짐**이고 켜는 것만 나른다(림월드의 금지 표시와 반대 방향).
+    // 규칙이 한 줄이 되고, 켜진 것은 **표식이 떠서 눈에 보인다.**
+    //
+    // 설비가 내놓는 것(자원 노드·작업대 산출물)은 이 축과 무관하다 — 그쪽은 바닥을 거치지
+    // 않고 `HaulDispatcher`가 직접 일감을 낸다. **생산 라인은 그대로 자동이다.**
+    public bool HaulAllowed { get; private set; }
 
-    // "이제 가져가라" — 손으로 내려놓은 것을 다시 운반 대상으로 되돌린다.
-    public void AllowAutoHaul()
+    public void SetHaulAllowed(bool on)
     {
-        if (!NoAutoHaul) return;
-        NoAutoHaul = false;
-        TryRegisterHaul();
+        if (HaulAllowed == on) return;
+        HaulAllowed = on;
+
+        RefreshMark();
+
+        if (on) { TryRegisterHaul(); return; }
+
+        // **껐으면 가던 폰도 돌려세운다.** 헛걸음을 아끼려고 하던 것은 끝내게 두는 규약이
+        // 여기엔 안 맞는다 — "여기 둔다"는 **지금 그러지 마라**는 뜻이고, 걸어오는 것을 못
+        // 멈추면 껐는데도 물건이 실려 가서 스위치가 거짓말이 된다.
+        // (`JobBase.Cancel`은 `WorkNode`가 다음 틱에 알아채고 놓는다 — 밖에서 취소된 일감을
+        //  놓는 길은 이미 있다.)
+        if (_haulJob != null)
+        {
+            JobManager.Instance?.RemoveJob(_haulJob);
+            _haulJob.Cancel();
+        }
+        _haulJob = null;
+    }
+
+    // ── 켜졌다는 표식 ─────────────────────────────────────────────────────────
+    //
+    // **눈에 안 보이면 체크가 아니다.** 우클릭 메뉴를 열어야만 알 수 있으면 예전(누가 놓았나로
+    // 갈리던 시절)과 똑같이 "왜 이건 안 실려 가지"가 된다.
+    //
+    // 물건 위에 작은 구슬 하나를 띄운다. 자식이 하나 늘지만 이 오브젝트의 크기를 재는 곳이
+    // 없어 안전하다(침대 표식이 `WorldBounds`를 키워 폰이 떠서 자던 것과 다른 자리다).
+    // 색은 `Tint`가 `MaterialPropertyBlock`으로 입히므로 **머티리얼 인스턴스가 안 생긴다.**
+    const float MarkHeight = 0.55f;
+    static readonly Color MarkColor    = new(0.35f, 0.95f, 0.45f);
+    static readonly Color PendingColor = new(0.65f, 0.85f, 0.60f);   // 지정 모드에서 "이번에 찍힐 것"
+
+    GameObject _mark;
+    bool       _pendingMark;
+
+    // 운반 지정 모드(`HaulDesignator`)가 **놓기 전에** 무엇이 찍힐지 보여 준다 —
+    // 철거 모드의 빨간 예정 표시와 같은 자리. 표식을 따로 만들지 않고 **같은 구슬을 흐린
+    // 색으로** 띄운다: 미리보기와 결과가 다른 모양이면 무엇이 될지 알 수 없다.
+    public void SetPendingHighlight(bool on)
+    {
+        if (_pendingMark == on) return;
+        _pendingMark = on;
+        RefreshMark();
+    }
+
+    // ── 선택 표식 ─────────────────────────────────────────────────────────────
+    //
+    // **여럿을 고를 수 있으면 무엇이 골렸는지 보여야 한다.** 패널이 "물건 7개"라고 적어도
+    // 어느 일곱인지 모르면 [전부 창고로 옮긴다]를 누르기가 무섭다.
+    //
+    // 폰의 발밑 원(`SelectionIndicator`)과 **같은 모양**을 쓴다 — 납작한 원통. 고르는 것이
+    // 폰이든 물건이든 "골렸다"는 신호가 같아야 한다. 다만 색은 다르다(폰=초록, 물건=하늘색):
+    // 운반 지정 구슬이 이미 초록이라 겹치면 둘을 구별할 수 없다.
+    static readonly Color SelectColor = new(0.45f, 0.8f, 1f);
+
+    GameObject _ring;
+
+    public void SetSelected(bool on)
+    {
+        if (on)
+        {
+            if (_ring != null) return;
+
+            _ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            var col = _ring.GetComponent<Collider>();
+            if (col != null) Destroy(col);   // 클릭 판정은 부모 트리거 하나뿐이어야 한다
+
+            _ring.transform.SetParent(transform, false);
+            _ring.transform.localPosition = new Vector3(0f, 0.02f, 0f);
+            _ring.transform.localScale    = new Vector3(0.55f, 0.01f, 0.55f);
+            Tint(_ring, SelectColor);
+            return;
+        }
+
+        if (_ring != null) { Destroy(_ring); _ring = null; }
+    }
+
+    void RefreshMark()
+    {
+        if (HaulAllowed || _pendingMark)
+        {
+            if (_mark != null) { Tint(_mark, HaulAllowed ? MarkColor : PendingColor); return; }
+
+            _mark = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            var col = _mark.GetComponent<Collider>();
+            if (col != null) Destroy(col);   // 클릭 판정은 부모 트리거 하나뿐이어야 한다
+
+            _mark.transform.SetParent(transform, false);
+            _mark.transform.localPosition = new Vector3(0f, MarkHeight, 0f);
+            _mark.transform.localScale    = Vector3.one * 0.12f;
+            Tint(_mark, HaulAllowed ? MarkColor : PendingColor);
+            return;
+        }
+
+        if (_mark != null) { Destroy(_mark); _mark = null; }
     }
 
     // ── 공용 드롭 모델 ────────────────────────────────────────────────────
@@ -73,9 +168,10 @@ public class DroppedItem : MonoBehaviour
     }
 
     // 어디서든 호출 가능한 팩토리 메서드. quality를 보존해 등급 있는 장비가 드롭을 거쳐도 소실되지 않게 한다.
+    // **자동 운반은 안 켜진 채로 나온다** — 떨구는 쪽이 고를 수 없다. 고르는 것은 사람이고,
+    // 그래야 "이건 왜 실려 가지"가 안 생긴다(예전엔 부르는 쪽마다 기본값을 정했다).
     public static DroppedItem Spawn(ItemData item, int amount, Vector3 position,
-                                    ItemQuality quality = ItemQuality.Common,
-                                    bool noAutoHaul = false)
+                                    ItemQuality quality = ItemQuality.Common)
     {
         var go = new GameObject($"Drop_{item.ItemName}");
         go.transform.position = position;
@@ -114,12 +210,9 @@ public class DroppedItem : MonoBehaviour
             Object.Destroy(c);
 
         var dropped = go.AddComponent<DroppedItem>();
-        dropped.Item       = item;
-        dropped.Amount     = amount;
-        dropped.Quality    = quality;
-        dropped.NoAutoHaul = noAutoHaul;
-
-        dropped.TryRegisterHaul();
+        dropped.Item    = item;
+        dropped.Amount  = amount;
+        dropped.Quality = quality;
         return dropped;
     }
 
@@ -135,7 +228,7 @@ public class DroppedItem : MonoBehaviour
 
     public void TryRegisterHaul()
     {
-        if (NoAutoHaul) return;   // 손으로 내려놓은 것 — 시키기 전엔 아무도 안 건드린다
+        if (!HaulAllowed) return;   // 체크 안 한 것 — 시키기 전엔 아무도 안 건드린다
         if (JobManager.Instance == null || Item == null) return;
 
         // **쌓인 만큼·이 등급으로** 물어본다. 개수를 빼먹으면 한 개 자리만 확인하고 50을
@@ -147,9 +240,12 @@ public class DroppedItem : MonoBehaviour
         JobManager.Instance.RegisterJob(_haulJob);
     }
 
+    // **켠 것만 다시 본다.** 창고가 꽉 차서 못 걸었을 수 있으므로, 켜 둔 물건은 자리가
+    // 날 때까지 주기적으로 다시 시도한다("창고를 비우면 저절로 실려 간다"). 안 켠 물건은
+    // 여기서 바로 빠지므로 바닥에 널린 것들이 매 프레임 값을 물리지 않는다.
     void Update()
     {
-        if (NoAutoHaul) return;
+        if (!HaulAllowed) return;
 
         // 일감이 살아 있으면 그만이다. 끝났거나 취소됐거나 애초에 못 걸었을 때만 다시 본다.
         if (_haulJob != null &&
@@ -174,9 +270,15 @@ public class DroppedItem : MonoBehaviour
         int want  = Mathf.Min(Amount, Mathf.Max(0, max));
         int added = want > 0 ? inventory.TryAdd(Item, want, Quality) : 0;
 
+        // **못 실은 잔량은 체크를 물려받는다.** 나르라고 시킨 것의 나머지도 나르라고 시킨
+        // 것이다 — 안 물려주면 배낭이 모자란 폰이 한 번 다녀간 것만으로 나머지가 조용히
+        // 방치되고, 사람은 "분명 시켰는데"가 된다.
         int leftover = Amount - added;
         if (leftover > 0)
-            DroppedItem.Spawn(Item, leftover, transform.position, Quality, NoAutoHaul);
+        {
+            var rest = DroppedItem.Spawn(Item, leftover, transform.position, Quality);
+            if (HaulAllowed) rest.SetHaulAllowed(true);
+        }
         Destroy(gameObject);
         return added;
     }

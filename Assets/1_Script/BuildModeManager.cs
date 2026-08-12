@@ -141,8 +141,16 @@ public class BuildModeManager : MonoBehaviour
     {
         _mode = _mode == PlacementMode.Grid ? PlacementMode.Free : PlacementMode.Grid;
         _previewShown = false;
+        _lineAnchor   = null;
         gridRenderer.HidePreview();
     }
+
+    // **줄 긋기 기준점은 모드를 벗어나면 버린다.**
+    //
+    // 안 버리면 기준을 찍어 둔 채 Esc로 나갔다 B로 다시 들어왔을 때, **첫 클릭이 옛 기준부터
+    // 지금 커서까지 통째로 짓는다** — 시킨 적 없는 스무 칸이 한 번에 선다. 건설 모드를
+    // 껐다 켜는 것·철거로 넘어가는 것·고른 건물을 바꾸는 것 모두 "그 줄은 없던 일"이다.
+    void ClearLineAnchor() => _lineAnchor = null;
 
     // ── 철거 모드 ──────────────────────────────────────────────────────────────
 
@@ -150,6 +158,7 @@ public class BuildModeManager : MonoBehaviour
     {
         _demolish = !_demolish;
         ClearPending();
+        ClearLineAnchor();
         _dragging = false;
         HideGhost();
         gridRenderer.HidePreview();
@@ -326,6 +335,7 @@ public class BuildModeManager : MonoBehaviour
             _previewShown = false;
             HideGhost();
             ClearPending();
+            ClearLineAnchor();
             _demolish = false;
             _dragging = false;
         }
@@ -384,6 +394,8 @@ public class BuildModeManager : MonoBehaviour
         if (_ghost != null && _ghostSourcePrefab == prefab) return;
 
         if (_ghost != null) Destroy(_ghost);
+        ClearLineGhosts();   // 여벌은 이것의 복제라 원본이 바뀌면 같이 버린다
+        ClearLineAnchor();   // 다른 건물을 고른 것은 긋던 줄을 버린다는 뜻이다
 
         // 비활성 컨테이너 아래에서 인스턴스화 → 자식의 Awake/OnEnable이 유예된다(Unity는 비활성
         // 계층의 스크립트를 깨우지 않음). 이 상태에서 스크립트를 제거하면, 이후 ShowGhost가
@@ -427,6 +439,59 @@ public class BuildModeManager : MonoBehaviour
     void HideGhost()
     {
         if (_ghost != null) _ghost.SetActive(false);
+        HideLineGhosts();
+    }
+
+    // ── 줄 긋기의 여벌 고스트 ────────────────────────────────────────────────
+    //
+    // **지어질 자리마다 모델이 서야 한다.** 초록 격자만으로는 몇 칸인지는 알아도 어떤 모양이
+    // 어느 방향으로 설지는 안 보인다 — 담을 두르는 일은 그림이 맞는지가 전부다.
+    //
+    // 커서 쪽 고스트(`_ghost`) 하나를 **복제해 늘려 쓴다.** 프리팹에서 새로 만들면 스크립트를
+    // 떼고 콜라이더를 끄는 준비를 매번 다시 해야 하는데, 그 준비가 끝난 것이 이미 있다.
+    readonly List<GameObject> _lineGhosts = new();
+
+    void HideLineGhosts()
+    {
+        foreach (var g in _lineGhosts)
+            if (g != null) g.SetActive(false);
+    }
+
+    void ShowLineGhosts(List<Vector2Int> tiles, Quaternion rot)
+    {
+        EnsureGhost();
+        if (_ghost == null || tiles == null) { HideLineGhosts(); return; }
+
+        // 첫 칸은 커서 고스트가 맡는다 — 여벌은 그 나머지(단 `MaxLineGhosts`까지).
+        int need = Mathf.Clamp(tiles.Count - 1, 0, MaxLineGhosts);
+
+        while (_lineGhosts.Count < need)
+        {
+            var clone = Instantiate(_ghost, transform);
+            clone.name = $"[BuildGhost.Line{_lineGhosts.Count}]";
+            _lineGhosts.Add(clone);
+        }
+
+        for (int i = 0; i < _lineGhosts.Count; i++)
+        {
+            var g = _lineGhosts[i];
+            if (g == null) continue;
+
+            if (i >= need) { g.SetActive(false); continue; }
+
+            g.SetActive(true);
+            var pos = FootprintCenter(GetFootprint(tiles[i + 1]));
+            g.transform.SetPositionAndRotation(pos, rot);
+            if (_ghostHover <= 0f) SnapOnSurface(g, pos.y);
+        }
+    }
+
+    // 고른 건물이 바뀌면 여벌도 버린다 — 안 버리면 지난 건물의 모델이 줄에 섞인다.
+    void ClearLineGhosts()
+    {
+        foreach (var g in _lineGhosts)
+            if (g != null) Destroy(g);
+        _lineGhosts.Clear();
     }
 
     void ShowGhost(Vector3 pos, Quaternion rot)
@@ -484,13 +549,114 @@ public class BuildModeManager : MonoBehaviour
         else                                          UpdateFreePreview(point);
     }
 
+    // 초록 격자를 마지막으로 그렸을 때의 조건. **타일만 보면 안 된다** — 발자국은
+    // 회전(3×2 → 2×3)과 고른 건물에 따라서도 바뀐다.
+    float _previewYaw;
+    int   _previewIndex = -1;
+
+    // ── 두 번 클릭으로 줄·면을 한 번에 ────────────────────────────────────────
+    //
+    // **한 번 눌러 기준을 잡고, 늘였다 줄였다 하다가, 다시 눌러 짓는다.**
+    //
+    // 처음엔 좌클릭을 누른 채 끄는 페인트였는데, 그건 **커서가 지나간 자리**를 칠할 뿐이라
+    // 곧게 긋기가 어렵고 얼마나 지어질지 놓기 전에는 알 수 없다. 담을 두르는 일은 대개
+    // "여기서 저기까지"라 **두 점을 찍는 것**이 맞는 조작이다.
+    //
+    // **벽은 줄, 바닥은 면.** 벽을 사각으로 채우면 속이 꽉 찬 덩어리가 되어 쓸 일이 없고,
+    // 바닥을 줄로만 깔면 방 하나에 열 번을 그어야 한다. 줄은 **더 많이 움직인 축**으로만
+    // 곧게 간다(대각선은 벽으로 안 쓴다 — 칸이 모서리로만 붙어 사람이 새어 나간다).
+    //
+    // **저작이 정한다**(`BuildingData.DragBuild`). 크기로 가르면 우리·작업대·서브코어처럼
+    // **잇대어 쓰지 않는 한 칸짜리까지** 줄로 그어진다 — "한 칸이냐"와 "잇대어 쓰느냐"는
+    // 다른 물음이다. 여러 칸짜리는 발자국이 겹쳐 어디까지 지어질지 예측이 안 되므로 함께 막는다.
+    Vector2Int? _lineAnchor;
+
+    bool CanDragBuild => SelectedBuilding != null
+                      && SelectedBuilding.DragBuild
+                      && SelectedBuilding.Size.x == 1 && SelectedBuilding.Size.y == 1;
+
+    // 바닥은 면, 그 밖(벽·목책·바리케이드)은 줄.
+    bool RectDrag => SelectedBuilding != null && SelectedBuilding.IsFloor;
+
+    // **한 번에 그을 수 있는 칸 수.** 넉넉히 둔다 — 진짜 한도는 나중에 맵 크기가 정할 일이고,
+    // 여기서 좁게 잡으면 큰 방을 한 번에 못 깐다. 이 값은 **폭주 방지선**이지 규칙이 아니다.
+    const int MaxDragTiles = 5000;
+
+    // **비싼 것은 칸이 아니라 고스트다.** 칸 재기는 한 칸에 몇 번의 비교지만, 고스트는
+    // 건물 모델을 통째로 `Instantiate`한다 — 5000개면 화면이 멎는다.
+    //
+    // 그래서 **둘을 따로 자른다**: 초록 격자는 그을 수 있는 만큼 전부 보여 주고(어디까지
+    // 지어질지는 그것이 답한다), 모델은 앞쪽 얼마까지만 세운다. 모델의 몫은 "어떤 모양이
+    // 어느 방향으로 서나"를 보여 주는 것이라 몇 개만 있어도 그 답이 나온다.
+    const int MaxLineGhosts = 200;
+
+    static void LineOrRect(Vector2Int a, Vector2Int b, bool rect, List<Vector2Int> into)
+    {
+        into.Clear();
+
+        if (rect)
+        {
+            // 기준에서 가까운 쪽부터 채우도록 범위를 먼저 자른다 — 잘린 뒤에도 **기준이
+            // 모서리로 남아야** 어느 방향으로 늘어나는지가 그대로 보인다.
+            int spanX = Mathf.Abs(b.x - a.x) + 1;
+            int spanY = Mathf.Abs(b.y - a.y) + 1;
+
+            if ((long)spanX * spanY > MaxDragTiles)
+            {
+                int limX = Mathf.Max(1, Mathf.Min(spanX, Mathf.FloorToInt(Mathf.Sqrt(MaxDragTiles))));
+                int limY = Mathf.Max(1, MaxDragTiles / limX);
+
+                b.x = a.x + Mathf.Clamp(b.x - a.x, -(limX - 1), limX - 1);
+                b.y = a.y + Mathf.Clamp(b.y - a.y, -(limY - 1), limY - 1);
+            }
+        }
+
+        if (rect)
+        {
+            for (int x = Mathf.Min(a.x, b.x); x <= Mathf.Max(a.x, b.x); x++)
+            for (int y = Mathf.Min(a.y, b.y); y <= Mathf.Max(a.y, b.y); y++)
+                into.Add(new Vector2Int(x, y));
+            return;
+        }
+
+        // **더 많이 움직인 축으로만** 곧게 간다.
+        if (Mathf.Abs(b.x - a.x) >= Mathf.Abs(b.y - a.y))
+        {
+            b.x = a.x + Mathf.Clamp(b.x - a.x, -(MaxDragTiles - 1), MaxDragTiles - 1);
+            for (int x = Mathf.Min(a.x, b.x); x <= Mathf.Max(a.x, b.x); x++)
+                into.Add(new Vector2Int(x, a.y));
+        }
+        else
+        {
+            b.y = a.y + Mathf.Clamp(b.y - a.y, -(MaxDragTiles - 1), MaxDragTiles - 1);
+            for (int y = Mathf.Min(a.y, b.y); y <= Mathf.Max(a.y, b.y); y++)
+                into.Add(new Vector2Int(a.x, y));
+        }
+    }
+
+    readonly List<Vector2Int> _lineTiles = new();
+    readonly List<Vector2Int> _oneTile   = new();   // 한 칸씩 물어볼 때 돌려 쓰는 그릇
+
     void UpdateGridPreview(Vector3 worldPoint)
     {
         var tile = MapManager.Instance.WorldToTile(worldPoint);
-        if (tile != _hoveredTile || !_previewShown)
+
+        if (CanDragBuild) { UpdateLineBuild(tile); return; }
+
+        // **Q/E로 돌리면 그 자리에서 바로 다시 그린다.** 전엔 타일이 바뀔 때만 그려서,
+        // 회전이 고스트 모델에는 즉시 붙는데 초록 격자는 **한 칸 옮겨야** 따라왔다
+        // (모델과 격자가 서로 다른 자리를 가리키는 동안 어디에 지어질지 알 수 없다).
+        bool stale = tile != _hoveredTile
+                  || !_previewShown
+                  || !Mathf.Approximately(_previewYaw, _gridYaw)
+                  || _previewIndex != _selectedIndex;
+
+        if (stale)
         {
-            _hoveredTile  = tile;
-            _previewShown = true;
+            _hoveredTile   = tile;
+            _previewShown  = true;
+            _previewYaw    = _gridYaw;
+            _previewIndex  = _selectedIndex;
             var fp = GetFootprint(tile);
             gridRenderer.ShowPreview(fp, IsBuildableGrid(fp));
         }
@@ -499,11 +665,55 @@ public class BuildModeManager : MonoBehaviour
         var snapWorld = FootprintCenter(GetFootprint(tile));
         ShowGhost(snapWorld, Quaternion.Euler(0, _gridYaw, 0));
 
-        // 바닥은 드래그 페인트(좌클릭 유지로 연속 배치) — 이미 깔린 타일은 CanPlaceFloor가 거름.
-        bool paintDrag = SelectedBuilding != null && SelectedBuilding.IsFloor
-                         && Mouse.current.leftButton.isPressed;
-        if (Mouse.current.leftButton.wasPressedThisFrame || paintDrag)
+        if (Mouse.current.leftButton.wasPressedThisFrame)
             TryPlaceGrid(tile);
+    }
+
+    // 한 칸짜리 — 두 번 클릭으로 줄(벽)이나 면(바닥)을 한 번에.
+    void UpdateLineBuild(Vector2Int tile)
+    {
+        // 기준을 안 잡았으면 평소처럼 한 칸 미리보기.
+        var from = _lineAnchor ?? tile;
+        LineOrRect(from, tile, RectDrag, _lineTiles);
+
+        // **지어질 칸 전체를 미리 보여 준다.** 늘였다 줄였다 하는 동안 몇 칸이 될지가
+        // 보이지 않으면 두 번 클릭의 값이 없다(그냥 여러 번 누르는 것과 같다).
+        // **리스트를 칸마다 새로 만들지 않는다** — 5000칸이면 한 프레임에 5000개가 GC로 간다.
+        bool ok = _lineTiles.Count > 0;
+        foreach (var t in _lineTiles)
+        {
+            _oneTile.Clear();
+            _oneTile.Add(t);
+            if (!IsBuildableGrid(_oneTile)) { ok = false; break; }
+        }
+
+        gridRenderer.ShowPreview(_lineTiles, ok);
+        _previewShown = true;
+        _hoveredTile  = tile;
+
+        // **지어질 자리마다 모델을 세운다.** 초록 격자만으로는 몇 칸인지는 알아도 어떤 모양이
+        // 어느 방향으로 설지 안 보인다 — 담이 그림대로 이어지는지가 놓기 전에 보여야 한다.
+        var rot = Quaternion.Euler(0, _gridYaw, 0);
+        ShowGhost(FootprintCenter(GetFootprint(_lineTiles.Count > 0 ? _lineTiles[0] : tile)), rot);
+        ShowLineGhosts(_lineTiles, rot);
+
+        var mouse = Mouse.current;
+
+        // 우클릭·Esc = 무르기(`Update`의 Esc는 건설 모드를 통째로 닫으므로 여기서 먼저 먹는다).
+        if (_lineAnchor.HasValue && mouse.rightButton.wasPressedThisFrame)
+        {
+            _lineAnchor = null;
+            return;
+        }
+
+        if (!mouse.leftButton.wasPressedThisFrame) return;
+
+        if (!_lineAnchor.HasValue) { _lineAnchor = tile; return; }   // 첫 클릭 = 기준
+
+        // 두 번째 클릭 = 짓는다. **못 짓는 칸은 건너뛴다** — 스무 칸을 그었는데 한 칸이
+        // 막혔다고 전부 취소하면, 어디가 막혔는지도 모른 채 처음부터 다시 그어야 한다.
+        foreach (var t in _lineTiles) TryPlaceGrid(t);
+        _lineAnchor = null;
     }
 
     void UpdateFreePreview(Vector3 worldPoint)

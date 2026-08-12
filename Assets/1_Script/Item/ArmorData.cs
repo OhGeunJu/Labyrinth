@@ -10,6 +10,9 @@ public class ArmorData : ItemData
     // 어느 칸에 입는가가 곧 종류다 — "몸통 방어구".
     public override string TypeName => Slot.DisplayName() + " 방어구";
 
+    // 무기와 같다 — 솜씨가 물건에 남는다.
+    public override bool HasQuality => true;
+
     [Header("방어구")]
     public ArmorSlot Slot;
     public float DamageReduction = 5f;  // 피해 감소 (고정값)

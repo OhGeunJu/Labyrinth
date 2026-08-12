@@ -89,7 +89,10 @@ public class TreatJob : JobBase
         if (_using != null) { BeginTreating(doctor); return; }
 
         // 없으면 창고에 들른다. 그것도 없으면 맨손으로 바로 간다.
-        _fetching = Treatment.BestInStorage(out _source);
+        // **의사가 선 자리에서 잰다** — 걷는 것은 의사다(못 물으면 환자 옆에서 잰다).
+        var origin = doctor != null ? doctor.transform.position
+                   : Patient != null ? Patient.transform.position : Vector3.zero;
+        _fetching = Treatment.BestInStorage(origin, out _source);
         if (_fetching == null) { BeginTreating(doctor); return; }
 
         _phase    = Phase.GoToStorage;
@@ -120,21 +123,13 @@ public class TreatJob : JobBase
     {
         if (_phase == Phase.GoToStorage)
         {
-            // 그새 남이 가져갔을 수 있다 — 없으면 맨손으로 넘어간다(치료가 멎는 것보다 낫다).
-            int took = 0;
-            if (_source != null && _fetching != null)
-            {
-                int have = _source.Inventory.GetUnlockedQuantity(_fetching);
-                took = Mathf.Min(FetchCount, have);
-                if (took > 0)
-                {
-                    _source.Inventory.RemoveUnlocked(_fetching, took);
-                    int got = unit.Inventory.TryAdd(_fetching, took);
-                    // 배낭에 다 못 넣었으면 남은 것은 창고에 돌려놓는다 — 증발시키지 않는다.
-                    if (got < took) _source.Inventory.TryAdd(_fetching, took - got);
-                    took = got;
-                }
-            }
+            // 그새 남이 가져갔거나 배낭에 자리가 없을 수 있다 — 그러면 맨손으로 넘어간다
+            // (치료가 멎는 것보다 낫다). **자리를 먼저 보고 꺼내는 것은 `Storage.FetchInto`가
+            // 한다** — 전엔 꺼내고 나서 못 넣으면 되돌렸고, 짐이 찬 의사가 올 때마다 약이
+            // 창고에서 나왔다 들어갔다 했다(`EatNode`와 같은 결함이었다).
+            int took = _source != null && _fetching != null
+                     ? _source.FetchInto(unit.Inventory, _fetching, FetchCount)
+                     : 0;
 
             _using = took > 0 ? _fetching : null;
             BeginTreating(unit);

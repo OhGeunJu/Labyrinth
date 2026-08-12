@@ -10,7 +10,7 @@ using UnityEngine;
 // 침대는 회복·치료가 붙는 대신 자리를 더 먹는다 — 살려서 회유할 사람은 침대에, 그냥
 // 붙잡아 둘 사람은 우리에. 어느 쪽이든 **갇힌 상태는 하나**(`UnitBlackboard.IsPrisoner`)라
 // BT 정지·자동 표적 제외 규칙이 둘로 갈리지 않는다.
-public class PrisonCage : MonoBehaviour, IWorldClickable
+public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
 {
     public static readonly List<PrisonCage> All = new();
     public static event System.Action<PrisonCage> OnSelected;
@@ -21,6 +21,20 @@ public class PrisonCage : MonoBehaviour, IWorldClickable
     public UnitBrain Prisoner { get; private set; }
     public bool      IsOccupied => Prisoner != null;
 
+    // ── `IPrisonSite` — 먹이기 일감의 자리 ───────────────────────────────
+    // 우리에 든 사람은 곧 갇힌 사람이다(`TryPut`이 `Imprisonment.Bind`를 같이 한다).
+    public UnitBrain   HeldPrisoner => Prisoner;
+    public SiteJobSlot FeedSlot { get; private set; }
+
+    // **슬롯은 여기서 묶는다** — 필드 초기화식에서는 `this`를 못 잡고(CS0236), 무엇보다
+    // 한 번만 묶어야 매 틱 클로저가 새로 안 난다(`SiteJobSlot` 주석 참고).
+    void Awake()
+    {
+        _persuadeSlot = new SiteJobSlot(w => new PersuadeJob(Prisoner, w),
+                                        () => Conversion.PersuadeReady(Prisoner));
+        FeedSlot      = PrisonFeeding.NewSlot(this);
+    }
+
     public Vector3 HoldPosition => holdAnchor != null ? holdAnchor.position : transform.position;
 
     void OnEnable()  => All.Add(this);
@@ -28,6 +42,7 @@ public class PrisonCage : MonoBehaviour, IWorldClickable
     {
         All.Remove(this);
         DropPersuadeJob();
+        PrisonFeeding.Drop(this);
         // **우리가 사라지면 갇힌 사람도 풀린다.** 안 풀면 아무 데도 없는 우리에 묶인 채
         // BT가 멎어 영영 안 움직이는 폰이 남는다.
         Release();
@@ -42,69 +57,40 @@ public class PrisonCage : MonoBehaviour, IWorldClickable
     //
     // **한 회차씩** 건다 — 끝나면 아직 남았을 때 다음 것이 걸린다. 그래야 회차 사이에
     // 다른 급한 일(치료)이 끼어들 수 있고, 도중에 넘어오면 거기서 멈춘다.
+    // 걸고·넘기고·거두는 규칙 자체는 `SiteJobSlot`이 든다(침대의 치료, 갇힌 사람의 끼니와
+    // 같은 그릇). 여기서 답하는 것은 **언제 필요하고 언제 걸어도 되는가**뿐이다.
     const float CheckInterval = 1f;
 
-    PersuadeJob _persuadeJob;
-    float       _nextCheck;
+    SiteJobSlot _persuadeSlot;   // `Awake`에서 묶는다
+    float _nextCheck;
 
     void Update()
     {
         if (Time.time < _nextCheck) return;
         _nextCheck = Time.time + CheckInterval;
 
-        if (_persuadeJob != null && _persuadeJob.Status is JobStatus.Done or JobStatus.Cancelled)
-            _persuadeJob = null;
+        // **갇힌 사람 몫은 설득과 따로 돈다**(먹이기·탈출) — 설득이 안 되는 상대(하수인
+        // 종족)도, 다 넘어온 뒤에도 먹고 도망친다. 아래와 엮이면 "말이 안 통하면 굶긴다"가 된다.
+        Imprisonment.TickHeld(this);
 
         // 넘어왔거나 풀려났거나, 애초에 말이 안 통하는 상대(하수인 종족 — 핵이 지배한다).
-        if (!Conversion.CanPersuade(Prisoner)) { DropPersuadeJob(); return; }
-        if (_persuadeJob != null) return;
-
+        //
         // **쿨타임 동안은 일감을 안 낸다.** 내 놓고 `IsReady`로 막으면 폰이 우리 앞에 서서
         // 20초를 기다린다 — 쿨타임을 둔 이유가 그 사이에 다른 일을 하라는 것이다.
-        if (!Conversion.PersuadeReady(Prisoner)) return;
-        if (JobManager.Instance == null) return;
-
-        _persuadeJob = new PersuadeJob(Prisoner);
-        JobManager.Instance.RegisterJob(_persuadeJob);
+        _persuadeSlot?.Tick(Conversion.CanPersuade(Prisoner));
     }
 
-    // **이 폰에게 맡긴다**(우클릭 [설득한다]). 새로 만들지 않고 **있던 일감을 넘긴다** —
-    // 우리가 일감의 주인이라 여기서 하나 더 만들면 같은 포로에게 둘이 붙는다.
-    // 이미 누가 붙어 말하고 있으면 안 뺏는다.
+    // **이 폰에게 맡긴다**(우클릭 [설득한다]).
     public bool RequestPersuadeBy(UnitBrain speaker)
     {
         if (speaker == null || speaker == Prisoner) return false;
         if (!Conversion.CanPersuade(Prisoner)) return false;
         if (!Conversion.PersuadeReady(Prisoner)) return false;   // 쉬는 중엔 재촉해도 안 된다
-        if (JobManager.Instance == null) return false;
 
-        if (_persuadeJob != null && _persuadeJob.Status == JobStatus.InProgress) return false;
-
-        if (_persuadeJob == null || _persuadeJob.Status is JobStatus.Done or JobStatus.Cancelled)
-        {
-            _persuadeJob = new PersuadeJob(Prisoner, speaker);
-            JobManager.Instance.ReserveFor(_persuadeJob, speaker);
-            return true;
-        }
-
-        // 아직 아무도 안 집었거나 남이 예약만 해 둔 것 — 이 폰 앞으로 다시 잡는다.
-        _persuadeJob.ReleaseReservation();
-        _persuadeJob.Reserve(speaker);
-        return true;
+        return _persuadeSlot != null && _persuadeSlot.RequestBy(speaker);
     }
 
-    void DropPersuadeJob()
-    {
-        if (_persuadeJob == null) return;
-
-        // 하고 있는 것은 그대로 끝내게 둔다 — `Execute`가 첫 줄에서 다시 보고 접는다.
-        if (_persuadeJob.Status is JobStatus.Available or JobStatus.Reserved)
-        {
-            JobManager.Instance?.RemoveJob(_persuadeJob);
-            _persuadeJob.Cancel();
-        }
-        _persuadeJob = null;
-    }
+    void DropPersuadeJob() => _persuadeSlot?.Drop();
 
     // 빈 우리 중 가장 가까운 것.
     public static PrisonCage FindNearestFree(Vector3 from)
@@ -132,6 +118,10 @@ public class PrisonCage : MonoBehaviour, IWorldClickable
     public bool TryPut(UnitBrain brain)
     {
         if (brain == null || IsOccupied) return false;
+
+        // **죽은 사람은 안 가둔다** — 가둘 이유가 없고, 넣어 두면 그 우리를 산 사람이 못 쓴다
+        // (`Bed.Accepts`와 같은 규칙). 시체는 옮겨서 아무 데나 내려놓는 것이 전부다.
+        if (PawnCarry.IsCorpse(brain)) return false;
 
         Prisoner = brain;
         Imprisonment.Bind(brain, HoldPosition);
@@ -169,6 +159,10 @@ public static class Imprisonment
         brain.Blackboard.PrisonSpot  = at;
         brain.Blackboard.PrisonPose  = pose ?? Quaternion.Euler(0f, brain.transform.eulerAngles.y, 0f);
 
+        // **탈출 게이지는 여기서 안 건드린다.** 자리를 옮겨도(업었다 다른 우리에 넣어도)
+        // 쌓인 것은 그대로다 — 되돌리면 옮기기를 되풀이해 영영 안 도망가게 만들 수 있다.
+        // 지우는 자리는 `Unbind` 하나뿐이다(풀려나거나 넘어왔을 때).
+
         // 하던 것을 전부 끊는다 — 깨어나서 이어서 하면 안 된다.
         brain.Blackboard.Target      = null;
         brain.Blackboard.FollowTarget = null;
@@ -176,10 +170,27 @@ public static class Imprisonment
         brain.GetComponent<PawnMover>()?.StopMovement();
     }
 
+    // **게이지는 여기서 안 지운다.** `Unbind`는 "자리에서 뗀다"이지 "풀려났다"가 아니다 —
+    // `PawnCarry.TryPickUp`이 업기 전에 이걸 부르므로, 지우면 **[끌어낸다] → [여기 가둔다]만
+    // 되풀이해도 95%짜리 탈출 게이지가 0으로 돌아간다**(`Bind`의 주석이 그러면 안 된다고
+    // 적어 둔 바로 그 악용이다). 회유 게이지(`ConvertProgress`)도 여기서 안 지운다 —
+    // 둘이 같은 조작에서 다르게 굴면 어느 쪽이 규칙인지 알 수 없다.
+    //
+    // 지우는 자리는 **`Release` 하나**(풀려났거나 도망쳤을 때).
     public static void Unbind(UnitBrain brain)
     {
         if (brain?.Blackboard == null) return;
         brain.Blackboard.IsPrisoner = false;
+    }
+
+    // **갇힌 사람에게 매 초 일어나는 일.** 자리(`PrisonCage`·`Bed`)가 이 한 줄만 부른다 —
+    // 축이 늘 때(먹이기 → 탈출) 자리를 둘 다 고치게 하면 언젠가 한쪽을 빠뜨린다.
+    public static void TickHeld(IPrisonSite site)
+    {
+        if (site == null) return;
+
+        PrisonFeeding.Tick(site);
+        PrisonBreak.Tick(site.HeldPrisoner);
     }
 
     // **놓아 준다 — 자리에서 꺼내고, 갈 길을 정해 준다.**
@@ -191,13 +202,21 @@ public static class Imprisonment
     // **적은 놓아 주면 도망친다**(`CombatStance.Flee`). 그냥 풀면 갇힘이 풀리는 순간 BT가
     // 돌아 그 자리에서 덤비는데, 그건 놓아 준 것이 아니라 우리를 연 것이다 — 살려 보내는
     // 선택이 성립하려면 실제로 가야 한다. 우리 폰은 하던 대로 돌아간다.
-    public static void Release(UnitBrain brain)
+    // `reason`은 **로그 문구일 뿐이다** — 하는 일은 같다(자리를 비우고, 갇힘을 풀고,
+    // 도주 성향을 씌워 내보낸다). 손으로 놓아 준 것과 제 발로 나간 것이 로그에서 구별되지
+    // 않으면, "왜 없어졌지"를 되짚을 때 그 둘을 가릴 수가 없다.
+    public static void Release(UnitBrain brain, string reason = "놓아 줬다")
     {
         if (brain == null) return;
 
         PrisonCage.HolderOf(brain)?.Release();   // 우리에 있었으면 우리가 푼다
         Bed.ReleaseFrom(brain);         // 죄수 침대였으면 침대가 푼다(갇힘도 같이 풀린다)
         Unbind(brain);                  // 어느 쪽도 아니었을 때의 안전망
+
+        // **여기가 게이지를 지우는 유일한 자리다.** 자리를 옮기는 것(업기·다른 우리)과
+        // 풀려나는 것은 다른 일이다 — 옮길 때마다 0이 되면 옮기기를 되풀이해 영영 안
+        // 도망가게 만들 수 있다. 다시 잡히면 처음부터 차는 것이 맞다.
+        PrisonBreak.Clear(brain);
 
         // **남은 맵을 떠난다.** 성향만 도주로 바꾸면 우리 폰을 피해 달아나다 구석에서
         // 서성이고, 결국 그 자리에 적이 하나 남는다 — 그건 놓아 준 것이 아니다.
@@ -218,7 +237,7 @@ public static class Imprisonment
             }
         }
 
-        Debug.Log($"[Prison] {brain.UnitName}을(를) 놓아 줬다");
+        Debug.Log($"[Prison] {brain.UnitName}: {reason}");
     }
 
     // 갇힌 사람은 제자리를 지킨다. 깨어나도 마찬가지다 — 벗어나는 길은 풀려나는 것뿐이다.
