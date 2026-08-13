@@ -37,6 +37,18 @@ public class FactionData : ScriptableObject
              "같은 세력인데 어떤 무리는 흥정이 되고 어떤 무리는 안 되는 꼴이 된다.")]
     [SerializeField] bool acceptsRansom = true;
 
+    [Tooltip("**돈을 받고 며칠 동안 싸워 주는가.** 켜면 그 세력 사람에게 말을 걸어 계약할 수 있다.\n" +
+             "이것도 무리가 아니라 **세력의 성질**이다 — 용병단이니까 값을 받고 오는 것이지, " +
+             "이 무리가 마침 돈이 궁해서가 아니다. `AcceptsRansom`과 같은 자리.")]
+    [SerializeField] bool forHire;
+
+    [Tooltip("이 세력이 **나를 어떻게 보고 시작하는가**(−100 ~ +100). 적대 세력이라도 정도가 다르다 — " +
+             "산적은 돈이 목적이라 무를 여지가 있고, 망자와는 애초에 말이 통하지 않는다.\n" +
+             "**0이면 아래 태도에서 뽑는다**(적대 −70 / 아군 +75 / 중립 0) — 안 적어 둔 세력이 " +
+             "0에서 시작해 `적대 (0)`으로 뜨는 것을 막는 폴백이다.")]
+    [Range(-100f, 100f)]
+    [SerializeField] float startingFavor;
+
     [Header("관계")]
     [Tooltip("아래 목록에 없는 세력을 대하는 기본 태도.")]
     [SerializeField] FactionStance defaultStance = FactionStance.Neutral;
@@ -46,6 +58,8 @@ public class FactionData : ScriptableObject
     public string FactionName     => string.IsNullOrEmpty(factionName) ? name : factionName;
     public bool   PlayerControlled => playerControlled;
     public bool   AcceptsRansom    => acceptsRansom;
+    public bool   ForHire          => forHire;
+    public float  StartingFavor    => startingFavor;
     public FactionStance DefaultStance => defaultStance;
     public IReadOnlyList<Relation> Relations => relations;
 

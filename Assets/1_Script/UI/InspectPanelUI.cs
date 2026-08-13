@@ -295,6 +295,13 @@ public class InspectPanelUI : MonoBehaviour
         string factionName = factionData != null
             ? $"  <color=#7AA>({factionData.FactionName})</color>" : "";
         sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>[{UnitTypeLabel(brain, faction)}]</color>{factionName}");
+
+        // **그 세력이 나를 어떻게 보는가.** 관계가 움직이는데 볼 자리가 없으면 "왜 갑자기
+        // 덤비지"에 답이 없다 — 우호도가 0(저작한 그대로)이면 적지 않는다(늘 떠 있으면 안 읽는다).
+        if (factionData != null && !factionData.PlayerControlled
+            && !Mathf.Approximately(FactionRelations.Of(factionData), 0f))
+            sb.AppendLine($"<color=#9AB>{FactionRelations.Describe(factionData)}</color>");
+
         sb.AppendLine();
 
         // 혈액 / 보호막 / 부패
@@ -790,6 +797,10 @@ public class InspectPanelUI : MonoBehaviour
         if (bb.LeavingMap)
             sb.AppendLine("<color=#8BC34A>풀려나 떠나는 중이다. 건드리지 않으면 그냥 간다.</color>");
     }
+
+    // 몸값은 **여기 안 적는다.** 액수도 안 되는 이유도 우클릭 메뉴가 든다 —
+    // 넘길지 말지는 그 줄을 누를지 말지의 문제라 **고르는 자리에 붙어 있어야** 하고,
+    // 이 창에 적으면 창을 두 개 띄워 놓고 눈을 옮겨야 한다.
 
     // **왜 굶고 있는지 적는다.**
     //

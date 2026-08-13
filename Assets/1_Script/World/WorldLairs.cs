@@ -14,7 +14,9 @@ public class WorldLair
     public int MaxStrength;
 
     public float NextSortieAt;  // 떠돌이 무리를 내보낼 시각. 게임 초(`GameTimeManager.Elapsed` 축).
-    public float NextRaidAt;    // 다음 **습격을 계획할** 시각. 예고는 여기서 나가고 도착은 더 뒤다.
+    // 습격 시각은 **여기 없다.** 소굴마다 제 시계를 들면 습격이 소굴 수만큼 곱해진다 —
+    // 언제 하나 오는지는 `WorldBandManager.raidIntervalDays`(전역)가 정하고, 소굴은
+    // `RaidIntervalDays`를 가중치로 삼아 **차례만 다툰다**.
     public int   LastRegenDay;
 
     public WorldBandData Band => Entry != null ? Entry.Band : null;
@@ -162,7 +164,6 @@ public static class WorldLairs
             // 대기로 쓰면 지도에 나선 첫 반나절 동안 아무것도 안 나와서 소굴이 있다는 것조차
             // 모른다. 정책은 조절값이 있는 쪽에 둔다.
             NextSortieAt = GameTimeManager.Elapsed,
-            NextRaidAt   = GameTimeManager.Elapsed,
             LastRegenDay = GameTimeManager.CurrentDay,
         };
     }

@@ -596,7 +596,7 @@ public class WorldMapView : MonoBehaviour
         var menu = PawnContextMenuUI.Instance;
         if (menu == null) { OpenBandInfo(band); return; }   // 창이 없으면 정보라도 보여준다
 
-        var options = new List<(string, System.Action)>();
+        var options = new List<PawnMenuOption>();
 
         if (!IsHostile(band))
         {

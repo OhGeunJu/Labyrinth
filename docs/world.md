@@ -82,8 +82,7 @@ NavMesh 제거. 켄시급 대형 맵이라 전체를 1m 격자로 못 덮으므�
 | `Raid` | 맵 가장자리에 EnemyPrefabs 스폰. Enemy BT로 자동 공격 |
 | `Merchant` | 맵 가장자리에 상인 NpcData(EventMerchant) 스폰. 걸어오고 머물다 귀환 소멸 |
 | `Reinforcement` | 맵 가장자리에 ReinforcementPrefabs 스폰. 던전 코어 방향으로 초기 이동 후 일반 방랑자로 합류 |
-| `Discovery` | DungeonCore 기준 MinDist~MaxDist 범위 랜덤 위치에 자원 노드 스폰 |
+| `Discovery` | 거점 둘레 바닥에 아이템을 떨군다(`discoveryDropRadius`). **자원 노드를 세우지 않는다** — 노드는 영구히 남아 거점 둘레가 광맥 밭이 된다(발견은 사건이지 지형 변화가 아니다). 창고에 바로 넣지도 않는다 — 그건 사건이 아니라 숫자가 조용히 오르는 일이라 알림을 놓치면 무슨 일이 있었는지도 모른다. 떨어진 것은 우클릭 [창고로 옮긴다]로 켜야 실려 간다 |
 
-**`EventNotificationUI`** — 이벤트 발동 시 화면 상단 팝업 (5초 자동 닫힘 + 닫기 버튼)
-
-에디터 메뉴: `DungeonColony → Create Event Notification UI`
+**`EventNotificationUI`** — 이벤트 발동 시 화면 상단 팝업 (5초 자동 닫힘 + 닫기 버튼). 씬 오브젝트라
+모양 수정은 인스펙터에서 한다(옛 `Create Event Notification UI` 생성기는 다 쓰고 지웠다).

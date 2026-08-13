@@ -122,7 +122,13 @@ public static class PawnCarry
             parent.y != 0f ? world.y / parent.y : world.y,
             parent.z != 0f ? world.z / parent.z : world.z);
 
-        target.transform.localPosition = new Vector3(ShoulderSide, ShoulderHeight, 0f);
+        // **어깨에 얹는 것은 발이 아니라 몸통이다.** 피벗이 발밑에 있으므로(`center.y = height/2`)
+        // 그대로 놓으면 업힌 사람이 어깨 **위로** 통째로 솟는다 — 몸 한가운데가 어깨에 오도록
+        // 그만큼 내린다. 값은 콜라이더에게 묻는다(높이가 종족마다 다르다).
+        //
+        // 90도 눕혔으므로 그 오프셋은 **로컬 X 방향**으로 간다(`Euler(0,0,90)`이 로컬 Y를 −X로 보낸다).
+        float mid = PawnPlacement.CenterOffset(target.gameObject);
+        target.transform.localPosition = new Vector3(ShoulderSide + mid, ShoulderHeight, 0f);
         target.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);   // 기절 자세 그대로
 
         carrier.Blackboard.Carrying = target;

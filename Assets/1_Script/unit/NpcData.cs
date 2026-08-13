@@ -17,6 +17,24 @@ public class NpcData : ScriptableObject
 {
     public NpcType NpcType = NpcType.Villager;
 
+    [Tooltip("화면에 보이는 역할 이름(`떠돌이`·`마을 사람`). **비우면 타입 기본값**을 쓴다 — " +
+             "역할이 늘 때마다 문구를 채우게 하면 하나 빠뜨렸을 때 에셋 이름(`Drifter`)이 그대로 뜬다.\n" +
+             "`UnitData.RaceName`·`FactionData.FactionName`과 같은 자리 — **식별자로 쓰지 말 것**(번역 대상).")]
+    public string RoleName;
+
+    // 이 역할을 뭐라고 부르나. **에셋 이름을 그대로 쓰지 않는다** — 그건 식별자라 영어이고,
+    // 화면에 `Drifter`가 뜨면 그게 곧 번역 안 된 UI다.
+    public string DisplayName =>
+        !string.IsNullOrWhiteSpace(RoleName) ? RoleName : NpcType switch
+        {
+            NpcType.Villager      => "마을 사람",
+            NpcType.Guard         => "경비",
+            NpcType.ShopMerchant  => "상인",
+            NpcType.EventMerchant => "행상인",
+            NpcType.Drifter       => "떠돌이",
+            _                     => name,
+        };
+
     [Tooltip("배회 반경 (Villager, Guard)")]
     public float WanderRadius = 10f;
 

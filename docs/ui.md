@@ -109,7 +109,8 @@
 
 런타임 `FindObjectsInactive.Include`로 때울 수도 있지만 쓰지 않는다 — hover마다 도는 경로에
 씬 탐색을 넣을 이유가 없다. **배선으로 풀 수 있는 것은 배선으로 푼다.**
-구조를 고치는 도구는 `DungeonColony → Fix Window Structure`.
+구조를 고치던 `Fix Window Structure` 도구는 다 쓰고 지웠다(2026-08-06) — 이후는 인스펙터에서
+컴포넌트를 늘 켜져 있는 부모로 옮긴다.
 
 `InventoryUI`, `CorpseInventoryUI` 모두 6개 `EquipSlotUI` 필드를 직접 보유. 래퍼 컴포넌트 없음.
 

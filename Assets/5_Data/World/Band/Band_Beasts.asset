@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Beasts
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uC9D0\uC2B9 \uBB34\uB9AC"
+  tokenColor: {r: 0.4, g: 0.36, b: 0.3, a: 1}
+  faction: {fileID: 11400000, guid: b8a0c3bdb31a8674fb2c4f680a672ef9, type: 2}
+  behavior: 0
+  members:
+  - Prefab: {fileID: 6894885055828391614, guid: 2655de294ac764b48ad8034ee41d3aea, type: 3}
+    MinCount: 2
+    MaxCount: 5
+    MinGrade: 0
+    MaxGrade: 4
+  - Prefab: {fileID: 6894885055828391614, guid: 5eefa6e95ece2464486fb6498fd3ea3e, type: 3}
+    MinCount: 0
+    MaxCount: 1
+    MinGrade: 4
+    MaxGrade: 9
+  speed: 5.6
+  ChaseRadius: 16
+  merchant: {fileID: 0}
+  loot:
+  - Item: {fileID: 11400000, guid: 051cc962dcb6c70499b16d2ebf7ff145, type: 2}
+    MinPerKill: 1
+    MaxPerKill: 3
+    Chance: 0.8
+  PowerMultiplier: 0.85

@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c178bbde4e3a7d94e906402dd581da19, type: 3}
+  m_Name: Ev_Raid_Bandits
+  m_EditorClassIdentifier: Assembly-CSharp::GameEventData
+  EventName: "\uC0B0\uC801 \uC2B5\uACA9"
+  Description: "\uC0B0\uC801\uB2E8\uC774 \uAC70\uC810\uC744 \uB178\uB9AC\uACE0 \uBAB0\uB824\uC635\uB2C8\uB2E4."
+  Icon: {fileID: 0}
+  Weight: 2
+  MinGameTime: 240
+  EventType: 0
+  EnemyPrefabs:
+  - {fileID: 6894885055828391614, guid: 6c673912937360744b2c48c3a0ff8136, type: 3}
+  - {fileID: 6894885055828391614, guid: 3bc11ab156d06fd4cae301fd29979ab7, type: 3}
+  - {fileID: 6894885055828391614, guid: bf03490984e10764fbbf5136575ff739, type: 3}
+  EnemyCount: 4
+  MerchantPrefabs: []
+  MerchantVariants: []
+  ReinforcementPrefabs: []
+  ReinforcementCount: 3
+  DiscoveryItems: []
+  DiscoveryMinAmount: 3
+  DiscoveryMaxAmount: 12

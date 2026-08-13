@@ -51,6 +51,13 @@ public class JobManager : MonoBehaviour
     // JobCategoryInfo.QueueOrder(전역 고정 순서)가 정한다.
     public JobBase RequestJob(UnitBrain unit)
     {
+        // **용병은 싸우러 온 것이지 일하러 온 것이 아니다.**
+        //
+        // 지금은 여기까지 오지도 않는다 — 고용해도 세력이 `Faction_Mercenary` 그대로라
+        // 애초에 일감을 요청하는 폰이 아니다. **그래도 남긴다**: 한때 세력을 플레이어로 바꿨다가
+        // 명부에 뜨고 조종까지 됐던 자리라(2026-08-14), 그 실수를 다시 하면 여기서 걸린다.
+        if (Hireling.IsHired(unit)) return null;
+
         var settings = unit != null ? unit.Work : null;
 
         // **손으로 맡긴 일감이 먼저다.** 플레이어가 우클릭으로 "저 사람을 치료해라"라고 하면

@@ -197,7 +197,9 @@ public class PawnMover : MonoBehaviour
         _lyingPick.direction = 1;      // 누우면 몸의 긴 축이 로컬 Y다
         _lyingPick.height    = 1.8f;
         _lyingPick.radius    = 0.35f;
-        _lyingPick.center    = Vector3.zero;
+        // 피벗이 발밑이므로 몸통 한가운데로 올린다 — 원점에 두면 캡슐이 발끝에 걸쳐
+        // **몸의 절반이 클릭 판정 밖**에 남는다.
+        _lyingPick.center    = new Vector3(0f, PawnPlacement.CenterOffset(gameObject), 0f);
         _lyingPick.enabled   = false;
     }
 
@@ -215,7 +217,13 @@ public class PawnMover : MonoBehaviour
             _wakeRotation = transform.rotation;
 
             _cc.enabled = false;
-            transform.SetPositionAndRotation(lyingPos, lyingRot);
+
+            // **눕히는 자리는 몸통 기준이다**(`Bed.SleepPosition` = 침대 윗면 + `lieHeight`).
+            // 피벗은 발밑에 있으므로(`center.y = height/2`) 그대로 놓으면 **발만 침대에 얹히고
+            // 몸은 옆으로 뻗는다** — 누운 방향(`lyingRot`)으로 몸 한가운데만큼 비켜 놓는다.
+            transform.SetPositionAndRotation(
+                lyingPos - lyingRot * Vector3.up * PawnPlacement.CenterOffset(gameObject),
+                lyingRot);
             IsSleeping = true;
         }
         else

@@ -34,6 +34,7 @@ public class ColonyUI : MonoBehaviour
     void OnEnable()
     {
         UnitBrain.OnUnitSpawned          += OnSpawned;
+        UnitBrain.OnFactionChanged       += OnSpawned;
         UnitBrain.OnUnitDied             += OnDied;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
         ResourceNode.OnAssignmentChanged += OnAssignmentChanged;
@@ -42,6 +43,7 @@ public class ColonyUI : MonoBehaviour
     void OnDisable()
     {
         UnitBrain.OnUnitSpawned          -= OnSpawned;
+        UnitBrain.OnFactionChanged       -= OnSpawned;
         UnitBrain.OnUnitDied             -= OnDied;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
         ResourceNode.OnAssignmentChanged -= OnAssignmentChanged;

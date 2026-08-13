@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 26bc28a1ede5d33409a2915f2ace0ad9, type: 3}
+  m_Name: Loadout_Skeleton
+  m_EditorClassIdentifier: Assembly-CSharp::LoadoutData
+  Loadout:
+  - Item: {fileID: 0}
+    ItemId: Wpn_BronzeSword
+    Chance: 0.6
+  - Item: {fileID: 0}
+    ItemId: Wpn_WoodShield
+    Chance: 0.4
+  - Item: {fileID: 0}
+    ItemId: Arm_IronHead
+    Chance: 0.2
+  Loot:
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    ItemId: 
+    Chance: 0.3
+    MinCount: 1
+    MaxCount: 2
+  - Item: {fileID: 0}
+    ItemId: cloth
+    Chance: 0.35
+    MinCount: 1
+    MaxCount: 2
+  CoinDropMin: 0
+  CoinDropMax: 0

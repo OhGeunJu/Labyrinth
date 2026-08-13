@@ -163,25 +163,12 @@ public class MoveController : MonoBehaviour
         return false;
     }
 
-    // 창 제목 = **개체 이름 + 종족**(`그르낙 (고블린)`).
+    // 창 제목 = **`UnitBrain.DisplayTitle`**(`던컨 (떠돌이 · 변방민)`).
     //
-    // 종족만 띄우면 **어느 놈을 눌렀는지 알 수 없다** — 고블린이 셋 서 있으면 셋 다 "고블린"이고,
-    // 겨냥이 빗나가 엉뚱한 것을 눌러도 그럴듯해 보여서 드러나지 않는다.
-    // `InspectPanelUI`가 이미 개체 이름을 먼저 쓰므로 규약도 그쪽에 맞춘다(창마다 다른 이름으로
-    // 불리면 같은 폰인지 알 수 없다).
-    static string PawnTitle(UnitBrain brain, GameObject go)
-    {
-        string race = brain.Data != null ? brain.Data.RaceName : null;
-        string name = brain.UnitName;
-
-        bool hasName = !string.IsNullOrWhiteSpace(name);
-        bool hasRace = !string.IsNullOrWhiteSpace(race);
-
-        if (hasName && hasRace && name != race) return $"{name} ({race})";
-        if (hasName) return name;
-        if (hasRace) return race;
-        return go.name;
-    }
+    // 이름만 띄우면 고블린이 셋일 때 무엇인지를 모르고, 딸림말만 띄우면 셋 다 "고블린"이라
+    // 개체가 구별되지 않는다. 그리고 **대화창과 같은 것을 써야 한다** — 창마다 따로 만들면
+    // 같은 폰이 우클릭에선 `(인간)`, 대화에선 `(떠돌이)`로 불린다.
+    static string PawnTitle(UnitBrain brain, GameObject go) => brain.DisplayTitle;
 
     // 쓰러져 누운 폰인가. 여기서만 [공격한다]가 [마무리한다]로 바뀐다.
     static bool IsDown(GameObject go)
@@ -249,7 +236,7 @@ public class MoveController : MonoBehaviour
         }
 
         var go      = hit.collider.gameObject;
-        var options = new List<(string, System.Action)>();
+        var options = new List<PawnMenuOption>();
         string title = "이곳";
 
         var brain   = go.GetComponent<UnitBrain>();
@@ -294,6 +281,18 @@ public class MoveController : MonoBehaviour
             bool held  = brain.Blackboard != null && brain.Blackboard.IsPrisoner;
             // 풀려나 떠나는 중 — 자동 표적에서 빠져 있으므로 칠 때도 지목해야 한다.
             bool going = brain.Blackboard != null && brain.Blackboard.LeavingMap;
+
+            // **말을 건다** — 상인·중립·붙잡아 둔 자까지 **한 줄로** 받는다.
+            //
+            // 무슨 말을 할 수 있는지는 `Conversation`이 정한다(상인이면 물건을, 떠돌이면 합류를,
+            // 갇힌 자에게는 넘어오라고). 여기서 상대 종류를 따지기 시작하면 판단이 두 곳으로
+            // 갈라진다 — 우클릭 창이 늘 그래 왔듯 **구성은 여는 쪽이, 그리기는 창이** 한다.
+            //
+            // **거래 줄은 그대로 둔다**(아래). 물건을 사는 것은 가장 자주 하는 일이라 한 단계를
+            // 더 얹으면 분위기가 아니라 손해다 — 대화는 *다른 길*이지 대체가 아니다.
+            var speaker = Nearest(commanders, go.transform.position, b => b != brain);
+            if (Conversation.CanTalk(brain, speaker) && DialogueUI.Instance != null)
+                options.Add(("말을 건다", () => Conversation.Open(brain, speaker)));
 
             // 거래는 상인일 때만. `Merchant`는 상인 역할이면 자동으로 붙는다.
             // 쓰러진 상인은 선택지에서 뺀다 — 눌러 봐야 아무 일도 안 일어난다.
@@ -512,7 +511,7 @@ public class MoveController : MonoBehaviour
     // 침대에 누워 있는 환자면 **침대 쪽 일감을 쓴다** — 여기서 하나 더 만들면 같은 사람에게
     // 둘이 붙고, 침대가 제 일감을 지울 때 이건 안 지워진다.
     static void AddTreatOption(UnitBrain patient, GameObject go, List<PawnMover> commanders,
-                               bool self, List<(string, System.Action)> options)
+                               bool self, List<PawnMenuOption> options)
     {
         var body = go.GetComponent<BodyPartSystem>();
         if (body == null || !body.NeedsTreatment) return;
@@ -598,7 +597,7 @@ public class MoveController : MonoBehaviour
     // 명령이 조용히 거절할 일이 아니다(손으로 배낭에 넣는 것과 같은 축).
     // 업고 있는 폰 자신에게 묻는 것 — 그 자리에 내려놓는다. **걸어갈 필요가 없으므로
     // 일감을 걸지 않고 즉시 처리한다**(BT를 거치면 다음 틱까지 아무 일도 안 일어난 것처럼 보인다).
-    static void AddSelfCarryOptions(UnitBrain brain, List<(string, System.Action)> options)
+    static void AddSelfCarryOptions(UnitBrain brain, List<PawnMenuOption> options)
     {
         if (brain?.Blackboard?.Carrying == null) return;
 
@@ -621,7 +620,7 @@ public class MoveController : MonoBehaviour
     // **명령 받을 폰이 필요 없다.** 소지품을 보는 것은 창을 여는 일이고, 놓아 주는 것은
     // 우리·침대가 하는 일이다 — 그래서 마지막 한 명을 가둔 뒤에도 둘 다 뜬다.
     static void AddPrisonerOptions(UnitBrain prisoner, List<PawnMover> commanders,
-                                   List<(string, System.Action)> options)
+                                   List<PawnMenuOption> options)
     {
         // **뒤지는 것이 아니라 보는 것이다.** 시체는 [뒤진다]로 꺼내 오지만 산 사람의 배낭은
         // 그 사람 것이고, 창을 열면 옮길 수 있다 — 말을 다르게 두는 편이 무슨 일이 일어나는지
@@ -700,11 +699,34 @@ public class MoveController : MonoBehaviour
                 })));
         }
 
+        // **돈을 받고 넘긴다.** 붙잡은 사람으로 할 수 있는 일이 회유·처형·풀어 주기뿐이면
+        // 말이 통하는 상대를 붙잡는 것과 안 통하는 상대를 붙잡는 것이 같은 값이 된다.
+        //
+        // **안 되는 상대에게도 줄은 남긴다 — 흐리게.** 빼 버리면 "이 세력은 원래 몸값이라는
+        // 게 없나" 와 구별이 안 되고, 그렇다고 창에 사유를 적으면 작은 팝업이 부푼다.
+        // 그래서 **못 누르는 색으로 두고 이유는 올려 봤을 때** 뜬다(`PawnMenuOption.Blocked`).
+        if (PrisonEscort.IsCaptive(prisoner))
+        {
+            // **얼마인지 적는다** — 넘길지는 액수가 정한다([업는다]에 무게를 적는 것과 같은 규약).
+            int payout = WorldRansom.PayoutFor(prisoner);
+
+            if (WorldRansom.CanSell(prisoner))
+                options.Add(($"몸값을 받고 넘긴다 ({payout:N0} G)", () => WorldRansom.Sell(prisoner)));
+            else
+            {
+                var fd  = prisoner.GetComponent<Faction>()?.Data;
+                string who = fd != null ? fd.FactionName : "이쪽";
+                options.Add(PawnMenuOption.Blocked("몸값을 받고 넘긴다",
+                    $"{who}과는 말이 통하지 않는다.\n돈을 주고 데려가지 않으므로 회유하거나, " +
+                    "풀어 주거나, 처형하는 수밖에 없다."));
+            }
+        }
+
         options.Add(("풀어 준다", () => Imprisonment.Release(prisoner)));
     }
 
     static void AddCarryOption(UnitBrain target, List<PawnMover> commanders,
-                               List<(string, System.Action)> options)
+                               List<PawnMenuOption> options)
     {
         if (target == null || target.Blackboard == null) return;
         if (PawnCarry.IsCarried(target)) return;
@@ -754,7 +776,7 @@ public class MoveController : MonoBehaviour
     // **간수 설정을 안 본다** — 손으로 시킨 일은 "이 작업을 맡길까"의 결과가 아니라 지금
     // 이 순간의 지시다(자원 노드 직접 배정·[치료한다]와 같은 규칙).
     static void AddEscortOptions(UnitBrain target, List<PawnMover> commanders,
-                                 List<(string, System.Action)> options)
+                                 List<PawnMenuOption> options)
     {
         Add("우리로 옮긴다",      EscortDest.Cage);
         Add("죄수 침대로 옮긴다", EscortDest.Bed);
@@ -770,7 +792,7 @@ public class MoveController : MonoBehaviour
     //
     // `accepts`는 **업힌 사람**을 본다 — 자리마다 받는 사람이 다르다(보통 침대는 붙잡은
     // 사람을 안 받는다). 자리를 못 받는 사람을 업고 있으면 선택지를 아예 안 띄운다.
-    static void AddPutDownOption(List<PawnMover> commanders, List<(string, System.Action)> options,
+    static void AddPutDownOption(List<PawnMover> commanders, List<PawnMenuOption> options,
                                  string label, Vector3 at, Bed bed = null, PrisonCage cage = null,
                                  System.Func<UnitBrain, bool> accepts = null)
     {
@@ -791,7 +813,7 @@ public class MoveController : MonoBehaviour
     }
 
     static void AddCageOptions(PrisonCage cage, List<PawnMover> commanders,
-                               List<(string, System.Action)> options)
+                               List<PawnMenuOption> options)
     {
         // **놓아 주는 길은 하나다**(`Imprisonment.Release`) — 우리가 제 것만 풀면 도망 성향이
         // 안 붙어, 우리에서 푼 적은 그 자리에서 덤비고 사람에게서 푼 적은 도망친다.
@@ -809,7 +831,7 @@ public class MoveController : MonoBehaviour
     }
 
     static void AddBedOptions(Bed bed, List<PawnMover> commanders,
-                              List<(string, System.Action)> options)
+                              List<PawnMenuOption> options)
     {
         // **업고 있으면 그 사람을 여기 눕히는 것이 먼저다.** 사람을 진 채로 침대 앞에 서서
         // "내가 눕는다"가 맨 위에 뜨면 순서가 뒤집힌다.

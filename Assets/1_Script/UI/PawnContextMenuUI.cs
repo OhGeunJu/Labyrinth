@@ -6,6 +6,30 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 
+// 우클릭 선택지 한 줄.
+//
+// **`WorldMenuOption`과 같은 모양이지만 사유를 다르게 보여 준다** — 도착 메뉴는 화면 왼쪽에
+// 고정된 큰 판이라 사유를 같은 줄에 흐리게 덧붙일 자리가 있지만, 이 창은 커서 옆에 뜨는 작은
+// 팝업이라 줄마다 설명을 달면 창이 부풀어 정작 고를 것을 가린다. **그래서 마우스를 올렸을 때만**
+// 띄운다(`HoverTooltipUI`).
+//
+// **`(문구, 동작)` 튜플에서 암묵 변환된다.** 선택지를 넣는 자리가 서른 곳이 넘는데 사유가 붙는
+// 것은 그중 몇뿐이라, 전부 `, null`을 달게 하면 읽는 값 없이 줄만 길어진다.
+public struct PawnMenuOption
+{
+    public string Label;
+    public string Note;      // 왜 못 하는가 — 마우스를 올리면 뜬다. 없으면 툴팁도 없다.
+    public Action OnClick;   // null이면 눌리지 않는다
+
+    public static implicit operator PawnMenuOption((string label, Action action) t) =>
+        new() { Label = t.label, OnClick = t.action };
+
+    // 못 하는 줄. **빼지 않고 흐리게 남기는 이유**: 없는 줄은 "이 상대에겐 원래 없는 기능"과
+    // 구별이 안 된다 — 남겨 두면 "되긴 되는데 지금은 아니다"가 보이고, 이유는 올려 보면 나온다.
+    public static PawnMenuOption Blocked(string label, string note) =>
+        new() { Label = label, Note = note, OnClick = null };
+}
+
 // 유닛을 우클릭했을 때 마우스 자리에 뜨는 작은 선택지 창.
 //
 // **왜 필요했나**: 우클릭이 "적이면 공격"이라는 한 가지 뜻뿐이라, 상인처럼 때릴 일이 없는
@@ -28,6 +52,9 @@ public class PawnContextMenuUI : MonoBehaviour
     [SerializeField] Button          optionTemplate;
 
     readonly List<GameObject> _rows = new();
+
+    // 못 누르는 줄의 색. 채도를 뺀 어두운 회색 — 옆 줄과 **종류가 달라 보여야** 한다.
+    static readonly Color DisabledColor = new(0.45f, 0.45f, 0.48f, 0.7f);
 
     // **창은 화면이 아니라 월드에 붙는다.** 화면 좌표로 한 번 놓고 말면 카메라를 움직이는 순간
     // 창이 화면에 붙어 따라다녀, 아까 우클릭한 그 자리를 가리키지 않게 된다.
@@ -102,7 +129,7 @@ public class PawnContextMenuUI : MonoBehaviour
     //
     // `cam`은 그 월드 지점을 보는 카메라. **월드맵도 이 창을 쓴다** — 거기선 `Camera.main`이
     // 필드 카메라(꺼져 있다)라 그대로 두면 좌표를 못 푼다. 비우면 `Camera.main`.
-    public void Open(string title, List<(string label, Action action)> options, Vector3 worldAnchor,
+    public void Open(string title, List<PawnMenuOption> options, Vector3 worldAnchor,
                      Camera cam = null)
     {
         if (panel == null || optionContainer == null || optionTemplate == null) return;
@@ -113,26 +140,37 @@ public class PawnContextMenuUI : MonoBehaviour
 
         if (titleText != null) titleText.text = title;
 
-        foreach (var (label, action) in options)
+        foreach (var opt in options)
         {
             var row = Instantiate(optionTemplate, optionContainer);
             row.gameObject.SetActive(true);
 
             var txt = row.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (txt != null) txt.text = label;
+            if (txt != null) txt.text = opt.Label;
+
+            // **사유가 있으면 마우스를 올렸을 때 뜬다.** 되는 줄에도 붙을 수 있다 — 지금은
+            // 못 하는 줄에만 쓰지만, "왜 이걸 고르나"를 적을 자리가 같은 곳이어야 나중에
+            // 설명이 두 벌로 갈리지 않는다.
+            if (!string.IsNullOrEmpty(opt.Note))
+                row.gameObject.AddComponent<MenuRowTooltip>().Set(opt.Label, opt.Note);
 
             // **동작이 없는 줄은 눌리지 않는다.** 지금 못 하는 일을 알려 주는 자리다
             // (`설득한다 (40% — 12초 뒤)`) — 빼 버리면 왜 안 되는지가 화면에서 사라지고,
             // 그대로 두면 눌러도 아무 일이 없는 줄이 된다.
-            if (action == null)
+            if (opt.OnClick == null)
             {
                 row.interactable = false;
-                if (txt != null) txt.color = new Color(txt.color.r, txt.color.g, txt.color.b, 0.45f);
+
+                // **투명도만 낮추면 "글자가 좀 흐리네"로 읽힌다.** 못 누르는 줄이라는 것이
+                // 한눈에 와야 하므로 **색까지 죽인다** — 채도를 뺀 회색으로 눌러 두면
+                // 옆 줄과 나란히 놓였을 때 종류가 다른 것으로 보인다.
+                if (txt != null) txt.color = DisabledColor;
+
                 _rows.Add(row.gameObject);
                 continue;
             }
 
-            var captured = action;   // 클로저 캡처 — 루프 변수를 그대로 쓰면 전부 마지막 것이 된다
+            var captured = opt.OnClick;   // 클로저 캡처 — 루프 변수를 그대로 쓰면 전부 마지막 것이 된다
             row.onClick.RemoveAllListeners();
             row.onClick.AddListener(() => { Close(); captured?.Invoke(); });
 
@@ -193,5 +231,29 @@ public class PawnContextMenuUI : MonoBehaviour
     public void Close()
     {
         if (panel != null) panel.SetActive(false);
+
+        // **닫을 때 툴팁도 거둔다.** 줄이 사라지면 `OnPointerExit`는 **오지 않는다** —
+        // 커서를 올린 채 고르면 창은 닫히는데 설명만 화면에 남는다(`ItemInfoUI`가 격자
+        // 아이콘이 파괴될 때 정확히 그래서 툴팁이 영영 남았다).
+        HoverTooltipUI.Hide();
     }
+}
+
+// 선택지 줄 위에 커서가 올라오면 사유를 띄운다.
+//
+// **`Button.interactable`이 꺼져 있어도 포인터 이벤트는 온다** — 그게 이 컴포넌트가 성립하는
+// 이유다. `interactable`은 버튼 제 클릭·상태 전환만 막지, 같은 오브젝트의 다른 핸들러까지
+// 막지는 않는다. 그래서 **못 누르는 줄에서 오히려 설명이 필요한** 이 경우가 그대로 된다.
+public class MenuRowTooltip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    string _title, _body;
+
+    public void Set(string title, string body) { _title = title; _body = body; }
+
+    public void OnPointerEnter(PointerEventData e) => HoverTooltipUI.Show(_title, _body);
+    public void OnPointerExit(PointerEventData e)  => HoverTooltipUI.Hide();
+
+    // 줄이 파괴되면 `OnPointerExit`가 안 온다 — 창이 닫히는 길이 `Close()`뿐이 아니므로
+    // (선택지를 고르면 줄이 통째로 다시 만들어진다) 여기서도 거둔다.
+    void OnDisable() => HoverTooltipUI.Hide();
 }

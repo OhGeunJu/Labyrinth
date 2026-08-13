@@ -44,10 +44,38 @@ MonoBehaviour:
     MinStrength: 8
     MaxStrength: 18
     SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
+    RegenPerDay: 1
+    Weight: 1
+  - Band: {fileID: 11400000, guid: f717a1b1181ba7647b7185186b15fd9a, type: 2}
+    LairName: "\uC9D0\uC2B9 \uAD74"
+    MinStrength: 8
+    MaxStrength: 18
+    SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
+    RegenPerDay: 1
+    Weight: 1
+  - Band: {fileID: 11400000, guid: 439f36fa1ab950548bdb2439fe3d843a, type: 2}
+    LairName: "\uC0B0\uC801 \uC18C\uAD74"
+    MinStrength: 8
+    MaxStrength: 18
+    SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
     RegenPerDay: 1
     Weight: 1
   TownBands:
+  - {fileID: 11400000, guid: f4f08f5fc9004c67bc6eae94656f9f4e, type: 2}
   - {fileID: 11400000, guid: ae7b0493238026a45a70e3489c718cc3, type: 2}
   - {fileID: 11400000, guid: 9efcc9bfb4442984fa40685e81f42570, type: 2}
+  - {fileID: 11400000, guid: 71211cf3d1956c4479c6861bd57927e8, type: 2}
   SummonableMinions: []
   UnlockableResearch: []

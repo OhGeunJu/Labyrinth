@@ -189,6 +189,11 @@ public class GameModeManager : MonoBehaviour
         // 우클릭 명령 창 — 필드에서 폰·노드에 쓰던 것을 월드맵에서 무리에도 쓴다.
         // 우클릭이 "무엇을 하러 가느냐"로 갈리는 것은 두 화면에서 같은 일이라 창도 같아야 한다.
         AddModeAgnostic<PawnContextMenuUI>();
+
+        // 그 창의 **못 누르는 줄이 이유를 툴팁으로 띄운다**(`PawnMenuOption.Blocked`). 창만
+        // 모드 무관으로 두면 지도에서는 줄이 흐리게 뜨는데 왜 그런지는 영영 안 뜬다 —
+        // 바로 위 `ItemInfoUI`와 같은 이유다(창이 살아 있으면 그 창의 툴팁도 살아 있어야 한다).
+        AddModeAgnostic<HoverTooltipUI>();
     }
 
     void AddModeAgnostic<T>() where T : Component

@@ -165,7 +165,7 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 
 **반격은 관계와 무관** — `UnitBlackboard.LastAttacker`(+`RetaliationMemory` 15초). `BodyPartSystem.TakeDamage`가 `DamageInfo.Source`를 기록하고(아군 오사는 제외), `DetectNode`는 주변 탐색보다 **반격 대상을 우선**한다. `FleeNode`도 때린 상대를 위협으로 본다. → 중립 세력을 선공하면 그쪽이 대응한다.
 
-**스타터 에셋**: `Assets/5_Data/Faction/`에 플레이어/고블린/산적/마을사람 4종 + 관계 기입(고블린은 기본 적대·산적만 예외, 산적→마을사람 일방 적대). 각 유닛 프리팹의 `Faction.Data`에 연결해 쓴다.
+**스타터 에셋**: `Assets/Resources/Data/Factions/`에 플레이어/고블린/산적/마을사람 4종 + 관계 기입(고블린은 기본 적대·산적만 예외, 산적→마을사람 일방 적대). 각 유닛 프리팹의 `Faction.Data`에 연결해 쓴다.
 
 ### AI 프로필 (`AiProfileData` SO)
 

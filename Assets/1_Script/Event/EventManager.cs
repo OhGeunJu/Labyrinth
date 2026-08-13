@@ -39,6 +39,60 @@ public class EventManager : MonoBehaviour
             _timer = 0f;
             TryRollEvent();
         }
+
+        TickRescue();
+    }
+
+    // ── 습격에 딸려 오는 구원 ────────────────────────────────────────────────
+    //
+    // **지원군이 혼자 굴러서는 도움이 안 된다.** 추첨으로만 오면 조용한 날에 와서 어슬렁거리다
+    // 정작 몰려올 때는 없다 — 맞고 있을 때 와야 뜻이 생긴다.
+    //
+    // 그래서 **습격이 벌어질 때마다 따로 굴린다.** 추첨 풀과 별개 축이라, 같은 에셋이
+    // 평시에는 추첨으로도 오고 습격 때는 구원으로도 온다.
+    GameEventData _rescue;      // 도착 대기 중인 지원군 (없으면 null)
+    float         _rescueAt;    // 도착 시각(`_elapsed` 축)
+
+    void TickRescue()
+    {
+        if (_rescue == null || _elapsed < _rescueAt) return;
+
+        var data = _rescue;
+        _rescue = null;
+
+        // 자리를 못 찾으면 조용히 접는다 — **알림이 먼저 나가면** "지원군이 온다"고 해 놓고
+        // 아무도 안 온다(`TryRollEvent`가 지키는 것과 같은 순서).
+        if (!TryFindEdgeSpawn(out var edge)) return;
+
+        SpawnReinforcement(data, edge);
+        OnEventTriggered?.Invoke(data);
+        NotifyDirection(data, edge);
+    }
+
+    // 습격이 벌어졌다 — 구원이 올지 굴린다. **먼저 예고하지 않는다**: 올지 모르는 채로
+    // 막아야 오는 것이 반가운 일이 되고, 늘 온다면 습격이 무섭지 않다.
+    void TryScheduleRescue()
+    {
+        if (_rescue != null) return;   // 이미 오는 중이면 겹쳐 부르지 않는다
+
+        // 후보는 **추첨 풀에서 찾는다.** 씬에 필드를 하나 더 두면 배선을 빠뜨렸을 때
+        // 조용히 아무 일도 안 일어난다 — 이미 풀에 있는 것을 쓰면 그 구멍이 없다.
+        var pool = new List<GameEventData>();
+        foreach (var e in eventPool)
+        {
+            if (e == null || !e.RescueOnRaid) continue;
+            if (e.EventType != GameEventType.Reinforcement) continue;
+            if (e.ReinforcementPrefabs == null || e.ReinforcementPrefabs.Count == 0) continue;
+            if (_elapsed < e.MinGameTime) continue;   // 아직 이르면 구원도 없다
+            pool.Add(e);
+        }
+        if (pool.Count == 0) return;
+
+        var data = pool[Random.Range(0, pool.Count)];
+        if (Random.value > data.RescueChance) return;
+
+        _rescue   = data;
+        _rescueAt = _elapsed + Mathf.Max(0f, data.RescueDelay);
     }
 
     void TryRollEvent()
@@ -158,6 +212,8 @@ public class EventManager : MonoBehaviour
             var mover = go.GetComponent<PawnMover>();
             if (mover != null && core != null) mover.SetMoveTarget(ScatterNear(core.transform.position, 5f));
         }
+
+        TryScheduleRescue();
     }
 
     // ── 지도에서 걸어온 무리 ──────────────────────────────────────────────────
@@ -204,6 +260,10 @@ public class EventManager : MonoBehaviour
         if (spawned == 0)
             Debug.LogWarning($"[Event] {band.Name}: 세울 프리팹이 없어 도착을 건너뜁니다 " +
                              "(WorldBandData.Members의 Prefab을 확인하세요).");
+
+        // **지도에서 걸어온 습격에도 구원이 온다.** 여기를 빠뜨리면 "이벤트로 온 습격에만
+        // 용병이 온다"가 되는데, 플레이어에게 그 둘은 똑같이 '적이 몰려온 것'이다.
+        if (spawned > 0) TryScheduleRescue();
 
         return spawned > 0;
     }

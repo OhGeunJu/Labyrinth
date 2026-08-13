@@ -6,6 +6,14 @@ public partial class UnitBrain : MonoBehaviour
 {
     public static event Action<UnitBrain> OnUnitSpawned;
     public static event Action<UnitBrain> OnUnitDied;
+
+    // **편이 바뀌었다.** 태어나는 것과 다른 축이라 따로 알린다 — `OnUnitSpawned`는 `Start`에서
+    // 한 번 뜨고 마는데, 회유로 넘어온 포로나 합류한 떠돌이는 **그 문을 안 지난다.**
+    // 그래서 명부(`ColonyUI`)·원정 편성이 새 식구를 영영 못 봤다(2026-08-14 발견).
+    //
+    // 듣는 쪽은 `OnUnitSpawned`와 **같이** 받아야 한다 — 한쪽만 달면 어느 경로로 들어왔느냐로
+    // 화면이 갈린다.
+    public static event Action<UnitBrain> OnFactionChanged;
     public event Action<float> OnDamaged;
 
     [Header("틱 주기")]
@@ -58,6 +66,58 @@ public partial class UnitBrain : MonoBehaviour
 
     // 이 폰의 **역할**(없으면 null = 역할 없는 전투/노동 유닛).
     public NpcData Npc => npcData;
+
+    // **이 폰을 창에 뭐라고 적나 — 한 곳.**
+    //
+    // `이름 (딸림말)` 꼴이다. 이름만 띄우면 고블린이 셋일 때 누구를 눌렀는지는 알아도 **무엇인지**를
+    // 모르고, 딸림말만 띄우면 셋 다 "고블린"이라 개체가 구별되지 않는다.
+    //
+    // **딸림말은 "무엇을 하는 사람인가 · 어느 편인가"** 둘이다:
+    //   ① **역할**(`NpcData`)이 있으면 그것 — 대화에서 알고 싶은 것은 대개 이쪽이다
+    //      (`던컨 (떠돌이 · 변방민)`이 `던컨 (인간)`보다 쓸모 있다).
+    //      **역할이 없으면 종족이 그 자리를 대신한다** — 늑대를 `(야수)`라고만 하면
+    //      곰과 구별이 안 된다.
+    //   ② **세력** — 소속은 늘 붙인다. 누가 적이고 누가 내 편인지가 곧 그 사람이다.
+    //      **플레이어 세력만 뺀다**: 내 폰에게 "(플레이어)"는 아무것도 안 알려 준다.
+    //
+    // **같은 말이 두 번 나오면 하나로 줄인다** — 고블린 적은 종족도 세력도 "고블린"이라
+    // 안 줄이면 `그르낙 (고블린 · 고블린)`이 된다.
+    //
+    // 창마다 따로 만들면 **같은 폰이 창마다 다르게 불린다**(우클릭에선 `(인간)`, 대화에선
+    // `(떠돌이)`). 그래서 여기 하나뿐이고 `MoveController`·`Conversation`이 같이 쓴다.
+    public string DisplayTitle
+    {
+        get
+        {
+            var tags = new List<string>(2);
+
+            string role = npcData != null ? npcData.DisplayName : null;
+            if (!string.IsNullOrWhiteSpace(role)) tags.Add(role);
+            else if (unitData != null && !string.IsNullOrWhiteSpace(unitData.RaceName))
+                tags.Add(unitData.RaceName);
+
+            var fd = GetComponent<Faction>()?.Data;
+            if (fd != null && !fd.PlayerControlled && !string.IsNullOrWhiteSpace(fd.FactionName)
+                && !tags.Contains(fd.FactionName))
+                tags.Add(fd.FactionName);
+
+            string name = UnitName;
+            bool hasName = !string.IsNullOrWhiteSpace(name);
+
+            if (tags.Count == 0) return hasName ? name : gameObject.name;
+
+            string tag = string.Join(" · ", tags);
+            if (hasName && name != tag) return $"{name} ({tag})";
+            return hasName ? name : tag;
+        }
+    }
+
+    // 역할을 벗는다 — **합류할 때** 쓴다(떠돌이를 고용하면 더는 떠돌이가 아니다).
+    //
+    // 역할이 남아 있으면 `BuildTree`가 세력과 무관하게 **NPC 트리를 다시 고른다**: 우리 편이
+    // 됐는데 명령을 안 듣고 저 혼자 배회하다 맵을 나간다. 세력을 바꾸는 것(`ChangeFaction`)과
+    // **짝으로** 부를 것 — 트리를 다시 짓는 것은 그쪽이 한다.
+    public void ClearNpcRole() => npcData = null;
     public AiProfileData AiProfile => aiProfile;
 
     // ── 전투 성향 (런타임 조정 가능) ─────────────────────────────────────
@@ -505,6 +565,8 @@ public partial class UnitBrain : MonoBehaviour
         if (_isDead) return;
         _isDead = true;
 
+        ReportDeathToFaction();
+
         // **업고 있던 사람을 먼저 내려놓는다.** 안 내려놓으면 시체의 자식으로 남아 같이
         // 굳고, 시체를 치우면 산 사람이 함께 사라진다. 업혀 있었다면 그 사실도 지운다 —
         // 업은 폰이 계속 무게를 지고 다니게 된다.
@@ -541,6 +603,34 @@ public partial class UnitBrain : MonoBehaviour
         }
 
         Destroy(gameObject);
+    }
+
+    // **죽이면 그 세력이 기억한다.**
+    //
+    // 지금까지 중립을 죽여도 반격하는 것은 **그 개인뿐**이었다(`LastAttacker`, 15초).
+    // 그래서 마을 사람을 몰살하고도 그 마을과 계속 거래할 수 있었다 — 세력이 아홉이어도
+    // 관계표가 안 움직이면 배경화면이라는 것이 가장 크게 드러나던 자리다.
+    //
+    // **이미 적대인 상대는 안 센다.** 전쟁 중에 적을 죽이는 것은 사건이 아니라 전쟁이고,
+    // 세면 습격 한 번 막을 때마다 관계가 바닥을 치는 무의미한 숫자가 된다.
+    //
+    // **갇힌 채로 죽으면 처형으로 친다** — 손에 넣어 두고 죽인 것은 싸우다 죽인 것과 다르다
+    // (굶겨 죽인 것도 여기 걸린다. 그것도 내가 한 일이다).
+    void ReportDeathToFaction()
+    {
+        var mine = GetComponent<Faction>();
+        if (mine == null || mine.Data == null || mine.IsPlayer) return;
+
+        var player = Faction.Player;
+        if (player == null) return;
+
+        // 저쪽이 이미 나를 적대하면 셈에서 뺀다.
+        if (mine.IsHostileTo(player)) return;
+
+        bool held = _bb != null && _bb.IsPrisoner;
+        FactionRelations.Add(mine.Data,
+            held ? FactionRelations.ExecutePenalty : FactionRelations.KillPenalty,
+            held ? $"{UnitName}을(를) 가둬 두고 죽였다" : $"{UnitName}을(를) 죽였다");
     }
 
     void BecomeCorpse()
@@ -765,6 +855,10 @@ public partial class UnitBrain : MonoBehaviour
 
         Debug.Log($"[세력] {UnitName} → {to.FactionName} " +
                   $"({(unitData is MinionData ? "하수인" : "방랑자")}, 성장잠금 {Stats.IsLocked})");
+
+        // **알린다.** 명부·원정 편성은 `OnUnitSpawned`만 듣고 있었는데 그건 `Start`에서 한 번
+        // 뜨고 마는 것이라, **이 문으로 들어온 식구는 화면에 영영 안 나타났다.**
+        OnFactionChanged?.Invoke(this);
     }
 
     // 적 AI(감지→전투) 대상인가 — 역할이 없고(NPC 아님) 플레이어 조작 세력도 아닌 전투 유닛.

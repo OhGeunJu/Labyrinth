@@ -161,6 +161,41 @@ public class PawnSpec
     // 흔들림도 시드에서 나오므로 **다시 계산해도 같은 값**이다(메뉴를 여닫는다고 값이 바뀌면
     // 원하는 값이 나올 때까지 여닫게 된다). 시드를 한 번 더 섞어 스탯 추첨과 **다른 열**을 쓴다 —
     // 같은 열이면 "스탯이 좋으면 흔들림도 크다"는 상관이 생긴다.
+    // ── 살아 있는 폰의 값 ─────────────────────────────────────────────────────
+    //
+    // **명세는 있을 수도 없을 수도 있다.** `PawnSpecData`를 저작한 폰만 `UnitBrain.Spec`을
+    // 갖고, 굴려서 태어난 폰(적·하수인·이벤트로 온 사람)은 **null**이다. 그래서 값을 물을 때
+    // `Spec`을 그냥 읽으면 그런 폰은 값이 0이 되어 **선택지가 통째로 사라진다**
+    // (2026-08-14: 떠돌이 합류·용병 계약이 정확히 그래서 안 떴다).
+    //
+    // `WorldRansom`이 같은 문제를 먼저 겪고 **실제 스탯에서 등급 평균을 내는** 것으로 풀었다.
+    // 답이 두 벌이 되지 않게 그 계산을 여기로 올린다 — 값을 묻는 곳은 여기 하나다.
+
+    // 실제 스탯에서 낸 등급 평균. **명세가 아니라 지금 값을 본다** — 자란 만큼도 값에 실린다.
+    public static float GradeAverageOf(UnitBrain u)
+    {
+        if (u == null || u.Stats == null) return 0f;
+
+        int sum = 0, count = 0;
+        foreach (StatName stat in Enum.GetValues(typeof(StatName)))
+        {
+            sum += (int)StatGradeExt.FromValue(u.Stats.GetStat(stat));
+            count++;
+        }
+        return count > 0 ? sum / (float)count : 0f;
+    }
+
+    // 이 사람을 데려오는 값. **명세가 있으면 그 값**(흔들림까지 그대로 — 마을 후보는 메뉴에서
+    // 본 값과 같아야 한다), 없으면 실제 스탯에서 낸다(**흔들림 없음** — 흔들림은 "부르는 값"을
+    // 만들려고 시드에서 뽑는 것인데, 시드가 없는 폰에는 기댈 것이 없다).
+    public static int PriceOf(UnitBrain u)
+    {
+        if (u == null) return 0;
+        if (u.Spec != null) return u.Spec.Price;
+
+        return Mathf.Max(1, Mathf.RoundToInt(PriceBase + GradeAverageOf(u) * PricePerGrade));
+    }
+
     public int Price
     {
         get

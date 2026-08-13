@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Cult
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uAC80\uC740 \uAD50\uB2E8"
+  tokenColor: {r: 0.42, g: 0.25, b: 0.55, a: 1}
+  faction: {fileID: 11400000, guid: e14a34e0feb252240bcee83a9602b85c, type: 2}
+  behavior: 0
+  members:
+  - Prefab: {fileID: 6894885055828391614, guid: d04d65d024856e14b90c818b46ce24b1, type: 3}
+    MinCount: 2
+    MaxCount: 4
+    MinGrade: 2
+    MaxGrade: 7
+  - Prefab: {fileID: 6894885055828391614, guid: 6326e0dc99cbc0d4fbc5eebe8f89a378, type: 3}
+    MinCount: 0
+    MaxCount: 1
+    MinGrade: 7
+    MaxGrade: 10
+  - Prefab: {fileID: 6894885055828391614, guid: 5671e81eeb996f945a446dde1026f49c, type: 3}
+    MinCount: 0
+    MaxCount: 2
+    MinGrade: 0
+    MaxGrade: 4
+  speed: 4.2
+  ChaseRadius: 12
+  merchant: {fileID: 0}
+  loot:
+  - Item: {fileID: 11400000, guid: c16db23994cf9e04e9b0c69516cdcdcb, type: 2}
+    MinPerKill: 3
+    MaxPerKill: 10
+    Chance: 0.6
+  - Item: {fileID: 11400000, guid: 85dbd5da091957f409c79793765de787, type: 2}
+    MinPerKill: 0
+    MaxPerKill: 1
+    Chance: 0.25
+  PowerMultiplier: 1.15

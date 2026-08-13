@@ -14,6 +14,7 @@ public partial class UnitBrain
             NpcType.Guard         => BuildGuardTree(npc),
             NpcType.ShopMerchant  => BuildShopMerchantTree(npc),
             NpcType.EventMerchant => BuildEventMerchantTree(npc),
+            NpcType.Drifter       => BuildDrifterTree(npc),
             _                     => new IdleNode(),
         };
     }
@@ -33,6 +34,29 @@ public partial class UnitBrain
         var root = new BTSelector();
         AddCombatBranch(root, CombatStance.Fight, npc.FleeDetectRange);
         root.Add(new PatrolNode());
+        AddWanderBranch(root, npc.WanderRadius);
+        return root.Add(new IdleNode());
+    }
+
+    // 떠돌이: (성향) → 떠날 때가 됐나 → 나가는 중 → 배회 → 대기.
+    //
+    // **주민 트리에 "떠난다"를 얹은 것**이다. 머무는 동안 하는 일은 주민과 같고(배회 + 도주),
+    // `StayDuration`이 지나면 맵 밖으로 걸어 나가 사라진다.
+    //
+    // **나가는 길을 새로 짜지 않는다** — `LeaveMapNode`가 풀려난 포로에게 이미 하는 일이다
+    // (가장자리까지 걷고, 못 가면 8초 뒤 거기서 사라지고, **맞으면 돌아선다**). 떠돌이도
+    // 때리면 돌아서야 하므로 그 성질이 그대로 필요하다.
+    BTNode BuildDrifterTree(NpcData npc)
+    {
+        var root = new BTSelector();
+        AddCombatBranch(root, CombatStance.Flee, npc.FleeDetectRange);
+
+        // 시간을 재는 것과 걸어 나가는 것을 **따로 둔다**. 한 노드로 묶으면 "떠나는 중"이라는
+        // 상태가 그 노드 안에만 있어서, 밖에서 떠나게 만드는 길(붙잡혔다 풀려나는 등)과
+        // 두 벌이 된다 — 지금도 `UnitBlackboard.LeavingMap` 하나가 그 답이다.
+        root.Add(new DrifterDepartNode(npc.StayDuration));
+        root.Add(new LeaveMapNode());
+
         AddWanderBranch(root, npc.WanderRadius);
         return root.Add(new IdleNode());
     }

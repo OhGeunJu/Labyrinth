@@ -187,6 +187,44 @@ public class WanderNode : BTNode
 //
 // ── 때리면 어떻게 하나 ────────────────────────────────────────────────────
 //
+// **떠돌이가 떠날 때를 정한다.** 머문 시간이 `stay`를 넘으면 `LeavingMap`을 켠다.
+//
+// 켜기만 하고 **늘 `Failure`를 돌려준다** — 걸어 나가는 일은 바로 아래 `LeaveMapNode`가 한다.
+// 한 노드로 묶고 싶어지지만, 그러면 "떠나는 중"이 그 노드 안에만 있게 되어 밖에서 떠나게
+// 만드는 길(붙잡혔다 풀려나기 등)과 답이 두 벌이 된다. **`UnitBlackboard.LeavingMap` 하나가
+// 그 답이어야 한다.**
+//
+// 시계는 **`bb.TickDelta`로 잰다** — BT는 `tickInterval`(0.1초)마다 도는데 `Time.deltaTime`을
+// 누적하면 시간이 여섯 배 이상 느려진다(이 저장소가 전수 교체한 그 사고).
+public class DrifterDepartNode : BTNode
+{
+    readonly float _stay;
+    float _elapsed;
+
+    public DrifterDepartNode(float stay) => _stay = Mathf.Max(1f, stay);
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        // 이미 떠나는 중이면 시계는 뜻이 없다 — 아래 `LeaveMapNode`가 받는다.
+        if (bb.LeavingMap) return BTStatus.Failure;
+
+        // **싸우는 동안은 시간이 안 간다.** 쫓기다가 시간이 차서 "떠난다"로 넘어가면
+        // 도망치던 폰이 갑자기 가장자리로 직진한다 — 쫓기는 것과 떠나는 것은 다른 일이다.
+        if (bb.HasFreshAttacker) return BTStatus.Failure;
+
+        _elapsed += bb.TickDelta;
+        if (_elapsed < _stay) return BTStatus.Failure;
+
+        // 나갈 길이 없으면 **그냥 더 머문다.** 여기서 사라지게 하면 눈앞에서 증발한다.
+        if (!EventManager.TryFindExit(bb.Self.transform.position, out var exit))
+            return BTStatus.Failure;
+
+        bb.LeavingMap  = true;
+        bb.LeaveTarget = exit;
+        return BTStatus.Failure;
+    }
+}
+
 // **싸운다. 확률로 굴리지 않는다.**
 //
 // 확률이면 "때렸는데 왜 어떤 놈은 반격하고 어떤 놈은 안 하지"가 되고, 그건 플레이어가

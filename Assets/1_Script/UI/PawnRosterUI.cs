@@ -37,6 +37,7 @@ public class PawnRosterUI : MonoBehaviour
     void OnEnable()
     {
         UnitBrain.OnUnitSpawned          += OnSpawned;
+        UnitBrain.OnFactionChanged       += OnSpawned;
         UnitBrain.OnUnitDied             += OnDied;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
     }
@@ -44,6 +45,7 @@ public class PawnRosterUI : MonoBehaviour
     void OnDisable()
     {
         UnitBrain.OnUnitSpawned          -= OnSpawned;
+        UnitBrain.OnFactionChanged       -= OnSpawned;
         UnitBrain.OnUnitDied             -= OnDied;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
     }

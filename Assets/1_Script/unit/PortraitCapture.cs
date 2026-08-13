@@ -14,6 +14,10 @@ public static class PortraitCapture
     const string LayerName = "Portrait";
     const int    DefaultSize = 128;
     const float  Fov = 30f;
+
+    // 몸 높이에서 **위에서부터 이만큼만** 담는다 — 머리·어깨·가슴.
+    // 키우면 전신 쪽으로, 줄이면 얼굴 쪽으로 간다.
+    const float  BustPortion = 0.42f;
     static readonly Color BgColor = new Color(0.12f, 0.12f, 0.14f, 0f); // 투명 배경
 
     static Camera _cam;
@@ -71,12 +75,22 @@ public static class PortraitCapture
             else            bounds.Encapsulate(r.bounds);
         }
 
-        // 2) 카메라 배치 — 머리 쪽(상단)을 향하도록 포커스를 위로 편향
-        Vector3 center = bounds.center;
+        // 2) 카메라 배치 — **상반신만 담는다**(머리·어깨·가슴).
+        //
+        // 전에는 몸 전체가 들어가게 잡아서(`max(extents.y, extents.x)`) 128px 안에 사람이
+        // 통째로 들어갔다 — 얼굴이 몇 픽셀이라 **누가 누구인지 구별이 안 됐다.** 초상화는
+        // 개체를 알아보라고 있는 것이므로 얼굴이 커야 한다.
+        //
+        // 위에서 `BustPortion`만큼만 담고, 가로는 **어깨 폭**(`extents.x`)에 맞춘다 —
+        // 둘 중 큰 쪽으로 맞춰야 어느 방향으로도 안 잘린다. 네발짐승은 앞을 보고 찍히므로
+        // (카메라가 `forward`에 선다) 같은 계산이 그대로 얼굴 클로즈업이 된다.
+        Vector3 center  = bounds.center;
         Vector3 extents = bounds.extents;
-        Vector3 focus  = new Vector3(center.x, bounds.max.y - extents.y * 0.45f, center.z);
 
-        float fitExtent = Mathf.Max(extents.y, extents.x) * 1.1f; // 약간의 여백
+        float halfH = bounds.size.y * BustPortion * 0.5f;
+        Vector3 focus = new Vector3(center.x, bounds.max.y - halfH, center.z);
+
+        float fitExtent = Mathf.Max(halfH, extents.x) * 1.15f;   // 약간의 여백
         float dist = fitExtent / Mathf.Tan(Fov * 0.5f * Mathf.Deg2Rad);
 
         Vector3 fwd = target.transform.forward;

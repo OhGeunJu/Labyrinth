@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c178bbde4e3a7d94e906402dd581da19, type: 3}
+  m_Name: Ev_Raid_Cult
+  m_EditorClassIdentifier: Assembly-CSharp::GameEventData
+  EventName: "\uAC80\uC740 \uAD50\uB2E8"
+  Description: "\uAC80\uC740 \uC637\uC758 \uBB34\uB9AC\uAC00 \uC81C\uB2E8\uC5D0 \uBC14\uCE60
+    \uAC83\uC744 \uCC3E\uC544 \uC654\uC2B5\uB2C8\uB2E4."
+  Icon: {fileID: 0}
+  Weight: 1
+  MinGameTime: 2400
+  EventType: 0
+  EnemyPrefabs:
+  - {fileID: 6894885055828391614, guid: d04d65d024856e14b90c818b46ce24b1, type: 3}
+  - {fileID: 6894885055828391614, guid: 6326e0dc99cbc0d4fbc5eebe8f89a378, type: 3}
+  - {fileID: 6894885055828391614, guid: 5671e81eeb996f945a446dde1026f49c, type: 3}
+  EnemyCount: 4
+  MerchantPrefabs: []
+  MerchantVariants: []
+  ReinforcementPrefabs: []
+  ReinforcementCount: 3
+  DiscoveryItems: []
+  DiscoveryMinAmount: 3
+  DiscoveryMaxAmount: 12

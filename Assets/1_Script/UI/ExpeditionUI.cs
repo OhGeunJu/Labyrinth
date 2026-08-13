@@ -37,6 +37,7 @@ public class ExpeditionUI : MonoBehaviour
         ExpeditionFormation.OnChanged    += Refresh;
         ExpeditionFormation.OnDeparted   += Close;
         UnitBrain.OnUnitSpawned          += OnRosterChanged;
+        UnitBrain.OnFactionChanged       += OnRosterChanged;
         UnitBrain.OnUnitDied             += OnRosterChanged;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
         GameModeManager.OnModeChanged    += OnModeChanged;
@@ -47,6 +48,7 @@ public class ExpeditionUI : MonoBehaviour
         ExpeditionFormation.OnChanged    -= Refresh;
         ExpeditionFormation.OnDeparted   -= Close;
         UnitBrain.OnUnitSpawned          -= OnRosterChanged;
+        UnitBrain.OnFactionChanged       -= OnRosterChanged;
         UnitBrain.OnUnitDied             -= OnRosterChanged;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
         GameModeManager.OnModeChanged    -= OnModeChanged;

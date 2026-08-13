@@ -41,6 +41,7 @@ public static class DataManager
     // 종족. `UnitData`로 담으므로 `MinionData`·`NpcData`까지 한 번에 들어온다
     // (`Resources.LoadAll<UnitData>`가 파생 타입을 함께 준다).
     static readonly Dictionary<string, UnitData> _units = new(StringComparer.OrdinalIgnoreCase);
+    static readonly List<FactionData> _factions = new();
 
     // 소환 목록도 순서가 곧 메뉴 순서라 정렬된 리스트로 따로 둔다(건설 목록과 같은 이유).
     static readonly List<MinionData> _minionOrder = new();
@@ -119,6 +120,9 @@ public static class DataManager
     // 종족 — 방랑자·하수인·NPC 전부. 적/NPC 스폰을 데이터로 옮길 때도 이 색인을 쓴다.
     public static IReadOnlyDictionary<string, UnitData> AllUnits => _units;
 
+    // 저작된 세력 전부(플레이어 세력 포함 — 거르는 것은 보는 쪽 몫이다).
+    public static IReadOnlyList<FactionData> AllFactions => _factions;
+
     public static UnitData GetUnit(string key) =>
         !string.IsNullOrEmpty(key) && _units.TryGetValue(key, out var v) ? v : null;
 
@@ -144,6 +148,15 @@ public static class DataManager
 
         foreach (var u in Resources.LoadAll<UnitData>("Data/Units"))
             RegisterUnit(u);
+
+        // **세력은 목록이 필요해서 여기 있다.** 다른 SO(소지·AI 성향·상인)는 프리팹이 GUID로
+        // 가리키면 그만이라 `5_Data`에 살지만, 세력은 **전부를 훑어야 하는 곳**이 생겼다
+        // (`FactionPanelUI` — 아직 안 만난 세력도 목록에 서야 한다). 배열로 들면 이 저장소가
+        // 네 번 데인 그것이 된다(런타임 생성물에서 반드시 빈다) — 폴더 스캔이 답이다.
+        _factions.Clear();
+        foreach (var f in Resources.LoadAll<FactionData>("Data/Factions"))
+            if (f != null) _factions.Add(f);
+        _factions.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
 
         SortBuildings();
         SortMinions();

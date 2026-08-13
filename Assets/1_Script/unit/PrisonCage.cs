@@ -205,7 +205,11 @@ public static class Imprisonment
     // `reason`은 **로그 문구일 뿐이다** — 하는 일은 같다(자리를 비우고, 갇힘을 풀고,
     // 도주 성향을 씌워 내보낸다). 손으로 놓아 준 것과 제 발로 나간 것이 로그에서 구별되지
     // 않으면, "왜 없어졌지"를 되짚을 때 그 둘을 가릴 수가 없다.
-    public static void Release(UnitBrain brain, string reason = "놓아 줬다")
+    // 손으로 놓아 준 것의 기본 문구. **우호도가 이 값을 본다** — 몸값·회유처럼 제 몫을 이미
+    // 얹은 경로는 다른 `reason`을 넘기므로, 여기서 또 더해 두 번 값을 받는 일이 없다.
+    public const string DefaultReleaseReason = "놓아 줬다";
+
+    public static void Release(UnitBrain brain, string reason = DefaultReleaseReason)
     {
         if (brain == null) return;
 
@@ -224,6 +228,15 @@ public static class Imprisonment
         var faction = brain.GetComponent<Faction>();
         if (faction == null || !faction.IsPlayer)
         {
+            // **값을 안 받고 놓아 준 것은 더 산다**(`RansomBonus`보다 크다) — 몸값은 거래지만
+            // 이건 베푼 것이다. 그래야 "돈이냐 관계냐"가 고르는 일이 된다.
+            //
+            // **몸값으로 넘긴 경우는 여기 안 걸린다** — 그쪽은 `WorldRansom.Sell`이 제 몫을
+            // 이미 얹었고, 여기서 또 더하면 한 번 놓아 준 것이 두 번 값을 받는다.
+            if (faction != null && faction.Data != null && reason == DefaultReleaseReason)
+                FactionRelations.Add(faction.Data, FactionRelations.ReleaseBonus,
+                                     $"{brain.UnitName}을(를) 그냥 놓아 줬다");
+
             brain.SetStanceOverride(CombatStance.Flee);
             if (EventManager.TryFindExit(brain.transform.position, out var exit))
             {

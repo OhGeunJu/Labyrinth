@@ -66,6 +66,29 @@ public class WorldBandManager : MonoBehaviour
              "안 나와서, 시스템이 있는 줄도 모른 채 '안 나온다'가 된다.")]
     [Min(0f)] [SerializeField] float firstSpawnDelay = 20f;
 
+    // ── 습격 총량 ─────────────────────────────────────────────────────────────
+    //
+    // **습격이 오는 빈도는 지도 전체가 하나로 정한다.** 예전에는 소굴마다 제 시계를 들고
+    // `RaidIntervalDays`마다 따로 계획했다 — 그러면 **소굴이 늘어난 만큼 습격이 곱해진다.**
+    // 바이옴마다 소굴 종류를 얹은 순간 초반에 사방에서 동시에 몰려와 맞을 수밖에 없었다.
+    //
+    // 소굴을 늘리는 것은 **"어디에 무엇이 사는가"를 늘리는 일**이지 "얼마나 자주 맞는가"를
+    // 늘리는 일이 아니다. 그래서 시계를 하나로 올리고, 소굴은 **누가 올 차례인가**만 정한다.
+    [Header("습격 (전역)")]
+    [Tooltip("습격을 **하나** 계획하는 간격(일). 지도에 소굴이 몇이든 총량은 이 값이 정한다.")]
+    [Min(0.1f)] [SerializeField] float raidIntervalDays = 3f;
+
+    [Tooltip("첫 습격까지의 대기(일). **초반을 지켜 준다** — 아무것도 못 지은 채로 맞으면 " +
+             "대비의 결과가 아니라 그냥 재해다.")]
+    [Min(0f)] [SerializeField] float raidFirstDelayDays = 4f;
+
+    [Tooltip("동시에 예고돼 있을 수 있는 습격 수. 넘으면 시계가 돌아도 새로 잡지 않는다 — " +
+             "예고가 셋씩 쌓이면 어느 것을 막을지가 계산이 아니라 포기가 된다.")]
+    [Min(1)] [SerializeField] int maxPlannedRaids = 2;
+
+    // 다음 습격을 계획할 시각. 음수면 아직 첫 계산 전이다.
+    float _nextRaidAt = -1f;
+
     readonly List<WorldBand> _bands = new();
     readonly Dictionary<WorldBand, GameObject> _tokens = new();
     readonly Dictionary<GameObject, WorldBand> _byGo  = new();   // 레이캐스트 → 무리
@@ -126,9 +149,9 @@ public class WorldBandManager : MonoBehaviour
         foreach (var lair in WorldLairs.All)
         {
             lair.NextSortieAt = GameTimeManager.Elapsed + Random.Range(0f, firstSpawnDelay);
-            // 습격도 **계획은 곧** 선다 — 도착까지는 `RaidWarningDays`가 걸리므로 예고를
-            // 일찍 받아야 그런 것이 있다는 걸 알고 대비할 수 있다.
-            lair.NextRaidAt   = GameTimeManager.Elapsed + Random.Range(0f, firstSpawnDelay);
+            // **습격은 소굴이 안 든다** — 언제 하나 오는지는 전역 시계(`raidIntervalDays`)가
+            // 정하고 소굴은 차례만 다툰다. 여기서 소굴마다 시각을 흩뿌리던 것이 곧 습격이
+            // 소굴 수만큼 곱해지던 자리였다.
             lairs++;
         }
 
@@ -589,43 +612,95 @@ public class WorldBandManager : MonoBehaviour
         }
     }
 
+    // **시계는 하나, 소굴은 차례를 다툰다.**
+    //
+    // 예전에는 소굴마다 제 시계를 돌려 각자 습격을 계획했다. 그래서 소굴이 N개면 습격도 N배였고,
+    // 바이옴마다 소굴을 얹은 순간 초반에 사방에서 동시에 몰려왔다 — **막을 수 있느냐가 아니라
+    // 맞을 수밖에 없느냐**의 문제가 됐다.
+    //
+    // 이제 전역 시계가 "언제 하나 온다"를 정하고, 소굴은 **누가 올 차례인가**만 겨룬다.
+    // 소굴을 늘리는 것은 그래서 **빈도가 아니라 다양성**을 늘린다 — 어디서 오는지, 무엇이
+    // 오는지가 달라질 뿐 맞는 횟수는 그대로다.
     void SchedulePlans()
     {
         float now = GameTimeManager.Elapsed;
 
+        // 첫 계산 — **초반을 지켜 준다.** 아무것도 못 지은 채로 맞으면 대비의 결과가 아니라 재해다.
+        if (_nextRaidAt < 0f)
+        {
+            _nextRaidAt = now + raidFirstDelayDays * GameTimeManager.DayDuration;
+            return;
+        }
+
+        if (now < _nextRaidAt) return;
+
+        // **시각은 뽑든 못 뽑든 미룬다.** 안 그러면 칠 곳이 없거나 예고가 꽉 찬 동안 밀린
+        // 습격이 조건이 풀리는 순간 한꺼번에 터진다(`TrySorties`가 한도에서 하는 것과 같은 처리).
+        _nextRaidAt = now + raidIntervalDays * GameTimeManager.DayDuration;
+
+        if (_raids.Count >= maxPlannedRaids) return;
+
+        var lair = PickRaidingLair(now);
+        if (lair == null) return;
+
+        var target = NearestMine(lair.Node);
+        if (target == null) return;   // 칠 곳이 없으면 계획도 없다
+
+        var e = lair.Entry;
+        int count = Mathf.Max(1, Mathf.RoundToInt(lair.Strength * Mathf.Clamp01(e.RaidPortion)));
+        float warnDays = Mathf.Max(0.1f, e.RaidWarningDays);
+        float lead     = warnDays * GameTimeManager.DayDuration;
+
+        _raids.Add(new RaidPlan
+        {
+            Lair      = lair,
+            Target    = target.Value,
+            Count     = count,
+            ArrivesAt = now + lead,
+        });
+
+        int days = Mathf.Max(1, Mathf.CeilToInt(warnDays));
+        EventNotificationUI.Notify("습격 예고",
+            $"{lair.Name}({lair.Node.x}, {lair.Node.y})에서 {count}명이 " +
+            $"{days}일 뒤 ({target.Value.x}, {target.Value.y})를 습격합니다.",
+            holdWhenHidden: true);
+    }
+
+    // 이번 차례는 어느 소굴인가. **`RaidIntervalDays`가 이제 가중치로 읽힌다** —
+    // 값이 작을수록(자주 오려는 소굴일수록) 잘 뽑히고, **0이면 습격을 아예 안 온다**(그대로다).
+    //
+    // 절대 주기였던 것을 상대 빈도로 바꾼 것뿐이라 저작한 값은 그대로 뜻이 통한다:
+    // "3일마다 오려는 소굴"과 "6일마다 오려는 소굴"이 있으면 앞엣것이 두 배로 자주 뽑힌다.
+    // 다만 **총량은 전역 시계가 정하므로** 둘 다 있다고 습격이 두 배가 되지는 않는다.
+    WorldLair PickRaidingLair(float now)
+    {
+        float total = 0f;
+        foreach (var lair in WorldLairs.All)
+            total += RaidWeight(lair);
+
+        if (total <= 0f) return null;
+
+        float roll = Random.value * total;
         foreach (var lair in WorldLairs.All)
         {
-            var e = lair.Entry;
-            if (e == null || e.RaidIntervalDays <= 0f) continue;
-            if (lair.Strength <= 0 || now < lair.NextRaidAt) continue;
-
-            lair.NextRaidAt = now + e.RaidIntervalDays * GameTimeManager.DayDuration;
-
-            // 이미 이 소굴의 습격이 예정돼 있으면 겹쳐 잡지 않는다 — 예고가 둘이면
-            // 어느 것이 언제 오는지 셈이 안 된다.
-            if (HasPlanFrom(lair)) continue;
-
-            var target = NearestMine(lair.Node);
-            if (target == null) continue;   // 칠 곳이 없으면 계획도 없다
-
-            int count = Mathf.Max(1, Mathf.RoundToInt(lair.Strength * Mathf.Clamp01(e.RaidPortion)));
-            float warnDays = Mathf.Max(0.1f, e.RaidWarningDays);
-            float lead     = warnDays * GameTimeManager.DayDuration;
-
-            _raids.Add(new RaidPlan
-            {
-                Lair      = lair,
-                Target    = target.Value,
-                Count     = count,
-                ArrivesAt = now + lead,
-            });
-
-            int days = Mathf.Max(1, Mathf.CeilToInt(warnDays));
-            EventNotificationUI.Notify("습격 예고",
-                $"{lair.Name}({lair.Node.x}, {lair.Node.y})에서 {count}명이 " +
-                $"{days}일 뒤 ({target.Value.x}, {target.Value.y})를 습격합니다.",
-                holdWhenHidden: true);
+            float w = RaidWeight(lair);
+            if (w <= 0f) continue;
+            roll -= w;
+            if (roll <= 0f) return lair;
         }
+        return null;
+    }
+
+    float RaidWeight(WorldLair lair)
+    {
+        var e = lair?.Entry;
+        if (e == null || e.RaidIntervalDays <= 0f) return 0f;
+        if (lair.Strength <= 0) return 0f;
+
+        // 이미 예고된 소굴은 빼 둔다 — 예고가 둘이면 어느 것이 언제 오는지 셈이 안 된다.
+        if (HasPlanFrom(lair)) return 0f;
+
+        return 1f / e.RaidIntervalDays;
     }
 
     bool HasPlanFrom(WorldLair lair)
