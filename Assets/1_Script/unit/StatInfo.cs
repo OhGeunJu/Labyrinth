@@ -62,7 +62,7 @@ public static class StatInfo
         StatName.Cooking        => "요리. 결과물의 등급에 걸린다.",
         StatName.Medicine       => "치료. 회복 속도와 후유증에 걸린다.",
         StatName.Research       => "연구대에서의 진행 속도.",
-        StatName.Warden         => "붙잡은 사람을 다루는 솜씨. 설득이 먹힐 확률과 말 붙이는 시간에 걸린다.",
+        StatName.Social         => "말로 상대를 움직이는 솜씨. 포로 설득이 먹힐 확률과 말 붙이는 시간, 그리고 상인과 흥정한 값에 걸린다.",
         StatName.WeaponCrafting => "무기 제작. 속도와 완성품 등급을 정한다.",
         StatName.ArmorCrafting  => "방어구 제작. 속도와 완성품 등급을 정한다.",
         StatName.Alchemy        => "물약·시약 제조.",

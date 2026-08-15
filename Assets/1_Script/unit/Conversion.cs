@@ -178,7 +178,7 @@ public static class Conversion
         return BaseGain / (1f + mind / 130f * MindResist);
     }
 
-    // **설득하는 쪽은 간수 솜씨로 잰다**(`StatName.Warden`).
+    // **설득하는 쪽은 간수 솜씨로 잰다**(`StatName.Social`).
     //
     // 인지력을 빌려 쓰고 있었는데, 그러면 **학자가 곧 간수가 된다** — 연구를 시키려고 올린
     // 스탯이 설득까지 잘하게 만들고, 반대로 간수를 키우면 연구 속도가 딸려 온다. 작업
@@ -186,12 +186,12 @@ public static class Conversion
     //
     // **버티는 쪽은 여전히 인지력이다**(`PersuadeGain`) — 설득은 **기술**이고 버티는 것은
     // **머리**다. 같은 스탯을 마주 세우면 대칭이 예쁘지만, 포로에게 "간수 솜씨"를 물을 수는 없다.
-    static float WardenSkill(UnitBrain speaker)
-        => speaker != null && speaker.Stats != null ? speaker.Stats.Warden : 0f;
+    static float SocialSkill(UnitBrain speaker)
+        => speaker != null && speaker.Stats != null ? speaker.Stats.Social : 0f;
 
     // 한 회차에 걸리는 시간(초) — 말을 붙이는 데 드는 시간. 솜씨가 좋으면 짧다.
     public static float PersuadeSeconds(UnitBrain speaker)
-        => 8f / (0.5f + WardenSkill(speaker) / 100f);
+        => 8f / (0.5f + SocialSkill(speaker) / 100f);
 
     // **말이 안 먹힐 수도 있다.** 간수 솜씨 0이면 40%, 130이면 90%쯤 통한다.
     //
@@ -200,7 +200,7 @@ public static class Conversion
     // 실패해도 **잃는 것은 시간뿐**이라 무엇이 일어났는지도 무엇을 잃었는지도 분명하다.
     // (지배 실패는 죽지만 그건 도박이라고 적어 두고 사람이 누르는 것이다.)
     public static float PersuadeChance(UnitBrain speaker)
-        => Mathf.Clamp01(0.40f + WardenSkill(speaker) / 130f * 0.50f);
+        => Mathf.Clamp01(0.40f + SocialSkill(speaker) / 130f * 0.50f);
 
     // **한 회차를 치른다.** 굴리고, 알리고, 쿨타임을 건다.
     //

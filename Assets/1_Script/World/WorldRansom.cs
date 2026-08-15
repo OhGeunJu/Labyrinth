@@ -51,23 +51,33 @@ public static class WorldRansom
 
     // 한 사람의 몸값. **흔들림이 없다** — 고용가는 부르는 값이라 사람마다 달라도 되지만,
     // 몸값은 창을 여닫을 때마다 바뀌면 값이 나올 때까지 여닫게 된다.
-    public static int PriceFor(UnitBrain u)
+    //
+    // **`negotiator`는 흥정하는 우리 쪽 사람이다**(`Trading.Haggle`) — 몸값은 글자 그대로
+    // 흥정이라 사교가 값을 흔든다. 인자에 기본값을 안 두는 것은 일부러다: 안 넘기면 조용히
+    // 맹탕 값이 나오는 대신 부르는 쪽이 매번 적게 해서, **값을 띄우는 곳과 치르는 곳이 같은
+    // 사람을 넘기도록** 강제한다(둘이 갈리면 "보이는 값과 빠지는 값이 다르다"가 된다).
+    public static int PriceFor(UnitBrain u, UnitBrain negotiator)
     {
         if (u == null) return 0;
-        return Mathf.Max(1, Mathf.RoundToInt(BaseWorth(u) * RansomFactor));
+        int list = Mathf.Max(1, Mathf.RoundToInt(BaseWorth(u) * RansomFactor));
+        return Trading.Haggle(list, negotiator, buying: true);
     }
 
-    // 붙잡은 사람을 그 세력에 넘기고 받는 값.
-    public static int PayoutFor(UnitBrain u)
+    // 붙잡은 사람을 그 세력에 넘기고 받는 값. **방향이 반대다** — 내가 받는 값이라 잘 흥정할수록
+    // 올라간다.
+    public static int PayoutFor(UnitBrain u, UnitBrain negotiator)
     {
         if (u == null) return 0;
-        return Mathf.Max(1, Mathf.RoundToInt(BaseWorth(u) * PayoutFactor));
+        int list = Mathf.Max(1, Mathf.RoundToInt(BaseWorth(u) * PayoutFactor));
+        return Trading.Haggle(list, negotiator, buying: false);
     }
 
-    public static int PriceFor(IEnumerable<UnitBrain> members)
+    // **한 사람씩 흥정해서 더한다** — 통째로 더한 뒤 한 번 곱하는 것과 반올림이 달라지므로,
+    // 목록에 적은 낱값의 합이 총액과 어긋나면 안 된다.
+    public static int PriceFor(IEnumerable<UnitBrain> members, UnitBrain negotiator)
     {
         int sum = 0;
-        if (members != null) foreach (var m in members) sum += PriceFor(m);
+        if (members != null) foreach (var m in members) sum += PriceFor(m, negotiator);
         return sum;
     }
 
@@ -125,11 +135,14 @@ public static class WorldRansom
     }
 
     // 넘긴다 — 돈을 받고 놓아준다. **받은 액수를 돌려준다**(0이면 아무 일도 안 했다).
-    public static int Sell(UnitBrain u)
+    //
+    // **값을 띄운 쪽과 같은 `negotiator`를 넘길 것.** 우클릭 창이 `(1,350 G)`를 적어 놓고
+    // 다른 사람이 흥정하면 눌렀을 때 다른 액수가 들어온다.
+    public static int Sell(UnitBrain u, UnitBrain negotiator)
     {
         if (!CanSell(u)) return 0;
 
-        int paid = PayoutFor(u);
+        int paid = PayoutFor(u, negotiator);
         Wallet.Add(paid);
 
         // **거래는 거래다** — 사람을 돌려보냈으니 그쪽 우호도가 조금 오른다. 죽이는 것과

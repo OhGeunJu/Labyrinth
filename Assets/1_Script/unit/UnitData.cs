@@ -60,6 +60,27 @@ public class UnitData : ScriptableObject
     [Tooltip("이 종족이 특정 스탯만 빠르게/느리게 성장. 목록에 없는 스탯은 기본(1.0)")]
     public List<StatGrowthEntry> StatGrowthRates = new();
 
+    // ── 도축 ──────────────────────────────────────────────────────────────────
+    //
+    // **몸에서 나오는 것은 종족이 든다 — 지니던 것(`LoadoutData.Loot`)과 다른 축이다.**
+    //
+    // 한때 늑대 가죽도 `Loadout`에 적었고, 그때 이유는 *"둘 다 죽으면 나오는 아이템이라 답이
+    // 두 벌이면 어긋난다"*였다. 도축이 생기면서 **시점이 갈렸다**: 지니던 것은 죽을 때
+    // 떨어지고, 몸에서 나오는 것은 **도축해야** 나온다. 그러면 종족이 드는 것이 맞다 —
+    // 늑대 가죽은 그 짐승의 몸이지 주머니 속 물건이 아니고, 같은 `Loadout`을 쓰더라도
+    // 종족이 다르면 나오는 것이 달라야 한다.
+    //
+    // **가죽·고기는 여기, 뼈는 따로.** 뼈는 삭아도 남으므로 단계를 안 가리고 나오지만
+    // 살점은 썩으면 못 쓴다 — 그 갈림은 `Butchering`이 한 곳에서 답한다.
+    [Header("도축")]
+    [Tooltip("몸에서 나오는 것(고기·가죽 등). **썩으면 음식은 안 나온다**(`Butchering`).")]
+    public List<LootEntry> ButcherYield = new();
+
+    [Tooltip("뼈. 삭아도 남으므로 **단계를 안 가리고** 나온다.")]
+    // **둘 다 비우면 도축 자체가 안 뜬다**(`Butchering.HasYield` — 줄은 남되 흐려진다).
+    // 무엇이 나올지는 종족이 저작한다 — 사람도 예외가 아니다(생가죽·생고기·뼈).
+    public List<LootEntry> BoneYield = new();
+
     public float GetGrowthRate(StatName stat)
     {
         for (int i = 0; i < StatGrowthRates.Count; i++)

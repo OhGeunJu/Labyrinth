@@ -22,6 +22,10 @@ public class InventoryUI : MonoBehaviour
 
     static InventoryUI _instance;
 
+    // 배낭 창 하나. **장비칸 드래그가 칸 크기를 여기서 베낀다**(`Grid.CellSize`) — 손에 든
+    // 그림이 놓일 자리와 같은 크기여야 얼마나 큰 것을 들고 있는지가 보인다.
+    public static InventoryUI Instance => _instance;
+
     [Header("씬 참조")]
     [SerializeField] GameObject      panel;
     [SerializeField] RectTransform   gridContainer;
@@ -61,6 +65,9 @@ public class InventoryUI : MonoBehaviour
     [SerializeField] Button          lockButton;
     [SerializeField] TextMeshProUGUI lockLabel;
 
+    [Tooltip("칸을 다시 채워 넣는다 — 같은 것끼리 합치고 큰 것부터 빈틈없이")]
+    [SerializeField] Button          tidyButton;
+
     [Tooltip("적재 바 오른쪽 끝의 폰 넘겨보기 묶음. 원정대 거래일 때만 켜진다")]
     [SerializeField] GameObject      traderGroup;
     [SerializeField] TextMeshProUGUI traderNameText;
@@ -84,6 +91,10 @@ public class InventoryUI : MonoBehaviour
 
     public bool IsPanelOpen => panel != null && panel.activeSelf;
 
+    // 폰 배낭 격자. **상점 진열이 이걸 베낀다**(칸 크기·격자 크기) — 나란히 떠 있는 두 격자가
+    // 다른 눈금을 쓰면 같은 물건이 다른 크기로 보인다.
+    public InventoryGridUI Grid => _gridUI;
+
     void Awake()
     {
         _instance = this;
@@ -97,6 +108,7 @@ public class InventoryUI : MonoBehaviour
         if (actionButton) actionButton.onClick.AddListener(OnActionClicked);
         if (unloadButton) unloadButton.onClick.AddListener(ToggleUnload);
         if (lockButton)   lockButton.onClick.AddListener(ToggleLockMode);
+        if (tidyButton)   tidyButton.onClick.AddListener(TidyGrid);
         if (traderPrevButton) traderPrevButton.onClick.AddListener(() => StepPawn(-1));
         if (traderNextButton) traderNextButton.onClick.AddListener(() => StepPawn(+1));
         if (traderGroup)  traderGroup.SetActive(false);
@@ -188,8 +200,14 @@ public class InventoryUI : MonoBehaviour
     // **"누구의 배낭인가"는 배낭 창의 정보다.** 상점 창에 달면 상점을 안 열었을 땐 넘겨볼
     // 수단이 없고, 무게·짐내림·잠금이 이미 "이 폰"의 것인데 폰을 고르는 자리만 딴 창에 있게 된다.
     //
-    // 월드맵에서만 쓴다 — 필드에서는 폰을 클릭해 고르는 방식이 이미 있고, 같은 일을 하는
-    // 조작이 둘이면 어느 쪽이 이기는지 헷갈린다. 그래서 목록이 없으면 줄 자체가 꺼진다.
+    // **필드에서도 쓴다**(2026-08-14). 한동안 월드맵 전용이었다 — "필드에서는 폰을 클릭해
+    // 고르는 방식이 이미 있고, 같은 일을 하는 조작이 둘이면 어느 쪽이 이기는지 헷갈린다"가
+    // 그 이유였다. 그런데 **둘은 같은 일이 아니다**: 선택은 *누구를 데리고 왔나*이고 순환은
+    // *그중 누구 배낭을 보나*다. 순환이 도는 범위가 선택의 부분집합이라 겨룰 데가 없고,
+    // 여럿을 고른 채 상점을 열면 오히려 순환이 없이는 **첫 번째로 잡힌 폰의 배낭에 갇힌다**
+    // (그 "첫 번째"는 레이캐스트 순서라 고른 사람이 정한 것도 아니다).
+    //
+    // 목록이 없으면 줄 자체가 꺼지고, 혼자면 버튼만 숨는다.
     IReadOnlyList<UnitBrain> _cycle;
     int                      _cycleIndex;
 
@@ -344,6 +362,16 @@ public class InventoryUI : MonoBehaviour
         _lockMode = !_lockMode;
         RefreshLockToggle();
     }
+
+    // **칸을 다시 채워 넣는다**(`Inventory.Compact`).
+    //
+    // 격자 배낭은 쓰다 보면 반드시 조각난다 — 가운데 것을 꺼내면 그 자리가 구멍으로 남고,
+    // 칸 수로는 넉넉한데 **2×4 갑옷이 들어갈 연속된 자리가 없어** 거절당한다. 그때 물건을
+    // 하나씩 끌어 옮기는 것은 놀이가 아니라 잡일이다.
+    //
+    // **지금 보고 있는 통을 정리한다** — 배낭이든 창고든 시체든, 이 창이 그리고 있는 그것.
+    // 격자가 `OnChanged`를 듣고 있어 다시 그리는 것은 저절로 된다.
+    void TidyGrid() => _gridUI?.Inventory?.Compact();
 
     void RefreshLockToggle()
     {
@@ -708,6 +736,12 @@ public class InventoryUI : MonoBehaviour
         RefreshActionBar();
     }
 
+    // **밖에서 판매 줄을 다시 그리게 하는 문.** 상인 주머니가 줄면 같은 물건이 "1,200 G"에서
+    // "상인의 돈이 모자란다"로 바뀌어야 하는데, 그 변화는 **배낭이 아니라 상점 쪽에서** 일어난다.
+    // 드래그 판매·더블클릭 판매는 이 창을 안 거치므로(`MerchantUI.TrySellItem` 직행) 여기가
+    // 없으면 문구가 한 박자 늦는다 — 다음에 뭘 누를 때까지 옛 값이 남는다.
+    public void RefreshSellState() => RefreshActionBar();
+
     void RefreshActionBar()
     {
         if (actionBar == null) return;
@@ -758,10 +792,25 @@ public class InventoryUI : MonoBehaviour
             {
                 int price = _shop?.GetSellPrice(_selectedItem) ?? 0;
                 string qc = ColorUtility.ToHtmlStringRGB(ItemInfoUI.QualityColor(_selectedItem.Quality));
+
+                // **왜 안 팔리는지 적는다.** 값은 멀쩡히 붙어 있는데 눌러도 아무 일이 없으면
+                // 그건 고장으로 보인다. 막히는 이유가 셋이고 **할 일이 다 다르다**:
+                //   · 값이 0 → 그 물건은 원래 안 팔린다
+                //   · 주머니가 빔 → 내일 다시 오거나, 그에게서 뭘 사 주면 된다
+                //   · 좌판이 참 → 다른 마을로 가거나, 내가 쌓아 둔 것이 빠지길 기다린다
+                bool broke = price > 0 && _shop != null && !_shop.HasInfiniteGold && _shop.Gold < price;
+                bool full  = price > 0 && !broke && _shop != null &&
+                             !_shop.HasRoomFor(_selectedItem.Data, 1, _selectedItem.Quality);
+
+                string tail = price <= 0 ? "<color=#888>판매 불가</color>"
+                            : broke      ? $"<color=#C88>상인의 돈이 모자란다 ({_shop.Gold:N0} G)</color>"
+                            : full       ? "<color=#C88>좌판에 자리가 없다</color>"
+                            :              $"<color=#FFD94D>{price} G</color>";
+
                 actionItemText.text =
                     $"<color=#{qc}>[{_selectedItem.Quality.DisplayName()}]</color> {_selectedItem.Data?.ItemName}" +
-                    $"  →  {(price > 0 ? $"<color=#FFD94D>{price} G</color>" : "<color=#888>판매 불가</color>")}";
-                if (actionButton) actionButton.interactable = price > 0;
+                    $"  →  {tail}";
+                if (actionButton) actionButton.interactable = price > 0 && !broke && !full;
             }
             else
             {

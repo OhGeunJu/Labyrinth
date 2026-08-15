@@ -178,6 +178,20 @@ public class WorldBandManager : MonoBehaviour
     {
         WorldLairs.RegenAll();
         RollEscapes();
+        RefreshBandShops();
+    }
+
+    // **상단도 하루가 지나면 물건과 돈이 채워진다.**
+    //
+    // 필드 상인은 `Merchant.RefreshStock`이, 마을 시장은 `TownMarket.ShopsAt`이 매일 갱신하는데
+    // **지도 위의 상단만 아무도 안 불렀다** — 만들 때 한 번 뽑고 끝이었다. 재고만 있을 때는
+    // "털면 그만큼 준다"로 읽혀 넘어갔지만, 주머니(`Shop.Gold`)가 생기면서 **한 번 비운 상단은
+    // 그 판이 끝날 때까지 빈털터리**가 된다(`MerchantData.Gold` 툴팁의 "하루가 지나면 회복"과
+    // 어긋난다).
+    void RefreshBandShops()
+    {
+        foreach (var band in _bands)
+            band?.Shop?.Refresh();
     }
 
     // **붙잡힌 사람은 스스로 빠져나올 수 있다.**
@@ -445,8 +459,10 @@ public class WorldBandManager : MonoBehaviour
         if (myFaction == null) return;
 
         var playerFaction = Faction.Player != null ? Faction.Player.Data : null;
+        // 우호도를 태운다(`StanceBetween`) — 관계를 끌어올린 무리는 쫓아오지 않아야 한다.
         bool hostileToPlayer = playerFaction != null &&
-                               (myFaction.IsHostileTo(playerFaction) || playerFaction.IsHostileTo(myFaction));
+                               (FactionRelations.IsHostileBetween(myFaction, playerFaction)
+                             || FactionRelations.IsHostileBetween(playerFaction, myFaction));
 
         // **적대가 아니면 멈춰 기다린다.** 도망칠 이유가 없는데 계속 걸어가 버리면, 우리와
         // 속도가 비슷한 상단·순찰대는 영영 못 만난다 — 지도에 보이는데 말은 못 거는 그림이 된다.
@@ -700,7 +716,13 @@ public class WorldBandManager : MonoBehaviour
         // 이미 예고된 소굴은 빼 둔다 — 예고가 둘이면 어느 것이 언제 오는지 셈이 안 된다.
         if (HasPlanFrom(lair)) return 0f;
 
-        return 1f / e.RaidIntervalDays;
+        // **미워하는 세력이 더 자주 온다**(`FactionRelations.RaidWeight`, −100이면 두 배).
+        //
+        // 우호도를 떨어뜨리는 데 값이 붙는 자리다 — 죽이고 다니는 것이 화면의 숫자만
+        // 움직이면 그 숫자를 볼 이유가 없다. **총량은 안 건드린다**: 여기서 갈리는 건
+        // 누가 올 차례인가뿐이고 습격 빈도는 전역 시계가 그대로 정한다(소굴 수만큼
+        // 곱해지던 사고를 축만 바꿔 되풀이하지 않으려고).
+        return FactionRelations.RaidWeight(lair.Band?.Faction) / e.RaidIntervalDays;
     }
 
     bool HasPlanFrom(WorldLair lair)

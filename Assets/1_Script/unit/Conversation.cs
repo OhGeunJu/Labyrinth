@@ -49,7 +49,7 @@ public static class Conversation
         AddMerchant(target, opts);
         AddPrisoner(target, speaker, opts);
         AddRecruit(target, speaker, opts, ref line);
-        AddContract(target, opts, ref line);
+        AddContract(target, speaker, opts, ref line);
 
         opts.Add(("그만둔다", (System.Action)(() => ui.Close())));
         ui.Open(who, face, line, opts);
@@ -121,14 +121,25 @@ public static class Conversation
                 })));
         }
 
+        // **말을 건 그 사람이 흥정한다**(`Trading.HagglerFor`) — 눈앞에서 말을 주고받는 것이
+        // 그 사람이다. 우클릭 창도 **같은 사람**을 고르므로(`Nearest(commanders, 대상)`)
+        // 같은 포로의 값이 두 문에서 갈리지 않는다. 액수를 띄울 때와 치를 때 같은 사람을
+        // 넘긴다(따로 구하면 표시와 결제가 갈린다).
+        // **낱말에 돈이 있어야 한다.** `네 쪽에 돌려보내 주지`였는데, 그러면 바로 아래
+        // `가라. 다시는 보지 말자`(공짜로 풀어 주기)와 **읽어서는 구별이 안 된다** — 액수는
+        // 괄호 안에 있어 눈이 나중에 닿는다. 결과는 정반대다: 이쪽은 돈을 벌고(우호도 +8),
+        // 저쪽은 안 받는 대신 더 산다(+14). 우클릭 쪽 문구(`몸값을 받고 넘긴다`)와도 맞춘다 —
+        // 같은 동작이 문에 따라 다른 말로 불리면 같은 것인 줄 모른다.
         if (WorldRansom.CanSell(u))
         {
-            int payout = WorldRansom.PayoutFor(u);
-            opts.Add(($"네 쪽에 돌려보내 주지 ({payout:N0} G)",
-                      (System.Action)(() => WorldRansom.Sell(u))));
+            var haggler = Trading.HagglerFor(speaker);
+            int payout  = WorldRansom.PayoutFor(u, haggler);
+            opts.Add(($"몸값을 받고 돌려보내 주지 ({payout:N0} G)",
+                      (System.Action)(() => WorldRansom.Sell(u, haggler))));
         }
 
-        opts.Add(("가라. 다시는 보지 말자", (System.Action)(() => Imprisonment.Release(u))));
+        // **값을 안 받는다는 것이 드러나야** 위의 몸값 줄과 고르는 일이 된다.
+        opts.Add(("그냥 가라. 다시는 보지 말자", (System.Action)(() => Imprisonment.Release(u))));
     }
 
     // ── 떠돌이 영입 ───────────────────────────────────────────────────────────
@@ -143,7 +154,10 @@ public static class Conversation
         // **`Spec`을 직접 읽지 않는다** — 저작한 폰만 갖고 있어서, 굴려서 태어난 떠돌이는
         // 값이 0이 되어 **선택지가 통째로 사라진다**(실제로 그랬다). `PriceOf`가 명세가 있으면
         // 그 값을, 없으면 실제 스탯에서 낸다.
-        int price = PawnSpec.PriceOf(u);
+        //
+        // **부르는 값에 흥정이 얹힌다**(`Trading.Haggle`) — 사람을 사는 것도 값을 다투는
+        // 일이다. **말을 건 그 사람이 깎는다** — 사교 좋은 폰을 보내면 싸게 데려온다.
+        int price = Trading.Haggle(PawnSpec.PriceOf(u), Trading.HagglerFor(speaker), buying: true);
         if (price <= 0) return;
 
         line = $"정처 없이 떠도는 중이오. 값만 맞으면 손을 빌려 드리리다 — {price:N0} G면 되오.";
@@ -170,7 +184,8 @@ public static class Conversation
     const int   ContractDays = 5;
     const float DayDivisor   = 14f;   // 사람 값의 1/14이 하루치 → 닷새면 값의 약 1/3
 
-    static void AddContract(UnitBrain u, List<PawnMenuOption> opts, ref string line)
+    static void AddContract(UnitBrain u, UnitBrain speaker, List<PawnMenuOption> opts,
+                            ref string line)
     {
         // **누가 값을 받고 싸워 주는가는 세력이 답한다**(`FactionData.ForHire`).
         // 표시명(`FactionName`)으로 가리면 안 된다 — 그건 번역 대상이라 언어를 바꾸는 순간
@@ -184,8 +199,12 @@ public static class Conversation
         var hired = u.GetComponent<Hireling>();
 
         // 하루치는 **사람 값에서 뽑는다** — `PriceOf`라 명세가 없는 용병도 값이 나온다.
+        //
+        // **흥정은 날수를 곱한 뒤에 얹는다.** 하루치에 먼저 곱하면 반올림이 닷새만큼
+        // 증폭돼(하루치 300이 294로 깎이면 닷새에 30 차이) 화면의 하루치와 총액이 안 맞는다.
         int worth = PawnSpec.PriceOf(u);
         int price = worth > 0 ? Mathf.Max(1, Mathf.RoundToInt(worth / DayDivisor) * ContractDays) : 0;
+        price = Trading.Haggle(price, Trading.HagglerFor(speaker), buying: true);
         if (price <= 0) return;
 
         line = hired != null

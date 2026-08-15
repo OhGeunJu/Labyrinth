@@ -70,10 +70,12 @@ public class TimeHUD : MonoBehaviour
     {
         if (clockText == null) return;
 
+        // **때를 적는다**(새벽·아침·낮·저녁·밤). 낮/밤 두 자만 띄우면 실시간 20분 동안
+        // 글자가 한 번도 안 바뀌어 하루가 흐르는 것이 화면에 안 보인다.
         bool day = GameTimeManager.IsDay;
         clockText.text  = $"{GameTimeManager.CurrentDay + 1}일차   " +
                           $"{GameTimeManager.Hour:00}:{GameTimeManager.Minute:00}   " +
-                          (day ? "낮" : "밤") +
+                          GameTimeManager.PhaseName(GameTimeManager.Phase) +
                           (GameTimeManager.IsPaused ? "   (일시정지)" : "");
         clockText.color = day ? dayColor : nightColor;
     }

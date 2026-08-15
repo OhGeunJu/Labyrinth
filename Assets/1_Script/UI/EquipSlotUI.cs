@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 
@@ -99,6 +100,17 @@ public class EquipSlotUI : MonoBehaviour,
     public void OnPointerClick(PointerEventData e)
     {
         if (_equipment == null) return;
+
+        // **끌었다 제자리에 놓은 것은 클릭이 아니다.**
+        //
+        // uGUI는 누른 곳과 놓은 곳이 같으면 **드래그가 끝난 뒤에도** 클릭을 한 번 더 보낸다.
+        // 그래서 장비를 집어 끌었다가 도로 그 칸에 놓으면 **여기가 벗겨 버렸다** — 다른 칸에
+        // 놓을 때만 멀쩡했던 이유가 이것이다(놓은 곳이 달라 클릭이 안 온다).
+        //
+        // 순서는 로그로 확인했다: `OnBeginDrag` → **`OnPointerClick`** → `OnEndDrag`.
+        // 그래서 이 시점엔 `DraggedSlot`이 아직 나를 가리키고 있어 그것만 보면 된다.
+        if (DraggedSlot != null) return;
+
         switch (_kind)
         {
             case SlotKind.MainHand: _equipment.Unequip();                     break;
@@ -121,15 +133,29 @@ public class EquipSlotUI : MonoBehaviour,
     // 밖에서 끌어온 것을 못 찾고 조용히 실패했고, 배낭을 경유하게 고쳤더니 이번엔
     // **배낭이 꽉 차면 빈 칸에도 못 넣었다** — "칸은 비었는데 왜 안 들어가지"가 된다.
     // 벗겨지는 쪽만 배낭으로 가고(자리 없으면 발밑), 들어오는 쪽은 자리를 안 본다.
+    // **장비칸 위에 놓았다** — 그러면 격자로 벗기는 길(`TryDropToGrid`)이 또 돌면 안 된다.
+    //
+    // 배낭 격자의 `RectTransform`이 장비 열까지 덮고 있어서, **제자리에 도로 놓기만 해도**
+    // `FindUnderCursor`가 "격자 위"라고 답해 **장비가 벗겨졌다.** 다른 칸으로 맞바꾼 뒤에도
+    // 같은 길이 한 번 더 돌 뻔했다. `DraggableItem.DropHandled`와 같은 자리의 깃발이다.
+    static bool _slotDropHandled;
+
     public void OnDrop(PointerEventData e)
     {
         if (_equipment == null) return;
+
+        if (DraggedSlot != null) _slotDropHandled = true;
 
         // 장비칸 → 장비칸. **비었으면 옮기고 차 있으면 맞바꾼다.**
         if (DraggedSlot != null && DraggedSlot != this) { SwapWith(DraggedSlot); return; }
 
         var inst = DraggableItem.DraggedInstance;
         if (inst == null) return;
+
+        // **남의 진열은 여기로 못 들어온다** — 값도 안 치르고 입는 길이 된다.
+        // 사는 것은 배낭으로 끌어다 놓고 나서 할 일이다(`MerchantUI.HandleDragTrade`).
+        var src = DraggableItem.DraggedSourceGrid;
+        if (src != null && src.IsShop) return;
 
         // **맞는 칸인지 먼저 본다.** 옮기고 나서 못 차면 물건만 남의 상자에서 건너온 채가
         // 되는데, 그건 시킨 적 없는 일이다.
@@ -255,8 +281,87 @@ public class EquipSlotUI : MonoBehaviour,
         if (_equipment == null || GetCurrentItem() == null) return;
 
         ItemInfoUI.Hide();
-        DraggedSlot = this;
+        DraggedSlot  = this;
+        _dragRotated = false;
         if (icon) { var c = icon.color; c.a = 0.35f; icon.color = c; }
+
+        MakeGhost();
+    }
+
+    // **손에 든 것을 보여 준다.**
+    //
+    // 한때 "칸 자체가 그림이라 끌 아이콘을 안 만든다"로 두고 칸만 흐리게 했다. 그런데 격자
+    // 드래그에는 손에 든 그림이 있어서, **같은 조작이 어디서 시작했느냐로 다르게 보였다** —
+    // 무엇보다 2×4 갑옷을 끌 때 *얼마나 큰 것을 들고 있는지*가 안 보인다.
+    //
+    // **그림만 만든다**(놓는 규칙은 그대로 `TryDropToGrid`가 든다) — 그때 걱정한 "두 벌"은
+    // 드롭 처리를 말한 것이고, 커서를 따라다니는 사각형 하나는 그 축이 아니다.
+    RectTransform _ghost;
+    bool          _dragRotated;
+
+    void MakeGhost()
+    {
+        var canvas = GetComponentInParent<Canvas>();
+        var inst   = GetCurrentInstance();
+        if (canvas == null || inst?.Data == null) return;
+
+        var go = new GameObject("_EquipDragGhost", typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(canvas.transform, false);
+        go.transform.SetAsLastSibling();
+
+        var img = go.GetComponent<Image>();
+        img.raycastTarget = false;
+        img.color         = new Color(1f, 1f, 1f, 0.7f);
+
+        if (inst.Data.Icon != null) { img.sprite = inst.Data.Icon; img.preserveAspect = true; }
+        else
+        {
+            // **그림이 없으면 이름을 적는다** — 격자 아이콘과 같은 규칙(`InventoryGridUI`).
+            // 안 적으면 손에 초록 사각형만 들려 무엇을 끌고 있는지 알 수가 없다.
+            img.color = new Color(0.25f, 0.35f, 0.25f, 0.7f);
+
+            var label = new GameObject("Label", typeof(RectTransform));
+            label.transform.SetParent(go.transform, false);
+
+            var txt = label.AddComponent<TextMeshProUGUI>();
+            txt.text          = inst.Data.ItemName;
+            txt.fontSize      = 12;
+            txt.alignment     = TextAlignmentOptions.Center;
+            txt.color         = Color.white;
+            txt.raycastTarget = false;
+
+            var lrt = txt.rectTransform;
+            lrt.anchorMin = Vector2.zero;
+            lrt.anchorMax = Vector2.one;
+            lrt.offsetMin = new Vector2(2, 2);
+            lrt.offsetMax = new Vector2(-2, -2);
+        }
+
+        _ghost = (RectTransform)go.transform;
+        _ghost.pivot = new Vector2(0f, 1f);   // 격자 아이콘과 같은 기준(좌상단 = 잡은 지점)
+
+        SizeGhost();
+        if (Mouse.current != null) MoveGhost(Mouse.current.position.ReadValue());
+
+    }
+
+    // 칸 크기는 **지금 얹혀 있는 격자에서 베낀다** — 손에 든 것이 놓일 자리와 같은 크기여야
+    // 뜻이 있다. 격자 밖이면 배낭 것을 쓴다(거기로 갈 일이 가장 잦다).
+    void SizeGhost(float cellSize = 0f)
+    {
+        if (_ghost == null) return;
+
+        var inst = GetCurrentInstance();
+        if (inst?.Data == null) return;
+
+        float cs = cellSize > 0f ? cellSize
+                 : InventoryUI.Instance != null && InventoryUI.Instance.Grid != null
+                 ? InventoryUI.Instance.Grid.CellSize : 64f;
+
+        int w = _dragRotated ? inst.Data.Height : inst.Data.Width;
+        int h = _dragRotated ? inst.Data.Width  : inst.Data.Height;
+
+        _ghost.sizeDelta = new Vector2(w * cs - 4, h * cs - 4);
     }
 
     // **격자 위에서는 들어갈 자리를 미리 보여 준다** — 배낭 아이콘을 끌 때와 같게.
@@ -266,21 +371,65 @@ public class EquipSlotUI : MonoBehaviour,
     // `ShowPreview`가 자리와 거절을 그 자리에서 그려 준다.
     InventoryGridUI _previewGrid;
 
-    public void OnDrag(PointerEventData e)
+    public void OnDrag(PointerEventData e) => RefreshDrag(e.position);
+
+    // **회전과 따라다니기는 `Update`가 받는다.**
+    //
+    // `OnDrag`는 **포인터가 움직인 프레임에만** 불린다 — 거기서 Q/E를 읽으면 마우스를 가만히
+    // 둔 채 누른 키가 그대로 사라진다(격자 드래그가 겪은 그것).
+    void Update()
     {
+        if (DraggedSlot != this) return;
+
+        var kb = Keyboard.current;
+        if (kb != null && (kb.qKey.wasPressedThisFrame || kb.eKey.wasPressedThisFrame))
+        {
+            _dragRotated = !_dragRotated;
+            SizeGhost();
+        }
+
+        if (Mouse.current != null) RefreshDrag(Mouse.current.position.ReadValue());
+    }
+
+    void RefreshDrag(Vector2 screenPos)
+    {
+        MoveGhost(screenPos);
+
         var inst = GetCurrentInstance();
-        var grid = inst?.Data != null ? InventoryGridUI.FindUnderCursor(e.position, UiCam()) : null;
+        var grid = inst?.Data != null ? InventoryGridUI.FindUnderCursor(screenPos, UiCam()) : null;
 
         if (_previewGrid != null && _previewGrid != grid) { _previewGrid.ClearPreview(); _previewGrid = null; }
-        if (grid == null) return;
+        if (grid == null) { SizeGhost(); return; }
 
-        var cell = grid.ScreenToGrid(e.position);
-        if (cell.x == int.MinValue) return;
+        SizeGhost(grid.CellSize);   // 얹힌 격자의 눈금으로
+
+        var cursor = grid.ScreenToGrid(screenPos);
+        if (cursor.x == int.MinValue) return;
 
         // **커서 칸을 왼쪽 위로 잡는다.** 격자 아이콘과 달리 어디를 집었는지가 없다 —
-        // 칸 하나에서 끌어온 것이라 잡은 지점이라는 개념이 없다.
-        grid.ShowPreview(inst, cell.x, cell.y, false, isExternal: true);
+        // 칸 하나에서 끌어온 것이라 잡은 지점이라는 개념이 없다. 격자 밖으로 나가지 않게
+        // 당기는 것은 `PlacementCell`이 한다(격자 드래그와 같은 답).
+        var cell = grid.PlacementCell(cursor, inst.Data, _dragRotated, Vector2Int.zero);
+
+        grid.ShowPreview(inst, cell.x, cell.y, _dragRotated, isExternal: true);
         _previewGrid = grid;
+    }
+
+    // **앵커에 기대지 않고 월드 좌표로 놓는다.**
+    //
+    // `anchoredPosition`은 앵커점 기준이라 앵커를 잘못 잡으면 화면 절반만큼 밀린다 — 실제로
+    // 그림이 화면 구석으로 날아갔다. `ScreenPointToWorldPointInRectangle`은 **캔버스 모드와
+    // 앵커를 안 가리고** 그 화면 지점의 월드 좌표를 그대로 주므로 어긋날 자리가 없다.
+    void MoveGhost(Vector2 screenPos)
+    {
+        if (_ghost == null) return;
+
+        var canvas = _ghost.parent as RectTransform;
+        if (canvas == null) return;
+
+        if (RectTransformUtility.ScreenPointToWorldPointInRectangle(
+                canvas, screenPos, UiCam(), out var world))
+            _ghost.position = world;
     }
 
     Camera UiCam()
@@ -300,7 +449,11 @@ public class EquipSlotUI : MonoBehaviour,
         _previewGrid?.ClearPreview();
         _previewGrid = null;
 
-        if (DraggedSlot == this) TryDropToGrid(e);
+        if (_ghost != null) { Destroy(_ghost.gameObject); _ghost = null; }
+
+        // 장비칸 위에 놓았으면 그쪽이 이미 처리했다(제자리 놓기 포함 — 위 `_slotDropHandled`).
+        if (DraggedSlot == this && !_slotDropHandled) TryDropToGrid(e);
+        _slotDropHandled = false;
 
         DraggedSlot = null;
         if (icon) { var c = icon.color; c.a = 1f; icon.color = c; }
@@ -311,6 +464,18 @@ public class EquipSlotUI : MonoBehaviour,
     {
         if (_equipment == null) return;
 
+        // **장비칸 위에 놓았으면 벗기지 않는다 — 칸 사각형을 직접 잰다.**
+        //
+        // 배낭 격자의 `RectTransform`이 장비 열까지 덮고 있어서 `FindUnderCursor`는 "격자 위"라고
+        // 답한다. 그래서 **제자리에 도로 놓기만 해도 장비가 벗겨졌다.**
+        //
+        // 앞서 두 번 빗나갔다: `_slotDropHandled`는 *"`OnDrop`이 `OnEndDrag`보다 먼저 온다"*는
+        // 순서에, `pointerCurrentRaycast`는 *"놓는 프레임까지 그 값이 남아 있다"*는 가정에
+        // 기댔는데 **제자리 놓기에서는 둘 다 안 맞았다.** 사각형 안에 커서가 있느냐는
+        // 그런 가정이 없다 — 물어보는 그 순간의 사실이다.
+        if (RectTransformUtility.RectangleContainsScreenPoint(
+                (RectTransform)transform, e.position, UiCam())) return;
+
         var grid = InventoryGridUI.FindUnderCursor(e.position, UiCam());
         if (grid == null || grid.Inventory == null) return;
 
@@ -318,10 +483,24 @@ public class EquipSlotUI : MonoBehaviour,
         if (inst?.Data == null) return;
         if (!grid.CanReceiveItem(inst.Data)) return;   // 창고 필터
 
+        // **미리보기가 가리킨 그 칸에 놓는다.** 전에는 `TryAdd`(빈 자리 자동 탐색)라 밝은 칸을
+        // 보고 놓아도 **첫 빈 칸으로 튀었다** — 미리보기가 거짓말이 된다.
+        // 그 칸이 안 되면(다른 것이 있으면) 평소대로 빈 자리를 찾는다: 자리 때문에 벗기기
+        // 자체를 거절하면 "왜 안 옮겨지지"가 된다.
+        //
         // **자리를 확인하고 나서 벗긴다.** 순서가 뒤집히면 격자가 꽉 찼을 때 벗긴 것이
         // `ReturnToInventory`를 타고 배낭으로 가거나 발밑에 떨어진다 — 사용자는 이 격자에
         // 넣으려 한 것이지 아무 데나 두려던 것이 아니다.
-        if (grid.Inventory.TryAdd(inst.Data, 1, inst.Quality) <= 0) return;
+        var cursor = grid.ScreenToGrid(e.position);
+        bool placed = false;
+
+        if (cursor.x != int.MinValue)
+        {
+            var cell = grid.PlacementCell(cursor, inst.Data, _dragRotated, Vector2Int.zero);
+            placed = grid.Inventory.TryAddAt(inst.Data, 1, cell.x, cell.y, _dragRotated, inst.Quality);
+        }
+
+        if (!placed && grid.Inventory.TryAdd(inst.Data, 1, inst.Quality) <= 0) return;
 
         TakeOff();          // 배낭에 안 돌려준다 — 이미 위에서 넣었다
         grid.RefreshItems();

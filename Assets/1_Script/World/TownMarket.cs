@@ -74,6 +74,9 @@ public static class TownMarket
         var data = BiomeContent.Get(tile.Biome);
         if (data == null || data.TownMerchants == null || data.TownMerchants.Count == 0) return result;
 
+        // 마을의 세력은 **저작한다**(`BiomeContentData.TownFaction`). 비어 있으면 정가다.
+        var faction = data.TownFaction;
+
         var byType = new Dictionary<MerchantType, List<MerchantData>>();
         foreach (var m in data.TownMerchants)
         {
@@ -92,11 +95,12 @@ public static class TownMarket
             // 같은 종류에 후보가 여럿일 때만 좌표가 고른다. 종류별로 다른 난수열을 써야
             // 한 마을의 상인들이 같은 방향으로 몰려 뽑히지 않는다.
             var rng = new System.Random(Hash(node, seed, (int)type));
-            result.Add(new Shop(candidates[rng.Next(candidates.Count)]));
+            result.Add(new Shop(candidates[rng.Next(candidates.Count)], faction));
         }
 
         return result;
     }
+
 
     // 좌표·시드·종류를 섞어 안정적인 정수 하나로. unchecked — 넘침은 해시에서 정상이다.
     // `WorldDeposits.Hash`와 다른 상수를 쓴다: 같은 열을 쓰면 매장이 많은 칸에 늘 같은

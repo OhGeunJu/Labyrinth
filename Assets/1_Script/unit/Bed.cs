@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite
+public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
 {
     static readonly List<Bed> _all = new();
 
@@ -400,6 +400,16 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite
         // `Hold`가 다시 눕히는 꼴이라 같은 일을 두 곳이 했다.
         brain.GetComponent<PawnMover>()?.SetSleeping(true, SleepPosition, SleepRotation);
     }
+
+    // ── `ICarrySite` — 업은 것을 받는 자리 ──────────────────────────────────
+    //
+    // 침대가 원래 갖고 있던 이름들을 그대로 잇는다. **베개 쪽을 침대가 정하는 것**이 여기
+    // `PutRotation`이다 — 안 정하면 발이 베개를 벤다.
+    Vector3     ICarrySite.PutPosition => SleepPosition;
+    Quaternion? ICarrySite.PutRotation => SleepRotation;
+    bool        ICarrySite.IsFull      => IsOccupied;
+    void        ICarrySite.Put(UnitBrain brain) => PlacePrisoner(brain);
+    string      ICarrySite.SiteName    => forPrisoners ? "죄수 침대" : "침대";
 
     public void Unassign() => AssignedUnit = null;
 

@@ -296,6 +296,16 @@ public class InspectPanelUI : MonoBehaviour
             ? $"  <color=#7AA>({factionData.FactionName})</color>" : "";
         sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>[{UnitTypeLabel(brain, faction)}]</color>{factionName}");
 
+        // **얼마나 삭았나** — 도축해서 무엇이 나올지가 이것으로 갈리고(`Butchering`),
+        // 나중에 붙일 "교단이 일으킨다"의 재료도 이 단계다. 산 폰에는 안 뜬다.
+        if (corpse != null)
+        {
+            var stage = corpse.Stage;
+            string tint = stage == CorpseStage.Fresh  ? "#9C9"
+                        : stage == CorpseStage.Rotten ? "#AA8" : "#CCC";
+            sb.AppendLine($"<color=#888>부패</color>  <color={tint}>{Butchering.StageName(stage)}</color>");
+        }
+
         // **그 세력이 나를 어떻게 보는가.** 관계가 움직이는데 볼 자리가 없으면 "왜 갑자기
         // 덤비지"에 답이 없다 — 우호도가 0(저작한 그대로)이면 적지 않는다(늘 떠 있으면 안 읽는다).
         if (factionData != null && !factionData.PlayerControlled
@@ -453,6 +463,18 @@ public class InspectPanelUI : MonoBehaviour
         var bed = pb.GetComponent<Bed>();
         if (bed != null) AppendBedState(sb, bed);
 
+        // **조작은 여기 없다.** 이 창은 *고른 것을 보는 자리*고, 그 건물로 무엇을 하는지는
+        // 저마다의 창이 답한다(`GraveUI`·`PyreUI`·`ButcherTableUI`). 침대에 창이 없는 것은
+        // 배정이 곧 "누워라"라 조작이랄 게 없어서지, 살펴보기 창이 조작을 겸해서가 아니다.
+        var grave = pb.GetComponent<Grave>();
+        if (grave != null) AppendGraveState(sb, grave);
+
+        var pyre = pb.GetComponent<Pyre>();
+        if (pyre != null) AppendPyreState(sb, pyre);
+
+        var butcher = pb.GetComponent<ButcherTable>();
+        if (butcher != null) AppendButcherState(sb, butcher);
+
         // **휴면은 여기서 말해 줘야 한다** — 그 건물의 패널은 아예 안 열리므로, 안 열리는
         // 이유를 들을 데가 없었다.
         var dorm = pb.GetComponent<BuildingDormancy>();
@@ -469,6 +491,71 @@ public class InspectPanelUI : MonoBehaviour
             ("이동한다", (Action)(() => BuildingRelocator.Begin(pb))),
             ("분해한다", pb.Demolish),
         });
+    }
+
+    // ── 무덤 ─────────────────────────────────────────────────────────────────
+    //
+    // 답해야 하는 것은 둘이다: **누가 묻혀 있나**, 그리고 **꺼낼 수 있나**.
+    static void AppendGraveState(StringBuilder sb, Grave grave)
+    {
+        var buried = grave.Buried;
+        if (buried == null)
+        {
+            sb.AppendLine("<color=#888>비어 있다. 시체를 업어 와 묻을 수 있다.</color>");
+            return;
+        }
+
+        sb.AppendLine($"{buried.UnitName}  <color=#888>묻혀 있다</color>");
+
+        // **묻히면 시간이 멈춘다**(`Corpse.SetBuried`) — 그 사실이 안 보이면 무덤이
+        // 그냥 감추는 자리로 읽힌다.
+        sb.AppendLine($"<color=#888>{Butchering.StageName(buried.Stage)}인 채로 멈춰 있다 " +
+                      $"({buried.AgeDays:F1}일).</color>");
+
+    }
+
+    // ── 화장터 ───────────────────────────────────────────────────────────────
+    static void AppendPyreState(StringBuilder sb, Pyre pyre)
+    {
+        var who = pyre.Burning;
+        if (who == null)
+        {
+            sb.AppendLine("<color=#888>비어 있다. 시체를 업어 와 태울 수 있다.</color>");
+            return;
+        }
+
+        sb.AppendLine($"{who.UnitName}  <color=#888>태우는 중</color>");
+        sb.AppendLine($"진행  {BarColored(pyre.Progress, 1f, "#E07E3E", "#5A3A20")}  " +
+                      $"{pyre.Progress * 100f:F0}%");
+
+        // **왜 안 타는지**는 화면에 있어야 한다 — 연료가 없으면 게이지가 멈춰 있을 뿐이라
+        // 이유가 없으면 고장으로 보인다.
+        if (pyre.BlockedReason != null)
+            sb.AppendLine($"<color=#F90>{pyre.BlockedReason}</color>");
+
+    }
+
+    // ── 도축대 ───────────────────────────────────────────────────────────────
+    //
+    // 규칙이 지금 어떻게 걸려 있는지만 적는다 — **손보는 것은 `ButcherTableUI`**다.
+    static void AppendButcherState(StringBuilder sb, ButcherTable table)
+    {
+        var bill = table.Bill;
+
+        sb.AppendLine(bill.Suspended
+            ? "<color=#F90>멈춰 있다.</color>"
+            : table.Cutting ? "<color=#4CD95A>손질하는 중.</color>"
+                            : "<color=#888>시체를 기다린다.</color>");
+
+        sb.AppendLine($"대상  {bill.TargetName}");
+        sb.AppendLine($"상태  {bill.StageName}");
+        sb.AppendLine($"반복  {bill.RepeatName}");
+
+        int piled = table.Inventory != null ? table.Inventory.Items.Count : 0;
+        sb.AppendLine(piled > 0
+            ? $"<color=#888>쌓인 것 {piled}뭉치 — {(table.AllowHaulOut ? "창고로 나른다" : "여기 둔다")}</color>"
+            : $"<color=#888>쌓인 것 없음 — {(table.AllowHaulOut ? "창고로 나른다" : "여기 둔다")}</color>");
+
     }
 
     // ── 자원 노드 ─────────────────────────────────────────────────────────

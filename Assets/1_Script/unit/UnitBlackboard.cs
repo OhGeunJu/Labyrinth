@@ -100,10 +100,13 @@ public class UnitBlackboard
 
     // 내려놓을 곳 — **한 자리를 콕 집은 것**(우리·침대를 우클릭해서 고른 그것).
     // 침대·우리면 그 자리에 눕히고, 맨바닥이면 그냥 내린다.
+    //
+    // **자리는 한 칸이다**(`ICarrySite`) — 전에는 `PutDownBed`·`PutDownCage`가 나란히 있어서
+    // 지울 때마다 둘 다 지워야 했고, 무덤이 늘면 셋이 될 참이었다. 자리 종류가 느는 만큼
+    // 필드가 느는 구조는 언젠가 한 칸을 빠뜨린다.
     public Vector3    PutDownAt;
     public bool       HasPutDown;
-    public Bed        PutDownBed;
-    public PrisonCage PutDownCage;
+    public ICarrySite PutDownSite;
 
     // 데려갈 **자리의 종류**(`PrisonEscort`). 위와 다른 축이다 — 저쪽은 "저 우리"고
     // 이쪽은 "우리". 종류로 두면 걸어가는 사이 그 칸이 차도 다음 칸으로 갈아탄다.

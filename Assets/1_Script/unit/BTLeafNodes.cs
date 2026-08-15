@@ -232,20 +232,19 @@ public class CarryPawnNode : BTNode
             if (!escorting) return BTStatus.Failure;   // 간수가 꺼져 있으면 그냥 업고 있는다
 
             if (!PrisonEscort.Resolve(bb.Carrying, bb.EscortTo, self.transform.position,
-                                      out var toBed, out var toCage))
+                                      out var toSite))
                 return BTStatus.Failure;               // 빈 자리가 없다 — 업은 채로 기다린다
 
             bb.HasPutDown  = true;
-            bb.PutDownBed  = toBed;
-            bb.PutDownCage = toCage;
-            bb.PutDownAt   = toBed != null ? toBed.SleepPosition : toCage.HoldPosition;
+            bb.PutDownSite = toSite;
+            bb.PutDownAt   = toSite.PutPosition;
         }
 
         // 목적지가 사라졌으면(침대 철거·우리 파괴) 발밑에 내려놓고 끝낸다 — 업은 채로
-        // 영영 서 있는 것보다 낫다.
-        Vector3 spot = bb.PutDownBed  != null ? bb.PutDownBed.SleepPosition
-                     : bb.PutDownCage != null ? bb.PutDownCage.HoldPosition
-                     : bb.PutDownAt;
+        // 영영 서 있는 것보다 낫다. **유니티의 `== null`을 태우려면 인터페이스가 아니라
+        // `Object`로 물어야 한다**(파괴된 컴포넌트는 인터페이스 참조로는 null이 아니다).
+        var site = SiteOrNull(bb.PutDownSite);
+        Vector3 spot = site != null ? site.PutPosition : bb.PutDownAt;
 
         if (Vector3.Distance(bb.Self.transform.position, spot) > ReachDistance)
         {
@@ -256,45 +255,44 @@ public class CarryPawnNode : BTNode
         bb.Mover.StopMovement();
 
         var carried = bb.Carrying;
-        var bed     = bb.PutDownBed;
-        var cage    = bb.PutDownCage;
 
         bb.HasPutDown  = false;
-        bb.PutDownBed  = null;
-        bb.PutDownCage = null;
+        bb.PutDownSite = null;
 
         // **자리가 남아 있는지 도착해서 다시 본다.** 선택지를 고를 때는 비어 있었어도, 걸어오는
         // 사이에 다른 폰이 먼저 넣었을 수 있다 — 안 보면 **한 우리에 여럿이 겹쳐 선다**
         // (등록은 하나만 되고 나머지는 갇히지도 않은 채 그 자리에 서 있는다).
-        bool cageFull = cage != null && cage.IsOccupied;
         // 자리가 찼거나, **그 자리가 이 사람을 안 받거나**(보통 침대 × 붙잡은 사람).
-        bool bedTaken = bed  != null && (bed.IsOccupied || !bed.Accepts(carried));
-
-        if (cageFull || bedTaken)
+        if (site != null && (site.IsFull || !site.Accepts(carried)))
         {
             // 자리가 없으면 **거기 두지 않는다.** 업은 폰 발밑에 내려놓고 알린다 —
             // 겹쳐 세우면 무슨 일이 일어난 건지 화면에 안 남는다.
             PawnCarry.PutDown(self);
             EventNotificationUI.Notify("자리 없음",
-                $"{(cageFull ? "우리" : "죄수 침대")}에 이미 다른 사람이 있어 " +
+                $"{site.SiteName}이(가) 이미 차 있어 " +
                 $"{carried?.UnitName}을(를) 그 앞에 내려놓았습니다.", holdWhenHidden: true);
             return BTStatus.Failure;
         }
 
-        // 침대에 눕힐 때는 **베개 쪽을 침대가 정한다**(`SleepRotation` — `RestNode`가 제 발로
-        // 누울 때 쓰는 것과 같은 값). 안 그러면 발이 베개를 벤다.
-        PawnCarry.PutDown(self, spot, bed != null ? bed.SleepRotation : (Quaternion?)null);
+        // 어느 쪽을 보게 놓을지는 **자리가 정한다**(침대의 `SleepRotation` — 안 정하면 발이
+        // 베개를 벤다). 맨바닥이면 `null`이라 업은 폰이 보던 방향 그대로다.
+        PawnCarry.PutDown(self, spot, site?.PutRotation);
         if (carried == null) return BTStatus.Failure;
 
         // **놓는 자리가 곧 그다음 상태다.** 우리·죄수 침대면 갇히고, 보통 침대면 배정만
-        // 해 준다(그러면 `RestNode`가 회복을 맡는다). 맨바닥이면 그냥 누워 있는다.
-        // **점유·배정·갇힘을 침대가 한 번에 세운다**(`PlacePrisoner`) — 여기서 셋을 따로
-        // 부르면 하나가 빠졌을 때 조용히 어긋난다.
-        if (cage != null) cage.TryPut(carried);
-        else if (bed != null) bed.PlacePrisoner(carried);
+        // 해 준다(그러면 `RestNode`가 회복을 맡는다). 무덤이면 묻힌다. 맨바닥이면 그냥
+        // 누워 있는다. **점유·배정·갇힘을 자리가 한 번에 세운다** — 여기서 따로 부르면
+        // 자리 종류가 늘 때 하나가 빠진다.
+        site?.Put(carried);
 
         return BTStatus.Success;
     }
+
+    // 유니티의 `== null`은 **인터페이스 참조로는 안 통한다** — 파괴된 컴포넌트도 인터페이스로
+    // 들고 있으면 `null`이 아니다(`MissingReferenceException`은 만질 때 터진다). `Object`로
+    // 되돌려 물어야 한다.
+    static ICarrySite SiteOrNull(ICarrySite site)
+        => site is UnityEngine.Object o && o == null ? null : site;
 }
 
 public class PickUpNode : BTNode

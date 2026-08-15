@@ -1,11 +1,20 @@
 using System;
 using UnityEngine;
 
-// 씬에 하나 배치. 낮 20분 + 밤 10분 = 1일(실제 30분).
-// NormalizedTime: 0.0=새벽, dayFraction=황혼, 1.0=다음날 새벽
+// **하루를 다섯 때로 나눈다** — 새벽·아침·낮·저녁·밤.
 //
-// 밤을 낮보다 짧게 둔 이유: 폰이 실제로 일하는 시간이 낮이고, 밤은 자고 회복하는
-// 구간이라 같은 길이면 "아무 일도 안 일어나는 절반"이 된다.
+// 전에는 낮/밤 두 자뿐이었고 낮이 `dayFraction`(2/3)만큼, 즉 **실시간 20분 내내 '낮' 한 글자**가
+// 떠 있었다. 하루가 흐르는 것이 화면에 안 보여서 "낮이 너무 길다"로 나타났는데, 실은 길이보다
+// **눈금이 둘뿐인 것**이 문제였다. 다섯이면 20분 동안 넉 자가 바뀐다.
+//
+// **때는 시각(`Hour`)이 정한다** — `NormalizedTime` 위에 비율로 얹지 않는다. "저녁 다섯 시"는
+// 사람이 시계를 보고 아는 말이라, 비율로 적으면 시계와 라벨이 따로 놀 수 있다.
+//
+// 어두운 때(밤+새벽) = 21시~04시 **8시간**, 밝은 때(아침~저녁) = 05시~20시 **16시간**.
+// 옛 `dayFraction` 2/3과 **정확히 같은 비율**이라 이 갈이로 밸런스는 안 움직인다.
+// 그래서 그 필드는 없앴다 — 남겨 두면 돌려도 아무 일이 안 일어나는 손잡이가 된다.
+public enum TimePhase { Dawn, Morning, Day, Evening, Night }
+
 public class GameTimeManager : MonoBehaviour
 {
     public static GameTimeManager Instance { get; private set; }
@@ -13,13 +22,13 @@ public class GameTimeManager : MonoBehaviour
     [Tooltip("1일 전체 길이(초). 기본 1800 = 실제 30분.")]
     [SerializeField] float dayDuration = 1800f;
 
-    [Tooltip("하루 중 낮이 차지하는 비율. 기본 2/3 = 낮 20분 + 밤 10분.")]
-    [Range(0.1f, 0.9f)]
-    [SerializeField] float dayFraction = 2f / 3f;
-
     public static float NormalizedTime { get; private set; }
     public static int   CurrentDay     { get; private set; }
-    public static bool  IsDay          => NormalizedTime < DayFraction;
+
+    // **밝은 때인가** — 아침·낮·저녁. 새벽과 밤은 어둡다.
+    //
+    // 시간대에서 뽑는다: 답이 두 벌이면 "화면은 저녁인데 판정은 밤"이 생긴다.
+    public static bool IsDay => Phase != TimePhase.Night && Phase != TimePhase.Dawn;
 
     // 게임이 시작하고 흐른 **게임 내 시간(초)**. 하루보다 짧은 주기를 재는 것들이 쓴다
     // (소굴 출격 간격 등) — `OnDayChanged`만으로는 하루에 한 번밖에 못 재고, `Time.time`을
@@ -30,24 +39,57 @@ public class GameTimeManager : MonoBehaviour
     // "반나절마다"를 900이라고 적으면 하루 길이를 바꿨을 때 같이 안 따라온다.
     public static float DayDuration => Instance != null ? Instance.dayDuration : 1800f;
 
-    // 인스턴스 필드를 static에서 읽기 위한 통로. 씬에 매니저가 없으면 절반으로 가정.
-    static float DayFraction => Instance != null ? Instance.dayFraction : 0.5f;
-
-    // 자정(새벽) 마다 발동 — 상인 재고 갱신 등
+    // 자정 마다 발동 — 상인 재고 갱신 등
     public static event Action        OnDayChanged;
     // 매 프레임 0-1 시간 전달 — 조명, 야간 오브젝트 등
     public static event Action<float> OnTimeChanged;
 
     // ── 시각 표시 ────────────────────────────────────────────────────────────
-    // **6시를 하루의 시작**으로 잡는다. 0을 0시로 두면 "낮인데 새벽 3시"가 된다.
-    // 시계는 선형이므로 낮/밤 경계는 dayFraction을 따라간다 —
-    // 기본값 2/3이면 낮 06:00~22:00 / 밤 22:00~06:00(여름날처럼 읽힌다).
-    // 시계 눈금을 06:00~18:00에 묶으려면 낮과 밤의 시침 속도를 달리해야 하는데,
-    // 그러면 "한 시간"이 때에 따라 다른 길이가 된다 — 선형 쪽을 택했다.
-    const float DayStartHour = 6f;
-
-    public static int Hour   => Mathf.FloorToInt((NormalizedTime * 24f + DayStartHour) % 24f);
+    //
+    // **하루는 자정에 바뀐다**(`NormalizedTime` 0 = 00:00 = 새벽의 첫 시각).
+    //
+    // 한동안 6시를 시작으로 잡고 있었는데, 그 이유는 *"0을 0시로 두면 낮인데 새벽 3시가 된다"*
+    // 였다 — **새벽이 이름 없는 때였기 때문에** 생긴 문제다. 다섯으로 나누고 나니 00시는
+    // 그냥 새벽이라 그 이유가 없어졌고, 덤으로 `OnDayChanged`가 **진짜 자정에** 돈다
+    // (상인 재고 갱신을 "매일 자정"이라 적어 두고 실제로는 아침 6시에 돌고 있었다).
+    //
+    // 시계는 선형이다 — 낮과 밤의 시침 속도를 달리하면 "한 시간"이 때에 따라 다른 길이가 된다.
+    public static int Hour   => Mathf.FloorToInt(NormalizedTime * 24f) % 24;
     public static int Minute => Mathf.FloorToInt(NormalizedTime * 24f * 60f % 60f);
+
+    // ── 시간대 ───────────────────────────────────────────────────────────────
+    //
+    // 경계는 **시작 시각**이다(끝은 다음 때가 정한다). 표로 두는 것은 여기 한 벌뿐이라야
+    // 라벨·색·판정이 같은 답을 쓴다.
+    //
+    //   새벽 00~04 · 아침 05~09 · 낮 10~16 · 저녁 17~20 · 밤 21~23
+    //
+    // 낮이 가장 긴 것(7시간)은 폰이 실제로 일하는 때라서고, 밤이 가장 짧은 것(3시간)은
+    // 같은 길이면 "아무 일도 안 일어나는 구간"이 그만큼 길어지기 때문이다. 어두운 때 전체는
+    // 새벽까지 합쳐 8시간이다.
+    public const int MorningHour = 5;
+    public const int DayHour     = 10;
+    public const int EveningHour = 17;
+    public const int NightHour   = 21;
+
+    public static TimePhase Phase => PhaseAt(Hour);
+
+    public static TimePhase PhaseAt(int hour) =>
+        hour >= NightHour   ? TimePhase.Night   :
+        hour >= EveningHour ? TimePhase.Evening :
+        hour >= DayHour     ? TimePhase.Day     :
+        hour >= MorningHour ? TimePhase.Morning :
+                              TimePhase.Dawn;
+
+    // 표시명. **여기 하나뿐이다** — 시계·툴팁·나중에 붙을 것들이 같은 말을 쓰게.
+    public static string PhaseName(TimePhase p) => p switch
+    {
+        TimePhase.Dawn    => "새벽",
+        TimePhase.Morning => "아침",
+        TimePhase.Day     => "낮",
+        TimePhase.Evening => "저녁",
+        _                 => "밤",
+    };
 
     // ── 배속 ─────────────────────────────────────────────────────────────────
     // `Time.timeScale`을 직접 만진다 — 시간의 주인이 여기이기 때문이다.

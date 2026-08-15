@@ -17,6 +17,11 @@ public class SelectionManager : MonoBehaviour
     bool _isDragging;
     bool _pressOverUI;   // 이번 클릭이 UI 위에서 시작됐는가 — 놓을 때까지 월드 선택을 막는다
 
+    // **사각 선택 상자(`SelectionBox`)가 이걸 본다.** 그리는 쪽이 저 혼자 판단하면 답이 두
+    // 벌이 되고, 실제로 그래서 **배낭에서 물건을 끌 때 월드 선택 상자가 같이 떴다** —
+    // 선택은 안 되는데 초록 사각형만 그려지는, 설명할 수 없는 그림이었다.
+    public bool PressOverUI => _pressOverUI;
+
     readonly List<PawnMover> _selected = new();
     public IReadOnlyList<PawnMover> Selected => _selected;
 
@@ -90,7 +95,31 @@ public class SelectionManager : MonoBehaviour
     void Update()
     {
         PruneSelection();
+        EnsureSelection();
         HandleSelection();
+    }
+
+    // **폰이 하나라도 있으면 하나는 골라 둔다.**
+    //
+    // 선택은 "지금 누구에게 명령하고 있나"라는 **지속 상태**다(2026-08-11에 빈 곳 클릭으로도
+    // 안 풀리게 한 그 결정). 그런데 시작하는 순간과 마지막으로 고른 폰이 죽는 순간에는 여전히
+    // **아무도 안 골린 상태**가 남아 있었다 — 그때 우클릭은 조용히 아무 일도 안 하고, 상점은
+    // "거래할 폰을 고르세요"를 띄우고, 판을 시작하면 우선 명부에서 한 명을 찍는 것이 첫 조작이
+    // 된다. 그건 규칙이 아니라 빈 칸이다.
+    //
+    // **무리 첫 번째를 고른다**(`PawnOrder.FirstOfBand` — 명부·무리 관리와 같은 순서). 순서가
+    // 갈리면 "왜 저 애가 골렸지"를 설명할 수 없다.
+    //
+    // 다 죽었거나 전부 원정을 나갔으면 아무 일도 안 한다 — 그때는 고를 사람이 정말로 없다.
+    void EnsureSelection()
+    {
+        if (_selected.Count > 0) return;
+
+        var first = PawnOrder.FirstOfBand();
+        if (first == null) return;
+
+        var mover = first.GetComponent<PawnMover>();
+        if (mover != null) AddToSelection(mover);
     }
 
     // **선택에서 사라진 폰을 걷어낸다.**
@@ -106,7 +135,12 @@ public class SelectionManager : MonoBehaviour
         for (int i = _selected.Count - 1; i >= 0; i--)
         {
             var pawn = _selected[i];
-            if (pawn != null && pawn.gameObject.activeInHierarchy) continue;
+
+            // **시체는 선택에서 빠진다.** 내 폰도 죽으면 시체로 남게 되면서(`UnitBrain.Die`)
+            // 파괴되지 않으므로 `== null`로는 안 걸린다 — 안 빼면 우클릭 명령이 **송장에게**
+            // 나가고, 무리 첫 번째 자동 선택도 시체를 고를 수 있다.
+            if (pawn != null && pawn.gameObject.activeInHierarchy &&
+                pawn.GetComponent<Corpse>() == null) continue;
 
             _selected.RemoveAt(i);
             OnSelectionChanged?.Invoke(pawn, false);   // 표식 해제(파괴된 것은 구독자가 거른다)
@@ -180,7 +214,12 @@ public class SelectionManager : MonoBehaviour
         OnCoreInspected?.Invoke(null);
         SelectItems(null);
 
-        bool hasHit = Physics.Raycast(ray, out RaycastHit hit, 500f);
+        // **업혀 있는 것은 건너뛴다 — 그건 고를 것이 아니라 짐이다.** 어깨 위에 붙어 있어
+        // 업은 폰보다 커서에 먼저 걸리는데, 그러면 **시체를 멘 내 폰을 좌클릭했을 때
+        // 그 폰이 아니라 어깨의 시체가 열린다.** 우클릭 쪽(`MoveController.PickTarget`)과
+        // **같은 규칙이어야 한다** — 같은 물음에 두 곳이 다르게 답하면 반드시 어긋난다
+        // (시체를 먼저 볼 것이냐를 두고 이미 한 번 겪었다).
+        bool hasHit = PickVisible(ray, out RaycastHit hit);
         if (hasHit)
         {
             var core = hit.collider.GetComponentInParent<DungeonCore>();
@@ -452,4 +491,33 @@ public class SelectionManager : MonoBehaviour
     static Rect GetScreenRect(Vector2 a, Vector2 b) =>
         new Rect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y),
                  Mathf.Abs(a.x - b.x), Mathf.Abs(a.y - b.y));
+    // **커서가 무엇을 겨눴나 — 업힌 것은 빼고.**
+    //
+    // 업힌 폰·시체는 업은 폰의 자식이라 어깨 높이에 붙어 있고, 그래서 **업은 폰보다 먼저**
+    // 커서에 걸린다. 그대로 두면 시체를 멘 폰을 누를 방법이 사라진다 — 좌클릭하면 그 폰
+    // 대신 어깨의 시체가 열리고, 우클릭하면 [내려놓는다] 대신 시체의 [뒤진다]가 뜬다.
+    //
+    // 문서가 *"업힌 쪽을 때리면 업은 폰을 노리는 것과 구별이 안 된다 — 어깨 위라 사거리가
+    // 같다"*고 적어 둔 규칙이 겨냥에도 그대로 성립한다. **좌·우클릭이 같은 함수를 쓴다** —
+    // 같은 물음에 두 곳이 다르게 답하면 반드시 어긋난다.
+    public static bool PickVisible(Ray ray, out RaycastHit hit)
+    {
+        hit = default;
+
+        var hits = Physics.RaycastAll(ray, 500f);
+        if (hits.Length == 0) return false;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        foreach (var h in hits)
+        {
+            var brain = h.collider.GetComponentInParent<UnitBrain>();
+            if (brain?.Blackboard != null && brain.Blackboard.CarriedBy != null) continue;
+
+            hit = h;
+            return true;
+        }
+        return false;
+    }
+
 }

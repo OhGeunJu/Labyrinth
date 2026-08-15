@@ -17,7 +17,10 @@ public class TownRecruit
 
     // 목록에 한 줄로 적을 요약. 등급은 대표값 하나만 보인다 —
     // 51개를 늘어놓으면 고르는 게 아니라 읽는 일이 된다.
-    public string Summary => $"{RaceName} · {Spec?.AverageGrade.ToDisplay() ?? "?"}급 · {Cost}G";
+    // **값은 여기 안 적는다.** `Cost`는 그 사람이 부르는 값이고, 실제로 치를 값은 흥정이
+    // 정한다(`Trading.Haggle` — 원정대에서 제일 말 잘하는 사람이 깎는다). 요약에 구워 두면
+    // 목록에 뜬 액수와 빠지는 액수가 갈리므로, 값은 그것을 아는 쪽(`WorldMapView`)이 붙인다.
+    public string Summary => $"{RaceName} · {Spec?.AverageGrade.ToDisplay() ?? "?"}급";
 }
 
 // 마을에서 사람을 구한다 — **칸 좌표 + 날짜**로 결정적.

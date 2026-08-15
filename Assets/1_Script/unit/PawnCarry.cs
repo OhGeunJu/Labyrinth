@@ -141,8 +141,7 @@ public static class PawnCarry
         // 지우는 자리를 여기 두는 이유: 업기가 시작되는 문은 이 함수 하나뿐이라, 명령을 내는
         // 쪽마다 챙기게 하면 언젠가 한 곳을 빠뜨린다.
         carrier.Blackboard.HasPutDown  = false;
-        carrier.Blackboard.PutDownBed  = null;
-        carrier.Blackboard.PutDownCage = null;
+        carrier.Blackboard.PutDownSite = null;
 
         Debug.Log($"[Carry] {carrier.UnitName}이(가) {target.UnitName}을(를) 업었다 " +
                   $"({WeightOf(target):F0}kg)");

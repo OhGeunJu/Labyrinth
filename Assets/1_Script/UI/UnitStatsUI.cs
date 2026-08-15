@@ -208,7 +208,7 @@ public class UnitStatsUI : MonoBehaviour
     static readonly StatName[] LaborStats =
     {
         StatName.Mining, StatName.Growing, StatName.Cutting, StatName.Taming, StatName.Cooking,
-        StatName.Medicine, StatName.Research, StatName.Warden,
+        StatName.Medicine, StatName.Research, StatName.Social,
         StatName.WeaponCrafting, StatName.ArmorCrafting,
         StatName.Alchemy, StatName.Smelting, StatName.Stonecutting, StatName.Woodworking,
         StatName.Gemcutting, StatName.Labor,

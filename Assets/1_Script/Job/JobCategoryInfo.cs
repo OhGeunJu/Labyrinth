@@ -25,6 +25,14 @@ public static class JobCategoryInfo
         JobCategory.Construction,
         JobCategory.Farming,
         JobCategory.Crafting,
+        // **도축은 제작 뒤, 운반 앞이다.** 시체는 삭으므로(신선 2일 → 썩음 4일 → 뼈) 늦으면
+        // 나올 것이 줄어든다 — 운반보다는 급하고, 사람이 걸어 둔 제작 주문보다는 덜하다.
+        //
+        // 한동안 **큐를 안 탔다**: 자동으로 돌리면 시키지도 않았는데 동료 시신을 손질하기
+        // 때문이었다. 그 걱정을 없앤 것은 자동화가 아니라 **도축대의 규칙**이다 —
+        // 무엇을 가를지 사람이 미리 정해 두므로, 폰이 알아서 집어가도 동의 없이 벌어지는 일이
+        // 아니다. 우클릭 `[도축한다]`는 그대로 손으로 시키는 길로 남는다.
+        JobCategory.Butcher,
         JobCategory.Research,
         JobCategory.Hauling,
         // 맨 뒤 — 남의 일감이 없을 때 자기 짐을 내린다.
@@ -62,6 +70,7 @@ public static class JobCategoryInfo
         JobCategory.Unload       => "짐내림",
         JobCategory.Medical      => "치료",
         JobCategory.Warden       => "간수",
+        JobCategory.Butcher      => "도축",
         _                        => "-",
     };
 }

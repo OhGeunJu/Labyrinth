@@ -10,8 +10,26 @@ public class EventManager : MonoBehaviour
     public static event Action<GameEventData> OnEventTriggered;
 
     [SerializeField] List<GameEventData> eventPool = new();
-    [Tooltip("이벤트 롤 주기 (초)")]
+    [Tooltip("이벤트 롤 주기 (초). 하루 = 1800초이므로 300이면 하루 6번 굴린다.")]
     [SerializeField] float checkInterval = 300f;
+
+    // **아무 일도 없는 것도 후보다.**
+    //
+    // 예전엔 `TryRollEvent`가 **반드시 하나를 발동시켰다** — 굴릴 때마다 무슨 일이 났다.
+    // 그러면 주기가 곧 사건 빈도라, 조용한 날을 만들려면 주기를 늘리는 수밖에 없고 그건
+    // **사건이 언제 올지가 메트로놈처럼 예측 가능해진다**는 뜻이다.
+    //
+    // 가중치로 두면 둘이 공짜로 풀린다: 빈도를 주기와 따로 조절할 수 있고, `MinGameTime`
+    // 게이팅과 저절로 맞물린다 — **초반엔 후보가 적어 조용하고**(가중치 합이 작으니 이쪽이
+    // 더 자주 이긴다) 세상이 열릴수록 시끄러워진다.
+    //
+    // 셈: 하루 굴림 수 = 1800 / `checkInterval`. 사건 확률 = 후보합 / (후보합 + 이 값).
+    // 지금 저작으로는 **0.2일 0.6건 → 0.6일 1.6건 → 3일 2.1건 → 7일 이후 2.2건**이다
+    // (맨 처음엔 `Ev_Discovery` 하나만 열려 있어 후보합이 3이라 특히 조용하다).
+    [Tooltip("**아무 일도 안 일어남**의 가중치. 크면 조용해진다.\n" +
+             "사건 확률 = 이벤트 가중치 합 / (합 + 이 값).\n" +
+             "지금 저작·주기 300초 기준으로 하루 0.6건(첫날) → 2.2건(7일 이후).")]
+    [Min(0f)] [SerializeField] float quietWeight = 26f;
     [Tooltip("지형 가장자리에서 안쪽으로 남길 여백 (m)")]
     [SerializeField] float mapEdgeOffset = 10f;
     [Tooltip("핵에서 바깥으로 훑어 볼 최대 거리 (타일)")]
@@ -28,7 +46,20 @@ public class EventManager : MonoBehaviour
     float _timer;
     float _elapsed;
 
-    void Awake() => Instance = this;
+    void Awake()
+    {
+        Instance = this;
+
+        // **디버그 값이 조용히 남지 않게.** 씬에 `checkInterval: 10`이 박혀 있었다 —
+        // 시험하려고 줄여 둔 것인데, 하루가 1800초라 **하루 180번** 굴리게 된다.
+        // 코드의 기본값(300)은 씬이 이미 값을 들고 있으면 아무 힘이 없고, 증상은
+        // "사건이 미친 듯이 터진다"로만 나타나 원인을 짚기 어렵다.
+        if (checkInterval < 60f)
+            Debug.LogWarning($"[EventManager] 이벤트 주기가 {checkInterval}초입니다 — " +
+                             $"하루({GameTimeManager.DayDuration:0}초)에 " +
+                             $"{GameTimeManager.DayDuration / Mathf.Max(1f, checkInterval):0}번 굴립니다. " +
+                             "시험용 값이 남은 것이 아닌지 확인하세요(권장 300).");
+    }
 
     void Update()
     {
@@ -107,7 +138,12 @@ public class EventManager : MonoBehaviour
         }
         if (candidates.Count == 0) return;
 
+        // **조용한 날**(위 `quietWeight` 주석). 후보에 섞어 굴리므로 별도 분기가 없다.
+        totalWeight += quietWeight;
+
         float roll = Random.value * totalWeight;
+        if (roll > totalWeight - quietWeight) return;   // 아무 일도 없다
+
         float acc  = 0f;
         foreach (var e in candidates)
         {

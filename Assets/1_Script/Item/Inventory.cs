@@ -388,6 +388,105 @@ public class Inventory : MonoBehaviour
         return total;
     }
 
+    // 제자리에서 돌린다(1×3 ↔ 3×1). 돌렸으면 true.
+    //
+    // **격자를 벗어나면 안쪽으로 당겨서 돌린다.** 가장자리에 붙은 1×3을 3×1로 돌리면 오른쪽이
+    // 격자 밖으로 나가는데, 그때 그냥 실패시키면 **가장자리 물건은 영영 못 돌린다** — 자리가
+    // 좁아 돌리려는 것인데 좁다고 거절하는 꼴이다. 당겨도 다른 것과 겹치면 그때는 안 돌아간다.
+    //
+    // 정사각은 돌릴 것이 없다(돌려도 같은 칸을 먹는다).
+    public bool RotateItem(ItemInstance inst)
+    {
+        if (inst == null || !_items.Contains(inst)) return false;
+        if (inst.Data.Width == inst.Data.Height) return false;
+
+        bool rot = !inst.Rotated;
+        int  w   = rot ? inst.Data.Height : inst.Data.Width;
+        int  h   = rot ? inst.Data.Width  : inst.Data.Height;
+
+        int x = Mathf.Clamp(inst.GridX, 0, Mathf.Max(0, width  - w));
+        int y = Mathf.Clamp(inst.GridY, 0, Mathf.Max(0, height - h));
+
+        return MoveItem(inst, x, y, rot);   // `CanPlace`가 자기 자신은 안 막는다
+    }
+
+    // ── 정리 ──────────────────────────────────────────────────────────────────
+    //
+    // **칸을 다시 채워 넣는다** — 같은 것끼리 합치고, 큰 것부터 위에서부터 빈틈없이.
+    //
+    // 격자 인벤토리는 쓰다 보면 반드시 조각난다: 가운데 것을 팔면 그 자리가 구멍으로 남고,
+    // 칸 수로는 넉넉한데 **2×4 갑옷이 들어갈 연속된 자리가 없어** 거절당한다. 그때 손으로
+    // 물건을 하나씩 끌어 옮기는 것은 놀이가 아니라 잡일이다.
+    //
+    // **큰 것부터 놓는다**(면적 내림차순). 작은 것을 먼저 흩뿌리면 큰 것이 들어갈 연속 공간이
+    // 남지 않는다 — 같은 물건들을 한 덩어리로 모으는 효과도 곁따라 온다.
+    //
+    // **같은 물건·같은 등급은 합친다.** 30/99짜리 뭉치가 셋이면 칸을 셋 먹는데, 그건 조각남
+    // 그 자체다. 잠금은 **하나라도 잠겨 있으면 합친 뭉치가 잠긴다** — 잠금은 "이건 건드리지
+    // 마라"라서, 합치다 풀리면 자동 운반이 조용히 집어 간다.
+    //
+    // 자리를 못 찾은 것은 **그대로 둔다**(있을 수 없는 일이지만, 잃는 것보다 낫다).
+    public void Compact()
+    {
+        if (_items.Count == 0) return;
+
+        var items = new List<ItemInstance>(_items);
+
+        // 1) 같은 물건·같은 등급 합치기
+        for (int i = 0; i < items.Count; i++)
+        {
+            var a = items[i];
+            for (int j = items.Count - 1; j > i; j--)
+            {
+                var b = items[j];
+                if (b.Data != a.Data || b.Quality != a.Quality) continue;
+
+                int room = a.Data.MaxStack - a.Quantity;
+                if (room <= 0) continue;
+
+                int move = Math.Min(room, b.Quantity);
+                a.Quantity += move;
+                b.Quantity -= move;
+                if (move > 0 && b.Locked) a.Locked = true;
+
+                if (b.Quantity <= 0) items.RemoveAt(j);
+            }
+        }
+
+        // 2) 큰 것부터 — 같은 크기면 이름순(정리할 때마다 자리가 바뀌면 눈이 매번 다시 찾는다)
+        items.Sort((x, y) =>
+        {
+            int ax = x.Data.Width * x.Data.Height, ay = y.Data.Width * y.Data.Height;
+            if (ax != ay) return ay.CompareTo(ax);
+            return string.CompareOrdinal(x.Data.ItemName, y.Data.ItemName);
+        });
+
+        // 3) 빈 격자에 다시 놓는다
+        Array.Clear(_cells, 0, _cells.Length);
+        _items.Clear();
+
+        foreach (var inst in items)
+        {
+            inst.Rotated = false;
+            var slot = FindEmptySlot(inst.Data.Width, inst.Data.Height, out bool rotated);
+            if (slot == null)
+            {
+                // 자리를 못 찾았다 — 원래 자리로 되돌린다(그 자리는 아직 비어 있다).
+                PlaceCells(inst);
+                _items.Add(inst);
+                continue;
+            }
+
+            inst.GridX   = slot.Value.x;
+            inst.GridY   = slot.Value.y;
+            inst.Rotated = rotated;
+            PlaceCells(inst);
+            _items.Add(inst);
+        }
+
+        OnChanged?.Invoke();
+    }
+
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     bool CanPlace(int x, int y, int w, int h, ItemInstance ignore)

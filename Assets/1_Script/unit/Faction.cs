@@ -74,18 +74,10 @@ public class Faction : MonoBehaviour
     {
         if (other == null || data == null || other.data == null) return FactionStance.Neutral;
 
-        // **우호도가 저작한 값을 덮는다**(`FactionRelations`) — 다만 문턱을 넘었을 때만이고,
-        // 사이 구간이면 `FactionData`가 그대로 이긴다. 저작을 지우는 것이 아니라 위에 얹는 것.
-        //
-        // **여기 한 곳에만 얹는다.** `IsHostileTo`·`IsAllyOf`·탐지·오사 회피가 전부 이 함수를
-        // 거치므로, 다른 데서 또 물으면 "화면에는 적대인데 안 때린다" 같은 것이 생긴다.
-        //
-        // 움직이는 것은 **플레이어와의 관계뿐**이다. 세력끼리는 저작한 그대로다 — 그걸 움직일
-        // 사건이 아직 없는데 표만 만들면 무엇이 왜 변했는지 아무도 모른다.
-        if (other.IsPlayer && FactionRelations.TryOverride(data, out var mine)) return mine;
-        if (IsPlayer       && FactionRelations.TryOverride(other.data, out var his)) return his;
-
-        return data.StanceTo(other.data);
+        // **판정은 `FactionRelations.StanceBetween` 하나다.** 규칙이 여기 있으면 필드와 지도가
+        // 갈린다 — 지도 위의 무리는 이 컴포넌트가 없어(논리 데이터다) 데이터로 물어야 한다.
+        // 우호도가 저작한 값을 덮는 것도, 움직이는 것이 플레이어와의 관계뿐인 것도 거기 있다.
+        return FactionRelations.StanceBetween(data, other.data);
     }
 
     // 내가 other를 먼저 공격하는가.

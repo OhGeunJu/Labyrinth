@@ -64,7 +64,7 @@ public class UnitStats
     public float Cooking       = 1f;
     public float Medicine      = 1f;
     public float Research      = 1f;
-    public float Warden        = 1f;
+    public float Social        = 1f;
     public float WeaponCrafting = 1f;
     public float ArmorCrafting  = 1f;
     public float Alchemy        = 1f;
@@ -185,7 +185,7 @@ public class UnitStats
         StatName.Cooking           => Cooking,
         StatName.Medicine          => Medicine,
         StatName.Research          => Research,
-        StatName.Warden            => Warden,
+        StatName.Social            => Social,
         StatName.WeaponCrafting    => WeaponCrafting,
         StatName.ArmorCrafting     => ArmorCrafting,
         StatName.Alchemy           => Alchemy,
@@ -246,7 +246,7 @@ public class UnitStats
             case StatName.Cooking:           Cooking = value; break;
             case StatName.Medicine:          Medicine = value; break;
             case StatName.Research:          Research = value; break;
-            case StatName.Warden:            Warden = value; break;
+            case StatName.Social:            Social = value; break;
             case StatName.WeaponCrafting:    WeaponCrafting = value; break;
             case StatName.ArmorCrafting:     ArmorCrafting = value; break;
             case StatName.Alchemy:           Alchemy = value; break;

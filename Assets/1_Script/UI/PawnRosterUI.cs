@@ -114,14 +114,9 @@ public class PawnRosterUI : MonoBehaviour
     void SortRows()
     {
         var list = new List<PawnRosterRowUI>(_rows.Values);
-        list.Sort((a, b) =>
-        {
-            if (a == null || b == null || a.Brain == null || b.Brain == null) return 0;
-            bool aMinion = a.Brain.Data is MinionData;
-            bool bMinion = b.Brain.Data is MinionData;
-            if (aMinion != bMinion) return aMinion ? 1 : -1;
-            return string.CompareOrdinal(a.Brain.UnitName, b.Brain.UnitName);
-        });
+        // 순서 규칙은 `PawnOrder` 하나다 — 로스터·무리 관리·자동 선택이 갈리면
+        // **명부 맨 위인 폰과 자동으로 골리는 폰이 달라진다.**
+        list.Sort((a, b) => (a == null || b == null) ? 0 : PawnOrder.Compare(a.Brain, b.Brain));
 
         for (int i = 0; i < list.Count; i++)
             if (list[i] != null) list[i].transform.SetSiblingIndex(i);

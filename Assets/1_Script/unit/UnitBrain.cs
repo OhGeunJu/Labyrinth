@@ -590,19 +590,16 @@ public partial class UnitBrain : MonoBehaviour
 
         OnUnitDied?.Invoke(this);
 
-        // **플레이어 세력이 아니면 시체로 남는다.**
-        // 예전엔 `UsesEnemyAi`로 갈랐는데 그건 **AI 역할**(어떻게 싸우나)을 묻는 축이라
-        // NPC·하수인을 통째로 제외했다. 그래서 상인이나 마을 사람을 죽이면
-        // 시체도 유품도 없이 사라졌다 — 이제 중립을 공격할 수 있으니 그건 맞지 않는다.
-        // 약탈 가능 여부는 역할이 아니라 **세력**이 정해야 한다.
-        var faction = GetComponent<Faction>();
-        if (faction != null && !faction.IsPlayer)
-        {
-            BecomeCorpse();
-            return;
-        }
-
-        Destroy(gameObject);
+        // **누가 죽든 시체로 남는다 — 내 폰도.**
+        //
+        // 한때 플레이어 세력만 그 자리에서 파괴했다. 그런데 파괴 경로는 `BecomeCorpse`를
+        // 안 거치므로 **입고 있던 장비와 배낭 속 물건이 통째로 증발했다** — 원정 나간 폰이
+        // 죽으면 지고 있던 짐까지 같이 사라졌다. 죽음이 "장비를 되찾으러 가는 일"이 되려면
+        // 몸이 남아야 한다(`Corpse.WasPlayer`는 원래 그걸 상정하고 있던 자리다).
+        //
+        // 갈랐던 이유였던 "내 폰 시체가 쌓인다"는 **치우는 길**로 풀 일이지, 몸을 없애서
+        // 풀 일이 아니다 — 지금은 업어서 옮기는 것까지만 있고 부패·매장은 아직 없다.
+        BecomeCorpse();
     }
 
     // **죽이면 그 세력이 기억한다.**

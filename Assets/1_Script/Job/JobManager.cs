@@ -148,6 +148,21 @@ public class JobManager : MonoBehaviour
         return false;
     }
 
+    // **한 몸에 도축 일감은 하나다.** 문이 둘이라(우클릭 · 도축대 규칙) 같은 시체에 각자
+    // 하나씩 걸릴 수 있고, 그러면 **두 폰이 같은 시체로 걸어가** 하나는 헛걸음한다(먼저
+    // 도착한 쪽이 가르고 나면 나머지는 `_target == null`로 끝난다). 치료가 똑같이 겪은
+    // 모양이라(`HasTreatJobFor`) 막는 방법도 같다.
+    public ButcherJob FindButcherJobFor(GameObject target)
+    {
+        if (target == null) return null;
+
+        foreach (var job in _jobs)
+            if (job is ButcherJob b && b.Target == target) return b;
+        return null;
+    }
+
+    public bool HasButcherJobFor(GameObject target) => FindButcherJobFor(target) != null;
+
     // **폰을 콕 집어 맡긴다.** 우클릭 명령이 쓰는 길 — 등록과 예약을 한 번에 한다.
     // 큐에 올려 두는 이유는 그 폰이 죽거나 그만두면 `ReleaseReservation`으로 남에게
     // 넘어가야 하기 때문이다(등록 없이 들려 주면 그 자리에서 사라진다).

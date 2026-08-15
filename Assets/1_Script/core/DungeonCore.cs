@@ -236,15 +236,24 @@ public class DungeonCore : MonoBehaviour
     // 씬에 사는 목록은 저장을 빠뜨리면 조용히 날아가고, 무엇보다 **모드가 종족을 추가할 진입점이 없다.**
     readonly List<MinionData> _minionCache = new();
 
+    // **연구로 잠긴 것은 목록에서 빠진다**(`MinionData.RequiredResearch`). 회색으로 남기지
+    // 않는 이유: 소환 메뉴는 "지금 부를 수 있는 것"의 목록이고, 못 부르는 이유가 자원인지
+    // 연구인지를 그 좁은 줄에 적기 시작하면 건설 목록의 규칙과 갈린다.
     public IReadOnlyList<MinionData> Minions
     {
         get
         {
-            if (minionEntries == null || minionEntries.Length == 0) return DataManager.AllMinions;
-
             _minionCache.Clear();
+
+            if (minionEntries == null || minionEntries.Length == 0)
+            {
+                foreach (var data in DataManager.AllMinions)
+                    if (data != null && data.IsUnlocked) _minionCache.Add(data);
+                return _minionCache;
+            }
+
             foreach (var entry in minionEntries)
-                if (entry.Data != null) _minionCache.Add(entry.Data);
+                if (entry.Data != null && entry.Data.IsUnlocked) _minionCache.Add(entry.Data);
             return _minionCache;
         }
     }

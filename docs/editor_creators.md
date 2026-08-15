@@ -288,6 +288,9 @@ Content
 | `EventNotification_UI` | `EventNotificationUI` | 이벤트 알림 + **조작 거절 알림**(`Notify(title, message)`) |
 | `Merchant_UI` | `MerchantUI` | 상인 재고(구매), `InventoryUI` 연동. 목록↔격자 전환 |
 | `Inventory_UI` | `InventoryUI` | 인벤토리+장착슬롯+액션바(판매/옮기기)+`CarryBar`(무게·짐내림·잠금) |
+| `Grave_UI` | `GraveUI` | 무덤 — 묻힌 사람·멈춘 단계·[파낸다] |
+| `Pyre_UI` | `PyreUI` | 화장터 — 진행 게이지·연료 부족 사유·[내린다] |
+| `ButcherTable_UI` | `ButcherTableUI` | 도축대 — 규칙 셋(순환 버튼)·산출물 격자·운반/정리 |
 | `CorpseInventory_UI` | `CorpseInventoryUI` | 시체 루팅(+EquipRow 6슬롯), `InventoryUI` 연동 |
 | `ItemInfo_UI` | `ItemInfoUI` | 아이템 툴팁. **커서를 따라다니므로 부모가 캔버스와 같은 크기여야 한다** |
 | `CraftingTable_UI` | `CraftingTableUI` | 마스터-디테일 + 연료 게이지·산출물 그리드·수량 주문 |

@@ -1,5 +1,21 @@
 # UI System
 
+## 캔버스 그리기 순서 (2026-08-14)
+
+**`Canvas` 직속 자식의 순서가 곧 그리기 순서다** — 뒤에 있을수록 위에 그려진다. 그게 어긋나 있어서
+상점에서 아이템 툴팁이 창 뒤로 가고, 대화창의 막힌 줄에 마우스를 올려도 설명이 안 보였다.
+쌓는 순서는 **아래에서 위로 다섯 층**:
+
+| 층 | 무엇 | 왜 |
+|---|---|---|
+| 1. 상시 HUD | `PawnRoster` · `Time` · `Inspect` | 늘 떠 있으므로 창이 덮어도 된다 |
+| 2. 패널 | `ResourceNode` · `Storage` · `PatrolZone` · `Farm` · `CraftingTable` · `ResearchTable` · `DungeonCore` · `UnitStats` · `Colony` · `Expedition` · `BuildMode` · `WorldUI` | 서로 겹칠 일이 드물다 |
+| 3. 거래 묶음 | `Merchant` → `CorpseInventory` → `Inventory` | **끌어다 놓는 쪽이 위** — 배낭에서 상점으로 드래그한다 |
+| 4. 대화·팝업 | `Dialogue` · `FactionPanel` · `PawnContextMenu` | 무언가를 고르는 창이라 패널보다 위 |
+| 5. 알림·툴팁 | `EventNotification` → `ItemInfo` → `HoverTooltip` | **커서를 따라다니는 것은 무엇에도 안 가려야 한다** |
+
+**새 UI를 씬에 더할 때는 이 순서에 끼워 넣을 것** — 맨 뒤에 붙이면 툴팁 위에 그려진다.
+
 ## 패널 목록 (`Assets/1 Script/UI/`)
 
 | 컴포넌트 | 트리거 | 설명 |
@@ -65,7 +81,24 @@
 
 아이콘 자동 추가. 드래그/드롭/회전 처리.
 
-- R키 — 90° 회전 (`localRotation = Euler(0,0,-90°)` + 셀 점유 변경)
+- **Q/E — 90° 회전**(`localRotation = Euler(0,0,-90°)` + 셀 점유 변경). **건설 모드가 고스트를
+  돌리는 키와 같다**(`BuildModeManager`) — 둘은 같이 켜지지 않으므로 겹치지 않고, 손이 한 번
+  배우면 두 곳에서 통한다. 격자 회전은 상태가 둘뿐이라 Q와 E가 같은 일을 한다.
+- **회전은 `Update`가 받는다 — `OnDrag`가 아니라.** `IDragHandler.OnDrag`는 **포인터가 움직인
+  프레임에만** 불려서, 마우스를 가만히 둔 채 누른 키는 그대로 사라진다(`wasPressedThisFrame`은
+  한 프레임짜리다). 증상은 *"한 번 돌리고 나면 마우스를 움직여야 다시 돌아간다"*였다.
+- **손에 든 것은 크기만 맞바꾼다 — 트랜스폼은 안 돌린다.** 둘을 같이 하면 **두 번 돌아** 원래
+  방향으로 보이고, 피벗이 좌상단이라 회전이 상자를 커서 옆으로 던진다. 크기만 바꾸면 손에 든
+  것이 곧 발자국이라 미리보기와 정확히 겹친다(그림은 `preserveAspect`가 지킨다).
+- **놓일 칸은 `InventoryGridUI.PlacementCell` 하나가 답한다** — 미리보기·실제 놓기·장비칸 드래그가
+  같이 쓴다. 각자 `cursorCell - grab`을 쓰던 시절엔 가장자리에서 **격자 밖에 밝은 칸이 그려지고**
+  실제로는 딴 자리에 놓였다. 격자 안쪽으로 당기므로 가장자리에 걸친 드롭도 그냥 된다.
+- **끌지 않고도 돌린다** — 아이템에 커서를 얹고 Q/E(`InventoryGridUI.Update` → `Inventory.RotateItem`).
+  예전엔 드래그 중에만 돌아서 **시스템은 있는데 꺼낼 길이 없었다**(1×3을 눕히려면 일단 집어야
+  했는데, 보통은 자리를 보고 나서 돌리고 싶다). **커서 아래를 누를 때 그때그때 찾는다** —
+  얹힘을 상태로 들면 돌릴 때 아이콘이 다시 만들어지며 그 상태가 끊겨 **두 번째 Q가 안 먹는다**
+  (`OnPointerExit`는 파괴될 때 안 온다). 격자를 벗어나면 **안쪽으로 당겨서** 돌린다 —
+  가장자리 물건이 영영 못 도는 것을 막는다(자리가 좁아 돌리려는 건데 좁다고 거절하는 꼴이다).
 - 같은 그리드 내 드롭 → `MoveItem`
 - 다른 그리드 드롭 → `TryAddAt` + `RemoveInstance`
 - `EquipSlotUI` 위에 드롭 → 장착 (`IDropHandler`). `DropHandled` 플래그로 월드 드롭 방지

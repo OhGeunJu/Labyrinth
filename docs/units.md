@@ -44,7 +44,7 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 - `RandomBetween(min, max)` — 미니언 등급 추첨용
 - `GetColor()` — 9단계 티어별 색상 (회색~빨강 무지개)
 
-`StatName` enum — 51개 스탯 식별자. `UnitStats.GetStat(StatName)` / `SetStat(StatName, float)` / `GrowStat(StatName, float)` / `GetGrade(StatName)`로 통합 접근.
+`StatName` enum — **53개** 스탯 식별자. `UnitStats.GetStat(StatName)` / `SetStat(StatName, float)` / `GrowStat(StatName, float)` / `GetGrade(StatName)`로 통합 접근.
 
 ### UnitData 등급 정의
 

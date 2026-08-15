@@ -327,8 +327,14 @@ public class BodyPartSystem : MonoBehaviour
         // 고치는 자리는 여기다. 누운 상태를 아는 것이 둘(`PawnMover.IsSleeping` = 침대,
         // `IsPrisoner` = 갇힌 자리)뿐이므로 여기서 한 번 묻고 만다 — 되돌린 뒤에 누가
         // 다시 눕혀 주기를 기대하면 그 "누가"가 없는 경로에서 반드시 드러난다.
+        //
+        // **업혀 있는 것도 그 자리다.** 어깨 위에서 자세를 되돌리면 업힌 사람이 **어깨 위에
+        // 벌떡 선다** — 업기는 90도 눕힌 자세를 부모 기준으로 잡아 두는데(`PawnCarry`)
+        // 여기서 세워 버리면 그 자세가 깨지고, 내려놓기 전까지 되돌려 줄 사람도 없다
+        // (침대·우리와 정확히 같은 이유다 — "깨어나는 것과 일어서는 것은 다른 일이다").
         bool lyingSomewhere = (_mover != null && _mover.IsSleeping)
-                           || _brain.Blackboard.IsPrisoner;
+                           || _brain.Blackboard.IsPrisoner
+                           || _brain.Blackboard.CarriedBy != null;
         if (!lyingSomewhere) transform.rotation = _preKoRotation;
         OnRecovered?.Invoke(this);
         Debug.Log($"[BodyPart] {gameObject.name} 기상 (기절 {_koTimer:F0}초)");

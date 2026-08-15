@@ -581,7 +581,11 @@ public class WorldMapView : MonoBehaviour
     {
         var mine = Faction.Player != null ? Faction.Player.Data : null;
         if (mine == null || band.Faction == null) return false;
-        return mine.IsHostileTo(band.Faction) || band.Faction.IsHostileTo(mine);
+
+        // **우호도를 태운다**(`StanceBetween`) — `FactionData.IsHostileTo`를 직접 부르면
+        // 저작한 표만 봐서, 포로를 풀어 주고 관계를 끌어올려도 지도에서는 그대로다.
+        return FactionRelations.IsHostileBetween(mine, band.Faction)
+            || FactionRelations.IsHostileBetween(band.Faction, mine);
     }
 
     // ── 무리에게 내리는 명령 (우클릭) ─────────────────────────────────────────
@@ -699,7 +703,7 @@ public class WorldMapView : MonoBehaviour
         if (band.Captives.Count > 0)
         {
             sb.Append($"\n<color=#FFD060>포로 {band.Captives.Count}명을 끌고 간다</color>");
-            sb.Append(CaptiveHint(band.Faction, band.Captives));
+            sb.Append(CaptiveHint(band.Faction, band.Captives, SelectedHaggler()));
         }
 
         if (_selected.Count == 1)
@@ -739,7 +743,10 @@ public class WorldMapView : MonoBehaviour
             if (band.Shop != null && band.Shop.Data != null)
                 options.Add(WorldMenuOption.Ready("거래한다", () => TradeWithBand(pt, band)));
             else if (band.Behavior == WorldBandBehavior.Caravan)
-                options.Add(WorldMenuOption.Blocked("거래한다", "이 상단엔 골드 설정이 없다"));
+                // 골드 설정이 없다고 적었던 자리 — `MerchantData.GoldItem`은 2026-08-10에
+                // 없앴다(지갑이 전역이라). 이제 막히는 이유는 하나뿐이다: 이 상단의
+                // `WorldBandData`에 파는 물건(`merchant`)이 안 물려 있다.
+                options.Add(WorldMenuOption.Blocked("거래한다", "이 상단은 물건을 안 판다"));
 
             // **순찰대에게도 할 일이 있어야 한다.** 지나치는 것밖에 못 하면 지도 위의 중립
             // 무리는 장식이다. 이 지역을 도는 사람들이니 근처 소굴 사정을 안다 —
@@ -748,7 +755,8 @@ public class WorldMapView : MonoBehaviour
                 options.Add(AskDirectionsOption(band));
 
             // **중립을 덮치는 길은 열어 둔다.** 못 하게 막으면 지도 위의 선택이 "적이면 싸운다"
-            // 하나뿐이 된다. 대가(관계 악화)는 아직 없지만, 자리는 지금 만들어 둔다.
+            // 하나뿐이 된다. 대가는 `Fight`가 문다 — 그 세력 우호도가 떨어지고, 계속하면
+            // 적대로 돌아서서 습격을 더 자주 보낸다.
             options.Add(WorldMenuOption.Ready("습격한다", () => Fight(pt, band)));
             options.Add(WorldMenuOption.Ready("지나친다", () => Leave(band)));
         }
@@ -826,6 +834,18 @@ public class WorldMapView : MonoBehaviour
 
     void Fight(PartyToken pt, WorldBand band)
     {
+        // **먼저 덮친 것에는 값이 든다.** 중립을 치는 길을 열어 둔 자리에 오래 비어 있던
+        // 대가다 — 없는 동안 `습격한다`는 위험만 있고 잃을 것이 없는 선택이었다.
+        //
+        // **판정보다 먼저 묻는다** — 싸움이 끝난 뒤엔 이 무리가 원래 적이었는지 알 길이
+        // 없다(우호도가 −50을 넘어가면 그 세력이 통째로 적대로 바뀐다). 적대를 치는 것은
+        // 사건이 아니라 전쟁이라 안 센다(`UnitBrain.Die`가 쓰는 규칙 그대로).
+        //
+        // 지도 위 전투는 폰을 죽이는 게 아니라 피해를 나눠 주는 것이라 `Die`의 −12가 안
+        // 걸린다. 그래서 여기 한 번이 **먼저 친 값의 전부**다.
+        if (!IsHostile(band) && band.Faction != null)
+            FactionRelations.Add(band.Faction, FactionRelations.RaidPenalty, "무리를 습격함");
+
         var result = WorldBattle.Resolve(pt.Party, band);
         var mgr    = WorldBandManager.Instance;
 
@@ -945,13 +965,26 @@ public class WorldMapView : MonoBehaviour
 
     // 포로 옆에 붙는 한 줄 — **흥정이 되는가, 얼마인가.** 값을 미리 알아야 돈을 챙겨 갈지
     // 병력을 챙겨 갈지 정할 수 있다. 안 되는 상대라면 값은 적어 봐야 소용이 없다.
-    static string CaptiveHint(FactionData faction, List<UnitBrain> captives)
+    static string CaptiveHint(FactionData faction, List<UnitBrain> captives, UnitBrain haggler)
     {
         if (faction != null && !faction.AcceptsRansom)
             return "\n<color=#FFFFFF80>몸값을 받지 않는 자들이다 — 쳐들어가는 수밖에 없다</color>";
 
-        return $"\n<color=#FFFFFF80>몸값 {WorldRansom.PriceFor(captives)} G</color>";
+        return $"\n<color=#FFFFFF80>몸값 {WorldRansom.PriceFor(captives, haggler)} G</color>";
     }
+
+    // **지도 위에서 흥정하는 사람 — 그 원정대에서 제일 말 잘하는 사람.**
+    //
+    // 거점에 남은 폰은 안 센다(거기 없다). 답을 여기 하나로 두는 것은 **미리 보는 값과
+    // 실제로 치르는 값이 같아야** 하기 때문이다 — 안내문과 선택지가 각자 구하면 어긋난다.
+    static UnitBrain HagglerOf(PartyToken pt) => Trading.BestOf(pt?.Party?.Members);
+
+    // 무리 정보창처럼 원정대를 안 받는 자리용 — **고른 팀 중 첫째가 간다고 본다.**
+    //
+    // 전엔 정확히 하나일 때만 답했는데, 그러면 둘을 고르거나 아무것도 안 골랐을 때 안내문이
+    // **흥정 안 붙은 값**을 적고 실제 메뉴는 깎인 값을 적어 같은 포로가 두 값으로 보였다.
+    // 여럿일 때 어느 팀이 갈지는 알 수 없지만, 첫째로 답하는 편이 "둘 다 틀림"보다 낫다.
+    UnitBrain SelectedHaggler() => _selected.Count > 0 ? HagglerOf(_selected[0]) : null;
 
     // ── 몸값 ─────────────────────────────────────────────────────────────────
     //
@@ -963,7 +996,8 @@ public class WorldMapView : MonoBehaviour
     WorldMenuOption RansomOption(PartyToken pt, FactionData faction,
                                  List<UnitBrain> captives, System.Action release)
     {
-        int price = WorldRansom.PriceFor(captives);
+        var haggler = HagglerOf(pt);
+        int price   = WorldRansom.PriceFor(captives, haggler);
         string label = $"몸값을 치른다 — {price} G ({captives.Count}명)";
 
         if (faction != null && !faction.AcceptsRansom)
@@ -1174,7 +1208,8 @@ public class WorldMapView : MonoBehaviour
             if (lair != null && lair.Captives.Count > 0)
             {
                 sb.Append($"\n<color=#FFD060>우리 쪽 {lair.Captives.Count}명이 갇혀 있다</color>");
-                sb.Append(CaptiveHint(lair.Band != null ? lair.Band.Faction : null, lair.Captives));
+                sb.Append(CaptiveHint(lair.Band != null ? lair.Band.Faction : null, lair.Captives,
+                                      HagglerOf(pt)));
             }
 
             var mgr = WorldBandManager.Instance;
@@ -1246,10 +1281,14 @@ public class WorldMapView : MonoBehaviour
             if (r.Hired) continue;
             standing++;
 
-            string label = $"{r.Name}을(를) 고용한다 — {r.Summary}";
+            // **부르는 값에 흥정이 얹힌다** — 사람을 사는 것도 값을 다투는 일이다.
+            // 목록에 적는 값과 `Hire`가 빼는 값이 **같은 함수**에서 나와야 갈리지 않는다.
+            int cost = RecruitCost(pt, r);
 
-            if (account.GoldAmount < r.Cost)
-                options.Add(WorldMenuOption.Blocked(label, "골드 부족"));
+            string label = $"{r.Name}을(를) 고용한다 — {r.Summary} · {cost:N0}G";
+
+            if (account.GoldAmount < cost)
+                options.Add(WorldMenuOption.Blocked(label, $"골드 부족 ({account.GoldAmount}/{cost})"));
             else
             {
                 var captured = r;
@@ -1277,11 +1316,18 @@ public class WorldMapView : MonoBehaviour
     // 고용 — **돈을 먼저 뺀다.** 폰을 먼저 찍으면 값을 못 치렀을 때 지울 것이 생기고,
     // 그 사이에 다른 것이 그 폰을 집을 수 있다(`OnUnitSpawned`은 활성화 때 도는데,
     // 여기선 꺼진 채로 만들므로 아직 아무도 모른다 — 그래도 순서를 헷갈리게 둘 이유는 없다).
+    // 실제로 치를 값 — **부르는 값(`recruit.Cost`)에 흥정이 얹힌 것.** 목록을 그릴 때와
+    // 값을 뺄 때가 이 함수 하나를 부르므로 갈릴 데가 없다.
+    static int RecruitCost(PartyToken pt, TownRecruit r)
+        => r == null ? 0 : Trading.Haggle(r.Cost, HagglerOf(pt), buying: true);
+
     void Hire(PartyToken pt, Vector2Int node, TownRecruit recruit, PartyAccount account)
     {
         if (recruit == null || recruit.Prefab == null || account == null) return;
 
-        if (account.TakeGold(recruit.Cost) < recruit.Cost)
+        int cost = RecruitCost(pt, recruit);
+
+        if (account.TakeGold(cost) < cost)
         {
             EventNotificationUI.Notify("고용 실패", "원정대에 골드가 모자랍니다.");
             OpenVillageMenu(pt, node);
@@ -1300,7 +1346,7 @@ public class WorldMapView : MonoBehaviour
         {
             Debug.LogError($"[마을] 고용한 프리팹에 UnitBrain이 없습니다 — {recruit.Prefab.name}");
             Destroy(go);
-            account.GiveGold(recruit.Cost);   // 값을 돌려준다
+            account.GiveGold(cost);   // 값을 돌려준다
             return;
         }
 
@@ -1311,7 +1357,7 @@ public class WorldMapView : MonoBehaviour
         recruit.Hired = true;
 
         EventNotificationUI.Notify("합류",
-            $"{recruit.Name}이(가) 원정대에 합류했습니다. ({recruit.Cost}G)");
+            $"{recruit.Name}이(가) 원정대에 합류했습니다. ({cost:N0}G)");
 
         OpenVillageMenu(pt, node);   // 목록을 그 자리에서 갱신
     }

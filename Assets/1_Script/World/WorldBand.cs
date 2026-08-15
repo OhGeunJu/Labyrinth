@@ -122,8 +122,9 @@ public class WorldBand
 
         if (band.Members.Count == 0) return null;
 
+        // 상단의 세력이 곧 가게의 세력이다 — 우호도가 값에 얹힌다(`Shop.Faction`).
         if (data.Behavior == WorldBandBehavior.Caravan && data.Merchant != null)
-            band.Shop = new Shop(data.Merchant);
+            band.Shop = new Shop(data.Merchant, data.Faction);
 
         return band;
     }

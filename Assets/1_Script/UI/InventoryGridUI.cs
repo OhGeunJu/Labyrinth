@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 
@@ -37,11 +38,88 @@ public class InventoryGridUI : MonoBehaviour
     public float CellSize => cellSize;
     public Inventory Inventory => _inventory;
 
+    // 런타임에 붙이는 격자(상점 진열)가 **배낭과 같은 칸 크기**를 쓰게 하는 통로.
+    // 인스펙터 값이 정본이고 이건 그것을 베끼는 자리다 — 두 격자가 나란히 떠 있는데
+    // 칸 크기가 다르면 같은 물건이 다른 크기로 보인다.
+    public void CopyCellSize(float size)
+    {
+        if (size <= 0f || Mathf.Approximately(size, cellSize)) return;
+        cellSize = size;
+        _builtFor = new Vector2Int(-1, -1);   // 칸 배경을 다시 짓게 한다
+    }
+
     // 외부에서 설정하는 아이템 수신 필터 (null이면 모두 허용)
     public System.Func<ItemData, bool> ReceiveFilter;
 
+    // ── 상점 진열 ─────────────────────────────────────────────────────────────
+    //
+    // **상점 재고를 배낭과 똑같은 격자로 보여줄 때 켠다**(`MerchantUI`의 칸 보기). 그러면
+    // 2×4 갑옷이 자리를 얼마나 먹는지가 사는 순간이 아니라 **사기 전에** 보인다 — 그게 격자
+    // 인벤토리를 쓰는 이유이자, 상점만 목록이었을 때 안 보이던 것이다.
+    //
+    // **끌 수는 있되 공짜로는 못 가져간다.** 한때 아이콘에 `DraggableItem`을 아예 안 붙였는데
+    // (`ReadOnly`), 그러면 **좌판을 정리할 길이 없다** — 1×8로 남은 틈에 2×2를 넣으려면 1×1을
+    // 옆으로 밀어야 하는데 그걸 할 수가 없었다. 지금은 붙이되 **격자를 건너가는 순간 이동이
+    // 아니라 거래**가 된다(`DraggableItem.TryPlace` → `MerchantUI.HandleDragTrade`).
+    public bool IsShop;
+
+    public System.Action<ItemInstance>    OnIconClicked;
+    public System.Action<ItemInstance>    OnIconDoubleClicked;
+    public System.Func<ItemInstance, int> IconPrice;   // 툴팁에 적을 값(진열만)
+
+    // 고른 칸 표시. **색을 칠하지 않고 테두리를 두른다** — 아이콘이 곧 그림이라 위에 색을
+    // 얹으면 무슨 물건인지 알아보기 어려워진다.
+    static readonly Color SelectColor = new(1f, 0.85f, 0.30f, 1f);
+
+    readonly List<(ItemInstance inst, GameObject go)> _icons = new();
+
+    // 고른 칸에 테두리. 아이템이 아니라 **인스턴스**로 찾는다 — 같은 물건이 여러 뭉치일 수 있다.
+    public void HighlightInstance(ItemInstance inst)
+    {
+        foreach (var (i, go) in _icons)
+        {
+            if (go == null) continue;
+
+            bool on = i == inst;
+            var  mark = go.GetComponent<Outline>();
+
+            // 필요할 때만 만든다 — 칸 수만큼 미리 붙이면 안 쓰는 컴포넌트가 그만큼 는다.
+            if (mark == null)
+            {
+                if (!on) continue;
+                mark = go.AddComponent<Outline>();
+                mark.effectDistance  = new Vector2(2f, 2f);
+                mark.useGraphicAlpha = false;
+            }
+            mark.effectColor = SelectColor;
+            mark.enabled     = on;
+        }
+    }
+
     public bool CanReceiveItem(ItemData item) =>
         ReceiveFilter == null || ReceiveFilter(item);
+
+    // **놓일 칸 — 격자 밖으로는 안 나간다.**
+    //
+    // 미리보기와 실제 놓기가 **이 하나를 같이 쓴다**(격자 아이콘 드래그·장비칸 드래그).
+    // 각자 `cursorCell - grab`을 쓰던 시절엔 가장자리에서 음수가 나와 **격자 밖에 밝은 칸이
+    // 그려지고** 실제로는 딴 자리에 놓였다 — 보이는 자리와 놓이는 자리가 다른 것이 가장 나쁘다.
+    // 안쪽으로 당기면 둘이 같아지고, 덤으로 가장자리에 걸친 드롭이 그냥 된다.
+    //
+    // `grab`은 **아이템 안에서 집은 칸**이다(장비칸에서 끌어온 것은 그런 게 없어 0,0).
+    public Vector2Int PlacementCell(Vector2Int cursorCell, ItemData data, bool rotated, Vector2Int grab)
+    {
+        int x = cursorCell.x - grab.x;
+        int y = cursorCell.y - grab.y;
+
+        if (_inventory == null || data == null) return new Vector2Int(x, y);
+
+        int w = rotated ? data.Height : data.Width;
+        int h = rotated ? data.Width  : data.Height;
+
+        return new Vector2Int(Mathf.Clamp(x, 0, Mathf.Max(0, _inventory.Width  - w)),
+                              Mathf.Clamp(y, 0, Mathf.Max(0, _inventory.Height - h)));
+    }
 
     // 활성 그리드 목록 — 커서 아래 그리드 탐색용
     static readonly List<InventoryGridUI> _activeGrids = new();
@@ -59,6 +137,7 @@ public class InventoryGridUI : MonoBehaviour
         foreach (var grid in _activeGrids)
         {
             if (grid == null || grid == mine || !grid.isActiveAndEnabled) continue;
+            if (grid.IsShop) continue;                // 진열대는 그냥 받는 통이 아니다(거래다)
             if (grid.Inventory == null || grid.Inventory == mine.Inventory) continue;
             if (!grid.CanReceiveItem(item)) continue;
             return grid;
@@ -66,6 +145,7 @@ public class InventoryGridUI : MonoBehaviour
         return null;
     }
 
+    // **진열대도 여기 걸린다** — 끌어다 놓을 수 있는 곳이기 때문이다(놓으면 거래가 된다).
     public static InventoryGridUI FindUnderCursor(Vector2 screenPos, Camera uiCam)
     {
         foreach (var grid in _activeGrids)
@@ -76,6 +156,48 @@ public class InventoryGridUI : MonoBehaviour
                 return grid;
         }
         return null;
+    }
+
+    // ── 얹어 놓고 Q/E로 돌린다 ────────────────────────────────────────────────
+    //
+    // 회전은 원래 **끌고 있는 동안에만** 됐다(`DraggableItem.OnDrag`). 시스템은 있는데 **꺼낼
+    // 길이 없어서** 1×3을 3×1로 눕히려면 일단 집어 들어야 했다 — 자리를 보고 나서 돌리고 싶은
+    // 것이 보통인데 순서가 거꾸로였다.
+    //
+    // **커서 아래를 그때그때 찾는다 — 무엇에 얹혀 있는지 기억하지 않는다.** 돌리면 격자가
+    // 아이콘을 다시 만드는데, 얹힘을 상태로 들고 있으면 그 아이콘이 파괴되면서 상태가 끊겨
+    // **두 번째 Q가 안 먹는다**(`OnPointerExit`는 파괴될 때 안 온다 — `ItemInfoUI`가 겪은 그것).
+    // 누를 때 한 번 찾으면 그 함정이 아예 없다.
+    //
+    // 폴링은 **커서 아래 격자 하나만** 일한다(열려 있어야 두어 개다).
+    void Update()
+    {
+        var kb = Keyboard.current;
+        if (kb == null || _inventory == null) return;
+        if (!kb.qKey.wasPressedThisFrame && !kb.eKey.wasPressedThisFrame) return;
+
+        // 끌고 있는 중이면 그쪽이 받는다(`DraggableItem.OnDrag`) — 둘 다 돌면 두 번 돈다.
+        if (DraggableItem.DraggedInstance != null) return;
+
+        // **건설 모드가 켜져 있으면 Q/E는 그쪽 것이다.** 같은 키를 같은 뜻으로 쓰는 대신
+        // 치러야 하는 값이다 — 둘이 같이 떠 있으면 고스트와 배낭이 한 번에 돈다.
+        if (BuildModeManager.IsActive) return;
+
+        var mouse = Mouse.current;
+        if (mouse == null) return;
+
+        var canvas = GetComponentInParent<Canvas>();
+        Camera cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                   ? canvas.worldCamera : null;
+
+        Vector2 pos = mouse.position.ReadValue();
+        if (FindUnderCursor(pos, cam) != this) return;
+
+        var cell = ScreenToGrid(pos);
+        if (cell.x == int.MinValue) return;
+
+        var inst = _inventory.GetAt(cell.x, cell.y);
+        if (inst != null) _inventory.RotateItem(inst);
     }
 
     void Awake() => EnsureItemsRoot();
@@ -291,6 +413,7 @@ public class InventoryGridUI : MonoBehaviour
 
     void ClearItems()
     {
+        _icons.Clear();
         if (_itemsRoot == null) return;
         for (int i = _itemsRoot.childCount - 1; i >= 0; i--)
         {
@@ -307,8 +430,11 @@ public class InventoryGridUI : MonoBehaviour
         var img = go.GetComponent<Image>();
         img.raycastTarget = true; // 드래그 가능
 
+        // **진열도 끌 수 있다** — 다만 격자를 건너가면 이동이 아니라 거래다(위 `IsShop` 주석).
         var drag = go.AddComponent<DraggableItem>();
         drag.Init(inst, this);
+
+        _icons.Add((inst, go));
 
         if (inst.Data.Icon != null)
         {

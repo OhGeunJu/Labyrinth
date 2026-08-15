@@ -7,11 +7,23 @@ using UnityEngine;
 // **한 자리**를 가리키고(우리를 우클릭해서 고른 것), 이쪽은 "우리에 넣어라"라는 **종류**다.
 // 종류로 두면 걸어가는 동안 그 칸이 차도 다음 칸으로 갈아탈 수 있고, 자리를 미리 고르지
 // 않으므로 여럿이 동시에 나를 때 서로 같은 칸을 노리다 헛걸음하지 않는다.
+// **업은 것을 어느 종류의 자리로 데려가나.**
+//
+// `PutDownSite`(저 무덤·저 우리)와 **다른 축이다** — 이쪽은 종류라, 걸어가는 사이에 그 칸이
+// 차도 다음 칸으로 갈아탄다.
+//
+// **시체의 장례도 같은 축을 탄다**(`Grave`/`Pyre`). 붙잡은 사람을 우리로 데려가는 것과
+// 시신을 무덤으로 옮기는 것은 *업고 걸어가 자리에 넣는* 똑같은 동작이라, 규칙을 새로 만들면
+// "걸어가는 사이 자리가 차면"·"자리가 없으면 업은 채로 기다린다"·"도착해서 다시 본다"를
+// 전부 두 벌로 갖게 된다. 갈리는 것은 **누가 갈 수 있는 자리인가**뿐이고 그건
+// `ICarrySite.Accepts`가 이미 답한다.
 public enum EscortDest
 {
     None,   // 데려갈 곳 없음 — 업은 채로 있는다(간수가 꺼져 있으면 여기)
     Cage,   // 우리로
     Bed,    // 죄수 침대로
+    Grave,  // 무덤으로 (시체)
+    Pyre,   // 화장터로 (시체)
 }
 
 // **붙잡은 사람을 자리에 넣는 일.** 간수(`JobCategory.Warden`)가 하는 두 가지 중 하나다
@@ -88,21 +100,17 @@ public static class PrisonEscort
     //   시작되기 전에 죽는다. 원하는 쪽이 없으면 있는 쪽으로 간다 — 자리에 넣는 것이
     //   길에 눕혀 두는 것보다 늘 낫다.
     public static bool Resolve(UnitBrain carried, EscortDest dest, Vector3 from,
-                               out Bed bed, out PrisonCage cage)
+                               out ICarrySite site)
     {
-        bed  = null;
-        cage = null;
+        site = null;
         if (carried == null) return false;
 
         switch (dest)
         {
-            case EscortDest.Cage:
-                cage = FindCage(from);
-                return cage != null;
-
-            case EscortDest.Bed:
-                bed = FindPrisonBed(from);
-                return bed != null;
+            case EscortDest.Cage:  site = FindCage(from);              return site != null;
+            case EscortDest.Bed:   site = FindPrisonBed(from);         return site != null;
+            case EscortDest.Grave: site = Grave.FindNearestFree(from); return site != null;
+            case EscortDest.Pyre:  site = Pyre.FindNearestFree(from);  return site != null;
         }
 
         var body = carried.GetComponent<BodyPartSystem>();
@@ -110,15 +118,15 @@ public static class PrisonEscort
 
         if (hurt)
         {
-            bed = FindPrisonBed(from);
-            if (bed != null) return true;
+            site = FindPrisonBed(from);
+            if (site != null) return true;
         }
 
-        cage = FindCage(from);
-        if (cage != null) return true;
+        site = FindCage(from);
+        if (site != null) return true;
 
-        bed = FindPrisonBed(from);
-        return bed != null;
+        site = FindPrisonBed(from);
+        return site != null;
     }
 
     // ── 명령 ─────────────────────────────────────────────────────────────────
@@ -132,11 +140,14 @@ public static class PrisonEscort
     // 먹혔는지 알 길이 없다.
     public static bool CanOrder(IReadOnlyList<PawnMover> commanders, UnitBrain target, EscortDest dest)
     {
-        if (!IsCaptive(target)) return false;
+        // **가둘 자리는 붙잡은 사람만, 장례 자리는 시체만.** 자리 쪽 규칙(`ICarrySite.Accepts`)과
+        // 같은 답이라야 한다 — 갈리면 "메뉴엔 떴는데 가서는 안 넣는다"가 된다.
+        bool funeral = dest == EscortDest.Grave || dest == EscortDest.Pyre;
+        if (funeral ? !PawnCarry.IsCorpse(target) : !IsCaptive(target)) return false;
+
         if (PickCarrier(commanders, target) == null) return false;
 
-        var from = target.transform.position;
-        return dest == EscortDest.Bed ? FindPrisonBed(from) != null : FindCage(from) != null;
+        return Resolve(target, dest, target.transform.position, out _);
     }
 
     public static void Order(IReadOnlyList<PawnMover> commanders, UnitBrain target, EscortDest dest)

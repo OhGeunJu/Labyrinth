@@ -17,6 +17,19 @@ public class SelectionBox : MonoBehaviour
             _drawing = false;
         }
 
+        // **UI 위에서 시작한 드래그에는 안 그린다.**
+        //
+        // 이 상자는 저 혼자 판단하고 있었다 — 그래서 **배낭에서 물건을 끌 때 월드 선택 상자가
+        // 같이 떴다**: 선택은 `SelectionManager._pressOverUI`가 이미 막고 있으니 아무도 안
+        // 골리는데 초록 사각형만 그려지는, 설명할 수 없는 그림이었다.
+        //
+        // **판단은 `SelectionManager`가 한다**(`PressOverUI`) — 그리는 쪽이 따로 물으면
+        // 언젠가 두 답이 갈린다. 배선이 비었으면 그때만 스스로 찾는다.
+        if (selectionManager == null)
+            selectionManager = Object.FindFirstObjectByType<SelectionManager>();
+
+        if (selectionManager != null && selectionManager.PressOverUI) { _drawing = false; return; }
+
         if (Mouse.current.leftButton.isPressed)
         {
             Vector2 cur = Mouse.current.position.ReadValue();

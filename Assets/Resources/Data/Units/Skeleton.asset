@@ -9,9 +9,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Script: {fileID: 11500000, guid: b2dfb15221461804ea86578b96004b13, type: 3}
   m_Name: Skeleton
-  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  m_EditorClassIdentifier: Assembly-CSharp::MinionData
   Id: 
   RaceName: "\uD574\uACE8"
   Icon: {fileID: 0}
@@ -55,3 +55,17 @@ MonoBehaviour:
     Min: 0
     Max: 0
   StatGrowthRates: []
+  Prefab: {fileID: 6894885055828391614, guid: 5671e81eeb996f945a446dde1026f49d, type: 3}
+  SortOrder: 10
+  SummonCostItem: {fileID: 11400000, guid: d72a41f0b8e35c34ea9017c6d5b28401, type: 2}
+  SummonCostAmount: 25
+  AllowedJobs:
+  CanProvideWater: 0
+  RequiredResearch: {fileID: 11400000, guid: e83b52a1c9f46d34fb1028d7e6c39512, type: 2}
+  ButcherYield: []
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 2
+    MaxCount: 4

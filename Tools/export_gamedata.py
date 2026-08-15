@@ -86,6 +86,12 @@ for f in glob.glob("Assets/**/*.asset", recursive=True):
     cls = cls.group(1) if cls else "ItemData"
     name = re.search(r"m_Name: (.*)", s).group(1).strip()
 
+    # **식별자는 `Id`가 이긴다**(`DataId.Resolve`) — 비어 있을 때만 파일명이다.
+    # 안 맞추면 표를 보고 JSON 참조를 적은 사람이 조용히 못 찾는 Id를 쓰게 된다.
+    explicit = re.search(r"^  Id: (\S.*)$", s, re.M)
+    if explicit:
+        name = explicit.group(1).strip()
+
     if cls == "WeaponData":
         kind, resale = WTYPE.get(int(num(s, "Type")), "지팡이"), 0.55
     elif cls == "ArmorData":

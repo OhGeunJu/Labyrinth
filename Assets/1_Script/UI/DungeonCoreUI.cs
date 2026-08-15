@@ -27,6 +27,14 @@ public class DungeonCoreUI : MonoBehaviour
         if (relocateButton != null) relocateButton.onClick.AddListener(OnRelocateClicked);
         DungeonCore.OnSelected           += Open;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
+        // 연구가 끝나면 새로 열린 하수인이 **열려 있는 목록에도** 나타나야 한다
+        // (`MinionData.RequiredResearch`). 안 붙이면 창을 닫았다 열어야 보인다.
+        ResearchManager.OnResearchCompleted += OnResearchDone;
+    }
+
+    void OnResearchDone(ResearchData _)
+    {
+        if (panel != null && panel.activeSelf) RebuildList();
     }
 
     void OnRelocateClicked()
@@ -39,8 +47,9 @@ public class DungeonCoreUI : MonoBehaviour
 
     void OnDestroy()
     {
-        DungeonCore.OnSelected           -= Open;
-        BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
+        DungeonCore.OnSelected              -= Open;
+        BuildModeManager.OnActiveChanged    -= OnBuildModeChanged;
+        ResearchManager.OnResearchCompleted -= OnResearchDone;
     }
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }

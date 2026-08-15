@@ -10,7 +10,7 @@ using UnityEngine;
 // 침대는 회복·치료가 붙는 대신 자리를 더 먹는다 — 살려서 회유할 사람은 침대에, 그냥
 // 붙잡아 둘 사람은 우리에. 어느 쪽이든 **갇힌 상태는 하나**(`UnitBlackboard.IsPrisoner`)라
 // BT 정지·자동 표적 제외 규칙이 둘로 갈리지 않는다.
-public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
+public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
 {
     public static readonly List<PrisonCage> All = new();
     public static event System.Action<PrisonCage> OnSelected;
@@ -115,13 +115,22 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
         return null;
     }
 
+    // ── `ICarrySite` — 업은 것을 받는 자리 ──────────────────────────────────
+    //
+    // **죽은 사람은 안 가둔다** — 가둘 이유가 없고, 넣어 두면 그 우리를 산 사람이 못 쓴다
+    // (`Bed.Accepts`와 같은 규칙). 시체가 갈 자리는 무덤이다.
+    public bool Accepts(UnitBrain brain) => brain != null && !PawnCarry.IsCorpse(brain);
+
+    Vector3     ICarrySite.PutPosition => HoldPosition;
+    Quaternion? ICarrySite.PutRotation => null;   // 서 있는 자세 그대로
+    bool        ICarrySite.IsFull      => IsOccupied;
+    void        ICarrySite.Put(UnitBrain brain) => TryPut(brain);
+    string      ICarrySite.SiteName    => "우리";
+
     public bool TryPut(UnitBrain brain)
     {
         if (brain == null || IsOccupied) return false;
-
-        // **죽은 사람은 안 가둔다** — 가둘 이유가 없고, 넣어 두면 그 우리를 산 사람이 못 쓴다
-        // (`Bed.Accepts`와 같은 규칙). 시체는 옮겨서 아무 데나 내려놓는 것이 전부다.
-        if (PawnCarry.IsCorpse(brain)) return false;
+        if (!Accepts(brain)) return false;
 
         Prisoner = brain;
         Imprisonment.Bind(brain, HoldPosition);
@@ -270,13 +279,29 @@ public static class Imprisonment
 
         // 우리에 선 포로는 여기가 붙든다. 기절에서 깨어날 때 `BodyPartSystem`이 기절 직전
         // 자세로 되돌리므로(`_preKoRotation`) 자세도 같이 본다.
-        if (Quaternion.Angle(brain.transform.rotation, bb.PrisonPose) > 1f)
+        //
+        // **기절해 있는 동안은 자세를 안 건드린다** — 쓰러진 것을 억지로 세우면 우리 안에서
+        // 곰이 벌떡 선다. 깨어나면 그때 `PrisonPose`로 돌아간다.
+        if (!bb.IsKnockedOut && Quaternion.Angle(brain.transform.rotation, bb.PrisonPose) > 1f)
             brain.transform.rotation = bb.PrisonPose;
 
+        // **누운 폰은 몸통으로 잰다 — 피벗은 발밑이다.**
+        //
+        // 서 있을 땐 몸 한가운데가 발 바로 위라 수평으로는 차이가 없지만, 누우면 그 한가운데가
+        // **옆으로 뻗는다.** 그대로 놓으면 발만 우리 한가운데에 오고 몸은 밖으로 삐져나온다 —
+        // 곰처럼 큰 짐승일수록 눈에 띄었다(`PawnMover.SetSleeping`이 침대에서 하는 보정과
+        // 같은 것인데 우리에만 빠져 있었다). 거리 판정도 같은 기준이라야 한 번 어긋난 것이
+        // 그대로 굳지 않는다.
+        Vector3 lean = brain.transform.rotation * Vector3.up
+                     * PawnPlacement.CenterOffset(brain.gameObject);
+        var body = new Vector2(pos.x + lean.x, pos.z + lean.z);
+
         var spot = bb.PrisonSpot;
-        if ((new Vector2(pos.x, pos.z) - new Vector2(spot.x, spot.z)).sqrMagnitude < 0.25f) return;
+        if ((body - new Vector2(spot.x, spot.z)).sqrMagnitude < 0.25f) return;
 
         // 파묻힘·되밀림 보정은 `PawnPlacement`가 한 곳에서 다룬다.
-        PawnPlacement.PlaceOnGround(brain.gameObject, spot, bb.PrisonPose);
+        // 자세는 지금 것을 그대로 둔다(위에서 정했다) — 여기서 또 넘기면 기절한 폰을 세운다.
+        PawnPlacement.PlaceOnGround(brain.gameObject,
+                                    spot - new Vector3(lean.x, 0f, lean.z));
     }
 }
