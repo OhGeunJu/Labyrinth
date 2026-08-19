@@ -188,13 +188,18 @@ public static class WorldBattle
             if (i < down)
             {
                 // 여러 번 나눠 때린다 — 한 방에 몰면 부위 하나만 상하고 갑옷도 한 번만 일한다.
+                //
+                // **몸의 눈금과 같이 간다**(부위 HP ×3, `BodyPartSystem`). 여기 수는
+                // 무기 피해가 아니라 *"진 쪽이 이만큼 다친다"*는 결과라, 몸이 3.5배 질겨졌는데
+                // 그대로 두면 **진 원정대가 멀쩡히 걸어 나온다** — 지도 위 전투가 아무것도
+                // 정하지 못하게 된다.
                 int hits = Random.Range(5, 9);
-                for (int h = 0; h < hits; h++) body.TakeDamage(Random.Range(10f, 20f));
+                for (int h = 0; h < hits; h++) body.TakeDamage(Random.Range(30f, 60f));
                 result.Down.Add(u);
             }
             else
             {
-                body.TakeDamage(Random.Range(3f, 9f));
+                body.TakeDamage(Random.Range(9f, 27f));
                 result.Wounded.Add(u);
             }
         }

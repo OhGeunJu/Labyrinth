@@ -89,6 +89,16 @@ public class Grave : MonoBehaviour, IWorldClickable, ICarrySite
 
     public void OnWorldClick() => OnSelected?.Invoke(this);
 
+    // **이 시체를 물고 있는 무덤.** `PrisonCage.HolderOf`와 같은 자리 — 파내야 하는 쪽
+    // (교단이 무덤을 판다, `Necromancy`)이 시체만 들고 있어도 자리를 되짚을 수 있어야 한다.
+    public static Grave HolderOf(Corpse corpse)
+    {
+        if (corpse == null) return null;
+        foreach (var g in All)
+            if (g != null && g.Buried == corpse) return g;
+        return null;
+    }
+
     public static Grave FindNearestFree(Vector3 from)
     {
         Grave best = null;

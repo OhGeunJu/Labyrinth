@@ -29,6 +29,9 @@ public class PatrolZone : MonoBehaviour, IWorldClickable
     {
         if (unit == null || _assigned.Contains(unit)) return;
 
+        // **못 하는 일이면 안 받는다**(성장 배경) — 경비도 큐를 안 타므로 여기서 묻는다.
+        if (unit.Work != null && unit.Work.IsBlocked(JobCategory.Guard)) return;
+
         // 기존 배정 구역에서 해제
         unit.Blackboard.AssignedPatrolZone?.Unassign(unit);
 

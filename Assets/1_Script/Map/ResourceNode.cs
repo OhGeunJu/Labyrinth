@@ -49,6 +49,12 @@ public class ResourceNode : MonoBehaviour, IHaulSource
         //
         // **자리 확인을 먼저 한 뒤에 뗀다** — 순서가 반대면 꽉 찬 노드에 보내려다 실패했을 때
         // 폰이 원래 캐던 곳에서도 떨어져 나와 아무 데도 배정되지 않은 채로 남는다.
+        // **못 하는 일이면 배정 자체를 안 받는다**(성장 배경). 채굴·벌목은 큐를 안 타므로
+        // `WorkSettings.IsEnabled`가 걸러 주지 않는다 — 여기서 물어야 *"무능력인데 바위는
+        // 캔다"*가 안 된다.
+        var need = Data != null && Data.IsTree ? JobCategory.Logging : JobCategory.Mining;
+        if (brain.Work != null && brain.Work.IsBlocked(need)) return false;
+
         var prev = brain.Blackboard.AssignedNode;
         if (prev != null && prev != this) prev.Unassign(brain);
 

@@ -232,8 +232,9 @@ public class EventManager : MonoBehaviour
     {
         if (data.EnemyPrefabs == null || data.EnemyPrefabs.Count == 0) return;
 
-        var core = DungeonCore.Instance;
-        var used = new HashSet<Vector2Int>();   // 한 칸에 둘을 낳지 않는다
+        var core     = DungeonCore.Instance;
+        var used     = new HashSet<Vector2Int>();   // 한 칸에 둘을 낳지 않는다
+        var arrivals = new List<GameObject>();
 
         for (int i = 0; i < data.EnemyCount; i++)
         {
@@ -241,6 +242,7 @@ public class EventManager : MonoBehaviour
             if (prefab == null) continue;
 
             var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used));
+            arrivals.Add(go);
 
             // **핵을 향해 걷게 한다.** 적 트리는 탐지(수 미터)와 배회(12m)뿐이라,
             // 명령이 없으면 침공대가 맵 가장자리에서 서성이다 끝난다 — 습격이 일어나지 않는 것과 같다.
@@ -248,6 +250,10 @@ public class EventManager : MonoBehaviour
             var mover = go.GetComponent<PawnMover>();
             if (mover != null && core != null) mover.SetMoveTarget(ScatterNear(core.transform.position, 5f));
         }
+
+        // **치우지 않은 시체가 여기서 값을 치른다** — 교단·망자가 왔으면 맵에 남은 시체가
+        // 그 자리에서 일어난다(`Necromancy`). 습격이 가장자리가 아니라 **안쪽에서** 시작된다.
+        Necromancy.OnRaidArrived(arrivals);
 
         TryScheduleRescue();
     }
@@ -269,15 +275,17 @@ public class EventManager : MonoBehaviour
         if (band == null || !band.IsAlive) return false;
         if (!TryFindEdgeSpawn(out edge)) return false;
 
-        var core = DungeonCore.Instance;
-        var used = new HashSet<Vector2Int>();
-        int spawned = 0;
+        var core     = DungeonCore.Instance;
+        var used     = new HashSet<Vector2Int>();
+        var arrivals = new List<GameObject>();
+        int spawned  = 0;
 
         foreach (var m in band.Members)
         {
             if (m == null || m.Prefab == null) continue;
 
             var go = SpawnPawn(m.Prefab, ScatterNear(edge, 3f, used));
+            arrivals.Add(go);
             spawned++;
 
             // 지도에서 본 그 사람을 그대로 세운다(이름·스탯·특성).
@@ -296,6 +304,11 @@ public class EventManager : MonoBehaviour
         if (spawned == 0)
             Debug.LogWarning($"[Event] {band.Name}: 세울 프리팹이 없어 도착을 건너뜁니다 " +
                              "(WorldBandData.Members의 Prefab을 확인하세요).");
+
+        // **여기도 시체를 일으킨다.** 이벤트 추첨으로 나온 습격에만 걸면 지도에서 걸어온
+        // 교단은 시체를 그냥 지나친다 — 플레이어에게 그 둘은 똑같이 '교단이 몰려온 것'이다
+        // (구원이 양쪽에 다 붙는 것과 같은 이유).
+        if (spawned > 0) Necromancy.OnRaidArrived(arrivals);
 
         // **지도에서 걸어온 습격에도 구원이 온다.** 여기를 빠뜨리면 "이벤트로 온 습격에만
         // 용병이 온다"가 되는데, 플레이어에게 그 둘은 똑같이 '적이 몰려온 것'이다.

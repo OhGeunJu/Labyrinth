@@ -34,6 +34,47 @@ public class Corpse : MonoBehaviour
     // (허기·라벨)이 `Faction.IsPlayer` 대신 쓴다.
     public bool WasPlayer => Faction != null && Faction.PlayerControlled;
 
+    // ── 유품 ─────────────────────────────────────────────────────────────────
+    //
+    // **지녔던 것을 전부 내놓는다 — 배낭 속의 것과 차고 있던 것 둘 다.**
+    //
+    // **차고 있던 장비는 `Inventory`에 없다.** 격자를 안 먹으므로(시체 창이 장비 열을 따로
+    // 그린다) 배낭만 훑으면 **무기와 갑옷이 시체와 함께 조용히 사라진다** — 도축·화장 둘 다
+    // 마지막에 몸을 없애기 때문이다. 화장터에는 *"안 뒤지고 올려놓았다고 장비가 사라지면
+    // 그건 조용한 손실"*이라고 적혀 있었는데, 정작 코드는 배낭만 비우고 있었다(2026-08-16).
+    //
+    // **여기 두는 이유**: 부르는 곳이 둘이고(`ButcherJob`·`Pyre`) 앞으로도 늘 텐데, 각자
+    // 적으면 하나가 반드시 장비를 빠뜨린다 — 실제로 그렇게 어긋나 있었다. "시체가 지녔던
+    // 것"에 답하는 것은 시체다. **무덤은 안 부른다** — 그쪽은 같이 묻고 파낼 수 있어서
+    // 잃는 것이 아니다(그것이 무덤과 화장을 가르는 축이다).
+    public void SpillBelongings(Vector3 at)
+    {
+        at += Vector3.up * 0.15f;
+
+        // 차고 있던 것 — 벗겨서 떨군다(`TakeOff*`는 배낭을 안 거친다. 어차피 비울 배낭이라
+        // 거쳐 봐야 자리가 없으면 그쪽에서 또 새는 길이 생긴다).
+        var eq = GetComponent<Equipment>();
+        if (eq != null)
+        {
+            Drop(eq.TakeOffMainHand(), at);
+            Drop(eq.TakeOffOffHand(),  at);
+            foreach (ArmorSlot slot in System.Enum.GetValues(typeof(ArmorSlot)))
+                Drop(eq.TakeOff(slot), at);
+        }
+
+        // 배낭에 든 것.
+        if (Inventory == null) return;
+        for (int i = Inventory.Items.Count - 1; i >= 0; i--) Drop(Inventory.Items[i], at);
+        Inventory.Clear();
+    }
+
+    // 등급을 들고 떨군다 — `ItemData`만 넘기면 희귀 철검이 떨어지는 것만으로 일반이 된다.
+    static void Drop(ItemInstance inst, Vector3 at)
+    {
+        if (inst?.Data == null) return;
+        DroppedItem.Spawn(inst.Data, Mathf.Max(1, inst.Quantity), at, inst.Quality);
+    }
+
     // ── 부패 ──────────────────────────────────────────────────────────────────
     //
     // **시체는 시간이 지나며 세 단계를 밟는다.** 단계마다 할 수 있는 일이 달라서, 그것이
@@ -48,9 +89,14 @@ public class Corpse : MonoBehaviour
     public float DiedAt { get; private set; }
 
     // 하루 길이를 기준으로 잡는다(`GameTimeManager.DayDuration`). **습격 주기(1~3일)와 같은
-    // 눈금**이라야 "다음 습격 전에 치워라"가 성립한다 — 이틀이면 예고를 보고 움직일 수 있다.
-    public const float FreshDays  = 2f;
-    public const float RottenDays = 4f;   // 이때부터 뼈
+    // 눈금**이라야 "다음 습격 전에 치워라"가 성립한다.
+    //
+    // **하루 만에 썩고 사흘이면 뼈다.** 전엔 2일·4일이었는데, 그러면 신선한 몸이 실기 한
+    // 시간이라 **싸움이 끝난 뒤 서두를 이유가 없었다** — 도축은 언제 가도 고기가 나왔다.
+    // 하루로 좁히면 그날 안에 치우는 것이 일이 되고, 습격 주기(1~3일)와 겹쳐 *다음 습격
+    // 전에 뼈가 된다*가 실제로 벌어진다(뼈는 안 삭으므로 그때부터는 쌓이는 쪽이다).
+    public const float FreshDays  = 1f;
+    public const float RottenDays = 3f;   // 이때부터 뼈
 
     // 죽은 지 며칠인가. **묻혀 있는 동안은 안 는다**(아래 `SetBuried`).
     public float AgeDays => Buried
@@ -105,6 +151,18 @@ public class Corpse : MonoBehaviour
         foreach (var col in GetComponentsInChildren<Collider>(true))  col.enabled  = !on;
     }
 
+    // **나이를 손으로 옮긴다.** `SetBuried`가 `DiedAt`을 밀어 시간을 멈추는 것과 **같은 문**이다
+    // — 나이를 바꾸는 길이 둘이면 한쪽이 묻힌 시체를 건드려 땅속에서 삭기 시작한다.
+    // 지금 부르는 곳은 시험용 메뉴 하나뿐이다(`DebugNecromancy`): 뼈가 되기까지 게임 내
+    // 나흘(1배속 실기 두 시간)이라 *뼈에서 해골이 선다*를 눈으로 볼 방법이 달리 없다.
+    public void SetAge(float days)
+    {
+        days = Mathf.Max(0f, days);
+
+        if (Buried) _buriedAge = days;
+        else        DiedAt = GameTimeManager.Elapsed - days * Mathf.Max(1f, GameTimeManager.DayDuration);
+    }
+
     void Awake() => DiedAt = GameTimeManager.Elapsed;
 
     // **단계가 바뀌면 색으로 알린다.** 모델을 갈아 끼우려면 에셋이 필요한데, 색만으로도
@@ -126,10 +184,16 @@ public class Corpse : MonoBehaviour
         Tint(now == CorpseStage.Bones ? BonesTint : RottenTint);
     }
 
-    void Tint(Color c)
+    void Tint(Color c) => Tint(gameObject, c);
+
+    // **몸을 물들이는 일 한 곳.** 죽은 자를 일으키는 쪽(`Necromancy`)도 같은 일을 한다 —
+    // 일어난 몸은 모양이 그대로라, 물들이지 않으면 **내 폰과 눈으로 구별되지 않는다.**
+    public static void Tint(GameObject body, Color c)
     {
+        if (body == null) return;
+
         var mpb = new MaterialPropertyBlock();
-        foreach (var rend in GetComponentsInChildren<Renderer>(true))
+        foreach (var rend in body.GetComponentsInChildren<Renderer>(true))
         {
             rend.GetPropertyBlock(mpb);
             mpb.SetColor("_BaseColor", c);   // URP

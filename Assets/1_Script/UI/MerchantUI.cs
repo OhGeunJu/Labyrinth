@@ -49,7 +49,7 @@ public class MerchantUI : MonoBehaviour
     //
     // `at`은 **놓은 칸**이다 — 산 물건이 첫 빈 칸으로 튀면 "여기에 놓았다"가 거짓말이 된다.
     // `detached` = 끌고 있는 조각이 **좌판 밖에** 있다(쪼개서 손에 든 상태).
-    public static bool HandleDragTrade(ItemInstance inst, InventoryGridUI from, InventoryGridUI to,
+    public static bool HandleCarryTrade(ItemInstance inst, InventoryGridUI from, InventoryGridUI to,
                                        bool detached, Vector2Int at, bool rotated)
     {
         if (_instance == null || ActiveShop == null || inst == null) return false;
@@ -747,12 +747,6 @@ public class MerchantUI : MonoBehaviour
                 SelectStack(inst);
                 _cellsGrid.HighlightInstance(inst);
                 RefreshBuyButton();
-            };
-            _cellsGrid.OnIconDoubleClicked += inst =>
-            {
-                SelectStack(inst);
-                RefreshBuyButton();
-                ExecuteBuy();
             };
         }
 

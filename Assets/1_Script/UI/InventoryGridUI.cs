@@ -20,6 +20,10 @@ public class InventoryGridUI : MonoBehaviour
     [Tooltip("드래그 중 놓일 자리 표시. 된다/안 된다를 색으로 가르지 않는다 — 자리만 보여준다.")]
     [SerializeField] Color previewColor    = new Color(0.85f, 0.85f, 0.95f, 0.30f);
 
+    // **장비칸도 같은 흰색을 쓴다**(`EquipSlotUI.Hint`) — 놓일 자리를 알리는 색이 격자와
+    // 장비칸에서 다르면, 같은 조작인데 어디에 올렸느냐로 다른 말처럼 보인다.
+    public Color PreviewColor => previewColor;
+
     [Header("아이템 색상")]
     [SerializeField] Color itemBgColor   = new Color(0.25f, 0.35f, 0.25f, 0.85f);
     [SerializeField] Color qtyTextColor  = Color.white;
@@ -60,11 +64,10 @@ public class InventoryGridUI : MonoBehaviour
     // **끌 수는 있되 공짜로는 못 가져간다.** 한때 아이콘에 `DraggableItem`을 아예 안 붙였는데
     // (`ReadOnly`), 그러면 **좌판을 정리할 길이 없다** — 1×8로 남은 틈에 2×2를 넣으려면 1×1을
     // 옆으로 밀어야 하는데 그걸 할 수가 없었다. 지금은 붙이되 **격자를 건너가는 순간 이동이
-    // 아니라 거래**가 된다(`DraggableItem.TryPlace` → `MerchantUI.HandleDragTrade`).
+    // 아니라 거래**가 된다(`DraggableItem.TryPlace` → `MerchantUI.HandleCarryTrade`).
     public bool IsShop;
 
     public System.Action<ItemInstance>    OnIconClicked;
-    public System.Action<ItemInstance>    OnIconDoubleClicked;
     public System.Func<ItemInstance, int> IconPrice;   // 툴팁에 적을 값(진열만)
 
     // 고른 칸 표시. **색을 칠하지 않고 테두리를 두른다** — 아이콘이 곧 그림이라 위에 색을
@@ -146,21 +149,58 @@ public class InventoryGridUI : MonoBehaviour
     }
 
     // **진열대도 여기 걸린다** — 끌어다 놓을 수 있는 곳이기 때문이다(놓으면 거래가 된다).
+    // 커서 아래 격자. **겹쳐 있으면 맨 위에 그려진 것**을 고른다.
+    //
+    // 전엔 `_activeGrids`에서 **먼저 걸리는 것**을 돌려줬다. 창이 겹치지 않을 때는 티가 안
+    // 났지만, 창고 창을 배낭 위에 얹어 놓으면 **눈에 보이는 창이 아니라 등록 순서가 이겨서**
+    // 배낭에 놓으려던 물건이 창고로 들어갔다(등록 순서는 창을 연 순서라 사람이 알 길이 없다).
+    //
+    // uGUI의 그리기 순서는 **계층의 형제 순서**다 — 뒤에 있는 형제가 위에 그려진다. 그래서
+    // 공통 조상까지 거슬러 올라가 거기서의 형제 번호를 비교하면 "어느 것이 위인가"가 나온다.
     public static InventoryGridUI FindUnderCursor(Vector2 screenPos, Camera uiCam)
     {
+        InventoryGridUI best = null;
+
         foreach (var grid in _activeGrids)
         {
             if (grid == null || !grid.isActiveAndEnabled) continue;
-            if (RectTransformUtility.RectangleContainsScreenPoint(
-                    (RectTransform)grid.transform, screenPos, uiCam))
-                return grid;
+            if (!RectTransformUtility.RectangleContainsScreenPoint(
+                    (RectTransform)grid.transform, screenPos, uiCam)) continue;
+
+            if (best == null || DrawsAbove(grid.transform, best.transform)) best = grid;
         }
-        return null;
+        return best;
+    }
+
+    // a가 b보다 위에 그려지나. 공통 조상에서의 형제 번호로 잰다(뒤가 위).
+    static bool DrawsAbove(Transform a, Transform b)
+    {
+        var ca = Chain(a);
+        var cb = Chain(b);
+
+        int n = Mathf.Min(ca.Count, cb.Count);
+        for (int i = 0; i < n; i++)
+        {
+            if (ca[i] == cb[i]) continue;
+            return ca[i].GetSiblingIndex() > cb[i].GetSiblingIndex();
+        }
+
+        // 한쪽이 다른 쪽의 자식이다 — 자식이 위에 그려진다.
+        return ca.Count > cb.Count;
+    }
+
+    // 루트 → 자기까지의 경로.
+    static List<Transform> Chain(Transform t)
+    {
+        var list = new List<Transform>();
+        for (var cur = t; cur != null; cur = cur.parent) list.Add(cur);
+        list.Reverse();
+        return list;
     }
 
     // ── 얹어 놓고 Q/E로 돌린다 ────────────────────────────────────────────────
     //
-    // 회전은 원래 **끌고 있는 동안에만** 됐다(`DraggableItem.OnDrag`). 시스템은 있는데 **꺼낼
+    // 회전은 원래 **끌고 있는 동안에만** 됐다(손에 든 동안). 시스템은 있는데 **꺼낼
     // 길이 없어서** 1×3을 3×1로 눕히려면 일단 집어 들어야 했다 — 자리를 보고 나서 돌리고 싶은
     // 것이 보통인데 순서가 거꾸로였다.
     //
@@ -176,8 +216,8 @@ public class InventoryGridUI : MonoBehaviour
         if (kb == null || _inventory == null) return;
         if (!kb.qKey.wasPressedThisFrame && !kb.eKey.wasPressedThisFrame) return;
 
-        // 끌고 있는 중이면 그쪽이 받는다(`DraggableItem.OnDrag`) — 둘 다 돌면 두 번 돈다.
-        if (DraggableItem.DraggedInstance != null) return;
+        // 손에 들었으면 그쪽이 받는다(`DraggableItem`) — 둘 다 돌면 두 번 돈다.
+        if (DraggableItem.CarriedInstance != null) return;
 
         // **건설 모드가 켜져 있으면 Q/E는 그쪽 것이다.** 같은 키를 같은 뜻으로 쓰는 대신
         // 치러야 하는 값이다 — 둘이 같이 떠 있으면 고스트와 배낭이 한 번에 돈다.
@@ -403,10 +443,10 @@ public class InventoryGridUI : MonoBehaviour
         EnsureItemsRoot();
         foreach (var inst in _inventory.Items)
         {
-            // **끌고 있는 것은 안 그린다.** 그 아이콘은 이미 캔버스 위에서 커서를 따라가고 있다 —
+            // **손에 든 것은 안 그린다.** 그 아이콘은 이미 캔버스 위에서 커서를 따라가고 있다 —
             // 안 거르면 뭉치를 쪼개는 순간 같은 것이 격자에도 하나 더 생겨 둘로 보인다.
             // (드래그 중에 격자를 다시 그리는 것은 **쪼갠 나머지를 바로 보여 주기 위해서**다.)
-            if (inst == DraggableItem.DraggedInstance) continue;
+            if (inst == DraggableItem.CarriedInstance) continue;
             CreateItemIcon(inst);
         }
     }
@@ -454,17 +494,30 @@ public class InventoryGridUI : MonoBehaviour
         rt.sizeDelta = new Vector2(ew * cellSize - 4, eh * cellSize - 4);
         rt.anchoredPosition = new Vector2(inst.GridX * cellSize + 2, -inst.GridY * cellSize - 2);
 
+        Decorate(go.transform, inst);
+    }
+
+    // **아이콘에 붙는 글자는 여기 한 곳에서 붙인다** — 이름·개수·잠금.
+    //
+    // 손에 든 아이콘도 이걸 쓴다(`DraggableItem.CarryInstead`). 밀어낸 물건으로 갈아 끼울 때
+    // 글자를 손으로 만지다가 **그림 없는 물건의 이름을 개수로 덮어썼다** — 개수가 1이면
+    // 빈 글자라, 이름이 통째로 사라져 무엇을 들고 있는지 알 수가 없었다.
+    public void Decorate(Transform icon, ItemInstance inst)
+    {
+        // 갈아 끼울 때를 위해 먼저 비운다(새로 만든 아이콘은 어차피 자식이 없다).
+        for (int i = icon.childCount - 1; i >= 0; i--) Destroy(icon.GetChild(i).gameObject);
+
         if (inst.Data.Icon == null)
-            AddLabel(go.transform, inst.Data.ItemName, 12, TextAlignmentOptions.Center, nameTextColor);
+            AddLabel(icon, inst.Data.ItemName, 12, TextAlignmentOptions.Center, nameTextColor);
 
         if (inst.Quantity > 1)
-            AddLabel(go.transform, $"x{inst.Quantity}", 14, TextAlignmentOptions.BottomRight, qtyTextColor);
+            AddLabel(icon, $"x{inst.Quantity}", 14, TextAlignmentOptions.BottomRight, qtyTextColor);
 
         // 잠긴 뭉치는 **글자로** 말한다. 자물쇠 기호를 쓰면 폰트 폴백에 기대게 되고
         // (`docs/editor_creators.md` "폰트 체인"), 색만 바꾸면 아이콘 제 색과 섞여 안 보인다.
         // 수량이 오른쪽 아래에 있으므로 왼쪽 위 — 서로 겹치지 않는다.
         if (inst.Locked)
-            AddLabel(go.transform, "잠금", 10, TextAlignmentOptions.TopLeft, lockTextColor);
+            AddLabel(icon, "잠금", 10, TextAlignmentOptions.TopLeft, lockTextColor);
     }
 
     void AddLabel(Transform parent, string text, float fontSize, TextAlignmentOptions align, Color color)

@@ -177,16 +177,17 @@ public class ButcherJob : JobBase
             var bb = _brain != null ? _brain.Blackboard : null;
             if (bb != null && bb.CarriedBy == unit) PawnCarry.PutDown(unit);
 
-            // **산 것은 아직 상판에 안 올린다 — 바닥에서 죽인다.**
+            // **산 것도 여기서 상판에 올린다 — 죽이는 것도 도축대에서 하는 일이다.**
             //
-            // 상판에 올려 두고 죽이면 둘이 어긋난다: ① 아직 살아 있어 `PawnMover`가 도로
-            // 끌어내리고(붙들면 이번엔 자리가 어긋난다 — `SetSleeping`이 제 몫의 보정을
-            // 이미 하기 때문이다), ② **죽을 때 떨어지는 전리품이 도마 위에 쌓인다**
-            // (`UnitBrain.GiveOrDrop`은 발밑에 떨군다).
+            // 한때 시체만 올렸다("바닥에서 잡고, 상판에 올려 가른다"). 그런데 그러면 **죽이는
+            // 7초 동안 몸이 폰 발밑에 누워 있어** 도축대가 옆에 선 가구가 된다 — 같은 일감의
+            // 두 단계가 자리를 달리할 이유가 없다.
             //
-            // 죽이고 나서 올리면 둘 다 없어진다 — 그리고 그림도 그쪽이 맞다:
-            // **바닥에서 잡고, 상판에 올려 가른다.**
-            if (_slain && _table != null) _table.LayOnTable(_brain);
+            // 그때 걱정한 둘은 각자 제자리에서 풀렸다:
+            //   ① `PawnMover`가 도로 끌어내린다 → `LayOnTable`이 `SetSleeping`으로 붙든다
+            //      (보정을 그쪽이 이미 하므로 밖에서 또 빼지 않는다).
+            //   ② 죽을 때 전리품이 도마 위에 쌓인다 → 떨구는 자리를 아래에서 옆 바닥으로 돌린다.
+            if (_table != null) _table.LayOnTable(_brain);
             _table?.SetWork(this);
         }
 
@@ -207,10 +208,15 @@ public class ButcherJob : JobBase
             _slain  = true;
             _worked = 0f;
 
+            // **죽는다고 물건이 떨어지지는 않는다** — 지녔던 것은 태어날 때부터 배낭에 있고
+            // (`UnitBrain.FillPockets`), 그대로 시체 배낭이 된다. 꺼내는 것은 손질을 마칠 때
+            // `Corpse.SpillBelongings`가 **옆 작업 자리**에 한 번에 한다. 그래서 상판 위에서
+            // 죽여도 도마에 동전이 쌓이지 않는다 — 떨구는 시점 자체가 사라졌다.
             _brain?.Die();
 
-            // **이제 상판에 올린다.** 죽었으므로 `PawnMover`가 꺼졌고(`BecomeCorpse`),
-            // 전리품도 이미 바닥에 떨어진 뒤다.
+            // **자리를 다시 잡는다.** 죽으면서 `PawnMover`가 꺼졌으므로(`BecomeCorpse`)
+            // 붙들려 있던 몸이 그냥 놓인 몸이 됐다 — 값은 그대로지만 두 경로가 같은 식으로
+            // 모이게 한 번 더 맞춘다.
             if (_table != null) _table.LayOnTable(_brain);
             return;
         }
@@ -264,13 +270,16 @@ public class ButcherJob : JobBase
         // **시체는 여기서 없어진다.** 가르고 남은 것을 또 가를 수는 없다 — 무엇보다 이것이
         // 지금 유일한 치우는 길이라, 안 지우면 도축이 자원만 늘리고 자리는 그대로 둔다.
         //
-        // 시체 배낭에 아직 물건이 있으면 **같이 떨군다** — 안 뒤지고 도축했다고 유품이
+        // 시체가 지녔던 것이 있으면 **같이 떨군다** — 안 뒤지고 도축했다고 유품이
         // 사라지면 그건 조용한 손실이다(`BecomeCorpse`가 막으려던 바로 그것).
+        // **배낭뿐 아니라 차고 있던 장비까지** 나온다 — 그 답은 `Corpse`가 든다(한때
+        // 여기서 배낭만 훑어 무기·갑옷이 시체와 함께 사라졌다).
+        //
         // **유품은 상판이 아니라 옆 바닥에 떨군다.** 몸을 상판에 눕혀 놓았으므로 그 자리에
         // 떨구면 **동전과 장비가 도마 위에 쌓인다** — 도축이 내놓는 것(통에 들어간다)과
         // 죽은 자가 지녔던 것(바닥에 떨어져 운반 축을 탄다)은 다른 축이라, 자리도 갈라야
         // 무엇이 무엇인지 보인다.
-        SpillBelongings(corpse, _table != null ? _table.ApproachPosition : at);
+        corpse.SpillBelongings(_table != null ? _table.ApproachPosition : at);
 
         string what = kinds > 0 ? $"{Butchering.StageName(stage)} 시체를 손질했습니다"
                                 : $"{Butchering.StageName(stage)} 시체에서는 나올 것이 없었습니다";
@@ -333,17 +342,4 @@ public class ButcherJob : JobBase
                               (_table != null ? _table.ApproachPosition : at) + Vector3.up * 0.15f);
     }
 
-    void SpillBelongings(Corpse corpse, Vector3 at)
-    {
-        var inv = corpse.Inventory;
-        if (inv == null) return;
-
-        for (int i = inv.Items.Count - 1; i >= 0; i--)
-        {
-            var inst = inv.Items[i];
-            if (inst?.Data == null) continue;
-            DroppedItem.Spawn(inst.Data, inst.Quantity, at + Vector3.up * 0.15f, inst.Quality);
-        }
-        inv.Clear();
-    }
 }

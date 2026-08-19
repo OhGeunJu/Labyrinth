@@ -179,10 +179,73 @@ public partial class UnitBrain : MonoBehaviour
         // **특성은 스탯을 덮어쓴 뒤에 얹는다.** 순서가 뒤집히면 명세의 등급이 특성 보정을
         // 지워 버려, 특성이 붙어 있는데 아무 효과도 없는 폰이 된다.
         SetTraits(spec.Traits);
+        RememberBackstories(spec.Childhood, spec.Adulthood);
+        SetBackstories(spec.Childhood, spec.Adulthood);
 
         // 생김새 — 크기 · 재질 · 전용 모델. 늘어나면 여기에 줄이 는다.
         if (spec.BodyScale > 0f) transform.localScale = Vector3.one * spec.BodyScale;
         ApplyLook(spec);
+    }
+
+    // ── 성장 배경 ─────────────────────────────────────────────────────────────
+    //
+    // **사람이면 누구나 갖는다** — 내 폰이든 산적이든 마을 사람이든(`UnitData.UsesBackstory`).
+    //
+    // 한때 방랑자에게만 **얹었다**(굴려는 두고). 근거는 *"읽고 쓸 사람이 있는 폰은 내
+    // 방랑자뿐"*이었는데, 세력마다 제 이력을 갖게 되고(`BackstoryGroup`) 나니 그게 뒤집혔다 —
+    // **붙잡은 산적을 살펴볼 때 `패거리 두목`이라고 뜨는 것**이야말로 회유할지 몸값을 받을지
+    // 정하는 재료다. 안 얹으면 그 줄이 비어서, 세력별 이력을 저작한 것이 화면에 한 번도
+    // 안 나타난다.
+    //
+    // **작업 금지는 저절로 갈린다** — `WorkSettings`는 플레이어 세력 일꾼에만 붙으므로
+    // (`ApplyJobBlocks`가 `Work == null`이면 아무 일도 안 한다) 적에게는 걸릴 자리가 없고,
+    // 회유해 오는 순간 `ChangeFaction`이 다시 얹는다. 그래서 *"무능력: 운반"*은 적을
+    // 살펴볼 때 **앞으로 데려오면 어떻게 되는지**를 미리 알려 주는 줄이 된다.
+    public BackstoryData Childhood { get; private set; }
+    public BackstoryData Adulthood { get; private set; }
+
+    // 명세가 들고 온 배경으로 **갈아 끼운다**. 특성과 같은 이유로 이전 것을 먼저 되돌린다 —
+    // 안 그러면 `ApplySpec`이 두 번 불릴 때 보정도 금지도 두 겹이 된다.
+    // **굴려 둔 것과 얹은 것은 다르다.** 적으로 태어난 사람도 이력은 있고(그래야 회유해 왔을
+    // 때 그 이력을 들고 온다), 얹는 것은 방랑자가 되는 순간이다.
+    BackstoryData _rolledChildhood, _rolledAdulthood;
+
+    void RememberBackstories(BackstoryData childhood, BackstoryData adulthood)
+    {
+        _rolledChildhood = childhood;
+        _rolledAdulthood = adulthood;
+    }
+
+    void SetBackstories(BackstoryData childhood, BackstoryData adulthood)
+    {
+        BackstoryPool.Remove(Childhood, Stats);
+        BackstoryPool.Remove(Adulthood, Stats);
+        Work?.ClearBlocked();
+
+        Childhood = childhood;
+        Adulthood = adulthood;
+
+        BackstoryPool.Apply(Childhood, Stats);
+        BackstoryPool.Apply(Adulthood, Stats);
+        ApplyJobBlocks();
+    }
+
+    // **못 하는 일을 작업 설정에 새긴다.** `Work`는 나중에 생길 수 있어서(회유로 우리 편이 된
+    // 폰은 `ChangeFaction`이 그때 붙인다) 따로 부를 수 있게 뒀다 — 안 그러면 넘어온 사람만
+    // 무능력이 조용히 사라진다.
+    public void ApplyJobBlocks()
+    {
+        if (Work == null) return;
+
+        Work.ClearBlocked();
+        BlockFrom(Childhood);
+        BlockFrom(Adulthood);
+    }
+
+    void BlockFrom(BackstoryData b)
+    {
+        if (b?.DisabledJobs == null) return;
+        foreach (var c in b.DisabledJobs) Work.SetBlocked(c, true);
     }
 
     // ── 특성 ──────────────────────────────────────────────────────────────────
@@ -351,8 +414,21 @@ public partial class UnitBrain : MonoBehaviour
             // **명세가 없는 폰도 특성을 받는다.** 방랑자든 하수인이든 적이든 마찬가지다 —
             // 특성이 일부에게만 있으면 "이 고블린은 왜 안 쓰러지지"에 답이 없어진다.
             // 명세가 있는 폰은 `ApplySpec`이 시드에서 뽑은 것을 쓴다(메뉴에서 본 그대로).
-            SetTraits(TraitPool.RollForPawn(
-                new System.Random(UnityEngine.Random.Range(int.MinValue, int.MaxValue))));
+            var rng = new System.Random(UnityEngine.Random.Range(int.MinValue, int.MaxValue));
+            SetTraits(TraitPool.RollForPawn(rng));
+
+            // **명세가 없는 폰도 배경을 굴려 둔다 — 얹지 않더라도.**
+            //
+            // 이 폰들이 대부분이다(적·NPC·이벤트로 온 사람). 안 굴려 두면 **회유해 온 산적이
+            // 배경 없는 사람**이 된다 — 데려오고 나서 굴리면 그건 살아온 이력이 아니라
+            // 합류 보너스다. 굴려는 두되 얹는 것은 방랑자가 될 때다(`SetBackstories`).
+            if (unitData != null && unitData.UsesBackstory)
+            {
+                var group = GetComponent<Faction>()?.Data?.BackstoryGroup;
+                RememberBackstories(BackstoryPool.Roll(BackstorySlot.Childhood, rng, group),
+                                    BackstoryPool.Roll(BackstorySlot.Adulthood, rng, group));
+                SetBackstories(_rolledChildhood, _rolledAdulthood);
+            }
             return;
         }
 
@@ -375,6 +451,10 @@ public partial class UnitBrain : MonoBehaviour
         // **알리기 전에 입힌다.** 구독자(로스터·UI·`WorldBattle` 전력 계산)가 장비를 읽으므로,
         // 알린 뒤에 채우면 첫 계산이 맨몸 기준으로 나온다.
         ApplyLoadout();
+
+        // **주머니는 장비 다음이다.** `ApplyLoadout`이 배낭을 거쳐 장비를 차므로(그것이 유일한
+        // 장착 경로다) 먼저 채우면 그 왕복에 격자를 빼앗아 **무기를 못 차는** 일이 생긴다.
+        FillPockets();
 
         OnUnitSpawned?.Invoke(this);
     }
@@ -510,7 +590,7 @@ public partial class UnitBrain : MonoBehaviour
     // 하루(1800초)에 두 끼. 100 → 0 이 900초이므로 식사 임계(60)까지는 360초 걸린다.
     // 하루 길이를 바꾸면 여기도 같이 바꿔야 한다 — 기준은 `GameTimeManager.dayDuration`.
     const float BaseHungerDecayRate = 0.111f; // 초당 감소량 (100 기준 900초에 고갈 = 하루 2끼)
-    const float StarveBloodPerSec   = 2f;     // 허기 0 시 초당 혈액 손실 (아사)
+    const float StarveBloodPerSec   = 2f;     // 허기 0 시 초당 혈액 손실 (아사) — 혈액은 100 그대로라 예전 값
 
     void UpdateHunger()
     {
@@ -632,8 +712,12 @@ public partial class UnitBrain : MonoBehaviour
 
     void BecomeCorpse()
     {
-        DropCoins();
-        DropLoot();
+        // **주머니는 여기서 만들지 않는다 — 태어날 때 이미 넣었다**(`FillPockets`).
+        //
+        // 예전엔 죽는 순간 굴려 시체 배낭에 넣었다. 이유는 *"살아 있는 동안 아무 차이를
+        // 안 만든다"*였는데, **그게 사실이 아니었다**: 살아 있는 적을 뒤지면 배낭이 **늘
+        // 비어 있었다.** 붙잡아 온 포로도, 쓰러뜨려 놓고 뒤진 산적도 마찬가지다 — 지녔던
+        // 것이 죽어야만 생기니 "무엇을 지녔는지 보고 정한다"가 성립하지 않았다.
 
         // **소속을 먼저 챙긴다.** 아래에서 `Faction` 컴포넌트를 지우는데, 그건 자동 탐지를
         // 막으려는 것이지 "누구의 시체인지" 잊자는 뜻이 아니다.
@@ -664,6 +748,95 @@ public partial class UnitBrain : MonoBehaviour
         if (corpseFaction != null) Destroy(corpseFaction);
     }
 
+    // ── 일어난다 ─────────────────────────────────────────────────────────────
+    //
+    // **`BecomeCorpse`의 짝이다.** 저쪽이 끄기만 하고 아무것도 안 지운 덕에(*"`enabled=false`라
+    // 되살릴 일이 생기면 그대로 되돌릴 수 있다"*) 여기서 도로 켜면 그 사람이 그대로 선다 —
+    // 이름·스탯·특성·차고 있던 장비까지. **그것이 이 기능의 값이다**: 죽은 동료가 내 편이
+    // 아닌 것이 되어 내가 입혀 준 갑옷을 입고 걸어온다.
+    //
+    // **부르는 곳은 `Necromancy` 하나다.** 죽음의 문이 하나면(`Die`) 일어나는 문도 하나여야
+    // 한다 — 여기서 되돌리는 것을 부르는 쪽이 각자 챙기면 반드시 하나를 빠뜨린다.
+    //
+    // 소속은 **일으킨 세력**이 된다. 뼈만 남은 몸은 이 길로 안 온다(모양이 그 사람이 아니다
+    // — `Necromancy`가 해골 프리팹을 세운다).
+    public bool Rise(FactionData to, float bloodRatio = 1f)
+    {
+        if (!_isDead || to == null) return false;
+
+        // **시체이기를 그만둔다.** `Corpse`가 남아 있으면 업기·도축·무덤이 산 사람을
+        // 시체로 보고(`PawnCarry.IsCorpse`) 업어다 묻는다.
+        var corpse = GetComponent<Corpse>();
+        if (corpse != null) Destroy(corpse);
+
+        _isDead = false;
+
+        // **역할은 죽음과 함께 끝났다.** 안 지우면 `BuildTree`가 NPC 트리를 골라 일어난
+        // 상인이 제자리를 지키고 서 있는다. 장사도 마찬가지라 `Merchant`도 뗀다 —
+        // 컴포넌트가 남으면 클릭만으로 죽은 자와 거래가 된다(`Merchant.CanTrade`는
+        // 시체인지만 묻는데, 방금 그것을 지웠다).
+        npcData = null;
+        var shop = GetComponent<Merchant>();
+        if (shop != null) Destroy(shop);
+
+        // 세력 — 시체는 컴포넌트째 지워져 있다(`BecomeCorpse`). 다시 붙인다.
+        var faction = GetComponent<Faction>();
+        if (faction == null) faction = gameObject.AddComponent<Faction>();
+        faction.SetData(to);
+
+        // **블랙보드의 캐시도 같이 갈아 끼운다 — 여기가 조용한 함정이다.**
+        //
+        // `UnitBlackboard.Faction`은 `Awake`에서 **한 번** 잡는 참조인데(매 틱 `GetComponent`를
+        // 다시 하지 않으려고 둔 것이다), `BecomeCorpse`는 그 컴포넌트를 **파괴**한다. 그래서
+        // 새로 붙이기만 하면 블랙보드는 **파괴된 옛 참조**를 계속 들고 있고, `DetectNode`가
+        // `myFaction == null` 가지로 빠져 **적을 훑는 일 자체를 건너뛴다** — 일어난 것이
+        // 아무도 안 때리고 그냥 서 있는다(2026-08-19에 그렇게 나타났다).
+        //
+        // `ChangeFaction`이 이 함정을 안 밟는 것은 **같은 컴포넌트의 값만** 갈기 때문이다
+        // (`SetData`). 컴포넌트를 다시 만드는 길은 여기 하나뿐이라 여기서 챙긴다.
+        _bb.Faction = faction;
+
+        // 죽기 전에 들고 있던 것을 끊는다 — `ChangeFaction`과 같은 줄이다.
+        _bb.Target       = null;
+        _bb.FinishTarget = null;
+        _bb.LastAttacker = null;
+        _bb.FollowTarget = null;
+        _bb.LeavingMap   = false;
+        _bb.IsPrisoner   = false;
+        _bb.HoldPosition = false;
+        _bb.Hunger       = 100f;   // 일어난 것은 굶지 않는다(적 세력은 어차피 허기가 안 돈다)
+        ClearStanceOverride();
+
+        // 꺼 둔 것을 도로 켠다 — 끈 순서 그대로.
+        enabled = true;
+        if (_mover != null) _mover.enabled = true;
+
+        var combat = GetComponent<CombatHandler>();
+        if (combat != null) combat.enabled = true;
+
+        var sfx = GetComponent<StatusEffectSystem>();
+        if (sfx != null) sfx.enabled = true;
+
+        // 몸 — **켜기만 하면 안 된다.** 혈액이 사망 비율(−30)에 있고 부위가 파괴돼 있어,
+        // 그대로 두면 다음 틱에 `CheckBloodState`가 다시 죽인다.
+        if (_body != null)
+        {
+            _body.enabled = true;
+            _body.Rise(bloodRatio);
+        }
+
+        // BT·성장 잠금은 `ChangeFaction`과 **같은 식**이어야 한다(답이 두 벌이면 어긋난다).
+        _root = BuildTree();
+        Stats.IsLocked = unitData is MinionData && !UsesEnemyAi;
+
+        // **일으켜진 몸은 다시 기절하지 않는다** — 이미 한 번 죽은 것이라 잃을 의식이 없다.
+        // 종족이 아니라 여기서 켜는 이유: 좀비의 종족은 여전히 사람이다.
+        _risen = true;
+
+        Debug.Log($"[Necromancy] {UnitName}이(가) {to.FactionName}의 것으로 일어났습니다.");
+        return true;
+    }
+
     // ── 지니는 것 ────────────────────────────────────────────────────────────
     //
     // **출처는 `LoadoutData` 하나뿐이다**(`loadout`). 종족(`UnitData`)에는 아이템이 없다.
@@ -676,39 +849,55 @@ public partial class UnitBrain : MonoBehaviour
     // 늑대 가죽은 `Loadout_Wolf`에 적는다. 종족이 아니라 **그 프리팹이 무엇이냐**의 문제로 두면
     // 같은 `Goblin`을 쓰는 야생 도적과 내 하수인도 저절로 갈린다.
 
-    // **주머니에 든 동전.** 시체를 뒤지면 나온다 — 그게 싸울 이유의 절반이다.
+    // ── 주머니 ───────────────────────────────────────────────────────────────
     //
-    // 등급으로 자동 산출하는 길도 있었지만, 그러면 "강한 늑대가 금화를 물고 있다"가 되어
-    // 저작으로 막을 방법이 없다.
-    void DropCoins()
+    // **태어날 때 채운다 — 지녔던 것은 죽어서 생기는 것이 아니다**(2026-08-16).
+    //
+    // 예전엔 `Loot`를 **죽는 순간** 굴려 시체 배낭에 넣었다. 근거는 *"살아 있는 동안 아무
+    // 차이를 안 만드니 미리 지고 다니게 하면 적재 무게·짐내림에 공짜로 걸린다"*였는데,
+    // 그 대가로 잃은 것이 훨씬 컸다: **살아 있는 상대의 배낭은 늘 비어 있었다.** 붙잡아 온
+    // 포로를 뒤져도, 쓰러뜨려 놓고 뒤져도 아무것도 없고 죽여야만 물건이 생겼다 —
+    // *"무엇을 지녔는지 보고 풀어 줄지 정한다"*가 성립할 수가 없었다.
+    //
+    // 걸린다던 규칙들은 **걸리는 것이 맞다**: 짐을 지면 느려지고, 우리 편이 되면 그것을
+    // 창고로 나른다. 둘 다 지고 다니는 물건에 대해 옳은 동작이다.
+    //
+    // **그래서 주머니에는 "평소 지니고 다닐 만한 것"만 적는다** — 늑대 가죽·고기처럼
+    // **몸에서 나오는 것은 종족이 든다**(`UnitData.ButcherYield`/`BoneYield`, 도축으로 나온다).
+    // 시점이 갈리는 것이 곧 그 둘을 가르는 축이다: 지니던 것은 죽으면 그 자리에 남고,
+    // 몸은 갈라야 나온다.
+    void FillPockets()
     {
         if (Inventory == null || loadout == null) return;
 
+        // **동전도 주머니다.** 등급에서 자동 산출하는 길도 있었지만, 그러면 "강한 늑대가
+        // 금화를 물고 있다"가 되어 저작으로 막을 방법이 없다.
         var coin = Wallet.Coin;
-        if (coin == null) return;
+        if (coin != null) Stow(coin, RollRange(loadout.CoinDropMin, loadout.CoinDropMax));
 
-        GiveOrDrop(coin, RollRange(loadout.CoinDropMin, loadout.CoinDropMax));
+        if (loadout.Loot == null) return;
+        foreach (var entry in loadout.Loot)
+        {
+            if (entry == null) continue;
+            int n = entry.Roll();
+            // JSON 아이템은 `Resolve()`로만 나온다.
+            if (n > 0) Stow(entry.Resolve(), n);
+        }
     }
 
-    // **시체 배낭에 넣되, 안 들어가는 만큼은 발밑에 내려놓는다.**
-    //
-    // 시체가 이미 뭘 지니고 있으면(`ApplyLoadout`이 못 채워 남긴 장비, 살아서 주운 것)
-    // 격자가 찰 수 있다. `TryAdd`의 반환값을 안 보면 **넘친 만큼이 조용히 사라진다** —
-    // 그러면 굴림표를 아무리 저작해도 "가끔 안 나오는" 것으로만 보이고 원인이 화면에 안 남는다.
-    //
-    // 떨구는 쪽을 고른 이유는 `Equipment.ReturnToInventory`와 같다: **눈에 보이고 운반이 알아서
-    // 창고로 옮긴다.** 이 프로젝트의 증발 방지 관례다(사건으로 떨어진 것은 `NoAutoHaul`이 아니라
-    // 그대로 운반된다 — 아무도 의도해서 거기 둔 것이 아니므로).
-    void GiveOrDrop(ItemData item, int amount)
+    // **안 들어가면 떨구지 않고 알린다.** 죽을 때 채우던 시절엔 넘친 것을 발밑에 내려놓았지만,
+    // 태어나는 자리는 대개 맵 가장자리라 거기 떨구면 **아무도 안 가는 곳에 물건이 쌓인다.**
+    // 못 넣는 것은 저작 실수(장비 잔량이 격자를 다 먹었다)이므로 화면이 아니라 콘솔에 적는다 —
+    // 조용히 사라지게 두지 않는 것이 이 저장소의 관례다.
+    void Stow(ItemData item, int amount)
     {
         if (item == null || amount <= 0) return;
 
-        int added = Inventory != null ? Inventory.TryAdd(item, amount) : 0;
-        int left  = amount - added;
+        int left = amount - Inventory.TryAdd(item, amount);
         if (left <= 0) return;
 
-        DroppedItem.Spawn(item, left, transform.position + Vector3.up * 0.15f);
-        Debug.Log($"[UnitBrain] {UnitName}: 시체 배낭이 차서 {item.ItemName} {left}개를 발밑에 내려놓았습니다.");
+        Debug.LogWarning($"[UnitBrain] {UnitName}: 배낭이 좁아 주머니의 {item.ItemName} " +
+                         $"{left}개를 못 넣었습니다(격자 {Inventory.Width}x{Inventory.Height}).", this);
     }
 
     static int RollRange(int min, int max)
@@ -716,24 +905,6 @@ public partial class UnitBrain : MonoBehaviour
         int lo = Mathf.Max(0, Mathf.Min(min, max));
         int hi = Mathf.Max(0, Mathf.Max(min, max));
         return hi <= 0 ? 0 : UnityEngine.Random.Range(lo, hi + 1);
-    }
-
-    // **시체에 남는 물건.** 죽을 때 만드는 이유: 살아 있는 동안 아무 차이를 만들지 않기
-    // 때문이다. 미리 지고 다니게 하면 적재 무게·짐내림 같은 **살아 있는 폰의 규칙에 공짜로
-    // 걸린다** — 적이 제 배낭이 무겁다고 느려지고, 아군이 되면 그것을 창고로 나르려 든다.
-    //
-    // 장비는 반대다(`ApplyLoadout`) — 그건 싸우는 동안 실제로 일하므로 태어날 때 있어야 한다.
-    void DropLoot()
-    {
-        if (Inventory == null || loadout == null || loadout.Loot == null) return;
-
-        foreach (var entry in loadout.Loot)
-        {
-            if (entry == null) continue;
-            int n = entry.Roll();
-            // JSON 아이템은 `Resolve()`로만 나온다. 넘친 만큼은 발밑에 — 조용히 사라지면 안 된다.
-            if (n > 0) GiveOrDrop(entry.Resolve(), n);
-        }
     }
 
     // **태어날 때 차고 나오는 것.**
@@ -848,6 +1019,10 @@ public partial class UnitBrain : MonoBehaviour
             Work = gameObject.AddComponent<WorkSettings>();
             if (unitData is MinionData minionData) Work.InitFromAllowed(minionData.AllowedJobs);
             HookUnloadSignals();
+
+            // **넘어온 사람도 제 배경을 갖는다.** 방랑자가 되는 순간이므로 여기서 얹는다 —
+            // 태어날 때는 적이라 `SetBackstories`가 물러났다(방랑자 전용).
+            SetBackstories(_rolledChildhood, _rolledAdulthood);
         }
 
         Debug.Log($"[세력] {UnitName} → {to.FactionName} " +
@@ -857,6 +1032,20 @@ public partial class UnitBrain : MonoBehaviour
         // 뜨고 마는 것이라, **이 문으로 들어온 식구는 화면에 영영 안 나타났다.**
         OnFactionChanged?.Invoke(this);
     }
+
+    // ── 기절하지 않는 몸 ─────────────────────────────────────────────────────
+    //
+    // **"이 폰이 언데드인가"에 답하는 자리 하나.** 둘에서 온다:
+    //  ① **종족**(`UnitData.IsUndead` — 해골). 내가 소환한 것이든 야생의 것이든 같다.
+    //  ② **일으켜진 몸**(`Rise`). 좀비의 종족은 여전히 사람이라 ①로는 안 걸린다.
+    //
+    // 묻는 곳이 `BodyPartSystem.KnockOut` 하나뿐인데도 프로퍼티로 둔 이유: 출처가 둘이라
+    // 부르는 쪽에서 `unitData.IsUndead || 어딘가의 플래그`를 적기 시작하면 반드시 한쪽이
+    // 빠진다(이 저장소가 여러 번 겪은 그것).
+    public bool IsUndead => (unitData != null && unitData.IsUndead) || _risen;
+
+    // 일으켜진 몸인가. `Rise`에서만 켜지고 다시 안 꺼진다 — 되돌리는 길은 없다.
+    bool _risen;
 
     // 적 AI(감지→전투) 대상인가 — 역할이 없고(NPC 아님) 플레이어 조작 세력도 아닌 전투 유닛.
     // 세력이 늘어나도(고블린·산적 등) 플레이어 편만 아니면 자동으로 적 트리를 쓴다.

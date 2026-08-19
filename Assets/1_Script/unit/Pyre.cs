@@ -76,7 +76,10 @@ public class Pyre : MonoBehaviour, IWorldClickable, ICarrySite
         // **유품은 안 태운다.** 태우는 것은 몸이지 물건이 아니고, 무엇보다 안 뒤지고
         // 올려놓았다고 장비가 사라지면 그건 조용한 손실이다(`ButcherJob`과 같은 규칙).
         // 발밑에 떨구면 이미 있는 운반 축(H)에 올라탄다.
-        SpillBelongings(corpse);
+        //
+        // **차고 있던 장비까지 나온다** — `Corpse`가 답한다. 한때 여기서 배낭만 훑어,
+        // 바로 위 주석이 막겠다고 적어 둔 그 손실이 실제로 나고 있었다(2026-08-16).
+        corpse.SpillBelongings(corpse.transform.position);
 
         _burning   = corpse;
         _paid      = false;
@@ -154,21 +157,6 @@ public class Pyre : MonoBehaviour, IWorldClickable, ICarrySite
 
         corpse.transform.SetParent(null, worldPositionStays: true);
         PawnPlacement.PlaceOnGround(corpse.gameObject, PyrePosition);
-    }
-
-    void SpillBelongings(Corpse corpse)
-    {
-        var inv = corpse.Inventory;
-        if (inv == null) return;
-
-        var at = corpse.transform.position + Vector3.up * 0.15f;
-        for (int i = inv.Items.Count - 1; i >= 0; i--)
-        {
-            var inst = inv.Items[i];
-            if (inst?.Data == null) continue;
-            DroppedItem.Spawn(inst.Data, inst.Quantity, at, inst.Quality);
-        }
-        inv.Clear();
     }
 
     public void OnWorldClick() => OnSelected?.Invoke(this);

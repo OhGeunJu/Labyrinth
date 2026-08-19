@@ -114,8 +114,12 @@ public class WorldBand
             for (int k = 0; k < n; k++, i++)
             {
                 // 개체 시드는 무리 시드에서 갈라 나온다 — 멤버마다 다른 사람이 되게.
+                // **무리는 제 세력의 이력을 갖는다**(`FactionData.BackstoryGroup`) — 산적
+                // 무리에서 나온 사람은 산적의 성년기를 지고 온다(회유하면 그대로 남는다).
                 var spec = PawnSpec.Roll(unit, unchecked(seed * 31 + i * 7919),
-                                         entry.MinGrade, entry.MaxGrade);
+                                         entry.MinGrade, entry.MaxGrade,
+                                         storyGroup: data != null && data.Faction != null
+                                                   ? data.Faction.BackstoryGroup : null);
                 band.Members.Add(new BandMember { Prefab = entry.Prefab, Unit = unit, Spec = spec });
             }
         }

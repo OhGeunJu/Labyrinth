@@ -142,8 +142,20 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
         }
     }
 
-    // **몸은 죽은 뒤에야 상판에 오른다**(`ButcherJob` — 산 것은 바닥에서 잡는다).
-    // 그래서 여기서는 `PawnMover`를 붙들 일이 없다: 시체는 이미 그것이 꺼져 있다.
+    // **몸은 산 것이든 시체든 상판에 오른다.**
+    //
+    // 한때 시체만 올렸다. 이유는 산 것을 올려 두면 **다음 프레임에 도로 떨어지기** 때문인데
+    // (`PawnMover.Update`는 `_cc`가 켜져 있는 한 매 프레임 중력을 먹인다 — 기절은
+    // `IsSleeping`이 아니라 회전만 눕힌 상태다), 그러면 **죽이는 7초 동안 몸이 폰 발밑
+    // 바닥에 누워 있다.** 도축대는 옆에 선 가구가 되고, 화면에서는 *"왜 저기서 잡고 있지"*
+    // 로만 보인다 — 같은 일감의 두 단계가 자리를 달리할 이유가 없다.
+    //
+    // 붙드는 길은 새로 만들 것 없이 이미 있다 — **`PawnMover.SetSleeping`**(침대·우리가
+    // 쓰는 그것). 컨트롤러를 끄고 `Update`를 통째로 건너뛰므로 중력이 안 걸리고, 눕는 동안의
+    // 클릭 캡슐(`_lyingPick`)까지 같이 켜져 상판 위의 몸을 커서로 집을 수 있다.
+    //
+    // **눕히는 보정은 그쪽이 제 몫으로 이미 한다**(`lyingPos - lyingRot * up * CenterOffset`) —
+    // 밖에서 한 번 더 빼면 **두 번 빠진다.** 그래서 산 몸에는 앵커를 **그대로** 넘긴다.
     public void LayOnTable(UnitBrain body)
     {
         if (body == null) return;
@@ -151,13 +163,29 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
 
         var spot = tableAnchor != null ? tableAnchor.position : transform.position;
         var rot  = Quaternion.Euler(0f, transform.eulerAngles.y, 90f);
-        var lean = rot * Vector3.up * PawnPlacement.CenterOffset(body.gameObject);
 
+        // ── 산 몸 — 붙들어 눕힌다 ───────────────────────────────────────────
+        var mover = body.GetComponent<PawnMover>();
+        if (mover != null && mover.enabled)
+        {
+            // 이미 누워 있으면(다른 자리에서 옮겨 왔다) 한 번 일으켜야 다시 눕는다 —
+            // `SetSleeping`은 같은 값으로 부르면 **아무 일도 안 하고 돌아간다.**
+            if (mover.IsSleeping) mover.SetSleeping(false);
+
+            mover.SetSleeping(true, spot + Vector3.up * PawnPlacement.GroundClearance, rot);
+            return;
+        }
+
+        // ── 시체 — 그냥 옮기면 그 자리에 있는다(`BecomeCorpse`가 `PawnMover`를 껐다) ──
+        //
+        // 이쪽은 보정을 직접 하되 **수평 성분만** 뺀다 — 높이는 `PlaceOnGround`가 얹는다.
+        var lean = rot * Vector3.up * PawnPlacement.CenterOffset(body.gameObject);
         PawnPlacement.PlaceOnGround(body.gameObject, spot - new Vector3(lean.x, 0f, lean.z), rot);
     }
 
-    // 상판에서 손을 뗀다. **산 몸이 올라올 일은 없다**(죽인 다음에야 올린다) — 그래도
-    // 붙들려 있으면 풀어 주는 것이 안전하다(밖에서 눕혀 놓고 올려 둘 길이 생길 수 있다).
+    // 상판에서 손을 뗀다. **산 몸은 붙들려 있으므로 반드시 풀어야 한다** — 안 풀면
+    // 도마 위에 산 채로 굳는다(가는 사이에 깨어났을 때·취소했을 때가 그 자리다).
+    // `SetSleeping(false)`가 붙들기 직전 자리로 되돌려 놓는다.
     public void ReleaseLaid()
     {
         var body = Laid;

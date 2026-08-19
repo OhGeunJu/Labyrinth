@@ -12,6 +12,10 @@ public class ColonyRowUI : MonoBehaviour
     static readonly Color OnColor    = new Color(0.20f, 0.50f, 0.28f, 1f);
     static readonly Color OffColor   = new Color(0.17f, 0.17f, 0.19f, 1f);
 
+    // 못 하는 일(성장 배경) — 켠 것도 끈 것도 아닌 **세 번째 상태**라 색도 따로 둔다.
+    static readonly Color BlockedColor     = new(0.20f, 0.13f, 0.13f, 1f);
+    static readonly Color BlockedMarkColor = new(0.85f, 0.40f, 0.40f, 1f);
+
     // 직접 배정(채굴·벌목·순찰)에 묶인 폰의 큐 작업 칸. 켜져 있지만 **지금은 안 한다**.
     static readonly Color OnHeldColor   = new Color(0.20f, 0.32f, 0.24f, 1f);
     static readonly Color MarkHeldColor = new Color(0.55f, 0.58f, 0.55f, 1f);
@@ -194,13 +198,18 @@ public class ColonyRowUI : MonoBehaviour
         var work = _brain.Work;
         foreach (var category in ColonyColumns.WorkColumns)
         {
-            bool on = work != null && work.IsEnabled(category);
+            bool on      = work != null && work.IsEnabled(category);
+            bool blocked = work != null && work.IsBlocked(category);
+
             if (_boxImages.TryGetValue(category, out var img))
-                img.color = on ? (held ? OnHeldColor : OnColor) : OffColor;
+                img.color = blocked ? BlockedColor : on ? (held ? OnHeldColor : OnColor) : OffColor;
+
             if (_boxMarks.TryGetValue(category, out var mark))
             {
-                mark.text  = on ? "V" : "";
-                mark.color = held ? MarkHeldColor : Color.white;
+                // **못 하는 일은 빈 칸이 아니라 `×`다**(성장 배경의 무능력). 빈 칸으로 두면
+                // *"안 켠 것"*과 구별이 안 돼, 눌러 보고 나서야 안 켜진다는 것을 알게 된다.
+                mark.text  = blocked ? "×" : on ? "V" : "";
+                mark.color = blocked ? BlockedMarkColor : held ? MarkHeldColor : Color.white;
             }
         }
 

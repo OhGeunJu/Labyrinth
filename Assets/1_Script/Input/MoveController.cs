@@ -31,6 +31,9 @@ public class MoveController : MonoBehaviour
         //
         // 좌클릭(`SelectionManager._pressOverUI`)처럼 누름/놓음을 짝지어 붙들 필요는 없다.
         // 우클릭은 **누르는 그 프레임에 전부 끝나므로**(드래그가 없다) 누른 곳만 보면 된다.
+        // **손에 물건을 들고 있으면 우클릭은 되돌리기다**(`DraggableItem`) — 월드로 안 샌다.
+        if (DraggableItem.CarriedInstance != null) return;
+
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 
         // 선택지 창이 떠 있으면 이번 우클릭은 **창을 닫는 데만** 쓴다(창 쪽이 닫는다).
@@ -328,11 +331,15 @@ public class MoveController : MonoBehaviour
             // 우리 우클릭 → [여기 가둔다]로 세 번 누르게 하면, 가장 잦은 일이 가장 번거롭다.
             if (!self) AddEscortOptions(brain, commanders, options);
 
-            // **갇힌 사람에게 직접 묻는다 — 소지품과 석방.**
+            // **쓰러졌거나 갇혔으면 뒤져 볼 수 있다.** 무엇을 지녔는지가 가둘지·몸값을
+            // 부를지·그냥 죽일지를 정하는 재료라, 그 판단보다 **먼저** 볼 수 있어야 한다
+            // (예전엔 갇힌 사람에게만 떠서 일단 업어 오는 수밖에 없었다).
+            if ((down || held) && !self) AddSearchOption(brain, options);
+
+            // **갇힌 사람에게 직접 묻는다 — 먹이기와 석방.**
             //
             // 우리·침대를 눌러야만 풀어 줄 수 있으면 "누구를 푸는가"가 자리로 표현된다.
-            // 사람을 보고 정하는 일이라 사람에게 물어야 하고, 소지품도 마찬가지다 —
-            // 무엇을 지녔는지가 풀어 줄지 말지를 정한다.
+            // 사람을 보고 정하는 일이라 사람에게 물어야 한다.
             if (held) AddPrisonerOptions(brain, commanders, options);
 
             // 아군(플레이어 세력)까지 칠 이유는 없다 — 오사 사고만 난다.
@@ -669,7 +676,11 @@ public class MoveController : MonoBehaviour
             return;
         }
 
-        // 산 사람을 업고 있다 — 붙잡아 온 사람이면 소지품을 보고 자리로 데려간다.
+        // 산 사람을 업고 있다 — 어깨 위의 사람도 뒤져 볼 수 있다(업고 걸어가는 동안
+        // 무엇을 지녔는지 보고 어디로 데려갈지 정하는 것이 실제 흐름이다).
+        AddSearchOption(carried, options);
+
+        // 붙잡아 온 사람이면 먹이고 놓아 줄 수도 있다.
         if (carried.Blackboard != null && PrisonEscort.IsCaptive(carried))
             AddPrisonerOptions(carried, commanders, options);
 
@@ -681,24 +692,36 @@ public class MoveController : MonoBehaviour
         AddButcherOption(carried.gameObject, commanders, options);
     }
 
-    // 갇힌 사람에게 할 수 있는 일 — 뒤지고, 놓아 준다.
+    // **쓰러져 있으면 뒤질 수 있다 — 갇혀 있지 않아도.**
     //
-    // **명령 받을 폰이 필요 없다.** 소지품을 보는 것은 창을 여는 일이고, 놓아 주는 것은
-    // 우리·침대가 하는 일이다 — 그래서 마지막 한 명을 가둔 뒤에도 둘 다 뜬다.
+    // 한때 이 줄은 갇힌 사람에게만 떴다. 그래서 **때려눕힌 적이 무엇을 지녔는지 보려면 일단
+    // 업어야 했고**(업고 있는 폰의 창에는 이 줄이 있다), 우리에 넣기 전에는 알 수가 없었다 —
+    // 그런데 *무엇을 지녔는가*는 대개 **가둘지 몸값을 부를지 그냥 죽일지**를 정하는 재료다.
+    // 판단에 쓰는 정보를 판단한 뒤에야 볼 수 있으면 순서가 뒤집힌 것이다.
+    //
+    // **뒤지는 것이 아니라 보는 것이다.** 시체는 [뒤진다]로 꺼내 오지만 산 사람의 배낭은
+    // 그 사람 것이고, 창을 열면 옮길 수 있다 — 말을 다르게 두는 편이 무슨 일이 일어나는지
+    // 정확하다. 창은 원정 나간 폰의 배낭을 여는 것과 **같은 통로**(`BindTo`)를 쓴다.
+    //
+    // **멀쩡히 서 있는 사람은 안 된다** — 그건 뒤지는 것이 아니라 소매치기이고, 저쪽이
+    // 가만히 있을 이유가 없다. 쓰러졌거나(`down`) 갇혔을 때(`held`)만이다.
+    static void AddSearchOption(UnitBrain pawn, List<PawnMenuOption> options)
+    {
+        var inv = Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (inv == null || pawn.Inventory == null) return;
+
+        options.Add(("소지품을 본다", () =>
+        {
+            inv.BindTo(pawn);
+            inv.ForceOpen();   // 묶기만 하면 창이 닫힌 채로 바뀌어 아무 일도 안 한 것처럼 보인다
+        }));
+    }
+
+    // **명령 받을 폰이 필요 없다.** 놓아 주는 것은 우리·침대가 하는 일이라, 마지막 한 명을
+    // 가둔 뒤에도 뜬다.
     static void AddPrisonerOptions(UnitBrain prisoner, List<PawnMover> commanders,
                                    List<PawnMenuOption> options)
     {
-        // **뒤지는 것이 아니라 보는 것이다.** 시체는 [뒤진다]로 꺼내 오지만 산 사람의 배낭은
-        // 그 사람 것이고, 창을 열면 옮길 수 있다 — 말을 다르게 두는 편이 무슨 일이 일어나는지
-        // 정확하다. 창은 원정 나간 폰의 배낭을 여는 것과 **같은 통로**(`BindTo`)를 쓴다.
-        var inv = Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
-        if (inv != null && prisoner.Inventory != null)
-            options.Add(("소지품을 본다", () =>
-            {
-                inv.BindTo(prisoner);
-                inv.ForceOpen();   // 묶기만 하면 창이 닫힌 채로 바뀌어 아무 일도 안 한 것처럼 보인다
-            }));
-
         // **먹인다** — 갇힌 사람은 제 발로 못 먹으러 간다.
         //
         // 간수를 켜 뒀으면 자리(`PrisonFeeding.Tick`)가 저절로 일감을 내지만, 꺼 뒀거나

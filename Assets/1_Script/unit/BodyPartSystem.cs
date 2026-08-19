@@ -20,19 +20,36 @@ public class BodyPartSystem : MonoBehaviour
     [Tooltip("혈액 초당 자연 회복량 (BloodCap까지)")]
     [SerializeField] float bloodRegenPerSec = 0.2f;
     [Tooltip("부위 HP 초당 자연 회복량 (파괴 부위 제외)")]
-    [SerializeField] float partRegenPerSec  = 0.25f;
+    [SerializeField] float partRegenPerSec  = 0.8f;
 
+    // ── 피격 혈액 손실 ───────────────────────────────────────────────────────
+    //
+    // **부위 HP를 켄시 값(100 균일)으로 올리면서 절반으로 줄였다**(0.5/0.1/0.25 → 0.25/0.05/0.125).
+    // 혈액은 100 그대로이므로, 안 줄이면 **모든 전투가 출혈 KO로 끝난다**:
+    //
+    // | | 출혈 KO | 가슴 무력화(기대) |
+    // |---|---|---|
+    // | 예전(가슴 50) | 7.7대 | 6.4대 |
+    // | 부위 100 · 계수 그대로 | **7.7대** | 12.8대 ← 출혈이 늘 먼저 |
+    // | 부위 100 · 계수 절반 | 15.4대 | **12.8대** ← 부위가 먼저 |
+    //
+    // (강철 대검 26 기준. 무력화는 가중치 30%를 감안한 **총** 타격 수다.)
+    // 부위가 먼저 나가고 출혈이 그 뒤를 받치는 것이 예전 모양이고 켄시의 모양이다.
+    //
+    // **부위별 지속 출혈(`BleedRate`)은 안 줄였다** — 그건 상처가 시간에 걸쳐 피를 흘리는 것이고
+    // 지혈(`clotSeconds` 30초)이 끊으므로, 혈액이 100 그대로인 이상 예전 페이싱이 그대로 맞다.
+    // 줄이면 단일 부상이 아무것도 아니게 된다.
     [Header("피격 혈액 손실 (모든 피해가 혈액을 깎음)")]
     [Tooltip("베기 피해 → 혈액 손실 배율")]
-    [SerializeField] float slashBloodFactor = 0.5f;
+    [SerializeField] float slashBloodFactor = 0.25f;
     [Tooltip("둔기 피해 → 혈액 손실 배율")]
-    [SerializeField] float bluntBloodFactor = 0.1f;
+    [SerializeField] float bluntBloodFactor = 0.05f;
     [Tooltip("그 외(찌르기·원소 등) 피해 → 혈액 손실 배율")]
-    [SerializeField] float otherBloodFactor = 0.25f;
+    [SerializeField] float otherBloodFactor = 0.125f;
     [Tooltip("혈액이 이 비율 밑으로 떨어지면 기절 (과다출혈 — 강인함 무관). 0 = 피가 바닥나면 기절")]
     [SerializeField] float koBloodThreshold = 0f;
     [Tooltip("코어 부위(머리/가슴/복부) HP가 이 깊이 이하 음수면 무조건 기절 (강인함 무관)")]
-    [SerializeField] float coreKoDepth      = 10f;
+    [SerializeField] float coreKoDepth      = 30f;
     [Tooltip("사망 혈액 비율 (음수). 켄시식 — 혈액은 0 밑으로 내려가며, 이 비율에 닿아야 사망. 기절을 건너뛰는 즉사 방지")]
     [SerializeField] float deathBloodRatio  = -0.3f;
 
@@ -64,16 +81,67 @@ public class BodyPartSystem : MonoBehaviour
 
     void InitBodyParts()
     {
-        // BleedRate는 지혈(clotSeconds) 전까지의 초당 출혈 — 단일 부상은 출혈만으로 죽지 않는 페이싱.
-        // HitWeight는 피격 확률 가중치 — 균등(각 14%)이 아니라 부위 크기·노출도 반영:
-        // 몸통(가슴30+복부20=50%) 우세, 사지 각 10%, 머리 10%(작은 표적). 합 100.
-        _parts[BodyPartType.Head]     = new BodyPart(BodyPartType.Head,     30f, 0.5f, 10f);
-        _parts[BodyPartType.Chest]    = new BodyPart(BodyPartType.Chest,    50f, 0.8f, 30f);
-        _parts[BodyPartType.Abdomen]  = new BodyPart(BodyPartType.Abdomen,  40f, 0.4f, 20f);
-        _parts[BodyPartType.LeftArm]  = new BodyPart(BodyPartType.LeftArm,  25f, 0.2f, 10f);
-        _parts[BodyPartType.RightArm] = new BodyPart(BodyPartType.RightArm, 25f, 0.2f, 10f);
-        _parts[BodyPartType.LeftLeg]  = new BodyPart(BodyPartType.LeftLeg,  25f, 0.2f, 10f);
-        _parts[BodyPartType.RightLeg] = new BodyPart(BodyPartType.RightLeg, 25f, 0.2f, 10f);
+        // ── 부위 HP는 켄시 값이다 — **전부 100 균일** ────────────────────────
+        //
+        // 켄시의 인간은 머리도 가슴도 팔다리도 **다 100**이다. 부위의 무게는 HP가 아니라
+        // **어디를 맞느냐(`HitWeight`)와 그 부위가 무엇을 하느냐**가 정한다 — 가슴·배·머리는
+        // 코어라 나가면 쓰러지고(`IsCorePart`), 팔이 나가면 못 때리고 다리가 나가면 못 걷는다.
+        // **HP로 또 가르면 같은 것을 두 번 표현하는 셈**이고, 실제로 그러면 "가슴은 두 배로
+        // 질기고 게다가 제일 자주 맞는다"가 되어 다른 부위가 뜻을 잃는다.
+        //
+        // **파괴 문턱이 −100 고정**이므로 그 관계도 켄시 그대로다 — 무력화(0)에서 **꼭 그만큼
+        // 더** 맞아야 부위가 떨어진다(1:2).
+        //
+        // 전엔 30/50/40/25였다. 눈금이 1/3이라 **팔다리가 한 방에 무력화됐고**(25 HP ↔ 강철
+        // 대검 26), 파괴 문턱만 −100 고정이라 *무력화는 한 대, 절단은 다섯 대*라는 이상한
+        // 사이가 생겼다.
+        //
+        // **피해는 안 올렸다** — 무기·방어구·상태이상은 그대로다. 그래서 **전투가 약 두 배
+        // 길어진다**(의도한 것: 켄시식 난전). **혈액도 켄시대로 100 그대로 둔다** — 대신
+        // **타격당 혈액 손실(`slashBloodFactor` 등)을 절반으로 줄였다**. 안 줄이면 부위만
+        // 질겨져 **모든 전투가 출혈 KO로 끝나고 절단을 영영 못 본다**(위 표).
+        //
+        // BleedRate는 지혈(clotSeconds) 전까지의 초당 출혈 — 단일 부상은 출혈만으로 죽지 않는
+        // 페이싱. **혈액이 100 그대로이므로 이 값도 예전 그대로다.**
+        // ── HitWeight — HP가 균일해진 지금 **부위를 가르는 축은 이것 하나다** ─────
+        //
+        // 균등(각 14%)이 아니라 부위 크기·노출도를 반영한다. **머리 10 · 가슴 18 · 배 16 ·
+        // 팔 각 13 · 다리 각 15**(몸통 34% · 사지 56% · 머리 10%, 합 100).
+        //
+        // 전엔 몸통이 50%(가슴 30 + 배 20)였다. 실루엣으로는 말이 되는데 **결과가 안 됐다** —
+        // 쓰러뜨리는 것은 **코어(머리·가슴·배)뿐이라**(`IsCorePart`) 몸통 비중이 곧 전투 길이고,
+        // 그 길이 안에서 사지는 거의 안 상한다. 부위 HP를 100 균일로 올리고 나니 그 틈이
+        // 벌어져서, **팔 하나 무력화에 총 38대인데 전투는 13대에 끝났다** — 켄시의 상징인
+        // 절단·의족을 **구조적으로 못 보는** 배치다.
+        //
+        // 몸통을 34%로 낮추니 사지가 실제로 상한다 — **다리 25.6대 · 팔 29.6대**(전엔 둘 다
+        // 38대였고 전투는 13대에 끝났다). 한 판에 늘 벌어지진 않아도 여러 번 싸우거나
+        // 여럿에게 둘러싸이면 **다리가 먼저 나가 못 걷는** 일이 실제로 생긴다.
+        //
+        // **다리를 팔보다 크게 잡는다**(15 ↔ 13) — 표적이 크고, 나갔을 때의 뜻도 다르다
+        // (팔은 못 때리고 다리는 못 걷는다 — 도망도 못 간다). 부위별 총 타격 수는
+        // 가슴 21.4 · 배 24 · 다리 25.6 · 팔 29.6 · 머리 38.5로, **어느 하나가 압도하지 않는다**.
+        //
+        // ── 그래서 쓰러지는 것은 대개 **출혈**이다(15.4대 ↔ 가슴 21.4대) ────────────
+        //
+        // 몸통이 34%면 코어로 눕히는 데 21대가 걸리므로 **혈액이 먼저 마른다**. 그게 나쁜
+        // 배치는 아니다 — 켄시도 난전에서 쓰러지는 이유는 대개 실혈이고, 부위 파괴는 그
+        // 뒤에 오래 두들겨 맞을 때 벌어진다. 다만 **무기가 이 축을 가른다**: 둔기는 혈액 계수가
+        // 0.05뿐이라 **부위로 눕히고**(뼈 몽둥이의 *"죽이기보다 눕히기에 낫다"*가 수치로 참이다),
+        // 베기는 0.25라 **피로 눕힌다**.
+        //
+        // 부위 쪽을 먼저 오게 하고 싶으면 **`slashBloodFactor`를 더 내린다**(0.25 → 0.18이면
+        // 출혈 21.4대로 가슴과 나란해진다) — `HitWeight`를 도로 올리면 사지가 다시 안 상한다.
+        //
+        // **혈액은 강인함을 통과한 뒤의 피해에서 뺀다**(`actualDamage * bloodFactor`) — 그래서
+        // 강인함이 높아도 부위와 혈액이 **같은 비율로** 늦춰진다(어느 한쪽만 질겨지지 않는다).
+        _parts[BodyPartType.Head]     = new BodyPart(BodyPartType.Head,     100f, 0.5f, 10f);
+        _parts[BodyPartType.Chest]    = new BodyPart(BodyPartType.Chest,    100f, 0.8f, 18f);
+        _parts[BodyPartType.Abdomen]  = new BodyPart(BodyPartType.Abdomen,  100f, 0.4f, 16f);
+        _parts[BodyPartType.LeftArm]  = new BodyPart(BodyPartType.LeftArm,  100f, 0.2f, 13f);
+        _parts[BodyPartType.RightArm] = new BodyPart(BodyPartType.RightArm, 100f, 0.2f, 13f);
+        _parts[BodyPartType.LeftLeg]  = new BodyPart(BodyPartType.LeftLeg,  100f, 0.2f, 15f);
+        _parts[BodyPartType.RightLeg] = new BodyPart(BodyPartType.RightLeg, 100f, 0.2f, 15f);
     }
 
     void Update()
@@ -280,6 +348,15 @@ public class BodyPartSystem : MonoBehaviour
 
     void KnockOut()
     {
+        // **언데드는 쓰러지지 않고 부서진다.** 기절은 *의식을 잃는 것*이라 해골에게도,
+        // 이미 한 번 죽어 일어난 몸에게도 성립하지 않는다(`UnitBrain.IsUndead`).
+        //
+        // **갈리는 자리를 여기 하나로 둔다.** 기절로 오는 길이 셋인데(혈액 임계 ·
+        // 코어 부위 깊이 · 강인함 굴림) 각자 앞에서 물으면 하나가 반드시 빠져 *가끔*
+        // 기절하는 해골이 남는다. 대신 여기서 갈리므로 **언데드는 혈액 0에서 부서진다** —
+        // 사람이 −30까지 버티는 그 구간이 통째로 없다.
+        if (_brain != null && _brain.IsUndead) { Die(); return; }
+
         if (_brain.Blackboard.IsKnockedOut) return;
         _brain.Blackboard.IsKnockedOut = true;
         _koTimer = 0f;
@@ -342,6 +419,11 @@ public class BodyPartSystem : MonoBehaviour
 
     void Die()
     {
+        // **두 번 죽지 않는다.** `UnitBrain.Die`는 스스로 막지만 `OnDeath`는 안 막혀서,
+        // 한 번의 피해가 `CheckBloodState`를 여러 번 거치면(독 번짐 등) 구독자가 죽음을
+        // 두 번 듣는다. 언데드가 기절 대신 이 문으로 오게 되면서 그 길이 짧아졌다.
+        if (_brain == null || _brain.IsDead) return;
+
         OnDeath?.Invoke(this);
         _brain.Die();
     }
@@ -519,6 +601,45 @@ public class BodyPartSystem : MonoBehaviour
     {
         HealBlood(bloodAmount);
         HealBodyParts(partsAmount);
+    }
+
+    // ── 일어난다 ─────────────────────────────────────────────────────────────
+    //
+    // **`BecomeCorpse`의 짝**(`UnitBrain.Rise`가 부른다). 죽음이 남긴 것을 전부 되돌린다 —
+    // 혈액은 음수(사망 비율 −30)에 있고, 부위는 망가졌거나 **파괴**돼 있으며, 기절 자세로
+    // 누워 있다. 하나라도 남기면 일어나자마자 다시 쓰러진다.
+    //
+    // **파괴된 부위도 되돌린다.** `HealBodyParts`는 그것을 건너뛰는데(의족은 후유증 축의
+    // 일이다) 여기서 건너뛰면 머리가 터져 죽은 몸은 일어나는 즉시 기절해 선 자리에서 다시
+    // 눕는다 — 일으키는 쪽은 치료가 아니라 죽음을 되돌리는 일이다.
+    //
+    // **자세는 `forward`로 세운다.** 기절 자세가 **로컬 z축**(=정면) 둘레의 90° 회전이라
+    // 누워 있어도 정면은 수평 그대로다 — `_preKoRotation`을 쓰면 기절을 거치지 않고 죽은
+    // 몸에서 그 값이 비어 있다(`default(Quaternion)`는 회전이 아니다).
+    public void Rise(float bloodRatio = 1f)
+    {
+        foreach (var part in _parts.Values)
+        {
+            part.CurrentHP     = part.MaxHP;
+            part.LastWoundTime = Time.time - clotSeconds;   // 출혈 흔적도 지운다
+        }
+
+        BloodCap = maxBlood;
+        Blood    = Mathf.Clamp(maxBlood * Mathf.Clamp01(bloodRatio), 1f, maxBlood);
+
+        _koTimer = 0f;
+        _brain.Blackboard.IsKnockedOut = false;
+
+        var fwd = transform.forward;
+        fwd.y = 0f;
+        transform.rotation = fwd.sqrMagnitude > 0.0001f
+            ? Quaternion.LookRotation(fwd)
+            : Quaternion.identity;
+        _preKoRotation = transform.rotation;
+
+        // 부위가 다 찼으므로 팔다리 기능도 다시 본다 — 안 부르면 다리가 성한데도 못 걷는다.
+        UpdateMoveAbility();
+        UpdateAttackAbility();
     }
 
     // 아사(허기) — 무작위 부위/갑옷과 무관한 전신 쇠약. 혈액을 직접 깎아

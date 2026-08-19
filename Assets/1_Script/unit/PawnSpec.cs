@@ -37,6 +37,11 @@ public class PawnSpec
     // 합류한 폰의 특성이 같다 — 스탯·이름과 같은 이유로 여기 든다.
     public readonly List<TraitData> Traits = new();
 
+    // **성장 배경도 태어나기 전에 정해진다** — 특성과 같은 이유로 여기 든다(마을 후보 메뉴에
+    // 뜬 배경과 합류한 폰의 배경이 같아야 한다). 칸이 둘이라 목록이 아니라 필드 둘이다.
+    public BackstoryData Childhood;
+    public BackstoryData Adulthood;
+
     // 이 사람이 얼마나 쓸 만한가 — 등급 평균(0 = F-). 값 매김·표시의 단일 기준.
     public float GradeAverage { get; private set; }
 
@@ -50,8 +55,9 @@ public class PawnSpec
     //
     // 몸 크기는 좁게 흔든다. 크게 흔들면 같은 종족이 아니라 다른 종족처럼 보인다.
     public static PawnSpec Roll(UnitData data, int seed, StatGrade min, StatGrade max,
-                                IReadOnlyList<string> nameCandidates = null)
-        => RollCore(data, seed, nameCandidates, min, max, _ => (min, max));
+                                IReadOnlyList<string> nameCandidates = null,
+                                string storyGroup = null)
+        => RollCore(data, seed, nameCandidates, min, max, _ => (min, max), storyGroup);
 
     // **종족이 스탯별로 정한 범위를 그대로 쓰는 굴리기** — 저작한 고정 개체용.
     //
@@ -59,18 +65,20 @@ public class PawnSpec
     // 이름 있는 동료는 "그 종족다움"이 남아야 한다 — 엘프가 손재주만 좋게 저작돼 있으면
     // 고정 개체도 그래야지, 전 스탯이 같은 범위로 뭉개지면 종족을 저작한 뜻이 사라진다.
     public static PawnSpec Roll(UnitData data, int seed,
-                                IReadOnlyList<string> nameCandidates = null)
+                                IReadOnlyList<string> nameCandidates = null,
+                                string storyGroup = null)
     {
         var min = data != null ? data.DefaultMinGrade : StatGrade.D;
         var max = data != null ? data.DefaultMaxGrade : StatGrade.D;
         return RollCore(data, seed, nameCandidates, min, max,
-                        stat => data != null ? data.GetGradeRange(stat) : (min, max));
+                        stat => data != null ? data.GetGradeRange(stat) : (min, max), storyGroup);
     }
 
     // `tierMin/tierMax` = 이 사람의 **수준**을 뽑는 범위, `rangeOf` = 스탯마다 조일 범위.
     static PawnSpec RollCore(UnitData data, int seed, IReadOnlyList<string> nameCandidates,
                              StatGrade tierMin, StatGrade tierMax,
-                             Func<StatName, (StatGrade min, StatGrade max)> rangeOf)
+                             Func<StatName, (StatGrade min, StatGrade max)> rangeOf,
+                             string storyGroup = null)
     {
         var spec = new PawnSpec { Seed = seed };
         var rng  = new System.Random(seed);
@@ -115,6 +123,20 @@ public class PawnSpec
             sum += g;
             count++;
         }
+        // ── 배경은 **맨 끝에서** 굴린다 ──────────────────────────────────────
+        //
+        // 난수열은 부르는 횟수로 자리가 정해진다(위 "굴리는 순서가 곧 호환성이다"). 특성
+        // 뒤·스탯 앞에 끼우면 **스탯 굴림이 통째로 밀려** 같은 시드가 다른 사람을 낳는다 —
+        // 저작해 둔 고정 개체와 마을 후보가 한꺼번에 바뀐다. 꼬리에 붙이면 앞의 것이 그대로다.
+        //
+        // **사람만 받는다**(`UnitData.UsesBackstory`). 늑대에게 유년기를 굴려 주면 스탯 창에
+        // *"거리에서 자랐다"*가 뜬다.
+        if (data != null && data.UsesBackstory)
+        {
+            spec.Childhood = BackstoryPool.Roll(BackstorySlot.Childhood, rng, storyGroup);
+            spec.Adulthood = BackstoryPool.Roll(BackstorySlot.Adulthood, rng, storyGroup);
+        }
+
         spec.GradeAverage = count > 0 ? sum / (float)count : 0f;
 
         return spec;

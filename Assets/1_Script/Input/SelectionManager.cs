@@ -161,6 +161,11 @@ public class SelectionManager : MonoBehaviour
         // 엉뚱한 사각형으로 **선택을 통째로 지웠다** — 물건 하나 버릴 때마다 무리가 풀렸다.
         if (Mouse.current.leftButton.wasPressedThisFrame)
         {
+            // **손에 물건을 들고 있으면 그 클릭은 인벤토리의 것이다.**
+            // 집고 놓는 조작으로 바뀌면서(`DraggableItem`) 창 밖을 누르는 것이 "바닥에
+            // 버린다"가 됐다 — 안 막으면 그 한 번이 **물건을 떨구면서 폰까지 움직인다.**
+            if (DraggableItem.CarriedInstance != null) { _pressOverUI = true; return; }
+
             _pressOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             if (_pressOverUI) return;
 

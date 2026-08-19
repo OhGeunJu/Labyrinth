@@ -317,7 +317,7 @@ public class InspectPanelUI : MonoBehaviour
         // 혈액 / 보호막 / 부패
         if (body != null)
         {
-            sb.AppendLine($"혈액  {BloodBar(body.Blood)}");
+            sb.AppendLine($"혈액  {BloodBar(body.Blood, body.MaxBlood)}");
             if (sfx != null && sfx.ShieldPool > 0f)
                 sb.AppendLine($"보호막  <color=#4AF>{sfx.ShieldPool:F0}</color>");
             if (sfx != null && sfx.CorruptionGauge > 0f)
@@ -992,6 +992,12 @@ public class InspectPanelUI : MonoBehaviour
     // 한 줄로 붙여 쓴다 — `특성  강인함 · 겁쟁이`. 없는 폰(0개)은 줄 자체가 안 뜬다.
     static void AppendTraits(StringBuilder sb, UnitBrain brain)
     {
+        // **성장 배경 한 줄** — 이름만. 좁은 창이라 오프셋까지 적으면 특성 줄과 함께
+        // 두 줄이 숫자로 가득 찬다(자세한 것은 스탯 창 C가 답한다).
+        string story = BackstoryPool.NameList(brain.Childhood, brain.Adulthood);
+        if (!string.IsNullOrEmpty(story))
+            sb.AppendLine($"<color=#888>배경</color>  {story}");
+
         string names = TraitPool.NameList(brain.Traits);
         if (string.IsNullOrEmpty(names)) return;
 
@@ -1006,10 +1012,15 @@ public class InspectPanelUI : MonoBehaviour
         return $"  {left,-20}  {right}";
     }
 
-    static string BloodBar(float blood, float max = 100f)
+    // **최대 혈액은 몸에게 묻는다.** 100이 기본값으로 박혀 있었는데, 눈금을 올리는 순간
+    // (350) 바가 늘 가득 차 보이고 색도 안 변한다 — *"피를 흘리는데 화면은 멀쩡하다"*.
+    // 색 문턱도 비율로 잰다(60/30은 100 기준의 수였다).
+    static string BloodBar(float blood, float max)
     {
+        if (max <= 0f) max = 1f;
+        float pct = blood / max * 100f;
         int filled = Mathf.Clamp(Mathf.RoundToInt(blood / max * 10), 0, 10);
-        string color = blood > 60 ? "#E55" : blood > 30 ? "#F90" : "#F44";
+        string color = pct > 60 ? "#E55" : pct > 30 ? "#F90" : "#F44";
         return $"<color={color}>{new string('█', filled)}{new string('░', 10 - filled)}</color>  {blood:F0}/{max:F0}";
     }
 

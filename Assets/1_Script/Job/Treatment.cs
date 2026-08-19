@@ -14,7 +14,10 @@ public static class Treatment
     public const float BareHandsSpeed   = 0.55f;
 
     public const float BaseSeconds  = 8f;    // 의료 0·붕대 기준 한 회차
-    public const float BasePartHeal = 12f;   // 한 회차 부위 HP 회복(배율 곱하기 전)
+    // **부위 회복만 몸의 눈금과 같이 올렸다**(부위 ×3, `BodyPartSystem`) — 안 올리면 붕대 한
+    // 번이 긁힌 자국만큼도 못 메워, 약을 쓰는 자리 자체가 사라진다. **혈액 상한은 100 그대로라
+    // 예전 값 그대로다.**
+    public const float BasePartHeal = 38f;   // 한 회차 부위 HP 회복(배율 곱하기 전)
     public const float BaseCapHeal  = 8f;    // 한 회차 혈액 상한 회복
 
     // **스스로 하는 것은 덜 듣는다.** 한 손으로, 안 보이는 곳을, 아픈 채로 싸맨다 —

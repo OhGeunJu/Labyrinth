@@ -14,8 +14,11 @@ public class InventoryUI : MonoBehaviour
     public static void NotifyItemSelected(ItemInstance inst, InventoryGridUI sourceGrid)
         => _instance?.OnItemSelected(inst, sourceGrid);
 
-    public static void NotifyItemDoubleAction(ItemInstance inst, InventoryGridUI sourceGrid)
-        => _instance?.OnItemDoubleAction(inst, sourceGrid);
+    // **클릭이 집기가 아닌 때가 있다.** 잠금 모드에서는 한 번 누르는 것이 자물쇠를 거는
+    // 일이라, 집어 버리면 잠그려다 물건이 손에 들린다 — 집기 전에 먼저 물어본다.
+    // 참을 돌려주면 그 클릭은 여기서 끝난 것이다(`DraggableItem.BeginCarry`).
+    public static bool ClickConsumed(ItemInstance inst, InventoryGridUI sourceGrid)
+        => _instance != null && _instance.ConsumeModalClick(inst, sourceGrid);
 
     public static void NotifyItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid)
         => _instance?.OnItemRightClick(inst, sourceGrid);
@@ -492,9 +495,8 @@ public class InventoryUI : MonoBehaviour
 
     void OnItemSelected(ItemInstance inst, InventoryGridUI sourceGrid)
     {
-        // 잠금 모드에서는 클릭이 **잠금 토글**이다. 판매·루팅 선택으로 넘기지 않는다 —
-        // 한 클릭이 두 가지를 뜻하면 어느 쪽이 일어났는지 알 수 없다.
-        if (_lockMode && ToggleItemLock(inst, sourceGrid)) return;
+        // 잠금 모드의 클릭은 **집기보다 먼저** 처리된다(`ConsumeModalClick`) — 여기까지
+        // 오지 않는다.
 
         if (_mode == ActionMode.None) return;
         _selectedItem       = inst;
@@ -502,22 +504,9 @@ public class InventoryUI : MonoBehaviour
         RefreshActionBar();
     }
 
-    void OnItemDoubleAction(ItemInstance inst, InventoryGridUI sourceGrid)
-    {
-        // 더블클릭은 단클릭 두 번으로도 온다 — 잠금 모드에서 즉시 판매/루팅이 튀어나오면
-        // 잠그려다 물건을 팔아 버린다.
-        if (_lockMode) return;
-
-        // **동전은 쓰는 물건이다.** 어느 모드든 여기서 먼저 잡는다 —
-        // 판매 모드에서 동전을 팔거나, 루팅 모드에서 동전을 배낭 칸으로 옮기는 것은
-        // 둘 다 할 이유가 없는 짓이다. 시체에서 바로 챙기는 것도 이 길로 된다.
-        if (TryClaimCoins(inst, sourceGrid)) return;
-
-        _selectedItem       = inst;
-        _selectedSourceGrid = sourceGrid;
-        if (_mode == ActionMode.Sell) ExecuteSell();
-        else if (_mode == ActionMode.Loot) ExecuteLoot();
-    }
+    // 잠금 모드의 클릭 — 집기보다 먼저 돈다(`ClickConsumed`).
+    bool ConsumeModalClick(ItemInstance inst, InventoryGridUI sourceGrid)
+        => _lockMode && ToggleItemLock(inst, sourceGrid);
 
     // ── 우클릭: 한 번에 보내기 ────────────────────────────────────────────────
     //

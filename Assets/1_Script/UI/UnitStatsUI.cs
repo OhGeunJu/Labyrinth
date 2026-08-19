@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -97,6 +98,24 @@ public class UnitStatsUI : MonoBehaviour
             return true;
         }
 
+        if (id.StartsWith("story:"))
+        {
+            var story = BackstoryPool.Get(id.Substring(6));
+            if (story == null) return false;
+
+            title = story.DisplayName;
+            string effect = story.EffectSummary();
+            string bans   = BanSummary(story);
+            if (!string.IsNullOrEmpty(bans))
+                effect = string.IsNullOrEmpty(effect) ? bans : effect + "\n" + bans;
+
+            body = string.IsNullOrWhiteSpace(story.Description)
+                 ? effect
+                 : (string.IsNullOrEmpty(effect) ? story.Description
+                                                 : story.Description + "\n" + "<color=#8AC>" + effect + "</color>");
+            return true;
+        }
+
         if (id.StartsWith("trait:"))
         {
             var trait = TraitPool.Get(id.Substring(6));
@@ -133,6 +152,7 @@ public class UnitStatsUI : MonoBehaviour
 
         // **특성이 맨 위다.** 숫자 51개를 훑기 전에 "이 폰이 어떤 사람인가"부터 읽혀야 한다 —
         // 특성은 그 숫자들의 **요약**이 아니라 왜 그런 숫자가 나왔는지의 이유다.
+        AppendBackstories(sb, brain);
         AppendTraits(sb, brain);
 
         // 속성
@@ -288,6 +308,46 @@ public class UnitStatsUI : MonoBehaviour
         }
         sb.AppendLine();
     }
+
+    // **성장 배경 줄.** 특성 바로 위다 — 특성이 *어떤 기질인가*라면 배경은 *어떻게 살아왔나*라,
+    // 사람을 읽는 순서가 그쪽이 먼저다. 못 하는 일이 있으면 **그 줄에 같이 적는다**(붉게) —
+    // 무능력은 스탯 몇 점보다 훨씬 크게 이 폰을 정하는데, 툴팁을 열어야만 보이면 P패널에서
+    // "왜 이건 못 켜지"를 그때 처음 만나게 된다.
+    static void AppendBackstories(StringBuilder sb, UnitBrain brain)
+    {
+        if (brain.Childhood == null && brain.Adulthood == null) return;
+
+        sb.AppendLine(H("■ 성장 배경"));
+        AppendStory(sb, "유년기", brain.Childhood);
+        AppendStory(sb, "성년기", brain.Adulthood);
+        sb.AppendLine();
+    }
+
+    static void AppendStory(StringBuilder sb, string slot, BackstoryData b)
+    {
+        if (b == null) return;
+
+        string effect = b.EffectSummary();
+        string row = $"<color=#888>{slot}</color>  <b>{b.DisplayName}</b>";
+        if (!string.IsNullOrEmpty(effect)) row += $"  <color=#888>{effect}</color>";
+
+        string bans = BanSummary(b);
+        if (!string.IsNullOrEmpty(bans)) row += $"  <color=#D66>{bans}</color>";
+
+        sb.AppendLine($"  {StoryLink(b, row)}");
+    }
+
+    // `무능력: 제작 · 연구`
+    static string BanSummary(BackstoryData b)
+    {
+        if (b?.DisabledJobs == null || b.DisabledJobs.Count == 0) return "";
+
+        var names = new List<string>();
+        foreach (var c in b.DisabledJobs) names.Add(JobCategoryInfo.DisplayName(c));
+        return $"무능력: {string.Join(" · ", names)}";
+    }
+
+    static string StoryLink(BackstoryData b, string body) => $"<link={Q}story:{b.name}{Q}>{body}</link>";
 
     static string H(string t) => $"<color=#E8C566>{t}</color>";
 

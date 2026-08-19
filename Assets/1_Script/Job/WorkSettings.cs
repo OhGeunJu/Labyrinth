@@ -25,12 +25,48 @@ public class WorkSettings : MonoBehaviour
 
     readonly HashSet<JobCategory> _disabled = new(DefaultOff);
 
+    // ── 못 하는 일 ───────────────────────────────────────────────────────────
+    //
+    // **성장 배경이 막아 둔 것**(`BackstoryData.DisabledJobs`). 끈 것(`_disabled`)과 **다른
+    // 축이다**: 끈 것은 "지금은 시키지 말자"라 사람이 도로 켤 수 있지만, 이건 *"이 사람은
+    // 그걸 못 한다"*라 켤 수가 없다.
+    //
+    // **막는 자리를 여기 둔 이유**: 큐 배정이 이미 `IsEnabled` 하나를 지나간다
+    // (`JobManager.RequestJob`). 그러니 여기서 거짓을 돌려주면 **작업·전투 코드는 성장 배경을
+    // 몰라도 된다** — 특성이 스탯만 얹는 것과 같은 자리의 판단이다(모델 A). 배경이 늘어도
+    // 분기는 안 는다.
+    readonly HashSet<JobCategory> _blocked = new();
+
+    public bool IsBlocked(JobCategory category) => _blocked.Contains(category);
+
+    public IReadOnlyCollection<JobCategory> Blocked => _blocked;
+
+    // 배경이 얹고 뗀다(`UnitBrain.SetBackstories`). **직접 배정(채굴·벌목·경비)도 받는다** —
+    // `IsEnabled`는 큐 작업만 답하지만, 배정하는 쪽은 이 목록을 따로 묻는다
+    // (`ResourceNode.Assign`·`PatrolZone.Assign`). 여기까지 걸러 주지 않으면
+    // *"무능력인데 바위는 캔다"*가 된다.
+    public void SetBlocked(JobCategory category, bool blocked)
+    {
+        bool changed = blocked ? _blocked.Add(category) : _blocked.Remove(category);
+        if (changed) OnChanged?.Invoke();
+    }
+
+    public void ClearBlocked()
+    {
+        if (_blocked.Count == 0) return;
+        _blocked.Clear();
+        OnChanged?.Invoke();
+    }
+
     public bool IsEnabled(JobCategory category)
-        => JobCategoryInfo.IsQueued(category) && !_disabled.Contains(category);
+        => JobCategoryInfo.IsQueued(category)
+        && !_blocked.Contains(category)
+        && !_disabled.Contains(category);
 
     public void SetEnabled(JobCategory category, bool enabled)
     {
         if (!JobCategoryInfo.IsQueued(category)) return;
+        if (_blocked.Contains(category)) return;   // 못 하는 일은 켤 수 없다
 
         bool changed = enabled ? _disabled.Remove(category) : _disabled.Add(category);
         if (changed) OnChanged?.Invoke();

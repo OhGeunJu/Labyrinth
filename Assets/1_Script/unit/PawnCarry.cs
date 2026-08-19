@@ -102,6 +102,15 @@ public static class PawnCarry
         Imprisonment.Unbind(target);
         Bed.ReleaseFrom(target);
 
+        // **업는 순간 하던 일을 놓는다.** 업고 있으면 일감을 안 집지만(`WorkNode`), 이미 손에
+        // 든 것은 그 게이트로 안 풀린다 — 자리로 데려가는 동안 `CarryPawnNode`가 Running을
+        // 물어 `WorkNode`가 아예 안 돌기 때문이다. 그러면 그 일감은 **예약된 채 얼어붙어
+        // 다른 폰도 못 가져간다**(한 명이 멈추는 게 아니라 일감이 통째로 죽는다).
+        //
+        // 놓는 자리를 여기 두는 이유는 `PutDownSite`를 지우는 것과 같다 — **업기가 시작되는
+        // 문은 이 함수 하나뿐**이라, 명령을 내는 쪽마다 챙기게 하면 언젠가 빠뜨린다.
+        carrier.AbandonWork();
+
         // 걷던 중이면 멈춘다 — 멀쩡한 우리 폰도 업을 수 있으므로 가던 길이 남아 있을 수 있다.
         target.GetComponent<PawnMover>()?.StopMovement();
 

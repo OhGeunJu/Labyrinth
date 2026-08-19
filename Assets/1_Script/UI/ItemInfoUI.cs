@@ -201,6 +201,10 @@ public class ItemInfoUI : MonoBehaviour
         FollowCursor();
     }
 
+    // 커서와 툴팁 사이. **딱 붙지만 않으면 된다** — 멀리 떨어뜨리면 무엇에 딸린 설명인지가
+    // 흐려지고 눈이 그만큼 더 움직인다.
+    const float Gap = 12f;
+
     void FollowCursor()
     {
         if (_rt == null || _canvas == null || Mouse.current == null) return;
@@ -209,9 +213,21 @@ public class ItemInfoUI : MonoBehaviour
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 cRt, Mouse.current.position.ReadValue(), cam, out var local)) return;
 
-        Vector2 pos   = local + cursorOffset;
         Vector2 cSize = cRt.sizeDelta;
         Vector2 pSize = _rt.sizeDelta;
+
+        // **커서에서 한 뼘 떨어뜨린다.** 손에 든 물건이 이제 **커서 한가운데**에 붙으므로
+        // (`DraggableItem.GrabAtCenter`), 툴팁이 커서에 딱 붙으면 그 물건 위에 겹친다.
+        // 지금은 손에 들었을 때 툴팁을 안 띄우지만, **가리키기만 해도 그 칸의 그림을 덮는
+        // 것은 마찬가지**다 — 무엇을 보고 있는지가 가려지면 설명이 설명을 방해한다.
+        Vector2 pos = local + cursorOffset + new Vector2(Gap, -Gap);
+
+        // **넘치면 밀어 넣지 말고 반대편으로 뒤집는다.** 밀어 넣으면 화면 오른쪽·아래
+        // 끝에서 툴팁이 **커서 밑으로 기어들어와** 정작 가리키는 것을 덮는다.
+        if (pos.x + pSize.x >  cSize.x * 0.5f) pos.x = local.x + cursorOffset.x - Gap - pSize.x;
+        if (pos.y - pSize.y < -cSize.y * 0.5f) pos.y = local.y + cursorOffset.y + Gap + pSize.y;
+
+        // 그래도 넘치면(툴팁이 화면보다 클 때) 그때는 밀어 넣는다.
         pos.x = Mathf.Clamp(pos.x, -cSize.x * 0.5f, cSize.x * 0.5f - pSize.x);
         pos.y = Mathf.Clamp(pos.y, -cSize.y * 0.5f + pSize.y, cSize.y * 0.5f);
         _rt.anchoredPosition = pos;

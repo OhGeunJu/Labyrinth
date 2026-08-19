@@ -443,6 +443,24 @@ public class WorkNode : BTNode
 
     public override BTStatus Tick(UnitBlackboard bb)
     {
+        // **업고 있으면 일을 안 한다.**
+        //
+        // 한 손이 사람으로 막혀 있고(양손 무기·방패를 못 드는 것과 **같은 축**이다), 무엇보다
+        // 어깨에 시신을 얹은 채 광맥을 캐러 맵을 가로지르는 그림이 된다. 업기는 그 자체로
+        // 명령이라, 업고 있는 동안 그 폰이 하는 일은 **옮기는 것**이다.
+        //
+        // 여기까지 흘러오는 이유: `CarryPawnNode`는 **갈 곳이 없으면 Failure**를 돌려준다
+        // (*"간수가 꺼져 있으면 그냥 업고 있는다"*). 그 뒤로 트리가 그대로 Work까지 흘렀다.
+        //
+        // **하던 일감은 여기서 안 놓는다** — 놓는 자리는 업기가 시작되는 문 하나뿐이다
+        // (`PawnCarry.TryPickUp`). 자리로 데려가는 동안에는 `CarryPawnNode`가 Running을 물고
+        // 있어 이 노드가 **아예 안 돌므로**, 여기서만 놓으면 예약된 일감이 **다른 폰도 못
+        // 가져가는 채로** 남는다.
+        //
+        // **배정된 자원 노드는 안 거둔다**(`AssignedNode`) — 그건 "이 바위를 캐라"는 지속
+        // 상태라, 내려놓으면 하던 곳으로 돌아가는 것이 맞다.
+        if (bb.Carrying != null) return BTStatus.Failure;
+
         // 배정된 노드가 있으면 우선 처리
         if (bb.AssignedNode != null)
             return TickAssigned(bb);
@@ -682,9 +700,12 @@ public class PatrolNode : BTNode
 // 전투/소집 등 상위 분기가 이 노드를 밀어내면 UnitBrain이 자동으로 깨운다(bb.RestTicked).
 public class RestNode : BTNode
 {
+    // **부위 회복만 몸의 눈금과 같이 올렸다**(평균 부위 HP 31→100, `BodyPartSystem`) — 안
+    // 올리면 회복이 세 배 느려져 한 번 다치면 하루를 누워 있어야 한다. **혈액은 100 그대로라
+    // 예전 값 그대로다.**
     const float BloodHealRate  = 2f;    // 초당 혈액 회복
     const float CapRestoreRate = 1f;    // 초당 캡 회복
-    const float PartHealRate   = 1f;    // 초당 부위 HP 회복 (자연 회복에 추가로 얹힘)
+    const float PartHealRate   = 3f;    // 초당 부위 HP 회복 (자연 회복에 추가로 얹힘)
     const float ArrivalDist    = 1.0f;  // 접근 지점(침대 옆) 기준
     const float HungerLeave    = 60f;   // EatNode 임계와 동일
 
@@ -694,6 +715,17 @@ public class RestNode : BTNode
     public override BTStatus Tick(UnitBlackboard bb)
     {
         var brain    = bb.Brain;
+
+        // **업고 있으면 눕지 않는다** — 사람을 어깨에 얹은 채 잠자리에 드는 그림이 된다
+        // (`WorkNode`가 일감을 막는 것과 **같은 축**이다: 업기는 그 자체로 명령이고, 업고
+        // 있는 동안 그 폰이 하는 일은 옮기는 것이다).
+        //
+        // **배정은 안 거둔다** — 거두면 내려놓고 나서 플레이어가 침대를 다시 붙여 줘야 한다.
+        // 미루기만 하므로 **내려놓는 즉시 제 침대로 간다**(배정된 자원 노드를 안 거두는 것과
+        // 같은 판단). 자고 있던 폰이 무언가를 업게 되면 **일어나야 한다** — 그래서 `LeaveBed`로
+        // 나간다: 누운 자세와 점유를 안 풀면 **업은 채로 침대에 굳고 그 침대를 아무도 못 쓴다.**
+        if (bb.Carrying != null) { LeaveBed(bb); return BTStatus.Failure; }
+
         var assigned = Bed.FindAssigned(brain);
 
         // 배정 해제됐거나 배가 고프면 일어난다

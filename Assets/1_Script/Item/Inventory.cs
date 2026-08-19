@@ -185,35 +185,69 @@ public class Inventory : MonoBehaviour
         return CanPlace(x, y, w, h, inst);
     }
 
-    // 두 아이템의 **자리를 맞바꾼다.** 겹치는 곳에 놓으려 할 때 그냥 실패시키면
-    // 좁은 배낭에서 배치를 바꿀 방법이 없다 — 한 칸씩 빼내 옮겨야 한다.
+    // 그 자리에 **놓는다. 하나가 걸리면 그것을 밀어낸다**(밀려난 것은 손에 들린다).
     //
-    // **둘 다 서로의 자리에 들어갈 때만** 바꾼다. 크기가 다르면(2×4 ↔ 1×1) 한쪽이
-    // 안 들어갈 수 있는데, 그때 반만 옮기면 아이템이 사라지거나 겹친다.
-    public bool SwapItems(ItemInstance a, ItemInstance b)
+    // 격자에서 하는 일은 결국 이것 하나다 — 빈자리면 놓고, 뭔가 걸리면 그것과 바뀐다.
+    // 예전엔 `MoveItem` 실패 → `SwapItems` 두 단계였고, 그 사이에서 규칙이 갈렸다.
+    //
+    // ── 규칙 셋 ──────────────────────────────────────────────────────────────
+    //  · 발자국이 **비었으면** 그냥 놓는다.
+    //  · 걸리는 것이 **딱 하나면** 그것을 **통에서 빼서 돌려준다**(`displaced`). 부르는 쪽이
+    //    손에 들려 준다 — 자리를 맞바꾸지 않는 이유는, 크기가 다르면 상대가 내 자리에
+    //    못 들어가는 일이 흔하고 그때마다 "왜 안 바뀌지"가 되기 때문이다. 손에 들면
+    //    **어디에 놓을지는 사람이 정한다.**
+    //  · **둘 이상이면 아무것도 안 한다** — 어느 쪽을 밀어낼지 말할 수 없고, 하나만 밀어내면
+    //    나머지와 겹친 채로 남는다.
+    //
+    // `inst`가 이 통에 **없어도 된다** — 손에 든 것·다른 통에서 건너온 것은 그대로 꽂는다.
+    //
+    // ── 예전 `SwapItems`가 물건을 겹쳐 놓던 자리 ──────────────────────────────
+    //
+    // 그쪽은 **둘을 서로 비켜 놓고 각각** 판정했다(`CanPlace(bx,by,…,a) && CanPlace(ax,ay,…,b)`).
+    // 서로의 자리를 막고 있다고 나오는 것을 피하려던 것인데, 그 바람에 **A의 새 발자국과
+    // B의 새 발자국이 겹치는지를 아무도 안 봤다** — 크기가 다른 둘(3×1 검 ↔ 2×3 옷)을 비비면
+    // 둘 다 통과해 **겹친 채로 놓였다.** 밀어내는 쪽은 통에서 아예 빠지므로 그 구멍이 없다.
+    //
+    // 그리고 상대를 **커서 칸이 아니라 발자국 전체**에서 찾는다 — 3×1로 돌린 검은 커서 칸이
+    // 비어 있어도 옆 칸에서 남의 물건에 걸친다(그게 "가끔 겹친다"의 정체였다).
+    public bool TryPlaceOverAt(ItemInstance inst, int x, int y, bool rotated,
+                               out ItemInstance displaced)
     {
-        if (a == null || b == null || a == b) return false;
-        if (!_items.Contains(a) || !_items.Contains(b)) return false;
+        displaced = null;
+        if (inst == null || inst.Data == null) return false;
 
-        int ax = a.GridX, ay = a.GridY; bool ar = a.Rotated;
-        int bx = b.GridX, by = b.GridY; bool br = b.Rotated;
+        int w = rotated ? inst.Data.Height : inst.Data.Width;
+        int h = rotated ? inst.Data.Width  : inst.Data.Height;
 
-        // 서로를 비켜 놓고 판정해야 한다 — 안 그러면 상대가 자기 자리를 막고 있다고 나온다.
-        ClearCells(a); ClearCells(b);
+        for (int dx = 0; dx < w; dx++)
+        for (int dy = 0; dy < h; dy++)
+            if (!InBounds(x + dx, y + dy)) return false;
 
-        int aw = ar ? a.Data.Height : a.Data.Width,  ah = ar ? a.Data.Width : a.Data.Height;
-        int bw = br ? b.Data.Height : b.Data.Width,  bh = br ? b.Data.Width : b.Data.Height;
-
-        bool ok = CanPlace(bx, by, aw, ah, a) && CanPlace(ax, ay, bw, bh, b);
-        if (!ok)
+        // 발자국에 걸리는 것 — **딱 하나일 때만** 밀어낸다.
+        ItemInstance other = null;
+        for (int dx = 0; dx < w; dx++)
+        for (int dy = 0; dy < h; dy++)
         {
-            PlaceCells(a); PlaceCells(b);   // 원래대로 되돌린다
-            return false;
+            var occ = _cells[x + dx, y + dy];
+            if (occ == null || occ == inst) continue;
+            if (other == null)  other = occ;
+            else if (other != occ) return false;   // 둘 이상 — 아무것도 안 한다
         }
 
-        a.GridX = bx; a.GridY = by;
-        b.GridX = ax; b.GridY = ay;
-        PlaceCells(a); PlaceCells(b);
+        if (other != null)
+        {
+            ClearCells(other);
+            _items.Remove(other);
+            displaced = other;
+        }
+
+        bool mine = _items.Contains(inst);
+        if (mine) ClearCells(inst);
+
+        inst.GridX = x; inst.GridY = y; inst.Rotated = rotated;
+        PlaceCells(inst);
+        if (!mine) _items.Add(inst);
+
         OnChanged?.Invoke();
         return true;
     }
