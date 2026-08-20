@@ -127,7 +127,7 @@ public class ResourceNodeUI : MonoBehaviour
         _current = node;
 
         if (panel == null) return;
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
 
         if (nameText != null && node.Data != null)
             nameText.text = node.Data.DropItem != null ? node.Data.DropItem.ItemName : "자원";

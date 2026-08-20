@@ -91,7 +91,15 @@ public static class PawnCarry
     public static bool IsCarried(UnitBrain brain) =>
         brain != null && brain.Blackboard != null && brain.Blackboard.CarriedBy != null;
 
-    public static bool TryPickUp(UnitBrain carrier, UnitBrain target)
+    // **`keepCurrentJob` — 업기를 시킨 것이 일감 자신일 때.**
+    //
+    // 아래에서 하던 일감을 놓는데(`AbandonWork`), **그 일감이 바로 이 업기를 시킨 것이면
+    // 스스로를 취소한다.** `ButcherJob`이 정확히 그랬다: 시체를 업으러 가서 업는 순간
+    // `bb.CurrentJob`(= 그 `ButcherJob`)이 취소되고, 폰은 **시체를 든 채 영영 서 있었다**
+    // (도축대를 지어 두면 도축이 통째로 안 됐다 — 도축대 없이 그 자리에서 가르는 길만 돌았다).
+    //
+    // 기본은 **놓는다** — 명령으로 업는 길(우클릭·간수 호송)에서는 하던 일과 업기가 남남이다.
+    public static bool TryPickUp(UnitBrain carrier, UnitBrain target, bool keepCurrentJob = false)
     {
         if (!CanCarry(carrier, target)) return false;
 
@@ -109,7 +117,8 @@ public static class PawnCarry
         //
         // 놓는 자리를 여기 두는 이유는 `PutDownSite`를 지우는 것과 같다 — **업기가 시작되는
         // 문은 이 함수 하나뿐**이라, 명령을 내는 쪽마다 챙기게 하면 언젠가 빠뜨린다.
-        carrier.AbandonWork();
+        if (keepCurrentJob) carrier.Blackboard?.AssignedNode?.Unassign(carrier);
+        else                carrier.AbandonWork();
 
         // 걷던 중이면 멈춘다 — 멀쩡한 우리 폰도 업을 수 있으므로 가던 길이 남아 있을 수 있다.
         target.GetComponent<PawnMover>()?.StopMovement();

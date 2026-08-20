@@ -87,7 +87,7 @@ public class WorldMenuUI : MonoBehaviour
         BuildOptions(options);
 
         IsOpen = true;
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
     }
 
     public void Close()

@@ -460,9 +460,12 @@ public class Inventory : MonoBehaviour
     // 마라"라서, 합치다 풀리면 자동 운반이 조용히 집어 간다.
     //
     // 자리를 못 찾은 것은 **그대로 둔다**(있을 수 없는 일이지만, 잃는 것보다 낫다).
-    public void Compact()
+    // **다 못 넣으면 아무것도 안 바꾼다**(`false`). 첫 자리부터 큰 것부터 채우는 방식은
+    // 원래 들어가 있던 배치를 다시 만든다는 보장이 없다 — 그때 **반쯤 정리된 격자를 남기는
+    // 것이 가장 나쁘다**(물건이 겹치거나 사라진다).
+    public bool Compact()
     {
-        if (_items.Count == 0) return;
+        if (_items.Count == 0) return true;
 
         var items = new List<ItemInstance>(_items);
 
@@ -495,7 +498,10 @@ public class Inventory : MonoBehaviour
             return string.CompareOrdinal(x.Data.ItemName, y.Data.ItemName);
         });
 
-        // 3) 빈 격자에 다시 놓는다
+        // 3) 빈 격자에 다시 놓는다 — **되돌릴 수 있게 옛 자리를 적어 둔다.**
+        var before = new List<(ItemInstance inst, int x, int y, bool rot)>(_items.Count);
+        foreach (var inst in _items) before.Add((inst, inst.GridX, inst.GridY, inst.Rotated));
+
         Array.Clear(_cells, 0, _cells.Length);
         _items.Clear();
 
@@ -505,7 +511,21 @@ public class Inventory : MonoBehaviour
             var slot = FindEmptySlot(inst.Data.Width, inst.Data.Height, out bool rotated);
             if (slot == null)
             {
-                // 자리를 못 찾았다 — 원래 자리로 되돌린다(그 자리는 아직 비어 있다).
+                // **자리를 못 찾았다.** 한때 "원래 자리로 되돌린다(그 자리는 아직 비어 있다)"고
+                // 여기서 `PlaceCells`를 불렀는데, **그 말이 참이 아니다**: 격자를 이미 비우고
+                // (`Array.Clear`) 큰 것부터 다시 채우는 중이라 그 칸은 남이 가져갔을 수 있다.
+                // 게다가 `inst.Rotated`를 방금 꺼서 **발자국 크기가 달라졌다** — 돌려 놓았던
+                // 물건은 옛 좌표에서 범위를 넘고(`IndexOutOfRangeException`), 안 넘으면
+                // **남의 칸을 말없이 덮어써** 두 물건이 같은 칸을 갖는다.
+                //
+                // 못 넣으면 **돌려서 한 번 더 본다.** 그래도 안 되면 이 정리는 성립하지 않는
+                // 것이므로 **통째로 되돌린다**(아래) — 반쯤 정리된 격자를 남기는 것이 가장 나쁘다.
+                var slotR = FindEmptySlot(inst.Data.Height, inst.Data.Width, out _);
+                if (slotR == null) return Restore(before);
+
+                inst.GridX   = slotR.Value.x;
+                inst.GridY   = slotR.Value.y;
+                inst.Rotated = true;
                 PlaceCells(inst);
                 _items.Add(inst);
                 continue;
@@ -519,6 +539,37 @@ public class Inventory : MonoBehaviour
         }
 
         OnChanged?.Invoke();
+        return true;
+    }
+
+    // 정리가 실패했을 때 옛 배치로 되돌린다. **합치기(1단계)는 안 되돌린다** — 같은 물건을
+    // 한 뭉치로 모으는 것은 자리를 늘리는 일이라 실패의 원인이 아니고, 되돌리면 오히려
+    // 조각이 늘어난다. 되돌리는 것은 **자리**뿐이다.
+    bool Restore(List<(ItemInstance inst, int x, int y, bool rot)> before)
+    {
+        Array.Clear(_cells, 0, _cells.Length);
+        _items.Clear();
+
+        foreach (var (inst, x, y, rot) in before)
+        {
+            if (inst.Quantity <= 0) continue;   // 1단계에서 다른 뭉치로 합쳐졌다
+
+            inst.GridX = x; inst.GridY = y; inst.Rotated = rot;
+            PlaceCells(inst);
+            _items.Add(inst);
+        }
+
+        OnChanged?.Invoke();
+        return false;
+    }
+
+    // **이 물건·이 등급의 뭉치 하나.** 방금 넣은 것을 되돌릴 때, *어느 뭉치에 들어갔나*를
+    // 알아야 남의 뭉치를 빼지 않는다(`Shop.TrySell`의 롤백).
+    public ItemInstance FindStack(ItemData data, ItemQuality quality)
+    {
+        foreach (var inst in _items)
+            if (inst.Data == data && inst.Quality == quality && inst.Quantity > 0) return inst;
+        return null;
     }
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────

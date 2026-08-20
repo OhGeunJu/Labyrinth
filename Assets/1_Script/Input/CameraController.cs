@@ -17,6 +17,11 @@ public class CameraController : MonoBehaviour
     [SerializeField] float minHeight = 3f;
     [SerializeField] float maxHeight = 80f;
 
+    [Header("비추기 (로스터 더블클릭)")]
+    [Tooltip("잡아 줄 때 대상에서 이만큼까지 다가간다(m, 카메라~대상 직선거리). 이미 더 가까우면 " +
+             "그대로 둔다 — 멀어지지는 않는다. 바닥(minHeight)에 닿으면 거기서 멈춘다.")]
+    [Min(1f)] [SerializeField] float focusDistance = 15f;
+
     [Header("앵글 프리셋 (PageUp/Down)")]
     [SerializeField] float topDownPitch = 85f;
     [SerializeField] float lowAnglePitch = 10f;
@@ -37,24 +42,64 @@ public class CameraController : MonoBehaviour
     //
     // **높이와 각도는 안 건드린다.** 지금 보고 있는 시점을 그대로 두고 XZ만 옮긴다 —
     // 줌·기울기를 같이 바꾸면 "어디로 튀었지"가 되어 오히려 위치를 잃는다.
+    //
+    // **다만 "화면 한가운데"가 곧 "가까이"는 아니다.** 위에서 내려다볼 때는 둘이 같지만,
+    // 카메라를 **눕히면** 화면 한가운데 광선이 지면과 만나는 자리가 아득히 멀어진다 —
+    // 높이 20 · 각도 5도면 **228m 앞**이다. 폰은 정확히 정중앙에 오는데 지평선의 점이라,
+    // 잡아 준 것이 아니라 잃어버린 것처럼 보인다. 그래서 가운데에 놓은 뒤 **다가간다**.
+    //
+    // **높이는 결국 건드린다**(위 문단은 원래 "안 건드린다"였다). 수평으로만 당겨 봤더니
+    // **높이가 곧 하한**이라 20m 위에 있으면 바로 위에서 봐도 20m 밖이고, 눕힌 채로는 대상이
+    // 화면 아래로 밀려나기만 했다 — 가까이 가는 것은 **낮아지는 것**과 같은 일이다.
+    //
+    // 대신 **각도는 안 건드리고 시선을 따라서만** 움직인다. 그러면 대상이 화면 한가운데에
+    // **그대로 머문 채** 커지기만 해서, 원래 걱정했던 *"어디로 튀었지"*가 안 생긴다. 이건
+    // 휠 줌(`HandleZoom`)이 이미 하는 동작 그대로다 — 잡아 주기와 줌이 같은 규칙을 쓴다.
     public void FocusOn(Vector3 worldPoint)
     {
         // 카메라가 기울어 있으므로 지금 화면 한가운데가 가리키는 지면과의 **차이**만큼 민다.
         // 그래야 대상이 화면 정중앙에 온다(그냥 대상 좌표로 가면 화면 위쪽에 걸린다).
-        Vector3 look = GroundUnderCenter();
+        Vector3 look = GroundUnderCenter(worldPoint.y);
         Vector3 delta = new Vector3(worldPoint.x - look.x, 0f, worldPoint.z - look.z);
         transform.position += delta;
+
+        DollyIn(worldPoint);
     }
 
-    // 화면 한가운데 광선이 y=대상높이 평면과 만나는 곳. 지형 콜라이더에 기대지 않는다
+    // **멀면 시선을 따라 다가간다** — 대상이 화면 한가운데에 그대로 있으므로 커지기만 한다.
+    //
+    // 가까울 때는 **아무것도 안 한다**: 잡아 주기는 보여 주는 일이지 시점을 정해 주는 일이
+    // 아니라, 이미 코앞인 것을 뒤로 물릴 이유가 없다.
+    void DollyIn(Vector3 worldPoint)
+    {
+        Vector3 fwd  = transform.forward;
+        float   dist = Vector3.Distance(transform.position, worldPoint);
+
+        float step = dist - focusDistance;
+        if (step <= 0f) return;
+
+        // **바닥에서 멈춘다.** 눕힌 시점에서 다가가는 것은 곧 낮아지는 것이라, 안 막으면
+        // 카메라가 지면을 뚫고 건물 속으로 들어간다. 한계는 휠 줌이 쓰는 것과 **같은
+        // `minHeight`**다 — 잡아 주기만 더 내려갈 수 있으면 규칙이 두 벌이 된다.
+        if (fwd.y < -0.001f)
+            step = Mathf.Min(step, (transform.position.y - minHeight) / -fwd.y);
+
+        if (step <= 0f) return;   // 이미 바닥이다 — 눕힌 채로는 여기가 가장 가깝다
+        transform.position += fwd * step;
+    }
+
+    // 화면 한가운데 광선이 **대상 높이 평면**과 만나는 곳. 지형 콜라이더에 기대지 않는다
     // (지형이 없는 던전 씬에서도 동작해야 한다).
-    Vector3 GroundUnderCenter()
+    //
+    // **y=0으로 재면 안 된다** — 주석은 *"y=대상높이 평면"*이라고 적어 두고 실제로는 원점
+    // 평면을 쓰고 있었다. 언덕 위에 선 폰은 그만큼 어긋난 자리에 잡힌다.
+    Vector3 GroundUnderCenter(float y)
     {
         var cam = _cam != null ? _cam : GetComponent<Camera>();
         if (cam == null) return transform.position;
 
         Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-        var plane = new Plane(Vector3.up, Vector3.zero);
+        var plane = new Plane(Vector3.up, new Vector3(0f, y, 0f));
         return plane.Raycast(ray, out float d) ? ray.GetPoint(d) : transform.position;
     }
 

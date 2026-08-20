@@ -48,14 +48,13 @@ public class MoveController : MonoBehaviour
         {
             if (pawn == null) continue; // 선택 후 파괴된 유닛
             var brain = pawn.GetComponent<UnitBrain>();
-            if (brain == null || brain.Data is MinionData) continue;
+            if (brain == null || !brain.AcceptsOrders) continue;
 
             // **명령을 수행할 수 없는 폰은 명령 목록에서 뺀다.** 갇혔거나 남의 어깨에 실려
             // 있으면 이동은 `PawnMover`가 막고 나머지는 BT가 안 돌아 조용히 사라진다 —
             // 그러면 "시켰는데 아무 일도 안 일어난다"가 된다. 게다가 [치료한다]·[업는다]는
             // **가장 가까운 한 명**을 고르는데, 그 하나가 갇힌 폰이면 아무도 안 간다.
-            var bb = brain.Blackboard;
-            if (bb != null && (bb.IsPrisoner || bb.CarriedBy != null)) { heldOut = true; continue; }
+            if (!brain.CanObeyNow) { heldOut = true; continue; }
 
             wanderers.Add(pawn);
         }
@@ -135,7 +134,12 @@ public class MoveController : MonoBehaviour
             bb.PutDownSite  = null;
             bb.EscortTo     = EscortDest.None;   // 데려가던 것도 거둔다(간수가 켜져 있으면 다시 잡는다)
 
-            brain.AbandonWork();
+            // **소집 중이면 배정은 남긴다.** 평소 이동 명령이 배정까지 거두는 이유는
+            // *"안 거두면 도착하자마자 일하러 돌아가 명령이 안 먹는 것처럼 보인다"*인데,
+            // **소집이 이미 `WorkNode`를 막고 있으므로 그 이유가 없다.** 거두면 진형을 잡으려고
+            // 한 번 옮겼을 뿐인데 캐던 바위가 떨어져 나가고, 소집을 풀어도 안 돌아간다.
+            if (brain.IsDrafted) brain.DropCurrentJob();
+            else                 brain.AbandonWork();
 
             commanders[i].GetComponent<CombatHandler>()?.ExitCombat();
             commanders[i].SetMoveTarget(positions[i]);
@@ -611,7 +615,10 @@ public class MoveController : MonoBehaviour
             // 풀어 주는 길은 [풀어 준다]와 [끌어낸다] 둘뿐이다.
             if (brain.Blackboard.IsPrisoner) continue;
 
-            Bed.ReleaseFrom(brain);
+            // **무엇을 거둘지는 침대가 답한다**(`Bed.RouseFrom`) — 손으로 붙인 배정만
+            // 거두고, 저 혼자 잡은 잠자리와 소집 중인 폰의 배정은 남긴다. 여기서 그냥
+            // `ReleaseFrom`을 부르면 **한 번 옮겼다는 이유로 잠자리를 잃는다.**
+            Bed.RouseFrom(brain);
             pawn.SetSleeping(false);
         }
     }

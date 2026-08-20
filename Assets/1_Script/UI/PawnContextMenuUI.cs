@@ -172,7 +172,7 @@ public class PawnContextMenuUI : MonoBehaviour
     void Show()
     {
         _openedFrame = Time.frameCount;
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
 
         // **맨 앞으로 올린다** — 상점 창처럼 나중에 그려지는 패널 위에서 열릴 수 있는데,
         // 형제 순서가 뒤면 목록이 그 뒤에 숨어 "눌러도 아무 일이 없다"가 된다.

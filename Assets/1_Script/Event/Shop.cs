@@ -331,8 +331,11 @@ public class Shop
         // **되사기에는 성장이 없다.** 값이 판 순간에 얼어 있어(`AddPlayerStock`) 흥정할 것이
         // 없다. 그리고 **내준 돈이 그만큼 돌아왔다고 적는다**(`ReturnGold`) — 그래야
         // "팔고 되사고 다시 팔기"가 두 번째부터 아무것도 안 준다(위 `TeachableGold` 주석).
+        // **매수도 같은 셈을 탄다**(`TeachableGold`). 매도만 netting하면 두 상인 사이로 물건
+        // 하나를 돌리는 고리가 **매수 쪽에서 계속 배운다** — 값의 차이만 물고 스탯을 얻는다.
+        // 같은 돈으로 두 번 배우지 않는다는 규칙은 방향을 안 가린다.
         if (entry != null && entry.FromPlayer) ReturnGold(paid);
-        else                                   Trading.GrowFromTrade(Haggler, paid);
+        else                                   Trading.GrowFromTrade(Haggler, TeachableGold(paid));
 
         return bought;
     }
@@ -370,20 +373,25 @@ public class Shop
             // 어긋날 데가 없다.
             if (Stall.TryAdd(inst.Data, 1, inst.Quality) < 1) break;
 
+            // **되돌릴 때 뺄 그 뭉치를 잡아 둔다.** 안 잡으면 롤백이 `prefer` 없이 같은 줄의
+            // **아무 뭉치**(대개 상인의 제 물건)를 빼서, 좌판은 줄었는데 `Stock`은 안 줄어
+            // 값표와 좌판이 어긋난다.
+            var added = Stall.FindStack(inst.Data, inst.Quality);
+
             // 대금 입금을 먼저 확정한 뒤 물건을 뺀다 — 순서를 뒤집으면 받을 곳이 꽉 찼을 때
             // 물건만 사라진다. **틀어지면 좌판에 얹은 것도 도로 내린다.**
             int paid = account.GiveGold(price);
             if (paid < price)
             {
                 if (paid > 0) account.TakeGold(paid);
-                TakeFromStall(inst.Data, inst.Quality);
+                TakeFromStall(inst.Data, inst.Quality, added);
                 break;
             }
 
             if (!sourceInv.RemoveOne(inst))
             {
                 account.TakeGold(price);
-                TakeFromStall(inst.Data, inst.Quality);
+                TakeFromStall(inst.Data, inst.Quality, added);
                 break;
             }
 

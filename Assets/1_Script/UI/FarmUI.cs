@@ -79,7 +79,7 @@ public class FarmUI : MonoBehaviour
     {
         _current           = plot;
         _builtForSeedCount = -1;   // 다른 밭일 수 있으니 목록을 새로 짓게 한다
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         Refresh();
     }
 

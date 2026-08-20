@@ -134,7 +134,20 @@ public class EquipSlotUI : MonoBehaviour,
         // 벗긴 그것이 곧 손에 든 것이 된다 — 벗기와 집기가 한 동작이다.
         // **벗긴 그것을 든다** — `TakeOff`가 돌려주는 것이 정본이다(칸을 다시 물으면 이미 비었다).
         var taken = TakeOff() ?? inst;
-        DraggableItem.CarryDetached(taken, back, e.position);
+
+        // **못 들면 벗긴 것을 도로 넣는다.** `TakeOff`는 배낭을 안 거치므로(그게 이 칸의
+        // 규약이다), `CarryDetached`가 실패하면(캔버스를 못 찾을 때 `null`) 그 장비는
+        // **칸에서도 빠지고 배낭에도 없는** 상태가 된다 — 조용히 사라지는 것이 가장 나쁘다.
+        //
+        // 되돌리는 순서는 **다시 차기 → 배낭 → 발밑**이다(`Storage.Deliver`가 부린 짐을
+        // 되돌리는 것과 같은 모양: 뒤로 갈수록 나쁜 쪽).
+        if (DraggableItem.CarryDetached(taken, back, e.position) != null) return;
+
+        Debug.LogWarning($"[EquipSlot] {taken.Data.ItemName} — 손에 못 들어 되돌린다(캔버스 없음).");
+        if (Wear(taken)) return;
+        if (back.Inventory.TryAdd(taken.Data, taken.Quantity, taken.Quality) >= taken.Quantity) return;
+
+        Debug.LogError($"[EquipSlot] {taken.Data.ItemName}을(를) 되돌릴 곳이 없다 — 잃었다.");
     }
 
     // **우클릭 = 벗어서 배낭으로.** "우클릭 = 이걸 저기로"라는 이 창의 규칙 그대로다

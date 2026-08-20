@@ -87,7 +87,7 @@ public class CorpseInventoryUI : MonoBehaviour
         SetEquipColumnVisible(equip != null);
 
         if (titleText) titleText.text = title;
-        if (panel) panel.SetActive(true);
+        WindowRaiser.Open(panel);
 
         _didForceOpenInventory = playerInventoryPanel != null && !playerInventoryPanel.IsPanelOpen;
         playerInventoryPanel?.ForceOpen();

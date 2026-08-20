@@ -354,9 +354,23 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
     // 멎어 영영 안 움직이는 폰이 생긴다.
     //
     // 포로를 눕히는 길은 `PlacePrisoner` 하나뿐이고, 그건 **업어서 데려왔을 때만** 지난다.
+    // **누가 배정했나** — 손으로 붙인 것인가, 졸린 폰이 저 혼자 잡은 것인가.
+    //
+    // 이 한 칸이 *배정이 무슨 뜻인가*를 가른다:
+    //   · **손으로 붙였으면 "가서 쉬어라"라는 명령**이다 — 안 졸려도 눕고, 뗄 때까지 눕는다.
+    //     (다친 동료를 눕히는 길이 이것이다. 피로만 보게 두면 **멀쩡한데 다친 폰을 눕힐 방법이
+    //     사라진다**.)
+    //   · **저 혼자 잡았으면 그냥 제 잠자리**다 — 졸리면 가고 가득 채우면 일어난다.
+    //
+    // 안 가르면 둘 중 하나가 깨진다: 늘 눕게 두면 침대를 준 폰이 하루 종일 누워 있고,
+    // 피로만 보게 두면 **배정해도 안 눕는다**(2026-08-20에 실제로 그랬다).
+    public bool AutoClaimed { get; private set; }
+
     public void Assign(UnitBrain unit)
     {
         if (forPrisoners) return;
+
+        AutoClaimed = false;   // 손으로 붙인 것 — 아래 `ClaimFreeFor`만 참으로 되돌린다
 
         // 기존 배정 유닛의 침대를 빼앗는 경우 해제
         if (unit != null)
@@ -426,6 +440,31 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
         if (_occupant == unit) _occupant = null;
     }
 
+    // **명령을 받아 침대에서 일어난다 — 배정을 거둘지는 *배정의 뜻*이 정한다.**
+    //
+    // 점유와 자세는 **늘 푼다**(안 그러면 그 침대를 아무도 못 쓴다). 갈리는 것은 배정이다:
+    //
+    //   · **손으로 붙인 배정은 "쉬어라"라는 명령**이라, 딴 데로 가라는 명령이 그것을 덮어쓴다.
+    //     안 거두면 시킨 자리에 닿는 순간 `RestNode`가 도로 눕혀 **명령이 안 먹는 것처럼 보인다.**
+    //   · **저 혼자 잡은 잠자리**(`AutoClaimed`)는 명령이 아니라 그냥 제 방이다 — 덮어쓸 것이
+    //     없으므로 **남긴다.** 거두면 한 번 옮겼다는 이유로 잠자리를 잃는다.
+    //   · **소집 중이면 남긴다** — `RestNode`가 이미 게이트에 걸려 있어 *"도착하자마자 도로
+    //     눕는다"*가 성립하지 않는다. 진형을 잡으려고 한 번 옮겼을 뿐인데 침대가 떨어져 나가고
+    //     소집을 풀어도 안 돌아가면, 그건 자원 노드에서 겪은 것과 **같은 사고**다(2026-08-20).
+    public static void RouseFrom(UnitBrain unit)
+    {
+        if (unit == null) return;
+
+        bool ordered = false;
+        var  bed     = FindAssigned(unit);
+        if (bed != null) ordered = !bed.AutoClaimed && !unit.IsDrafted;
+
+        if (ordered) { ReleaseFrom(unit); return; }
+
+        // 배정은 남기고 자리만 비운다 — 돌아오면 `RestNode`가 다시 점유한다.
+        FindOccupiedBy(unit)?.Vacate(unit);
+    }
+
     // **이 폰을 침대에서 놓아 준다** — 배정과 점유를 함께 거둔다.
     //
     // 명령을 받으면(이동·공격·따라가기·줍기) 침대를 떠나야 하는데, 그때 **배정만 두면 도착하는
@@ -489,6 +528,39 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
         foreach (var bed in _all)
             if (bed._occupant == unit) return bed;
         return null;
+    }
+
+    // **졸린 폰이 빈 침대를 잡는다**(`RestNode`).
+    //
+    // 배정을 사람이 일일이 하게 두면 폰이 늘 때마다 잡일이 늘고, 잊으면 **그 폰만 조용히
+    // 바닥에서 잔다** — 그건 선택이 아니라 놓친 것이다. 손으로 배정하는 길은 그대로 있고
+    // (우클릭 [여기 눕는다]) 그쪽이 이긴다: 이미 배정된 폰은 여기까지 오지 않는다.
+    //
+    // **죄수 침대는 빼고**(그건 가두는 자리다) 남이 배정받지 않은 빈 것 중 가장 가까운 것.
+    // 휴면 침대는 물어볼 것도 없다 — `OnDisable`이 목록에서 빼 준다.
+    public static Bed ClaimFreeFor(UnitBrain unit)
+    {
+        if (unit == null) return null;
+
+        var  from = unit.transform.position;
+        Bed  best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (var bed in _all)
+        {
+            if (bed == null || bed.forPrisoners) continue;
+            if (bed.AssignedUnit != null || bed.IsOccupied) continue;
+
+            float d = (bed.transform.position - from).sqrMagnitude;
+            if (d < bestDist) { bestDist = d; best = bed; }
+        }
+
+        if (best != null)
+        {
+            best.Assign(unit);
+            best.AutoClaimed = true;   // 저 혼자 잡은 잠자리 — 가득 채우면 일어난다
+        }
+        return best;
     }
 
     // 해당 유닛에게 배정된 침대 반환

@@ -40,7 +40,7 @@ public class GraveUI : MonoBehaviour
     void Open(Grave grave)
     {
         _grave = grave;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         Refresh();
     }
 

@@ -22,6 +22,19 @@ public class GameTimeManager : MonoBehaviour
     [Tooltip("1일 전체 길이(초). 기본 1800 = 실제 30분.")]
     [SerializeField] float dayDuration = 1800f;
 
+    // **판은 아침에 시작한다.**
+    //
+    // `NormalizedTime` 0은 자정이라, 손대지 않으면 새 판이 **00:00 새벽**에 열린다. 시계 글자
+    // 말고는 낮밤이 아무것도 안 바꾸던 동안에는 보이지 않던 문제였는데, 조명이 붙는 순간
+    // **첫 화면이 캄캄해진다** — 처음 몇 분은 무엇을 지을지 둘러보는 시간이라 거기가 밤이면
+    // 안 보여서 못 하는 것이 된다.
+    //
+    // **하루가 바뀌는 자리는 그대로 자정이다** — 여기서 옮기는 것은 시계 바늘의 출발점뿐이라
+    // `OnDayChanged`·상인 재고 갱신은 문서대로 자정에 돈다(6시를 하루의 시작으로 삼았다가
+    // 되돌린 그 함정을 다시 밟지 않는다).
+    [Tooltip("판이 시작하는 시각(0~24). 기본 7 = 아침. 하루가 바뀌는 것은 그대로 자정이다.")]
+    [Range(0f, 24f)] [SerializeField] float startHour = 7f;
+
     public static float NormalizedTime { get; private set; }
     public static int   CurrentDay     { get; private set; }
 
@@ -105,12 +118,21 @@ public class GameTimeManager : MonoBehaviour
         OnSpeedChanged?.Invoke(Speed);
     }
 
+    // **흐른 시간과 시계는 다른 축이다.**
+    //
+    // `Elapsed`는 *게임이 시작하고 얼마나 지났나*라서 이벤트 게이팅(`MinGameTime`)·소굴 출격이
+    // 그것으로 잰다. 여기에 시작 시각을 더해 버리면 **판이 열리자마자 일곱 시간이 지난 것**이
+    // 되어, 0.2일 뒤에 열리기로 한 사건이 첫 화면부터 후보에 든다. 그래서 시작 시각은
+    // 시계에만 얹는다(`_clockOffset`).
     float _elapsed;
+    float _clockOffset;
 
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
+        _clockOffset = Mathf.Repeat(startHour, 24f) / 24f * dayDuration;
+        NormalizedTime = _clockOffset / dayDuration;   // 첫 프레임 전에 조명이 물어볼 수 있다
         SetSpeed(1f);   // 이전 플레이에서 멈춰둔 채 나갔을 수 있다
     }
 
@@ -126,7 +148,7 @@ public class GameTimeManager : MonoBehaviour
         _elapsed += Time.deltaTime;
         Elapsed   = _elapsed;
         float prev    = NormalizedTime;
-        NormalizedTime = _elapsed % dayDuration / dayDuration;
+        NormalizedTime = (_elapsed + _clockOffset) % dayDuration / dayDuration;
 
         OnTimeChanged?.Invoke(NormalizedTime);
 

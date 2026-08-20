@@ -68,18 +68,18 @@ public class FeedJob : JobBase
     protected override void OnStart()
     {
         var feeder = ReservedBy;
-        float hunger = _prisoner != null && _prisoner.Blackboard != null
-                     ? _prisoner.Blackboard.Hunger : 0f;
+        float have = _prisoner != null && _prisoner.Blackboard != null
+                   ? _prisoner.Blackboard.Hunger : 0f;
 
         // **배낭에 있으면 그걸 쓴다.** 창고에 더 알맞은 것이 있어도 가지러 가지 않는다 —
         // 들고 있는 빵을 두고 스튜를 찾아 맵을 가로지르면 그동안 포로는 굶는다.
-        _using = Feeding.BestInBackpack(feeder, hunger);
+        _using = Feeding.BestInBackpack(feeder, have);
         if (_using != null) { BeginFeeding(); return; }
 
         // 예약 없이 시작될 일은 없지만(`Start`는 `Reserve` 뒤다), 자리를 못 물으면
         // 포로 옆에서 재는 편이 낫다 — 원점(0,0,0)을 기준으로 삼으면 늘 같은 창고가 이긴다.
         var origin = feeder != null ? feeder.transform.position : _prisoner.transform.position;
-        _fetching  = Feeding.BestInStorage(hunger, origin, out _source);
+        _fetching  = Feeding.BestInStorage(have, origin, out _source);
         if (_fetching == null) { BeginFeeding(); return; }   // 없으면 가서 확인만 하고 접는다
 
         _phase    = Phase.GoToStorage;
@@ -138,7 +138,6 @@ public class FeedJob : JobBase
         if (!Feeding.ConsumeFromBackpack(unit, _using)) { Status = JobStatus.Done; return; }
 
         Feeding.Eat(_prisoner, _using);
-
         Debug.Log($"[Feed] {unit.UnitName} → {_prisoner.UnitName} " +
                   $"({_using.ItemName}, 허기 {_prisoner.Blackboard.Hunger:F0}/100)");
 

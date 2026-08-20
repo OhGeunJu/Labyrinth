@@ -20,8 +20,10 @@ public class InventoryUI : MonoBehaviour
     public static bool ClickConsumed(ItemInstance inst, InventoryGridUI sourceGrid)
         => _instance != null && _instance.ConsumeModalClick(inst, sourceGrid);
 
-    public static void NotifyItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid)
-        => _instance?.OnItemRightClick(inst, sourceGrid);
+    // **아이콘도 같이 받는다** — 답을 그 아이콘 자리에서 돌려주려고(먹기의 잔상·거절 흔들림).
+    public static void NotifyItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid,
+                                            DraggableItem icon = null)
+        => _instance?.OnItemRightClick(inst, sourceGrid, icon);
 
     static InventoryUI _instance;
 
@@ -164,7 +166,8 @@ public class InventoryUI : MonoBehaviour
     void Toggle()
     {
         bool open = !panel.activeSelf;
-        panel.SetActive(open);
+        if (open) WindowRaiser.Open(panel);
+        else      panel.SetActive(false);
 
         // **닫으면 남의 배낭에서 손을 뗀다.** 포로 소지품처럼 밖에서 지정해 연 것은
         // **한 번 보는 것**이라, 안 풀면 다음에 I를 눌렀을 때 내 폰 대신 그 포로의 배낭이
@@ -435,7 +438,7 @@ public class InventoryUI : MonoBehaviour
     public void ForceOpen()
     {
         if (panel == null || panel.activeSelf) return;
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
         BindToSelected();
     }
 
@@ -512,12 +515,18 @@ public class InventoryUI : MonoBehaviour
     //
     // **뜻은 무엇이 열려 있느냐가 정한다.**
     //   · 반대편 통이 열려 있으면 → **그리로 옮긴다**(배낭 ↔ 창고·작업대·시체).
-    //   · 배낭만 열려 있으면 → **장비는 입는다**(이미 찬 것이 있으면 교체).
+    //   · 배낭만 열려 있으면 → **장비는 입고, 음식은 먹는다.**
     //
     // 둘을 다른 조작으로 가르지 않는 이유: 우클릭으로 하고 싶은 일은 늘 **"이걸 저기로"**
     // 하나인데, "저기"가 상황마다 다를 뿐이다. 통이 열려 있는데 옷을 입혀 버리면 옮기려던
     // 사람이 놀라고, 통이 없는데 아무 일도 안 하면 배낭에서 장비를 차는 길이 드래그뿐이 된다.
-    void OnItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid)
+    //
+    // **음식의 "저기"는 입이다**(2026-08-20) — 동전의 저기가 지갑이고 장비의 저기가 몸인 것과
+    // 같은 자리다. 그래서 새 조작을 만들지 않았다: 규칙이 하나 더 생기면 그것만 따로 외워야 한다.
+    //
+    // **통이 열려 있으면 옮기는 쪽이 이긴다** — 창고를 열어 둔 채 밥을 옮기려던 사람이
+    // 그것을 먹어 버리면 되돌릴 수가 없다(옮기기는 무를 수 있지만 먹은 것은 못 무른다).
+    void OnItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid, DraggableItem icon)
     {
         // 잠금 모드에서는 누르는 일이 잠그는 것뿐이다 — 잠그려다 물건을 보내면 안 된다.
         if (_lockMode) return;
@@ -529,7 +538,125 @@ public class InventoryUI : MonoBehaviour
         var target = InventoryGridUI.FindCounterpart(sourceGrid, inst.Data);
         if (target != null) { QuickMove(inst, sourceGrid, target); return; }
 
+        if (QuickEat(inst, sourceGrid, icon)) return;
+
         QuickEquip(inst, sourceGrid);
+    }
+
+    // ── 그 자리에서 먹는다 ────────────────────────────────────────────────────
+    //
+    // **먹는 것은 원래 폰이 알아서 한다**(`EatNode`) — 임계 아래로 내려가면 배낭이든 창고든
+    // 찾아 먹는다. 그런데 그건 *배가 고파졌을 때*의 일이라, **지금 채워 두고 싶을 때**의 길이
+    // 없었다: 싸우러 나가기 전, 원정을 떠나기 전, 임계 바로 위에서 어정거릴 때.
+    //
+    // **누른 그 뭉치를 먹는다** — `Feeding.ConsumeFrom`은 같은 종류를 아무거나 빼므로 여기서는
+    // 안 쓴다(`QuickEquip`이 인스턴스 경로로 가는 것과 **같은 이유**: 누른 것과 없어지는 것이
+    // 달라 보이면 안 된다).
+    //
+    // **즉시 먹는다.** `EatTime`(2~4초)을 기다리게 하려면 BT에 상태를 하나 더 만들어야 하는데,
+    // 인벤토리에서 하는 일은 전부 즉시다(착용도, 동전 회수도) — 여기만 시간이 흐르면 그것도
+    // 따로 외울 규칙이 된다.
+    //
+    // **답은 그 아이콘 자리에서 돌려준다** — 먹으면 줄어들며 사라지는 잔상, 못 먹으면 흔들림
+    // (`DraggableItem.FlashUsed`/`FlashRefused`). 폰 머리 위에 띄워 봤더니
+    // (`GradeUpNotificationUI`) **손은 창을 보고 있는데 답은 창 밖에서 나서**, 내가 조작한
+    // 결과가 아니라 어딘가에서 일어난 일처럼 보였다. 배낭에서 하는 일의 답은 배낭에 있어야 한다.
+    //
+    // 돌려주는 값은 *"이건 먹는 일이었다"*지 *"먹었다"*가 아니다 — 거절한 경우에도 참을
+    // 돌려줘야 아래 `QuickEquip`으로 흘러가지 않는다(음식은 장비가 아니라 어차피 아무 일도
+    // 안 일어나지만, 이유를 남기고 끝내는 편이 낫다).
+    bool QuickEat(ItemInstance inst, InventoryGridUI sourceGrid, DraggableItem icon)
+    {
+        if (inst.Data is not FoodData food) return false;
+
+        // **배낭의 밥만 먹는다** — 창고·작업대의 밥을 눌러 봐야 **누가 먹는지 말할 수 없다**
+        // (창고의 검을 눌러 입지 않는 것과 같은 규칙). 폰이 먹으러 가는 것은 `EatNode` 몫이다.
+        var src   = sourceGrid.Inventory;
+        var eater = src.GetComponent<UnitBrain>();
+        var bb    = eater != null ? eater.Blackboard : null;
+        if (bb == null) return false;
+
+        // **갇힌 사람은 제 손으로 못 먹는다** — 그게 간수를 두는 이유이고(`FeedJob`), 여기서
+        // 뚫리면 포로 소지품 창을 열어 공짜로 먹이는 길이 된다. 붙잡아 두는 값이 사라진다.
+        // **죽은 사람·업힌 사람·남의 폰은 못 먹는다.** 누가 이 축을 도는지는 `Needs.Simulates`
+        // 하나가 답한다 — 여기서 따로 세면 어긋난다. 특히 **시체가 그 구멍이었다**:
+        // `BecomeCorpse`는 `UnitBrain`을 **끄기만** 하므로 `GetComponent`로는 산 사람과
+        // 구별이 안 되고, 시체 배낭에서 밥을 우클릭하면 **그 밥이 사라졌다**(시체는 배가
+        // 안 고프니 아무 일도 안 일어난 채로).
+        if (!Needs.Simulates(eater))
+            return Refuse(icon, $"{eater.UnitName}은(는) 지금 먹을 수 없다");
+
+        // **원정 나간 폰은 못 먹는다.** 그 폰들은 GameObject가 꺼져 있어(`ExpeditionParty`)
+        // **허기가 아예 안 돈다** — 채워 봐야 줄지 않으니 밥만 사라진다. 띄울 자리도 없다
+        // (팝업은 폰 머리 위를 따라가는데 그 폰은 지도 밖의 옛 자리에 서 있다).
+        if (!eater.gameObject.activeInHierarchy)
+        {
+            Debug.Log($"[Eat] {eater.UnitName}은(는) 원정 중이라 여기서 못 먹는다(허기가 안 돈다).");
+            return true;
+        }
+
+        if (bb.IsPrisoner)   return Refuse(icon, $"{eater.UnitName}은(는) 갇혀 있어 제 손으로 못 먹는다");
+        // 기절한 폰은 남도 자기도 못 먹인다(치료·설득과 같은 규칙).
+        if (bb.IsKnockedOut) return Refuse(icon, $"{eater.UnitName}은(는) 쓰러져 있어 못 먹는다");
+
+        // **배가 찼으면 안 먹는다** — 한 끼가 통째로 사라진다. 그 아래로는 막지 않는다:
+        // 넘치는 만큼 버려지는 것은 손으로 시킨 사람의 몫이고(`Feeding.Better`는 *자동*이
+        // 낭비하지 않게 있는 규칙이다), 싸우기 전에 채워 두는 것이 그 값을 치를 만한 일이다.
+        //
+        // **딱 100일 때만 막으면 그 순간은 한 프레임뿐이다** — 허기는 매 프레임 줄어서
+        // (`UpdateNeeds`) 먹자마자 99.99가 된다. 화면에는 `100/100`이라 적혀 있는데 계속
+        // 먹히는 것이 그래서였다. 여백을 둔다.
+        float room = Needs.Room(bb.Hunger);
+        if (room <= FullMargin)
+            return Refuse(icon, $"{eater.UnitName}은(는) 배가 불러 못 먹는다 (허기 {bb.Hunger:F0}/100)");
+
+        // **잠근 뭉치도 먹는다** — 잠금은 *자동 판단*이 조용히 축내는 것을 막으려고 있고
+        // (`Feeding.BestIn`의 규칙), 이건 그 뭉치를 콕 집어 누른 사람의 지시다.
+        float before = bb.Hunger;
+
+        // **개수를 건드리기 전에 잔상을 띄운다.** 개수가 줄면 `Inventory.OnChanged`가 돌고
+        // `InventoryGridUI.Refresh`가 아이콘을 다시 만드는데, 그때 **옛 아이콘을 그 자리에서
+        // 즉시 부모에서 뗀다**(`child.SetParent(null)` — 새 아이콘과 겹치지 않게). 그러면
+        // `GetComponentInParent<Canvas>()`가 **null**이 되어 잔상이 설 자리를 못 찾는다.
+        //
+        // `Destroy`가 프레임 끝에 도는 것만 믿고 뒤에 뒀더니 정확히 그래서 **아무것도 안
+        // 보였다** — 파괴가 늦는 것과 부모에서 떨어지는 것은 다른 시각이다.
+        icon?.FlashUsed();
+
+        inst.Quantity--;
+        if (inst.Quantity <= 0) src.RemoveInstance(inst);
+        else                    src.NotifyChanged();
+        if (_selectedItem == inst && inst.Quantity <= 0) _selectedItem = null;
+
+        Feeding.Eat(eater, food);
+
+        // **수치는 콘솔에만 적는다.** 화면에서 답하는 것은 잔상이고(*"한 개 썼다"*), 얼마나
+        // 찼는지는 살펴보기 창의 허기 바가 실시간으로 말한다 — 같은 것을 세 군데서 말할
+        // 이유가 없다. **버린 양**은 손으로 먹일 때 유일하게 손해 보는 자리라 남긴다.
+        float gain   = bb.Hunger - before;
+        float wasted = Mathf.Max(0f, food.NutritionValue - room);
+        Debug.Log($"[Eat] {eater.UnitName} — {food.ItemName} (허기 +{gain:F0}" +
+                  (wasted > 0f ? $", {wasted:F0} 버림)" : ")"));
+
+        RefreshActionBar();
+        return true;
+    }
+
+    // **딱 100일 때만 막으면 그 순간이 한 프레임뿐이라** 사실상 안 막힌다(위 주석).
+    const float FullMargin = 1f;
+
+    // 못 먹는 이유 — **아이콘을 흔들고** 콘솔에 적는다.
+    //
+    // 흔드는 것은 이 창에서 이미 *"안 된다"*를 뜻한다(`DraggableItem.EndCarry`가 못 놓은
+    // 물건을 흔든다) — 새 낱말을 만들지 않는다. 알림을 띄우기엔 너무 잦고, 아무 일도 안
+    // 일어나면 **눌리기는 한 건지**를 알 수가 없다.
+    //
+    // 돌려주는 값은 *"이건 먹는 일이었다"*지 *"먹었다"*가 아니다(위 주석).
+    static bool Refuse(DraggableItem icon, string why)
+    {
+        icon?.FlashRefused();
+        Debug.Log($"[Eat] {why}");
+        return true;
     }
 
     // 뭉치째 반대편으로. **들어간 만큼만 뺀다** — 자리가 모자라면 나머지는 그대로 남는다

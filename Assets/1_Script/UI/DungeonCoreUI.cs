@@ -64,7 +64,7 @@ public class DungeonCoreUI : MonoBehaviour
     void Open(DungeonCore core)
     {
         _core = core;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         RefreshInfo();
         RebuildList();
     }

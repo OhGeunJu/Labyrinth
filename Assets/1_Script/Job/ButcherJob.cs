@@ -155,7 +155,9 @@ public class ButcherJob : JobBase
             var bb = _brain != null ? _brain.Blackboard : null;
             bool mine = bb != null && bb.CarriedBy == unit;
 
-            if (!mine && !PawnCarry.TryPickUp(unit, _brain))
+            // **이 일감이 시킨 업기다** — `keepCurrentJob`을 안 넘기면 `TryPickUp`이
+            // `AbandonWork`로 **이 일감 자신**을 취소해, 폰이 시체를 든 채 영영 서 있는다.
+            if (!mine && !PawnCarry.TryPickUp(unit, _brain, keepCurrentJob: true))
             {
                 Status = JobStatus.Done;
                 return;

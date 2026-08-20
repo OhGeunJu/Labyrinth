@@ -74,7 +74,7 @@ public class HoverTooltipUI : MonoBehaviour
             bodyText.gameObject.SetActive(!string.IsNullOrWhiteSpace(body));
         }
 
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
         FollowCursor();
     }
 

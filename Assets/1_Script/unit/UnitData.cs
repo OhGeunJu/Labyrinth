@@ -44,6 +44,14 @@ public class UnitData : ScriptableObject
     public float AttackDamage  = 10f;
     public float AttackRange   = 1.5f;
     public float DetectRange   = 10f;
+
+    // **밤눈** — 어두운 때에 감지 범위가 얼마나 남는가(`Vision`).
+    //
+    // 0이면 밤에 남들처럼 안 보이고(배율 그대로), 1이면 **밤에도 낮처럼 본다.** 밤을 모두에게
+    // 똑같이 걸면 세상이 흐려진 것일 뿐이지만, 언데드·야수가 밤에도 보면 밤 습격이 실제로
+    // 저쪽에 유리한 판이 된다 — 밤이 "불편한 시간"이 아니라 **"저들의 시간"**이 되는 자리다.
+    [Range(0f, 1f)]
+    public float NightVision = 0f;
     // 전투 성향(교전/도주)·유휴 배회는 종족이 아니라 개체의 역할이므로 여기가 아니라
     // AI 프로필(AiProfileData SO, UnitBrain.aiProfile에 연결)에 있다 — 같은 "사람"이라도 마을사람/경비병이 다르다.
 

@@ -95,7 +95,7 @@ public class ItemInfoUI : MonoBehaviour
     {
         if (item == null || panel == null) return;
 
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
 
         if (icon)
         {

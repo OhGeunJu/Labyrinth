@@ -47,7 +47,7 @@ public class PyreUI : MonoBehaviour
     void Open(Pyre pyre)
     {
         _pyre = pyre;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         Refresh();
     }
 

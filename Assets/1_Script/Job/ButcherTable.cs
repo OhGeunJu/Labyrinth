@@ -100,7 +100,7 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
         Corpse best = null;
         float  bestSq = float.MaxValue;
 
-        foreach (var corpse in FindObjectsByType<Corpse>(FindObjectsSortMode.None))
+        foreach (var corpse in Corpse.All)
         {
             if (corpse == null || !bill.Matches(corpse)) continue;
 

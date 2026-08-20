@@ -1,0 +1,47 @@
+using UnityEngine;
+
+// **어두우면 덜 보인다 — 그리고 그것이 밤을 위험하게 만든다.**
+//
+// 조명만 바꾸면 밤은 *보기에만* 밤이다. 폰은 여전히 10m 밖의 적을 정확히 알아채고, 플레이어가
+// 잃는 것은 화면이 어둡다는 불편뿐이라 밤을 피할 이유가 안 생긴다. **감지 범위가 줄어야**
+// 밤에 적이 코앞까지 오고, 순찰이 뜻을 갖고, 낮에 싸울지 밤을 넘길지가 고르는 일이 된다.
+//
+// ## 답은 한 벌이어야 한다
+//
+// "지금 얼마나 보이나"를 묻는 곳이 둘이면(교전 탐지 · 도주 탐지) 반드시 어긋난다 —
+// 도망은 밤에도 멀쩡히 치고 싸움만 늦게 붙는 꼴이 된다. 그래서 배율도, 밤눈을 섞는 식도
+// 여기 한 벌뿐이다.
+//
+// ## 시계는 `GameTimeManager`가 든다
+//
+// 여기는 때(`TimePhase`)만 읽는다. **조명과 같은 축**이라 화면이 저물면 시야도 같이 줄어든다 —
+// 어두워 보이는데 잘 보이거나, 밝은데 안 보이면 어느 쪽도 설명할 수 없다.
+public static class Vision
+{
+    // 때마다의 배율. 저녁은 아직 남은 빛이 있고, 새벽이 밤보다 조금 나은 것은 동트기 전
+    // 어스름이다. **낮과 아침은 같다** — 아침에 덜 보일 이유가 없다.
+    public const float DayFactor     = 1f;
+    public const float EveningFactor = 0.7f;
+    public const float DawnFactor    = 0.5f;
+    public const float NightFactor   = 0.4f;
+
+    // 지금 이 순간의 배율.
+    public static float Factor => GameTimeManager.Phase switch
+    {
+        TimePhase.Evening => EveningFactor,
+        TimePhase.Dawn    => DawnFactor,
+        TimePhase.Night   => NightFactor,
+        _                 => DayFactor,
+    };
+
+    // **밤눈이 그 배율을 되돌린다**(`UnitData.NightVision`, 0~1 — 1이면 밤에도 낮처럼 본다).
+    //
+    // 밤을 모두에게 똑같이 걸면 그건 세상이 흐려진 것일 뿐이다. 언데드·야수가 밤에도 보면
+    // **밤 습격이 실제로 저쪽에 유리한 판**이 되고, 그러면 밤은 "불편한 시간"이 아니라
+    // "저들의 시간"이 된다 — 여기서 종족이 뜻을 하나 더 갖는다.
+    public static float RangeFor(float baseRange, float nightVision) =>
+        baseRange * Mathf.Lerp(Factor, 1f, Mathf.Clamp01(nightVision));
+
+    public static float RangeFor(UnitBlackboard bb) =>
+        bb == null ? 0f : RangeFor(bb.DetectRange, bb.NightVision);
+}

@@ -484,7 +484,7 @@ public class MerchantUI : MonoBehaviour
         _selectedStack = null;
         _selectedBuyUI = null;
 
-        if (panel) panel.SetActive(true);
+        WindowRaiser.Open(panel);
 
         ApplyContainerLayout();
 
@@ -662,6 +662,13 @@ public class MerchantUI : MonoBehaviour
         // 비우면 물건 하나 살 때마다 칸 배경까지 다 다시 짓는다.
         if (!_builtOnce || _builtView != _view)
         {
+            // **격자를 떼고 나서 비운다.** `ClearStock`은 `stockContainer`의 자식을 전부
+            // 지우는데, 칸 보기를 쓰고 나면 거기 `InventoryGridUI`의 제 루트(`_Cells`·`_Items`)가
+            // 들어 있다. 순서를 뒤집으면 카드→칸 전환에서 **좌판이 빈 채로 남는다**:
+            // `Destroy`가 프레임 끝이라 `BuildCellGrid`/`EnsureItemsRoot`가 *"이미 있다"*고
+            // 보고 죽을 오브젝트를 재사용하고, 새로 만든 아이콘이 그것과 함께 파괴된다
+            // (다음 `Inventory.OnChanged`까지 안 돌아온다 — 뭘 사거나 팔아야 보였다).
+            DetachCellsView();
             ClearStock();
             _builtView = _view;
             _builtOnce = true;

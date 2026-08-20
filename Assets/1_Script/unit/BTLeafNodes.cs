@@ -80,15 +80,35 @@ public class DetectNode : BTNode
         // `Faction.All`을 직접 돌아 매 틱 배열을 만들지 않는다.
         //
         // **반격 전용이면 이 훑기를 건너뛴다** — 먼저 거는 것이 곧 이 스캔이다.
-        GameObject best = _retaliateOnly || myFaction == null
-            ? null
-            : FactionScan.NearestHostile(bb.Self, myFaction, bb.DetectRange, theirsToMine: false);
+        //
+        // **소집하면 반격 전용이라도 먼저 친다.** 소집은 "싸울 태세로 서 있어라"라는 명령이라
+        // 맞을 때까지 기다리는 것은 그 뜻이 아니다 — 이 한 줄이 없으면 소집한 폰과 안 한 폰이
+        // 전투에서 똑같이 군다(`DraftedNode`가 `Running`만 돌려 **반격조차 안 하던** 옛 구조의
+        // 반대편 실수다).
+        //
+        // **대신 목줄이 짧다**(`DraftLeash`). 감지 범위(10m)를 그대로 쓰면 세워 둔 폰이 표적을
+        // 찾아 걸어 나가서 **진형을 잡으려고 소집한 뜻이 사라진다** — 소집은 *자리를 지키며
+        // 싸우라*는 뜻이다. 다가온 것만 친다.
+        //
+        // **어두우면 덜 훑는다**(`Vision`) — 밤에는 적이 코앞까지 와야 보인다. 밤눈이 있는
+        // 종족은 그만큼 덜 줄어든다.
+        bool scan  = (!_retaliateOnly || bb.IsDrafted) && myFaction != null;
+        float range = Mathf.Min(Vision.RangeFor(bb),
+                                bb.IsDrafted && _retaliateOnly ? bb.AttackRange * DraftLeash
+                                                               : float.MaxValue);
+
+        GameObject best = scan
+            ? FactionScan.NearestHostile(bb.Self, myFaction, range, theirsToMine: false)
+            : null;
         float bestDistSqr = best != null ? SqrDist(selfPos, best) : float.MaxValue;
 
         // 반격 대상 — 중립이라 위 스캔에 안 걸리지만 대응해야 한다. 거리 비교에 함께 넣는다.
         if (bb.HasFreshAttacker && BTTargetUtil.IsAttackable(bb.LastAttacker))
         {
             float d = SqrDist(selfPos, bb.LastAttacker);
+            // **반격 거리는 밤에도 안 줄인다** — 맞은 것을 아는 것은 눈이 아니라 아픔이다.
+            // 여기까지 `Vision`을 걸면 어두울 때 등 뒤에서 맞고도 누가 때렸는지 모르는 채로
+            // 서 있게 되는데, 그건 밤이 위험한 것이 아니라 폰이 고장 난 것으로 보인다.
             float limit = bb.DetectRange * 2f;   // 원거리 저격수를 맵 끝까지 쫓지는 않는다
             if (d <= limit * limit && d < bestDistSqr) { bestDistSqr = d; best = bb.LastAttacker; }
         }
@@ -106,18 +126,12 @@ public class DetectNode : BTNode
 
     const float SwitchMargin = 1.5f;   // 새 후보가 기존 타겟보다 이 배수만큼 가까워야 갈아탄다
 
+    // 소집한 폰이 저 혼자 붙는 거리 — 공격 사거리의 이 배수. 근접(1.5m)이면 4.5m라
+    // **한두 걸음**이다. 키우면 소집이 "돌격"이 되고, 1이면 사실상 반격과 같아진다.
+    const float DraftLeash = 3f;
+
     static float SqrDist(Vector3 from, GameObject go) =>
         (go.transform.position - from).sqrMagnitude;
-}
-
-// 소집 상태 (직접 제어)
-public class DraftedNode : BTNode
-{
-    public override BTStatus Tick(UnitBlackboard bb)
-    {
-        // 피격 시 반격은 나중에 여기서 처리
-        return BTStatus.Running;
-    }
 }
 
 // 플레이어 직접 이동 명령 — 도착할 때까지 자동 행동(전투/휴식/작업)을 막는다.
@@ -457,9 +471,26 @@ public class WorkNode : BTNode
         // 있어 이 노드가 **아예 안 돌므로**, 여기서만 놓으면 예약된 일감이 **다른 폰도 못
         // 가져가는 채로** 남는다.
         //
-        // **배정된 자원 노드는 안 거둔다**(`AssignedNode`) — 그건 "이 바위를 캐라"는 지속
-        // 상태라, 내려놓으면 하던 곳으로 돌아가는 것이 맞다.
-        if (bb.Carrying != null) return BTStatus.Failure;
+        // **배정된 자원 노드는 거둔다**(`AbandonWork`) — 한때 여기 *"안 거둔다"*고 적혀
+        // 있었지만 코드는 늘 거두고 있었고, **거두는 쪽이 맞다**: 배정도 플레이어가 붙인
+        // 명령이라 **새 명령이 옛 명령을 덮어쓴다**(이동 명령이 `PutDownSite`·`FollowTarget`을
+        // 거두는 것과 같은 자리). *"업고 나면 하던 바위로 돌아간다"*를 만들면, 심부름을 시킬
+        // 때마다 그 폰이 무엇을 하던 중이었는지를 기억하고 있어야 한다.
+        //
+        // **소집만 예외다** — 그건 명령이 아니라 **상태**(켜고 끄는 스위치)라, 끄면 이전으로
+        // 돌아가는 것이 그 스위치의 뜻이다. 그래서 소집은 `DropCurrentJob`을 쓴다.
+        // **소집 중에는 일을 안 집는다** — 소집이 곧 "지금은 그것 말고 싸울 준비"라는 명령이다
+        // (업고 있을 때와 **같은 자리·같은 이유**: 그 폰이 지금 하는 일은 그것이 아니다).
+        // 하던 일감은 `UnitBrain.Draft()`가 `DropCurrentJob`으로 놓는다 — 여기서 게이트만
+        // 걸면 그 일감이 예약된 채 얼어붙어 **다른 폰도 못 가져간다.** 배정은 남는다.
+        //
+        // **다만 지금 든 일감이 그 업기를 시킨 것이면 계속 돈다.** 업는 순간 하던 일감은
+        // 놓이므로(`PawnCarry.TryPickUp`) 업고 있는데 `CurrentJob`이 남아 있다는 것은
+        // **그 일감이 업으라고 시켰다**는 뜻뿐이다(`ButcherJob`이 시체를 도축대로 업어 온다).
+        // 여기서 막으면 그 일감은 다시 못 돌고, `CarryPawnNode`는 갈 곳이 없어 Failure를
+        // 돌려주므로 **폰이 시체를 든 채 영영 서 있는다.**
+        if (bb.IsDrafted) return BTStatus.Failure;
+        if (bb.Carrying != null && bb.CurrentJob == null) return BTStatus.Failure;
 
         // 배정된 노드가 있으면 우선 처리
         if (bb.AssignedNode != null)
@@ -707,7 +738,6 @@ public class RestNode : BTNode
     const float CapRestoreRate = 1f;    // 초당 캡 회복
     const float PartHealRate   = 3f;    // 초당 부위 HP 회복 (자연 회복에 추가로 얹힘)
     const float ArrivalDist    = 1.0f;  // 접근 지점(침대 옆) 기준
-    const float HungerLeave    = 60f;   // EatNode 임계와 동일
 
     Bed     _bed;
     Vector3 _approach;
@@ -724,12 +754,74 @@ public class RestNode : BTNode
         // 미루기만 하므로 **내려놓는 즉시 제 침대로 간다**(배정된 자원 노드를 안 거두는 것과
         // 같은 판단). 자고 있던 폰이 무언가를 업게 되면 **일어나야 한다** — 그래서 `LeaveBed`로
         // 나간다: 누운 자세와 점유를 안 풀면 **업은 채로 침대에 굳고 그 침대를 아무도 못 쓴다.**
-        if (bb.Carrying != null) { LeaveBed(bb); return BTStatus.Failure; }
+        // **소집 중에는 눕지 않는다** — 업고 있을 때와 같은 자리. 자다 깨어 보니 진형이
+        // 흐트러져 있으면 소집한 뜻이 없다. **밥은 그대로 먹는다**(`EatNode`는 안 막았다) —
+        // 막으면 소집해 둔 것을 잊었을 때 굶어 죽는다(업기가 먹는 것만 열어 둔 그 판단이다).
+        // 피로는 안 죽이므로(쓰러질 뿐이다) 막아도 사고가 안 난다.
+        if (bb.IsDrafted || bb.Carrying != null) { LeaveBed(bb); return BTStatus.Failure; }
+
+        // **배고프면 일어난다** — 임계는 `Needs`가 답한다(`EatNode`와 같은 값). 여기 숫자를
+        // 따로 적으면 "일어나긴 하는데 안 먹는" 또는 그 반대가 생긴다.
+        //
+        // **잠보다 먼저다.** 굶은 채로 자면 자는 동안 허기가 바닥을 치는데, 자는 폰은 스스로
+        // 못 일어나 그대로 죽는다.
+        if (Feeding.IsHungry(brain)) { LeaveBed(bb); return BTStatus.Failure; }
+
+        // ── 누울 이유가 둘이다 ───────────────────────────────────────────
+        //
+        // **졸려서, 그리고 다쳐서.** 배정만으로 눕히던 시절에는 배정이 곧 "지금 누워라"라는
+        // 명령이었는데(다친 폰을 눕히는 길), 피로가 생기면서 *언제 눕나*를 몸이 정하게 됐다.
+        // 둘을 같이 두지 않으면 회귀한다: 피로만 보면 **다친 폰을 눕힐 길이 사라지고**,
+        // 배정만 보면 침대를 준 폰이 하루 종일 누워 있는다.
+        //
+        bool sleepy = Needs.IsLow(brain, NeedKind.Rest);
+        bool hurt   = bb.Body != null && bb.Body.NeedsTreatment;
 
         var assigned = Bed.FindAssigned(brain);
 
-        // 배정 해제됐거나 배가 고프면 일어난다
-        if (assigned == null || bb.Hunger <= HungerLeave) { LeaveBed(bb); return BTStatus.Failure; }
+        // **졸린데 제 침대가 없으면 빈 것을 잡는다.** 사람마다 손으로 배정하게 두면 폰이
+        // 늘 때마다 잡일이 늘고, 잊으면 그 폰만 조용히 바닥에서 잔다.
+        if (assigned == null && sleepy) assigned = Bed.ClaimFreeFor(brain);
+
+        // **배정이 풀렸으면 먼저 일어난다.** `Bed.Unassign`(우클릭 `[일어난다]`·작업 패널)은
+        // **배정만** 거두고 점유도 자세도 안 푼다 — 그건 원래 여기서 `LeaveBed`가 하던 일인데,
+        // 피로를 붙이면서 이 줄이 `CollapseIfExhausted`로 바뀌며 사라졌다. 그러면 자던 폰이
+        // **영영 그 침대에 누워 있고**(`IsSleeping`이라 아래 첫 가드에 안 걸린다) 점유가 안
+        // 풀려 **그 침대를 아무도 못 쓴다** — 게다가 `Bed.Update`는 배정도 없는 그 폰에게
+        // 치료 일감을 계속 건다.
+        //
+        // **`_bed`가 있을 때만 부른다** — 바닥에서 쓰러져 자는 폰도 배정이 없으므로, 조건
+        // 없이 부르면 `LeaveBed`의 `SetSleeping(false)`가 매 틱 깨우고 아래에서 다시 눕혀
+        // **틱마다 떤다**.
+        if (assigned == null)
+        {
+            if (_bed != null) LeaveBed(bb);
+            return CollapseIfExhausted(bb);
+        }
+
+        // **자리를 잃었으면 누우러 간 것이 아니다.** 명령을 받아 일어날 때 배정은 남기고
+        // 점유만 비우므로(`Bed.RouseFrom`) `_bed`가 남아 있는데, 그대로 두면 아래 `stay`가
+        // *"이미 누우러 갔다"*로 읽어 **가득 찰 때까지**를 기준으로 삼는다 — 안 졸린 폰이
+        // 명령을 마치자마자 침대로 돌아간다. 놓으면 다시 `sleepy`가 기준이 되고, 필요하면
+        // 아래에서 다시 점유한다.
+        if (_bed != null && _bed.Occupant != brain) _bed = null;
+
+        // **손으로 붙인 배정은 "가서 쉬어라"라는 명령이다**(`Bed.AutoClaimed`) — 안 졸려도 눕고
+        // 뗄 때까지 눕는다. 그것이 다친 동료를 눕히는 길이고, 피로만 보게 뒀더니 **배정해도
+        // 안 눕는** 것이 됐다(2026-08-20).
+        //
+        // **저 혼자 잡은 잠자리는 다르다** — 졸려서 갔으니 가득 채우면 일어나 일하러 간다.
+        // 그때 **가는 문턱과 나오는 문턱이 달라야 한다**(`Needs`의 히스테리시스): 하나로 두면
+        // 문턱 위에서 **떤다**(자러 가서 조금 차면 "이제 안 졸리다"가 되어 일어나고, 나가면
+        // 다시 졸려서 돌아온다 — 실제로 그랬다). 그래서 **이미 누우러 간 뒤라면**(`_bed != null`)
+        // 가득 찰 때까지 눕는다.
+        //
+        // **누워 있을 것인가를 정하는 자리는 여기 하나뿐이다** — 아래에서 또 물으면 두 문턱
+        // 중 낮은 쪽이 늘 이겨서 히스테리시스가 도로 사라진다.
+        bool ordered = !assigned.AutoClaimed;
+        bool stay    = ordered || (_bed != null ? bb.Rest < Needs.WakeAt : sleepy);
+
+        if (!stay && !hurt) { LeaveBed(bb); return BTStatus.Failure; }
 
         var pos = bb.Self.transform.position;
 
@@ -768,6 +860,11 @@ public class RestNode : BTNode
 
         bb.RestTicked = true;   // 이번 틱에 쉬고 있음 (상위 분기로 넘어가면 UnitBrain이 깨운다)
 
+        // **자면 피로가 찬다** — 침대에서는 온전히, 바닥에서는 절반(`Needs.SleepPerSecond`).
+        // 일어나는 판단은 **위 `stay` 하나**가 한다(다음 틱에 걸린다) — 여기서 또 물으면
+        // 문턱이 두 곳이 된다.
+        Needs.Fill(bb, NeedKind.Rest, Needs.SleepPerSecond(inBed: true) * bb.TickDelta);
+
         // 누워 있는 동안 회복 (캡 감소 없이, 부위 HP 포함)
         var body = bb.Body;
         if (body != null)
@@ -779,7 +876,7 @@ public class RestNode : BTNode
             SelfTend(brain, bb, body);
         }
 
-        // 회복이 끝나도 일어나지 않는다 — 배정이 곧 "쉬는 중"이라는 명령.
+        // 회복이 끝나도 여기서는 안 일어난다 — 나오는 판단은 위 `stay` 하나가 한다.
         return BTStatus.Running;
     }
 
@@ -826,6 +923,37 @@ public class RestNode : BTNode
         _tendEndTime = 0f;   // 다음 회차
     }
 
+    // ── 침대가 없을 때 ───────────────────────────────────────────────────
+    //
+    // **바닥에 닿으면 그 자리에 쓰러진다.** 피로는 안 죽이는 대신 **못 쓰게 만든다** — 습격
+    // 한복판이든 광산 바닥이든 몸이 먼저 무너지고, 그동안 그 폰은 무방비다. 이게 침대를
+    // 짓지 않은 값이고, 밤을 새우게 한 값이다.
+    //
+    // 바닥잠은 회복이 절반이라 **밤새 자도 다 못 채운다**(`Needs.SleepPerSecond`) — 그래서
+    // 다음 날 낮에 또 졸리고, 침대가 그 고리를 끊는다.
+    BTStatus CollapseIfExhausted(UnitBlackboard bb)
+    {
+        // **`Mover`를 안 물어보면 그 폰의 BT가 통째로 멎는다** — `LeaveBed`가 바로 아래에서
+        // 같은 것을 가드하고 있다(널 참조가 `UnitBrain.Update`까지 올라가는 그 사고).
+        if (bb.Mover == null) return BTStatus.Failure;
+        if (bb.Rest > Needs.CollapseAt && !bb.Mover.IsSleeping) return BTStatus.Failure;
+
+        // 다 채웠으면 일어나 하던 일로.
+        if (bb.Rest >= Needs.WakeAt) { LeaveBed(bb); return BTStatus.Failure; }
+
+        // **선 자리에 그대로 눕는다** — 침대처럼 자리를 고르지 않는다(고를 힘이 남아
+        // 있었으면 침대로 갔다). 자세는 침대와 같은 문을 쓴다(`SetSleeping`).
+        if (!bb.Mover.IsSleeping)
+        {
+            bb.Mover.StopMovement();
+            bb.Mover.SetSleeping(true, bb.Self.transform.position, bb.Self.transform.rotation);
+        }
+
+        Needs.Fill(bb, NeedKind.Rest, Needs.SleepPerSecond(inBed: false) * bb.TickDelta);
+        bb.RestTicked = true;
+        return BTStatus.Running;
+    }
+
     void LeaveBed(UnitBlackboard bb)
     {
         if (bb.Mover != null) bb.Mover.SetSleeping(false);
@@ -856,11 +984,12 @@ public class EatNode : BTNode
         if (!Feeding.IsHungry(bb.Brain)) { Reset(); return BTStatus.Failure; }
 
         var brain = bb.Brain;
+        float have = bb.Hunger;
 
         if (!_hasFood)
         {
             // 1) 인벤토리에 음식 있으면 바로 먹기
-            var invFood = Feeding.BestInBackpack(brain, bb.Hunger);
+            var invFood = Feeding.BestInBackpack(brain, have);
             if (invFood != null)
             {
                 _food    = invFood;
@@ -872,7 +1001,7 @@ public class EatNode : BTNode
                 // 2) 창고에서 음식 찾기
                 if (_sourceStorage == null)
                 {
-                    _food = Feeding.BestInStorage(bb.Hunger, bb.Self.transform.position,
+                    _food = Feeding.BestInStorage(have, bb.Self.transform.position,
                                                   out _sourceStorage);
                     if (_sourceStorage == null) return BTStatus.Failure;
 
@@ -934,7 +1063,8 @@ public class EatNode : BTNode
         if (!Feeding.ConsumeFrom(from, _food)) { Reset(); return BTStatus.Failure; }
 
         Feeding.Eat(brain, _food);
-        Debug.Log($"[EatNode] {bb.Self.name} 섭취 완료 — {_food.ItemName} (허기 {bb.Hunger:F0}/100)");
+        Debug.Log($"[EatNode] {bb.Self.name} 섭취 완료 — {_food.ItemName} " +
+                  $"(허기 {bb.Hunger:F0}/100)");
         Reset();
         return BTStatus.Success;
     }

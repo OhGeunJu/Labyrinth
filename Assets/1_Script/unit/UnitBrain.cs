@@ -365,9 +365,9 @@ public partial class UnitBrain : MonoBehaviour
             Combat       = GetComponent<CombatHandler>(),
             Faction      = GetComponent<Faction>(),
             DetectRange  = unitData != null ? unitData.DetectRange  : 10f,
+            NightVision  = unitData != null ? unitData.NightVision  : 0f,
             AttackRange  = unitData != null ? unitData.AttackRange  : 1.5f,
             AttackDamage = unitData != null ? unitData.AttackDamage : 10f,
-            Hunger       = 100f,
         };
 
         if (unitData != null)
@@ -462,7 +462,7 @@ public partial class UnitBrain : MonoBehaviour
     void Update()
     {
         // 허기는 기절 중에도 진행 — 쓰러진 채 굶으면 혈액이 계속 빠져 결국 아사(BT 정지와 무관).
-        UpdateHunger();
+        UpdateNeeds();
 
         if (_bb.IsKnockedOut) return;
 
@@ -587,15 +587,12 @@ public partial class UnitBrain : MonoBehaviour
         }
     }
 
-    // 하루(1800초)에 두 끼. 100 → 0 이 900초이므로 식사 임계(60)까지는 360초 걸린다.
-    // 하루 길이를 바꾸면 여기도 같이 바꿔야 한다 — 기준은 `GameTimeManager.dayDuration`.
-    const float BaseHungerDecayRate = 0.111f; // 초당 감소량 (100 기준 900초에 고갈 = 하루 2끼)
-    const float StarveBloodPerSec   = 2f;     // 허기 0 시 초당 혈액 손실 (아사) — 혈액은 100 그대로라 예전 값
-
-    void UpdateHunger()
+    // **눈금·임계·바닥 벌칙은 전부 `Needs`가 답한다** — 여기는 시간을 흘려보낼 뿐이다.
+    // 축이 둘(허기·피로)이라 값을 여기 적으면 축마다 한 벌씩 생긴다.
+    void UpdateNeeds()
     {
-        // **누가 굶는가는 `Feeding.Simulates` 하나가 답한다** — 플레이어 세력, 그리고
-        // **갇힌 사람은 세력을 안 가린다**(업혀 있는 동안은 아무도 안 굶는다).
+        // **누가 이 축을 도는가는 `Needs.Simulates` 하나가 답한다** — 플레이어 세력, 그리고
+        // **갇힌 사람은 세력을 안 가린다**(업혀 있는 동안은 아무도 안 돈다).
         //
         // 한동안 갇힌 사람은 아예 굶지 않았다. 갇히면 BT가 안 돌아 `EatNode`도 안 도는데
         // 허기는 BT 밖에서 깎이므로, 우리 폰을 가둬 두면 **먹을 방법이 없는 채로 굶어
@@ -604,26 +601,46 @@ public partial class UnitBrain : MonoBehaviour
         // 되살리면서 **적 포로도 굶게 했다.** 그래야 붙잡아 두는 데 값이 든다 — 예전에는
         // 우리에 넣어 두기만 하면 회유가 저절로 끝났다.
         //
-        // 화면의 허기 바(`InspectPanelUI`)도 같은 답을 쓴다. 도는 것과 보이는 것이 갈리면
+        // 화면의 바(`InspectPanelUI`)도 같은 답을 쓴다. 도는 것과 보이는 것이 갈리면
         // "안 보이는데 죽는" 또는 "안 줄어드는 바"가 생긴다.
-        if (!Feeding.Simulates(this)) return;
+        if (!Needs.Simulates(this)) return;
 
-        float rate = BaseHungerDecayRate;
+        float dt = Time.deltaTime;
 
-        // DungeonCore의 HungerRateModifier 반영
-        var core = DungeonCore.Instance;
-        if (core != null && core.Data != null)
-            rate *= Mathf.Max(0f, 1f + core.Data.HungerRateModifier);
-
-        _bb.Hunger = Mathf.Max(0f, _bb.Hunger - rate * Time.deltaTime);
-
-        if (_bb.Hunger <= 0f)
+        for (int i = 0; i < Needs.Count; i++)
         {
-            // 신체 부위 시스템이 있으면 혈액을 깎아(전신 쇠약) UI에 보이는 혈액 파이프라인으로
-            // 기절→사망시킨다. 없는 유닛만 숨은 폴백 HP를 깎는다.
-            if (_body != null) _body.Starve(StarveBloodPerSec * Time.deltaTime);
-            else               TakeDamage(StarveBloodPerSec * Time.deltaTime);
+            var kind = (NeedKind)i;
+            // 갇힌 사람은 피로가 안 돌고, **자는 동안에도 피로는 안 준다**(`Needs.Decays`).
+            if (!Needs.Decays(this, kind)) continue;
+
+            float rate = Needs.DecayPerSecond(kind) * NeedRateModifier(kind);
+            if (rate <= 0f) continue;
+
+            float left = Mathf.Max(0f, _bb.Need(kind) - rate * dt);
+            _bb.SetNeed(kind, left);
+            if (left > 0f) continue;
+
+            // 바닥 — 신체 부위 시스템이 있으면 **혈액을 깎아** 화면에 보이는 파이프라인으로
+            // 기절 → 사망시킨다. 없는 유닛만 숨은 폴백 HP를 깎는다.
+            // 피로는 여기서 0을 돌려주므로 몸이 안 상한다(대신 쓰러져 잔다).
+            float harm = Needs.StarvePerSecond(kind) * dt;
+            if (harm <= 0f) continue;
+
+            if (_body != null) _body.Starve(harm);
+            else               TakeDamage(harm);
         }
+    }
+
+    // 핵이 허기를 늦추거나 앞당긴다(`DungeonCoreData.HungerRateModifier`).
+    // **허기에만 건다** — 그 손잡이는 "이 핵의 하수인은 덜 먹는다"는 뜻으로 저작된 것이라,
+    // 피로까지 조용히 따라 움직이면 저작한 사람이 모르는 채로 둘이 바뀐다.
+    float NeedRateModifier(NeedKind kind)
+    {
+        if (kind != NeedKind.Hunger) return 1f;
+        var core = DungeonCore.Instance;
+        return core != null && core.Data != null
+             ? Mathf.Max(0f, 1f + core.Data.HungerRateModifier)
+             : 1f;
     }
 
     // BodyPartSystem 없는 유닛용 폴백
@@ -804,7 +821,8 @@ public partial class UnitBrain : MonoBehaviour
         _bb.LeavingMap   = false;
         _bb.IsPrisoner   = false;
         _bb.HoldPosition = false;
-        _bb.Hunger       = 100f;   // 일어난 것은 굶지 않는다(적 세력은 어차피 허기가 안 돈다)
+        // 일어난 것은 아무것도 필요하지 않다(적 세력은 어차피 이 축이 안 돈다)
+        for (int i = 0; i < Needs.Count; i++) _bb.SetNeed((NeedKind)i, Needs.Full);
         ClearStanceOverride();
 
         // 꺼 둔 것을 도로 켠다 — 끈 순서 그대로.
@@ -937,44 +955,109 @@ public partial class UnitBrain : MonoBehaviour
         }
     }
 
-    // 하던 일을 놓는다 — 큐 일감은 취소(각 Job의 OnCancelled가 재료 환불·주문 재등록을 처리),
-    // 노드 직접 배정도 해제. 사망과 플레이어의 직접 이동 명령이 같은 경로를 쓴다.
-    // (배정을 남겨두면 명령한 곳에 도착하자마자 다시 일하러 돌아가 명령이 안 먹는 것처럼 보인다.)
+    // ── 하던 일을 놓는다 — 두 갈래다 ─────────────────────────────────────────
+    //
+    // **큐 일감과 직접 배정은 다른 물건이다.** 일감은 *지금 손에 든 한 건*이고, 자원 노드 배정은
+    // **"저 바위는 네 담당"이라는 지속 상태**다. 그래서 잠시 딴 일을 시킬 때 거둘 것은 앞의
+    // 하나뿐이다 — 배정까지 거두면 **끝나고 나서 플레이어가 다시 붙여 줘야 한다.**
+    //
+    // 큐 일감을 안 놓으면 그것대로 사고다: 게이트로 막기만 하면 그 일감이 **예약된 채 얼어붙어
+    // 다른 폰도 못 가져간다**(한 명이 멈추는 게 아니라 일감이 통째로 죽는다).
+
+    // 손에 든 일감만 놓는다. **배정은 남는다** — 풀리면 하던 곳으로 돌아간다.
+    // (각 Job의 `OnCancelled`가 재료 환불·주문 재등록을 처리한다.)
+    public void DropCurrentJob()
+    {
+        if (_bb?.CurrentJob == null) return;
+
+        JobManager.Instance?.CancelJob(_bb.CurrentJob);
+        _bb.CurrentJob = null;
+    }
+
+    // 일감도 배정도 거둔다 — **그 자리를 아주 떠날 때**. 사망·직접 이동 명령·원정 집결이 쓴다.
+    // (이동 명령에서 배정을 남겨두면 명령한 곳에 도착하자마자 다시 일하러 돌아가 **명령이 안
+    // 먹는 것처럼 보인다** — 그쪽은 거두는 것이 맞다.)
     public void AbandonWork()
     {
         if (_bb == null) return;
 
-        if (_bb.CurrentJob != null)
-        {
-            JobManager.Instance?.CancelJob(_bb.CurrentJob);
-            _bb.CurrentJob = null;
-        }
-
+        DropCurrentJob();
         _bb.AssignedNode?.Unassign(this);
     }
 
-    // ── 소집(Draft) — **아직 아무도 안 부른다** ──────────────────────────────
+    // ── 명령을 받는가 ────────────────────────────────────────────────────────
     //
-    // BT의 맨 위 분기이고(`BuildWandererTree`) 상태 표시(`PawnStatusText`)와 도주 억제
-    // (`PlayerFleeNode`)까지 갖춰져 있지만, **`Draft()`를 호출하는 입력이 없다.**
-    // 즉 지금은 어떤 폰도 소집 상태가 되지 않으며, 그 분기는 한 번도 안 돈다.
+    // 묻는 곳이 둘이다(우클릭 `MoveController`, 소집 `DraftController`) — 각자 적으면 한쪽만
+    // 하수인을 거르거나 한쪽만 갇힌 폰을 빼서, **명령이 조용히 사라지는 대상**이 생긴다.
     //
-    // 지우지 않고 남기는 이유: 설계상 "플레이어가 전투 대형으로 붙든다"는 축이 필요하고
-    // (림월드의 징집), 트리에서 자리를 빼면 나중에 다시 넣을 때 **우선순위를 또 정해야
-    // 한다** — 지금 자리가 맞다는 것은 이미 정한 것이다.
+    // **둘은 다른 물음이다**: 하수인은 *원래* 명령을 안 받고(그것이 그 종족의 뜻이다), 갇히거나
+    // 업힌 폰은 *지금* 못 받을 뿐이다. 부르는 쪽이 그 둘을 갈라 써야 "이 폰은 빠졌습니다"를
+    // 알릴지 조용히 건너뛸지 정할 수 있다.
+    public bool AcceptsOrders => unitData is not MinionData;
+
+    public bool CanObeyNow
+    {
+        get
+        {
+            var bb = Blackboard;
+            return bb == null || (!bb.IsPrisoner && bb.CarriedBy == null);
+        }
+    }
+
+    // ── 소집(Draft) ──────────────────────────────────────────────────────────
     //
-    // 붙일 때 같이 볼 것: `DraftedNode`가 `Running`만 돌려주므로 소집 중에는 **반격도 안 한다**
-    // (그 노드 안의 TODO). 그리고 `AbandonWork`를 안 부르므로 하던 일이 남는다.
+    // **일을 놓고 싸울 태세로 선다.** 림월드의 징집이고, 이 게임에서 정확히 뜻하는 것은 셋이다:
+    //
+    //   ① **자동 행동을 멈춘다** — 일감을 안 집고(`WorkNode`) 눕지 않는다(`RestNode`).
+    //      **배정은 남는다**(자원 노드·침대) — 소집을 풀면 캐던 바위로, 제 침대로 돌아간다.
+    //      **밥은 그대로 먹는다** — 막으면 소집해 둔 것을 잊었을 때 굶어 죽는다(업고 있을 때
+    //      먹는 것만 열어 둔 그 판단이다). 피로는 안 죽으므로 막아도 사고가 안 난다.
+    //   ② **먼저 친다** — 평소 방랑자는 반격만 하는데(`DetectNode(retaliateOnly)`) 소집 중에는
+    //      다가온 적을 저 혼자 문다. **목줄은 짧다**(공격 사거리 ×3) — 자리를 지키며 싸우라는
+    //      뜻이지 표적을 찾아 나서라는 뜻이 아니다.
+    //   ③ **도망치지 않는다** — `PlayerFleeNode`가 이미 `!bb.IsDrafted`를 본다.
+    //
+    // 명령(이동·공격·업기)은 **그대로 받는다.** 한동안 트리 맨 위에 `DraftedNode` 분기가 있어
+    // `Running`만 돌려줬는데, 그러면 소집한 순간 **이동조차 안 먹었다** — 그래서 부르는 입력도
+    // 안 붙어 있었다(2026-08-20에 게이트로 바꾸면서 그 분기를 지웠다).
+    //
+    // **하던 일감은 여기서 놓는다**(`DropCurrentJob`). `WorkNode` 게이트만 걸면 그 일감이
+    // 예약된 채 얼어붙어 **다른 폰도 못 가져간다** — 업기가 `TryPickUp`에서 놓는 것과 같은 이유다.
+    // **다만 배정(자원 노드·침대)은 남긴다** — 풀면 캐던 바위로, 제 침대로 돌아간다.
     public void Draft()
     {
+        if (_bb == null || _bb.IsDrafted) return;
+
+        // **일감만 놓고 배정은 남긴다**(`DropCurrentJob`). 소집은 *잠시* 딴 일을 시키는 것이지
+        // 담당을 떼는 일이 아니다 — 배정까지 거두면 소집을 풀 때마다 캐던 바위·베던 나무를
+        // 손으로 다시 붙여 줘야 한다. 침대 배정을 안 건드리는 것과 **같은 이유**다.
         _bb.IsDrafted = true;
-        _mover.StopMovement();
+        DropCurrentJob();
+
+        // **침대는 안 건드린다.** 자던 폰을 일으키는 것은 `RestNode`의 게이트가 이미 한다
+        // (`bb.IsDrafted`면 `LeaveBed` — 업고 있을 때와 **같은 줄**이고, 그건 자세와 **점유만**
+        // 풀고 **배정은 남긴다**).
+        //
+        // 여기서 `Bed.ReleaseFrom`을 부르면 **배정까지 거둔다** — 소집을 풀고 나서 플레이어가
+        // 침대를 다시 붙여 줘야 하고, 그 사이 다른 폰이 그 침대를 가져간다. 소집은 *잠시*
+        // 다른 일을 시키는 것이지 **잠자리를 빼앗는 일이 아니다**(업기가 *"배정은 안 거둔다 —
+        // 미루기만 하므로 내려놓는 즉시 제 침대로 간다"*고 판단한 그 자리다).
     }
 
     public void Undraft()
     {
+        if (_bb == null) return;
         _bb.IsDrafted = false;
     }
+
+    // 켜고 끄는 문이 하나여야 명령 내는 쪽마다 짝을 안 맞춰도 된다.
+    public void ToggleDraft()
+    {
+        if (_bb == null) return;
+        if (_bb.IsDrafted) Undraft(); else Draft();
+    }
+
+    public bool IsDrafted => _bb != null && _bb.IsDrafted;
 
     // ── 세력을 바꾼다 (회유) ─────────────────────────────────────────────────
     //

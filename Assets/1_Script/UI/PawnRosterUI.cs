@@ -52,7 +52,7 @@ public class PawnRosterUI : MonoBehaviour
 
     void Start()
     {
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
 
         // 템플릿은 편집 중 모양 확인용 — 게임에선 숨긴다(비활성 자식은 레이아웃에서도 빠진다)
         if (rowTemplate != null) rowTemplate.gameObject.SetActive(false);

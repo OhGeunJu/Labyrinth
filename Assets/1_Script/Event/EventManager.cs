@@ -129,14 +129,33 @@ public class EventManager : MonoBehaviour
     void TryRollEvent()
     {
         var candidates = new List<GameEventData>();
-        float totalWeight = 0f;
+        var weights    = new List<float>();
+        float open  = 0f;   // 때를 안 가린 가중치 합 — 정규화 기준
+        float tinted = 0f;  // 때가 흔든 뒤의 합
         foreach (var e in eventPool)
         {
             if (e == null || _elapsed < e.MinGameTime) continue;
+            float w = WeightOf(e);
+            open += e.Weight;
+            if (w <= 0f) continue;   // 이 때에는 아예 안 오는 것(밤 배율 0)
             candidates.Add(e);
-            totalWeight += e.Weight;
+            weights.Add(w);
+            tinted += w;
         }
         if (candidates.Count == 0) return;
+
+        // **때는 총량이 아니라 구성을 가른다** — 밤 배율을 그냥 곱하면 사건이 **더 자주** 나서,
+        // 밤을 어둡게 한 값이 난이도 인상으로 새어 나온다(습격이 하루 0.82건에서 1.15건으로
+        // 뛰었다). 이 저장소가 우호도에서 이미 내린 판단과 **같은 자리**다: *"습격은 총량을
+        // 안 건드린다 — 갈리는 건 누가 올 차례인가뿐"*.
+        //
+        // 그래서 합을 **때를 안 가린 값으로 되돌린다**. 사건이 나는 빈도는 낮이나 밤이나 같고,
+        // 밤에는 **그중 습격의 몫이 커진 만큼 행상인·떠돌이가 밀려난다** — 늘어난 위험의 값을
+        // 플레이어가 *다른 것을 못 만나는 것*으로 치른다. 이게 곱하기보다 나은 이유: 밤이
+        // 무서운 것은 사건이 잦아서가 아니라 **올 것이 습격뿐**이어서다.
+        float scale = tinted > 0f ? open / tinted : 1f;
+        float totalWeight = 0f;
+        for (int i = 0; i < weights.Count; i++) { weights[i] *= scale; totalWeight += weights[i]; }
 
         // **조용한 날**(위 `quietWeight` 주석). 후보에 섞어 굴리므로 별도 분기가 없다.
         totalWeight += quietWeight;
@@ -145,13 +164,21 @@ public class EventManager : MonoBehaviour
         if (roll > totalWeight - quietWeight) return;   // 아무 일도 없다
 
         float acc  = 0f;
-        foreach (var e in candidates)
+        for (int i = 0; i < candidates.Count; i++)
         {
-            acc += e.Weight;
-            if (roll <= acc) { TriggerEvent(e); return; }
+            acc += weights[i];
+            if (roll <= acc) { TriggerEvent(candidates[i]); return; }
         }
         TriggerEvent(candidates[candidates.Count - 1]);
     }
+
+    // **때가 가중치를 흔든다**(`GameEventData.NightWeight`) — 습격은 밤에 잦고 장사꾼은 뜸하다.
+    // 흔든 뒤 합은 위에서 되돌리므로 여기 배율은 **서로 겨루는 몫**이지 빈도가 아니다.
+    //
+    // 밝고 어두움은 `GameTimeManager.IsDay` 하나로 묻는다. 여기서 시각을 다시 재면 화면이
+    // 저문 것과 습격이 몰리는 것이 어긋나, 밤을 준비한다는 말이 성립하지 않는다.
+    static float WeightOf(GameEventData e) =>
+        GameTimeManager.IsDay ? e.Weight : e.Weight * e.NightWeight;
 
     void TriggerEvent(GameEventData data)
     {

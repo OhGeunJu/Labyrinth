@@ -41,6 +41,8 @@ public class UnitBlackboard
     }
 
     public float DetectRange  = 10f;
+    // 밤눈(0~1). 감지 범위에 어떻게 섞이는지는 `Vision`이 답한다 — 여기는 값만 든다.
+    public float NightVision  = 0f;
     public float AttackRange  = 1.5f;
     public float AttackDamage = 10f;
 
@@ -160,8 +162,18 @@ public class UnitBlackboard
     // 순찰
     public PatrolZone AssignedPatrolZone;
 
-    // 허기 (0 = 굶주림, 100 = 배부름)
-    public float Hunger = 100f;
+    // ── 몸이 요구하는 것들 (0 = 바닥, 100 = 가득) ────────────────────────
+    //
+    // **저장은 한 벌이다.** 셋이 기계적으로 같은 물건이라(`Needs`) 값을 배열 하나에 두고,
+    // 이름 있는 프로퍼티는 **그 배열을 가리키는 별명**일 뿐이다 — 읽기 좋으라고 둔 것이지
+    // 따로 든 값이 아니다. 눈금·임계·바닥 벌칙은 전부 `Needs`가 답한다.
+    readonly float[] _needs = Needs.NewFull();
+
+    public float Need(NeedKind kind)              => _needs[(int)kind];
+    public void  SetNeed(NeedKind kind, float v)  => _needs[(int)kind] = v;
+
+    public float Hunger { get => _needs[(int)NeedKind.Hunger]; set => _needs[(int)NeedKind.Hunger] = value; }
+    public float Rest   { get => _needs[(int)NeedKind.Rest];   set => _needs[(int)NeedKind.Rest]   = value; }
 
     // 배회/복귀 기준점. NPC는 스폰 시 설정, 그 외 유닛은 처음 배회할 때 그 자리로 잡는다.
     public Vector3 HomePosition;

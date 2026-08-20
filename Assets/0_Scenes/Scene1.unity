@@ -1983,6 +1983,7 @@ GameObject:
   - component: {fileID: 43447755}
   - component: {fileID: 43447757}
   - component: {fileID: 43447756}
+  - component: {fileID: 43447758}
   m_Layer: 0
   m_Name: TitleBar
   m_TagString: Untagged
@@ -2049,6 +2050,19 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 43447754}
   m_CullTransparentMesh: 1
+--- !u!114 &43447758
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 43447754}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b554ccdb7863cb5439f66c562e4c926a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DraggablePanel
+  target: {fileID: 1087069827}
 --- !u!1 &46470506
 GameObject:
   m_ObjectHideFlags: 0
@@ -4352,6 +4366,7 @@ GameObject:
   - component: {fileID: 125474666}
   - component: {fileID: 125474668}
   - component: {fileID: 125474667}
+  - component: {fileID: 125474669}
   m_Layer: 0
   m_Name: TitleBar
   m_TagString: Untagged
@@ -4418,6 +4433,19 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 125474665}
   m_CullTransparentMesh: 1
+--- !u!114 &125474669
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 125474665}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b554ccdb7863cb5439f66c562e4c926a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DraggablePanel
+  target: {fileID: 1990950281}
 --- !u!1 &129284118
 GameObject:
   m_ObjectHideFlags: 0
@@ -12133,6 +12161,7 @@ GameObject:
   - component: {fileID: 410887834}
   - component: {fileID: 410887833}
   - component: {fileID: 410887835}
+  - component: {fileID: 410887836}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -12249,6 +12278,41 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!114 &410887836
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 410887832}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ba413ae450381549b31d0d95aa4c716, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DayNightLighting
+  sun: {fileID: 0}
+  blendHours: 1.5
+  disableShadowsAtNight: 1
+  dawn:
+    sun: {r: 0.55, g: 0.6, b: 0.85, a: 1}
+    intensity: 0.18
+    ambient: {r: 0.16, g: 0.18, b: 0.26, a: 1}
+  morning:
+    sun: {r: 1, g: 0.87, b: 0.7, a: 1}
+    intensity: 0.95
+    ambient: {r: 0.42, g: 0.43, b: 0.46, a: 1}
+  day:
+    sun: {r: 1, g: 0.97, b: 0.9, a: 1}
+    intensity: 1.25
+    ambient: {r: 0.52, g: 0.54, b: 0.58, a: 1}
+  evening:
+    sun: {r: 1, g: 0.7, b: 0.45, a: 1}
+    intensity: 0.7
+    ambient: {r: 0.34, g: 0.3, b: 0.3, a: 1}
+  night:
+    sun: {r: 0.45, g: 0.52, b: 0.8, a: 1}
+    intensity: 0.06
+    ambient: {r: 0.12, g: 0.14, b: 0.22, a: 1}
 --- !u!1 &411058622
 GameObject:
   m_ObjectHideFlags: 0
@@ -25244,6 +25308,7 @@ GameObject:
   - component: {fileID: 826744150}
   - component: {fileID: 826744152}
   - component: {fileID: 826744151}
+  - component: {fileID: 826744153}
   m_Layer: 0
   m_Name: Header
   m_TagString: Untagged
@@ -25318,6 +25383,19 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
+--- !u!114 &826744153
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 826744149}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b554ccdb7863cb5439f66c562e4c926a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DraggablePanel
+  target: {fileID: 600675411}
 --- !u!1 &828079755
 GameObject:
   m_ObjectHideFlags: 0
@@ -43947,6 +44025,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameTimeManager
   dayDuration: 1800
+  startHour: 7
 --- !u!4 &1482343442
 Transform:
   m_ObjectHideFlags: 0
@@ -53654,6 +53733,7 @@ GameObject:
   - component: {fileID: 1802487035}
   - component: {fileID: 1802487037}
   - component: {fileID: 1802487036}
+  - component: {fileID: 1802487038}
   m_Layer: 0
   m_Name: Header
   m_TagString: Untagged
@@ -53720,6 +53800,19 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1802487034}
   m_CullTransparentMesh: 1
+--- !u!114 &1802487038
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1802487034}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b554ccdb7863cb5439f66c562e4c926a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DraggablePanel
+  target: {fileID: 1445774201}
 --- !u!1 &1808483179
 GameObject:
   m_ObjectHideFlags: 0
@@ -53731,6 +53824,7 @@ GameObject:
   - component: {fileID: 1808483180}
   - component: {fileID: 1808483182}
   - component: {fileID: 1808483181}
+  - component: {fileID: 1808483183}
   m_Layer: 0
   m_Name: Header
   m_TagString: Untagged
@@ -53797,6 +53891,19 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1808483179}
   m_CullTransparentMesh: 1
+--- !u!114 &1808483183
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1808483179}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b554ccdb7863cb5439f66c562e4c926a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DraggablePanel
+  target: {fileID: 1928574374}
 --- !u!1 &1818249135
 GameObject:
   m_ObjectHideFlags: 0
@@ -60149,6 +60256,7 @@ MonoBehaviour:
   zoomSpeed: 300
   minHeight: 30
   maxHeight: 90
+  focusDistance: 15
   topDownPitch: 85
   lowAnglePitch: 10
   angleLerpSpeed: 5
@@ -60707,6 +60815,7 @@ GameObject:
   - component: {fileID: 2053906037}
   - component: {fileID: 2053906039}
   - component: {fileID: 2053906038}
+  - component: {fileID: 2053906040}
   m_Layer: 0
   m_Name: Header
   m_TagString: Untagged
@@ -60773,6 +60882,19 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2053906036}
   m_CullTransparentMesh: 1
+--- !u!114 &2053906040
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2053906036}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b554ccdb7863cb5439f66c562e4c926a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DraggablePanel
+  target: {fileID: 858725450}
 --- !u!1001 &2055599994
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -64129,6 +64251,7 @@ MonoBehaviour:
   zoomSpeed: 200
   minHeight: 3
   maxHeight: 80
+  focusDistance: 15
   topDownPitch: 85
   lowAnglePitch: 10
   angleLerpSpeed: 5

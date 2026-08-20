@@ -1,4 +1,10 @@
-// 방랑자 BT: 소집 → **직접 명령** → 줍기 → 따라가기 → (도주) → 전투 → 휴식 → 식사 → 작업 → 대기
+// 방랑자 BT: **직접 명령** → 업기 → 줍기 → 따라가기 → (도주) → 전투 → 휴식 → 식사 → 작업 → 대기
+//
+// **소집은 분기가 아니라 게이트다**(2026-08-20). 한동안 맨 위에 `DraftedNode` 분기가 있었는데
+// 그것이 `Running`만 돌려줘서 **켜는 순간 아래가 통째로 멎었다** — 이동 명령도, 반격도 안 먹는
+// 소집이었다(그래서 부르는 입력도 안 붙어 있었다). 소집은 *무엇을 하는 상태*가 아니라
+// **자동 행동을 멈추고 싸울 태세로 두는 상태**라, 트리 자리를 차지할 것이 아니라 아래 노드들이
+// 저마다 물어야 하는 것이다(업고 있는 것과 같은 모양 — `WorkNode`·`RestNode`가 그렇게 묻는다).
 // 도주는 기본 비활성(성향 Fight) — AI 프로필을 붙이거나 SetStanceOverride로 켤 때만 동작한다.
 // 직접 명령(우클릭 이동)이 전투보다 위인 이유: 아래에 두면 FightNode가 매 틱 목적지를
 // 적 위치로 덮어써 조작이 안 먹는다. 도착하면 자동 해제되어 평소 행동으로 돌아간다.
@@ -7,9 +13,6 @@ public partial class UnitBrain
     BTNode BuildWandererTree()
     {
         return new BTSelector()
-            .Add(new BTSequence()
-                .Add(new ConditionNode(bb => bb.IsDrafted))
-                .Add(new DraftedNode()))
             .Add(new ManualOrderNode())
             // **업기는 줍기보다 위다.** 둘 다 손으로 콕 집어 시킨 일인데, 사람을 업으라는
             // 명령은 대개 전투 직후 급한 것이다(피 흘리는 동료를 침대로). 물건은 기다린다.
@@ -26,6 +29,10 @@ public partial class UnitBrain
             // `retaliateOnly`라 범위 안의 적대를 훑지 않는다. 훑으면 지나가는 적을 보고 저
             // 혼자 달려 나가서, 어디에 세워 둘지가 명령이 아니라 지형의 문제가 된다.
             // 지목한 표적은 그대로 유지된다(`DetectNode`가 기존 `Target`을 안 버린다).
+            //
+            // **소집하면 먼저 친다** — 그때는 "싸워라"가 명령이라 지형의 문제가 아니다.
+            // 다만 **짧은 목줄**이 걸린다(`DetectNode`) — 세워 둔 자리를 벗어나 표적을 찾아
+            // 나서면 소집으로 진형을 잡는 뜻이 사라진다.
             .Add(new BTSequence()
                 .Add(new DetectNode(retaliateOnly: true))
                 .Add(new FightNode()))

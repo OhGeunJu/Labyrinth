@@ -71,7 +71,9 @@ public static class Necromancy
         var core  = DungeonCore.Instance;
         int risen = 0;
 
-        foreach (var corpse in Object.FindObjectsByType<Corpse>(FindObjectsSortMode.None))
+        // **목록을 그대로 돌지 않는다** — 일으키는 동안 `Corpse`가 파괴되거나(해골로 갈릴 때)
+        // 새로 생겨 `All`이 바뀐다. 훑는 중에 바뀌면 `InvalidOperationException`이다.
+        foreach (var corpse in new List<Corpse>(Corpse.All))
         {
             if (corpse == null) continue;
 

@@ -194,7 +194,7 @@ public class CraftingTableUI : MonoBehaviour
     {
         _currentTable   = table;
         _selectedRecipe = null;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         if (detailPanel != null) detailPanel.SetActive(false);
         if (tableTitleText != null) tableTitleText.text = table.TableType.DisplayName();
         RebuildList();

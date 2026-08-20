@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // 시체가 얼마나 삭았나. **단계가 곧 할 수 있는 일**이다(`Butchering`).
@@ -162,6 +163,26 @@ public class Corpse : MonoBehaviour
         if (Buried) _buriedAge = days;
         else        DiedAt = GameTimeManager.Elapsed - days * Mathf.Max(1f, GameTimeManager.DayDuration);
     }
+
+    // ── 살아 있는 시체 목록 ──────────────────────────────────────────────────
+    //
+    // **씬을 훑지 않는다.** 이 저장소가 이미 같은 것을 네 번 두었다(`Storage.All` ·
+    // `Bed._all` · `Faction.All` · `WaterSource.All`) — 시체만 빠져 있어서 도축대가
+    // **1초마다 `FindObjectsByType<Corpse>`로 씬 전체를 훑었다.**
+    //
+    // 하필 **치울 시체가 없을 때 가장 자주 돈다**: 일감이 걸려 있으면 `SiteJobSlot`이 아예
+    // 안 묻는데(지연 평가), 걸 것이 없으면 매초 전 씬을 훑는다 — 그게 평상시의 대부분이다.
+    // 도축대를 여럿 지으면 그만큼 곱해진다(*"규칙이 더 필요하면 도축대를 더 짓는다"*가
+    // 설계라 실제로 늘어난다).
+    //
+    // **이벤트가 아니라 목록이다** — 알림을 돌리는 것이 아니라, 타입이 제 인스턴스를 들고
+    // 있을 뿐이다. 그래서 구독을 놓쳐 새는 자리가 없다.
+    //
+    // `BecomeCorpse`가 런타임에 붙이는 컴포넌트라 `OnEnable`이 그 순간 돈다.
+    public static readonly List<Corpse> All = new();
+
+    void OnEnable()  => All.Add(this);
+    void OnDisable() => All.Remove(this);
 
     void Awake() => DiedAt = GameTimeManager.Elapsed;
 

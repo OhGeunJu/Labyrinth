@@ -88,7 +88,7 @@ public class ButcherTableUI : MonoBehaviour
     void Open(ButcherTable table)
     {
         _table = table;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         Refresh();
     }
 

@@ -37,6 +37,9 @@ public class DraggableItem : MonoBehaviour,
     // 같은 프레임이면 나중 것이 물러난다.
     static int _actionFrame = -1;
 
+    // 손에 든 것을 우클릭으로 되돌렸다 — 그 클릭의 **떼는 쪽**을 한 번 삼킨다(`OnPointerClick`).
+    static bool _cancelClick;
+
     ItemInstance     _instance;
     InventoryGridUI  _sourceGrid;
     RectTransform    _rt;
@@ -98,11 +101,18 @@ public class DraggableItem : MonoBehaviour,
         {
             // 손에 들었으면 우클릭은 **되돌리기**다 — 그 처리는 손에 든 아이콘이 이미 했다
             // (`Update`). 여기서 또 하면 밑에 있던 물건이 엉뚱하게 실려 간다.
+            //
+            // **`_actionFrame`으로는 못 막는다.** 되돌리기는 **누르는 프레임**에 끝나는데
+            // `OnPointerClick`은 **떼는 프레임**에 온다 — 그 사이에 `CarriedInstance`는 이미
+            // 비었고 프레임 번호도 달라져, 가드 둘이 **전부 통과한다.** 그래서 손에 든 것을
+            // 우클릭으로 되돌리면 **커서 밑의 물건까지 팔리거나 반대편 통으로 갔다.**
+            // 되돌린 그 클릭은 **떼는 것까지 한 번**이므로, 눌렀을 때 표시해 두고 여기서 먹는다.
+            if (_cancelClick) { _cancelClick = false; return; }
             if (CarriedInstance != null || Time.frameCount == _actionFrame) return;
 
             if (MerchantUI.HandleRightClick(_instance, _sourceGrid, ModifierAmount())) return;
 
-            InventoryUI.NotifyItemRightClick(_instance, _sourceGrid);
+            InventoryUI.NotifyItemRightClick(_instance, _sourceGrid, this);
             return;
         }
 
@@ -257,8 +267,13 @@ public class DraggableItem : MonoBehaviour,
     // 손에 든 **그 아이콘 하나만** 일한다(`_carrying`). 나머지는 비교 한 번에 돌아간다.
     static DraggableItem _carrying;
 
+    // 지금 손에 든 아이콘. **`WindowRaiser`가 창을 올린 뒤 이것을 다시 맨 위로 올린다** —
+    // 커서를 따라다니는 것이 창 뒤로 숨으면 무엇을 들고 있는지도, 거절 흔들림도 안 보인다.
+    public static DraggableItem CarriedIcon => _carrying;
+
     void Update()
     {
+        TickGridShake();
         if (_carrying != this) return;
 
         var mouse = Mouse.current;
@@ -282,7 +297,8 @@ public class DraggableItem : MonoBehaviour,
             }
             if (mouse.rightButton.wasPressedThisFrame)
             {
-                _actionFrame = Time.frameCount;
+                _actionFrame  = Time.frameCount;
+                _cancelClick  = true;   // 이 클릭의 **놓는 쪽**까지 삼킨다(아래)
                 EndCarry(mouse.position.ReadValue(), cancel: true);
                 return;
             }
@@ -621,6 +637,51 @@ public class DraggableItem : MonoBehaviour,
 
     void Shake() => _shakeUntil = Time.unscaledTime + ShakeSeconds;
 
+    // ── 격자에 놓인 아이콘의 반응 ─────────────────────────────────────────────
+    //
+    // 위 `Shake`는 **손에 든** 아이콘 몫이다 — 커서를 따라가는 `FollowCursor`가 흔들림을
+    // 얹으므로, 격자에 가만히 있는 아이콘은 그 경로를 아예 안 탄다.
+    //
+    // **왜 격자 안에서 답하나**: 배낭에서 밥을 먹는 것은 **인벤토리에서 하는 조작**이라,
+    // 답도 그 자리에서 와야 "내가 이걸 눌렀다"가 된다. 폰 머리 위에 띄워 봤더니
+    // (`GradeUpNotificationUI`) 손은 창을 보고 있는데 답은 창 밖에서 나서, 조작이 아니라
+    // **어딘가에서 일어난 일**처럼 보였다.
+    float _gridShakeUntil;
+    Vector2 _gridShakeHome;
+
+    // **못 썼다** — 그 자리에서 흔든다. 아무것도 안 바뀌었으므로 이 아이콘은 살아 있다.
+    public void FlashRefused()
+    {
+        if (_rt == null) _rt = (RectTransform)transform;
+        if (_gridShakeUntil <= Time.unscaledTime) _gridShakeHome = _rt.anchoredPosition;
+        _gridShakeUntil = Time.unscaledTime + ShakeSeconds;
+    }
+
+    void TickGridShake()
+    {
+        if (_gridShakeUntil <= 0f || _carrying == this) return;
+        if (_rt == null) return;
+
+        float left = _gridShakeUntil - Time.unscaledTime;
+        if (left <= 0f)
+        {
+            _rt.anchoredPosition = _gridShakeHome;
+            _gridShakeUntil = 0f;
+            return;
+        }
+
+        _rt.anchoredPosition = _gridShakeHome +
+            new Vector2(Mathf.Sin(left * ShakeFreq) * ShakeAmp * (left / ShakeSeconds), 0f);
+    }
+
+    // **썼다** — 줄어들며 사라지는 잔상을 남긴다.
+    //
+    // **이 아이콘을 직접 애니메이션할 수가 없다**: 개수가 줄면 `Inventory.OnChanged`가 돌고
+    // `InventoryGridUI.Refresh`가 **아이콘을 전부 파괴하고 다시 만든다**(그래서 코루틴도 같이
+    // 죽는다). 그러니 격자 바깥에 잔상을 하나 띄우고 그것이 스스로 사라지게 둔다 — 격자가
+    // 몇 번을 다시 그려도 상관이 없다.
+    public void FlashUsed() => ItemUsePulse.Spawn(_rt != null ? _rt : (RectTransform)transform);
+
     // ── 이어서 들기 ───────────────────────────────────────────────────────────
     //
     // 놓은 자리에 있던 것을 **밀어내고 그것을 손에 든다.** `TryPlace`가 여기 적어 두면
@@ -864,5 +925,88 @@ public class DraggableItem : MonoBehaviour,
         // 우클릭해 [창고로 옮긴다].
         DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality);
         return true;
+    }
+}
+
+// **"썼다"는 잔상.** 아이콘 그림을 그 자리에 한 장 베껴 두고 줄어들며 사라지게 한다.
+//
+// 격자 밖(캔버스 바로 아래)에 서므로 `InventoryGridUI.Refresh`가 아이콘을 전부 다시 만들어도
+// 죽지 않는다 — 그게 이걸 따로 두는 유일한 이유다.
+//
+// **글자는 안 베낀다**(개수·잠금) — 사라지는 잔상에 개수를 적으면 *"이만큼이 사라졌다"*로
+// 읽힌다. 남는 것이 아니라 **한 개를 썼다**는 뜻이다.
+public class ItemUsePulse : MonoBehaviour
+{
+    // **살짝 커졌다가 줄며 사라진다.** 그냥 줄이기만 하면 0.26초 동안 조금 작아지는 것뿐이라
+    // 눈에 안 들어온다 — 처음에 한 번 부풀어야 *"눌렀고, 그래서 이게 쓰였다"*로 읽힌다.
+    const float Seconds   = 0.3f;
+    const float PopAt     = 0.25f;   // 이 지점까지 커진다(0~1)
+    const float PopScale  = 1.18f;
+    const float Shrink    = 0.3f;    // 끝에 이만큼까지 줄어든다
+
+    public static void Spawn(RectTransform icon)
+    {
+        if (icon == null) return;
+
+        var canvas = icon.GetComponentInParent<Canvas>();
+        var src    = icon.GetComponent<Image>();
+        if (canvas == null || src == null) return;
+
+        var go = new GameObject("~ItemUsePulse", typeof(RectTransform), typeof(Image));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(canvas.transform, worldPositionStays: false);
+        rt.SetAsLastSibling();
+
+        rt.pivot     = icon.pivot;
+        rt.sizeDelta = icon.rect.size;
+        rt.position  = icon.position;
+        rt.rotation  = icon.rotation;
+
+        // **캔버스 바로 아래로 옮기면 중간 부모의 스케일이 사라진다** — 격자가 조금이라도
+        // 축소돼 있으면 잔상만 원래 크기로 튀어나온다. 겉보기 크기를 그대로 물려받는다.
+        var cs = canvas.transform.lossyScale;
+        rt.localScale = new Vector3(
+            cs.x != 0f ? icon.lossyScale.x / cs.x : 1f,
+            cs.y != 0f ? icon.lossyScale.y / cs.y : 1f, 1f);
+
+        var img = go.GetComponent<Image>();
+        img.sprite         = src.sprite;
+        img.color          = src.color;
+        img.preserveAspect = src.preserveAspect;
+        img.raycastTarget  = false;   // 사라지는 그림이 클릭을 먹으면 안 된다
+
+        go.AddComponent<ItemUsePulse>();
+    }
+
+    RectTransform _rt;
+    Image         _img;
+    Color         _color0;
+    Vector3       _scale0;
+    float         _t;
+
+    void Awake()
+    {
+        _rt     = (RectTransform)transform;
+        _img    = GetComponent<Image>();
+        _color0 = _img.color;
+        _scale0 = _rt.localScale;
+    }
+
+    // **`unscaledDeltaTime`으로 잰다** — 배속·일시정지는 화면 조작과 상관이 없다
+    // (`DraggableItem`의 흔들림·`CameraController`와 같은 자리).
+    void Update()
+    {
+        _t += Time.unscaledDeltaTime;
+        float k = Mathf.Clamp01(_t / Seconds);
+
+        float scale = k < PopAt ? Mathf.Lerp(1f, PopScale, k / PopAt)
+                                : Mathf.Lerp(PopScale, Shrink, (k - PopAt) / (1f - PopAt));
+        _rt.localScale = _scale0 * scale;
+
+        // **부푸는 동안은 또렷하게 두고 끝에서 빠르게 지운다** — 처음부터 선형으로 흐려지면
+        // 제일 잘 보여야 할 순간이 이미 반쯤 투명하다.
+        _img.color = new Color(_color0.r, _color0.g, _color0.b, _color0.a * (1f - k * k));
+
+        if (k >= 1f) Destroy(gameObject);
     }
 }

@@ -217,7 +217,7 @@ public class ResearchTableUI : MonoBehaviour
     {
         _currentTable = table;
         _selected     = null;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         if (detailPanel != null) detailPanel.SetActive(false);
         RebuildList();
     }

@@ -2,53 +2,25 @@ using UnityEngine;
 
 // **먹는 일의 규칙은 여기 하나뿐이다.**
 //
-// 먹는 길이 둘이다 — 제 발로 창고에 가서 먹는 것(`EatNode`)과 남이 가져다 먹여 주는 것
+// 길이 둘이다 — 제 발로 창고에 가서 먹는 것(`EatNode`)과 남이 가져다 먹여 주는 것
 // (`FeedJob`). 무엇을 고르고 얼마나 채우는지를 양쪽에 따로 적으면 반드시 어긋난다
 // (이 저장소가 `CarryCapacity`에서 이미 3.3배 어긋난 두 벌을 겪었다).
+//
+// 눈금(감소·임계·바닥 벌칙)은 여기가 아니라 **`Needs`**가 든다. 여기가 답하는 것은
+// "지금 있는 것 중 무엇을 먹나" 하나다.
 public static class Feeding
 {
-    public const float Full            = 100f;
-    public const float HungerThreshold = 60f;   // 이 이하이면 먹으러 간다 / 먹여 준다
+    public const float Full = Needs.Full;
 
     // **남을 먹이는 것은 제 손으로 먹는 것보다 오래 걸린다.** 떠먹여야 하고, 갇힌 사람은
     // 대개 받아 먹을 형편이 아니다 — 간수의 시간이 곧 포로를 살려 두는 값이다.
     public const float FeedTimeMult = 2f;
 
-    // ── 허기가 도는가 ────────────────────────────────────────────────────
-    //
-    // **플레이어 세력, 그리고 갇힌 사람은 세력을 안 가린다.**
-    //
-    // 붙잡아 온 적은 원래 허기가 안 돌았다(`UpdateHunger`가 플레이어 세력만 봤다). 그래서
-    // 포로를 붙들어 두는 데 아무 값이 안 들었다 — 우리에 넣어 두기만 하면 회유가 저절로
-    // 끝난다. 먹여야 산다면 그 시간이 물자를 먹고, **회유가 공짜가 아니게 된다.**
-    //
-    // **업힌 동안은 안 준다** — 남의 어깨 위에서 밥을 먹을 수는 없고, 그 자세로는 먹일
-    // 길도 없다. 업기는 걸어가는 동안의 임시 상태라 굶길 만큼 길지 않다.
-    //
-    // 화면(`InspectPanelUI`의 허기 바)도 이 답을 쓴다. 도는 것과 보이는 것이 갈리면 "허기가
-    // 안 보이는데 죽는" 또는 "안 줄어드는 바"가 생긴다.
-    // **죽은 자는 안 배고프다.** 시체는 `UnitBrain`을 끄지만 컴포넌트는 남으므로,
-    // 갇힌 채 죽으면 침대·우리가 계속 "여기 굶는 사람이 있다"고 답한다.
-    public static bool Simulates(UnitBrain brain)
-    {
-        var bb = brain != null ? brain.Blackboard : null;
-        if (bb == null || brain.IsDead) return false;
-        if (bb.CarriedBy != null) return false;
-        if (bb.IsPrisoner) return true;
-
-        // **매 프레임 `GetComponent`를 다시 하지 않는다** — 블랙보드가 이미 들고 있다
-        // (`UpdateHunger`가 이걸 프레임마다 부른다).
-        return bb.Faction != null && bb.Faction.IsPlayer;
-    }
-
-    public static bool IsHungry(UnitBrain brain)
-    {
-        var bb = brain != null ? brain.Blackboard : null;
-        return bb != null && bb.Hunger < HungerThreshold;
-    }
-
-    // 채울 수 있는 양.
-    public static float Room(float hunger) => Mathf.Max(0f, Full - hunger);
+    // 누가 이 축을 도는가 · 임계 · 남은 자리는 **`Needs`가 답한다**(축이 셋이라 여기 적으면
+    // 축마다 한 벌씩 생긴다). 부르는 쪽이 두 이름을 외우지 않게 그대로 흘려보낸다.
+    public static bool  Simulates(UnitBrain brain)            => Needs.Simulates(brain);
+    public static bool  IsHungry(UnitBrain brain) => Needs.IsLow(brain, NeedKind.Hunger);
+    public static float Room(float current)       => Needs.Room(current);
 
     // ── 무엇을 먹나 ──────────────────────────────────────────────────────
     //
@@ -62,14 +34,18 @@ public static class Feeding
     static bool Better(FoodData candidate, FoodData best, float room)
     {
         if (candidate == null) return false;
-        if (best == null)      return true;
 
-        bool fits     = candidate.NutritionValue <= room;
-        bool bestFits = best.NutritionValue      <= room;
+        float mine = candidate.NutritionValue;
+        if (mine <= 0f) return false;
+        if (best == null) return true;
+
+        float theirs  = best.NutritionValue;
+        bool  fits    = mine   <= room;
+        bool bestFits = theirs <= room;
         if (fits != bestFits) return fits;
 
-        return fits ? candidate.NutritionValue > best.NutritionValue    // 둘 다 맞으면 큰 것
-                    : candidate.NutritionValue < best.NutritionValue;   // 둘 다 넘치면 작은 것
+        return fits ? mine > theirs    // 둘 다 맞으면 큰 것
+                    : mine < theirs;   // 둘 다 넘치면 작은 것
     }
 
     // **격자 하나를 훑는 규칙은 여기 한 번뿐이다.** 배낭이든 창고든 "이 안에서 무엇을
@@ -92,8 +68,8 @@ public static class Feeding
         return best;
     }
 
-    public static FoodData BestInBackpack(UnitBrain pawn, float hunger)
-        => BestIn(pawn != null ? pawn.Inventory : null, Room(hunger));
+    public static FoodData BestInBackpack(UnitBrain pawn, float current)
+        => BestIn(pawn != null ? pawn.Inventory : null, Room(current));
 
     // **가장 가까운 창고**에서, 그 안에 든 것 중 가장 알맞은 것.
     //
@@ -103,9 +79,9 @@ public static class Feeding
     //
     // 창고를 훑는 것은 `Storage.NearestWhere`가 한다(`FindStorageWithItem`은 아이템 하나만
     // 물을 수 있어 "아무 음식이나"를 못 묻는다 — 그래서 조건을 넘기는 쪽을 쓴다).
-    public static FoodData BestInStorage(float hunger, Vector3 from, out Storage source)
+    public static FoodData BestInStorage(float current, Vector3 from, out Storage source)
     {
-        float room = Room(hunger);
+        float room = Room(current);
 
         source = Storage.NearestWhere(from, s => BestIn(s.Inventory, room) != null);
         return source != null ? BestIn(source.Inventory, room) : null;
@@ -144,13 +120,15 @@ public static class Feeding
         => ConsumeFrom(pawn != null ? pawn.Inventory : null, food);
 
     // ── 먹는다 ───────────────────────────────────────────────────────────
-    // 허기를 채우는 곳은 여기 하나다. 넘친 만큼은 버려진다 — `Better`가 그걸 줄이려고 있다.
+    //
+    // 채우는 곳은 여기 하나다. 넘친 만큼은 버려진다 — `Better`가 그걸 줄이려고 있다.
+    //
     public static void Eat(UnitBrain eater, FoodData food)
     {
         var bb = eater != null ? eater.Blackboard : null;
         if (bb == null || food == null) return;
 
-        bb.Hunger = Mathf.Min(Full, bb.Hunger + food.NutritionValue);
+        Needs.Fill(bb, NeedKind.Hunger, food.NutritionValue);
     }
 
     public static float FeedSeconds(FoodData food)

@@ -103,7 +103,7 @@ public class DialogueUI : MonoBehaviour
                 _rows.Add(row.gameObject);
             }
 
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
     }
 
     public void Close()

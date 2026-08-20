@@ -332,11 +332,24 @@ public class InspectPanelUI : MonoBehaviour
         //
         // 시체 검사는 남는다 — `BecomeCorpse`가 `Faction`을 지우므로 세력으로는 걸러지지만
         // (모르는 것은 플레이어가 아니다) **죽은 자는 안 배고프다**를 여기서 못 박아 둔다.
-        if (corpse == null && Feeding.Simulates(brain))
+        if (corpse == null && Needs.Simulates(brain))
         {
-            float hunger = brain.Blackboard.Hunger;
-            string hungerColor = hunger > 60f ? "#8BC34A" : hunger > 30f ? "#FF9800" : "#F44336";
-            sb.AppendLine($"허기  {BarColored(hunger, 100f, hungerColor, hungerColor)}  <color={hungerColor}>{hunger:F0}/100</color>");
+            // **축마다 한 줄, 규칙은 한 벌.** 셋이 같은 물건이라(`Needs`) 색과 눈금을 여기서
+            // 축별로 갈라 적으면 하나를 고칠 때 나머지가 뒤처진다.
+            for (int i = 0; i < Needs.Count; i++)
+            {
+                var kind = (NeedKind)i;
+                if (!Needs.Simulates(brain, kind)) continue;   // 안 도는 축은 안 띄운다
+
+                float v  = brain.Blackboard.Need(kind);
+                // **색 경계도 임계에서 나온다** — 60/30을 손으로 박아 두면 임계를 옮겼을 때
+                // 바가 초록인데 폰은 이미 밥 먹으러 가는 꼴이 된다.
+                string c  = v > Needs.Threshold        ? "#8BC34A"
+                          : v > Needs.Threshold * 0.5f ? "#FF9800"
+                          :                              "#F44336";
+                sb.AppendLine($"{Needs.Name(kind)}  {BarColored(v, 100f, c, c)}  " +
+                              $"<color={c}>{v:F0}/100</color>");
+            }
         }
 
         // **업고 있는 것과 갇힌 것은 화면에 나와야 한다.** 둘 다 그 폰이 왜 느린지·왜

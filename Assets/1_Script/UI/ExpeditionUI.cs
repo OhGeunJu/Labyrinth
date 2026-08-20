@@ -89,7 +89,7 @@ public class ExpeditionUI : MonoBehaviour
     void Open()
     {
         if (panel == null) return;
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
         Rebuild();
     }
 
@@ -164,7 +164,7 @@ public class ExpeditionUI : MonoBehaviour
         {
             _stuckNotified = true;
             // 여기서 Open()을 부르면 Rebuild → Refresh로 되돌아온다. 보여주기만 하면 된다.
-            if (!IsOpen && panel != null) panel.SetActive(true);
+            if (!IsOpen) WindowRaiser.Open(panel);
         }
 
         int   picked = 0;
