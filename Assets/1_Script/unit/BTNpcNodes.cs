@@ -38,7 +38,7 @@ public class FleeNode : BTNode
         // **어두우면 늦게 알아챈다**(`Vision`, 교전 탐지와 **같은 한 벌**) — 도주만 밤에
         // 멀쩡하면 마을 사람이 안 보이는 적을 미리 피해 달아난다. 다만 **이미 도망 중일 때는
         // 안 줄인다**: 쫓기는 사람이 어둡다고 추격자를 놓치면 그 자리에 멈춰 서서 잡힌다.
-        float fleeRange   = Vision.RangeFor(_fleeRange, bb.NightVision);
+        float fleeRange   = Vision.RangeFor(_fleeRange, bb.NightVision, bb.Self.transform.position);
         float searchRange = _fleeing ? _fleeRange * ReleaseMult : fleeRange;
         var threat = FindThreat(bb, searchRange);
 

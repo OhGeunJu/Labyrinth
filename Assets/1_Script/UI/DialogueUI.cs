@@ -60,8 +60,8 @@ public class DialogueUI : MonoBehaviour
     {
         if (panel == null || optionContainer == null || optionTemplate == null) return;
 
-        if (speakerText != null) speakerText.text = speaker;
-        if (lineText    != null) lineText.text    = line;
+        if (speakerText != null) speakerText.text = Josa.Fix(speaker);
+        if (lineText    != null) lineText.text    = Josa.Fix(line);
 
         // 초상화가 없으면 **칸을 비우는 대신 숨긴다** — 빈 사각형이 남으면 "그림이 깨졌나"로 읽힌다.
         if (portrait != null)
@@ -80,7 +80,7 @@ public class DialogueUI : MonoBehaviour
                 row.gameObject.SetActive(true);
 
                 var txt = row.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (txt != null) txt.text = opt.Label;
+                if (txt != null) txt.text = Josa.Fix(opt.Label);
 
                 // 사유가 있으면 마우스를 올렸을 때 뜬다 — 우클릭 창과 **같은 부품**을 쓴다.
                 if (!string.IsNullOrEmpty(opt.Note))

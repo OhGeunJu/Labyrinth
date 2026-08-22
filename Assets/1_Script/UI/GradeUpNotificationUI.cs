@@ -72,7 +72,7 @@ public class GradeUpNotificationUI : MonoBehaviour
         rt.offsetMax = Vector2.zero;
 
         var tmp = tmpGO.AddComponent<TextMeshProUGUI>();
-        tmp.text          = text;
+        tmp.text          = Josa.Fix(text);
         tmp.fontSize      = fontSize;
         tmp.alignment     = TextAlignmentOptions.Center;
         tmp.color         = color;

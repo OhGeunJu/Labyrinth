@@ -263,7 +263,8 @@ public static class Imprisonment
     }
 
     // 갇힌 사람은 제자리를 지킨다. 깨어나도 마찬가지다 — 벗어나는 길은 풀려나는 것뿐이다.
-    // (탈출은 아직 없다. 월드맵 포로가 하루마다 굴리는 것과 짝을 맞출 자리다.)
+    // (도망치는 길은 `PrisonBreak`가 든다 — 게이지가 차면 여기서 놓여난다. 그 눈금은
+    //  월드맵 포로가 하루마다 굴리는 것과 짝이다.)
     public static void Hold(UnitBrain brain)
     {
         if (brain?.Blackboard == null || !brain.Blackboard.IsPrisoner) return;

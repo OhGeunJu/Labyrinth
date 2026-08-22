@@ -34,14 +34,36 @@ public static class Vision
         _                 => DayFactor,
     };
 
+    // **이 자리에서의 배율 — 불빛이 닿으면 그만큼 걷힌다**(`LightSource`).
+    //
+    // 배율이 자리마다 다른 것은 밤에 **플레이어가 손댈 데가 있어야** 하기 때문이다. 때만
+    // 보면 밤은 견디는 시간이고, 화톳불 하나로 그 둘레가 낮이 되면 **거점을 어떻게 밝힐지가
+    // 결정이 된다**(어디에 세울까 · 목재를 얼마나 댈까 · 어느 불을 죽일까).
+    //
+    // **낮에는 불을 아예 안 훑는다.** 탐지는 폰마다 0.1초에 한 번 도는 자리고 하루의 3분의 2는
+    // 밝다 — 이 한 줄이 그 시간 동안의 레지스트리 순회를 통째로 없앤다.
+    public static float FactorAt(Vector3 at)
+    {
+        float f = Factor;
+        if (f >= 1f) return f;
+        return Mathf.Lerp(f, 1f, LightSource.BrightestAt(at));
+    }
+
     // **밤눈이 그 배율을 되돌린다**(`UnitData.NightVision`, 0~1 — 1이면 밤에도 낮처럼 본다).
     //
     // 밤을 모두에게 똑같이 걸면 그건 세상이 흐려진 것일 뿐이다. 언데드·야수가 밤에도 보면
     // **밤 습격이 실제로 저쪽에 유리한 판**이 되고, 그러면 밤은 "불편한 시간"이 아니라
     // "저들의 시간"이 된다 — 여기서 종족이 뜻을 하나 더 갖는다.
-    public static float RangeFor(float baseRange, float nightVision) =>
-        baseRange * Mathf.Lerp(Factor, 1f, Mathf.Clamp01(nightVision));
+    //
+    // **불빛과는 저절로 맞물린다** — 밤눈이 이미 밝게 보는 놈에게 화톳불은 별로 보태 주지
+    // 않는다(둘 다 같은 배율을 1로 미는 일이라 겹치는 만큼은 겹치지 않는다).
+    //
+    // **`at`은 선택 인자가 아니다.** 기본값을 두면 부르는 쪽이 조용히 빠뜨리고, 그러면 그
+    // 경로에서만 불빛이 없는 것이 된다 — `Storage.FindStorageWithItem`이 `from`을 안 받아
+    // 폰이 맵을 가로지르던 것과 같은 자리다.
+    public static float RangeFor(float baseRange, float nightVision, Vector3 at) =>
+        baseRange * Mathf.Lerp(FactorAt(at), 1f, Mathf.Clamp01(nightVision));
 
     public static float RangeFor(UnitBlackboard bb) =>
-        bb == null ? 0f : RangeFor(bb.DetectRange, bb.NightVision);
+        bb?.Self == null ? 0f : RangeFor(bb.DetectRange, bb.NightVision, bb.Self.transform.position);
 }

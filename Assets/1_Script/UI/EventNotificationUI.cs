@@ -107,8 +107,8 @@ public class EventNotificationUI : MonoBehaviour
         }
 
         if (iconImage != null) { iconImage.sprite = icon; iconImage.enabled = icon != null; }
-        if (titleText != null) titleText.text = title;
-        if (descText  != null) descText.text  = desc;
+        if (titleText != null) titleText.text = Josa.Fix(title);
+        if (descText  != null) descText.text  = Josa.Fix(desc);
 
         WindowRaiser.Open(panel);
         // 배속(`Time.timeScale`)을 타지 않는 실제 시간. 10배속에서 0.5초 만에 사라지거나

@@ -118,7 +118,7 @@ public class ItemInfoUI : MonoBehaviour
         bool hasStats = FillStats(item, quality);
         if (statsGroup) statsGroup.SetActive(hasStats);
 
-        if (descText) descText.text = item.Description ?? "";
+        if (descText) descText.text = Josa.Fix(item.Description) ?? "";
 
         // 잠긴 뭉치는 **왜 안 팔리는지**를 여기서 말한다. 격자의 `잠금` 글자는 상태만
         // 보여 줄 뿐이라, 팔려다 거절당한 사람은 그게 원인인 줄 모른다.
@@ -201,37 +201,9 @@ public class ItemInfoUI : MonoBehaviour
         FollowCursor();
     }
 
-    // 커서와 툴팁 사이. **딱 붙지만 않으면 된다** — 멀리 떨어뜨리면 무엇에 딸린 설명인지가
-    // 흐려지고 눈이 그만큼 더 움직인다.
-    const float Gap = 12f;
-
-    void FollowCursor()
-    {
-        if (_rt == null || _canvas == null || Mouse.current == null) return;
-        Camera    cam      = _canvas.renderMode != RenderMode.ScreenSpaceOverlay ? _canvas.worldCamera : null;
-        var       cRt      = (RectTransform)_canvas.transform;
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                cRt, Mouse.current.position.ReadValue(), cam, out var local)) return;
-
-        Vector2 cSize = cRt.sizeDelta;
-        Vector2 pSize = _rt.sizeDelta;
-
-        // **커서에서 한 뼘 떨어뜨린다.** 손에 든 물건이 이제 **커서 한가운데**에 붙으므로
-        // (`DraggableItem.GrabAtCenter`), 툴팁이 커서에 딱 붙으면 그 물건 위에 겹친다.
-        // 지금은 손에 들었을 때 툴팁을 안 띄우지만, **가리키기만 해도 그 칸의 그림을 덮는
-        // 것은 마찬가지**다 — 무엇을 보고 있는지가 가려지면 설명이 설명을 방해한다.
-        Vector2 pos = local + cursorOffset + new Vector2(Gap, -Gap);
-
-        // **넘치면 밀어 넣지 말고 반대편으로 뒤집는다.** 밀어 넣으면 화면 오른쪽·아래
-        // 끝에서 툴팁이 **커서 밑으로 기어들어와** 정작 가리키는 것을 덮는다.
-        if (pos.x + pSize.x >  cSize.x * 0.5f) pos.x = local.x + cursorOffset.x - Gap - pSize.x;
-        if (pos.y - pSize.y < -cSize.y * 0.5f) pos.y = local.y + cursorOffset.y + Gap + pSize.y;
-
-        // 그래도 넘치면(툴팁이 화면보다 클 때) 그때는 밀어 넣는다.
-        pos.x = Mathf.Clamp(pos.x, -cSize.x * 0.5f, cSize.x * 0.5f - pSize.x);
-        pos.y = Mathf.Clamp(pos.y, -cSize.y * 0.5f + pSize.y, cSize.y * 0.5f);
-        _rt.anchoredPosition = pos;
-    }
+    // 자리 계산은 **`CursorTooltip` 한 벌**이다 — 커서 툴팁이 둘인데 규칙이 갈리면
+    // 한쪽만 화면 끝에서 가리키던 것을 덮는다(실제로 `HoverTooltipUI`가 그랬다).
+    void FollowCursor() => CursorTooltip.Place(_rt, _canvas, cursorOffset);
 
     static void SetRow(TextMeshProUGUI txt, string value)
     {

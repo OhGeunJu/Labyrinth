@@ -220,24 +220,30 @@ BT는 `UnitBrain.tickInterval`(기본 0.1초)마다 돈다. **노드 안에서 `
 
 **AI 역할 판정**: `UnitBrain.UsesEnemyAi` = **`NpcData`가 없고 && !IsPlayer** → 적 BT. 세력이 늘어나도 플레이어 편만 아니면 자동으로 적 AI. **`MinionData`인지는 안 묻는다**(2026-08-07) — 같은 종족이 소환물일 수도 야생일 수도 있고, 그걸 가르는 건 세력이다. 시체화 판정도 역할이 아니라 세력이 정한다.
 
-## Hunger System
+## Needs — 몸이 요구하는 것 둘 (허기 · 피로)
 
-`UnitBlackboard.Hunger` — 0~100. 플레이어 세력(`Faction.IsPlayer`) 유닛만 감소.
+**2026-08-20에 `Needs` 한 벌로 모았다.** 그전에는 허기 하나가 `UnitBrain.UpdateHunger`·
+`BaseHungerDecayRate`·`EatNode`·포로 급식·살펴보기 창 여섯 군데에 흩어져 있어서, 축이 하나
+늘 때마다 그 여섯이 통째로 복사됐다. **`UnitBrain.UpdateHunger`·`BaseHungerDecayRate`는 없다.**
 
-**감소 로직 (`UnitBrain.UpdateHunger`):**
-- 기본 감소율: `BaseHungerDecayRate = 0.5f` (초당, 약 3.3분에 고갈)
-- `DungeonCoreData.HungerRateModifier`로 감소율 조절 가능
-- 허기 0 → 초당 2 피해
+| 축 | 100→임계(40) | 임계→가득 | 100→0 | 바닥에서 |
+|---|---|---|---|---|
+| 허기 | 540초(하루 3.3끼) | 먹으면 즉시 | 900초 | 혈액 2/s → 65초면 죽는다 |
+| 피로 | 1200초(하루의 2/3) | 침대 600초 / 바닥 1200초 | 2000초 | 안 죽는다 — 그 자리에 쓰러져 잔다 |
 
-**`FoodData : ItemData`** (`Item/FoodData.cs`):
-- `NutritionValue` — 섭취 시 허기 회복량
-- `EatTime` — 먹는 데 걸리는 시간(초)
-- `MaxStack = 20`
+- **눈금은 하루(`GameTimeManager.DayDuration`)에서 나온다** — 초당 감소량을 상수로 박으면
+  하루 길이를 바꿨을 때 안 따라온다. "하루에 몇 번"으로 적고 거기서 나눈다.
+- **저장은 한 벌** — `UnitBlackboard`가 `float[]`을 들고 `Hunger`/`Rest`는 그것을 가리키는
+  별명이다. 축을 도는 코드는 `bb.Need(kind)`/`SetNeed`.
+- **누가 도는가는 `Needs.Simulates(brain, kind)`가 답한다** — 플레이어 세력 + 갇힌 사람,
+  업힌 동안은 아무도 안 돈다. **갇힌 사람은 피로가 안 돈다**(잠은 대신 자 줄 수 없다).
+- **핵 보정(`HungerRateModifier`)은 허기에만** 건다.
+- 임계는 `Needs.Threshold`(**40**), 깨는 값은 `WakeAt`(100). 상세는 CLAUDE.md.
 
-**`EatNode` (BT):**
-- 허기 60 이하 시 트리거
-- 인벤토리에 음식 있으면 바로 먹기, 없으면 가장 가까운 창고 수거 후 섭취
-- BT 위치: Fight → Rest → **Eat** → Work
+**`FoodData : ItemData`** (`Item/FoodData.cs`): `NutritionValue` / `EatTime` / `MaxStack = 20`.
+
+**무엇을 먹는지는 `Feeding`이 답한다** — 먹는 길이 둘이라(제 발로 `EatNode` / 남이 먹여 주는
+`FeedJob`) 양쪽에 적으면 갈린다. **가장 가까운 창고부터**, 그 안에서 **넘치지 않는 가장 큰 것**.
 
 ## Bed & BloodCap System
 
@@ -253,9 +259,11 @@ BT는 `UnitBrain.tickInterval`(기본 0.1초)마다 돈다. **노드 안에서 `
 - 클릭 시 `OnSelected` 이벤트
 
 **`RestNode` (BT)** — **배정된 침대가 있으면 그 침대로 가서 눕는다. 누워 있는 동안 일하지 않고 회복만 한다.**
-- 회복이 끝나도 일어나지 않는다(배정이 곧 명령). **해제해야 다시 일하러 간다.**
-- 일어나는 조건: 배정 해제 / 허기 60 이하(먹고 돌아옴) / 상위 분기(소집·전투·도주)가 가져감
+- **누가 배정했느냐가 배정의 뜻을 가른다**(`Bed.AutoClaimed`): 손으로 붙였으면 *"가서 쉬어라"*라는 명령이라 **뗄 때까지 눕고**(다친 동료를 눕히는 길), 졸린 폰이 저 혼자 잡았으면 **가득 채우면 일어난다**.
+- 일어나는 조건: 배정 해제 / 허기가 임계(40) 아래(먹고 돌아옴) / 피로가 `WakeAt`(100) — 저 혼자 잡은 침대만 / 상위 분기(소집·전투·도주)가 가져감
+- **가는 문턱과 나오는 문턱이 다르다**(40 → 100). 하나로 두면 문턱 위에서 떨며 침대를 들락거린다.
 - 회복량: 혈액 2/s, BloodCap 1/s, 부위 HP 3/s (캡 감소 없음) — 부위만 몸의 눈금(31→100)과 같이 올렸다
+- **자는 동안에는 피로가 안 준다**(`Needs.Decays`) — 안 그러면 바닥잠은 감소와 상쇄돼 영영 안 찬다
 - BT 위치: Fight → **Rest** → Eat → Work
 
 **눕기 구현** — `PawnMover.SetSleeping(on, pos, rot)`:

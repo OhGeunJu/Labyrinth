@@ -74,7 +74,7 @@ public class WorldMenuUI : MonoBehaviour
         if (panel == null) return;
 
         if (titleText != null) titleText.text = title;
-        if (infoText  != null) infoText.text  = info;
+        if (infoText  != null) infoText.text  = Josa.Fix(info);
 
         if (illustration != null)
         {
@@ -130,9 +130,9 @@ public class WorldMenuUI : MonoBehaviour
             if (label != null)
             {
                 // 부연은 같은 줄에 흐리게 — 왜 못 고르는지가 그 줄 안에서 읽혀야 한다.
-                label.text = string.IsNullOrEmpty(o.Note)
+                label.text = Josa.Fix(string.IsNullOrEmpty(o.Note)
                     ? o.Label
-                    : $"{o.Label}  <color=#FFFFFF80>{o.Note}</color>";
+                    : $"{o.Label}  <color=#FFFFFF80>{o.Note}</color>");
                 UIHelper.ApplyKoreanFont(label, transform);
             }
 

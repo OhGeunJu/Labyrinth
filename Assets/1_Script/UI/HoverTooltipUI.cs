@@ -65,12 +65,12 @@ public class HoverTooltipUI : MonoBehaviour
 
         if (titleText != null)
         {
-            titleText.text = title ?? "";
+            titleText.text = Josa.Fix(title) ?? "";
             titleText.gameObject.SetActive(!string.IsNullOrWhiteSpace(title));
         }
         if (bodyText != null)
         {
-            bodyText.text = body ?? "";
+            bodyText.text = Josa.Fix(body) ?? "";
             bodyText.gameObject.SetActive(!string.IsNullOrWhiteSpace(body));
         }
 
@@ -83,22 +83,10 @@ public class HoverTooltipUI : MonoBehaviour
         if (panel != null && panel.activeSelf) FollowCursor();
     }
 
-    // 커서 옆에 두되 **화면 밖으로는 안 나간다** — 끝에서 잘리면 설명이 반만 보인다.
-    // 계산은 `ItemInfoUI.FollowCursor`와 같다(툴팁이 둘인데 위치 규칙이 다르면 안 된다).
-    void FollowCursor()
-    {
-        if (_rt == null || _canvas == null || Mouse.current == null) return;
-
-        Camera cam = _canvas.renderMode != RenderMode.ScreenSpaceOverlay ? _canvas.worldCamera : null;
-        var    cRt = (RectTransform)_canvas.transform;
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                cRt, Mouse.current.position.ReadValue(), cam, out var local)) return;
-
-        Vector2 pos   = local + cursorOffset;
-        Vector2 cSize = cRt.sizeDelta;
-        Vector2 pSize = _rt.sizeDelta;
-        pos.x = Mathf.Clamp(pos.x, -cSize.x * 0.5f, cSize.x * 0.5f - pSize.x);
-        pos.y = Mathf.Clamp(pos.y, -cSize.y * 0.5f + pSize.y, cSize.y * 0.5f);
-        _rt.anchoredPosition = pos;
-    }
+    // 커서 옆에 두되 화면 밖으로는 안 나간다 — **자리 계산은 `CursorTooltip` 한 벌이다.**
+    //
+    // 여기에 따로 적어 두었더니 *"`ItemInfoUI`와 같다"*고 주석까지 달아 놓고도 **뒤집기가
+    // 빠져 있었다**: 화면 아래·오른쪽 끝에서 툴팁이 안으로 밀려 들어와 가리키던 것을 덮었다
+    // (건설 목록 오른쪽 타일에 올리면 그 줄이 통째로 가려졌다).
+    void FollowCursor() => CursorTooltip.Place(_rt, _canvas, cursorOffset);
 }

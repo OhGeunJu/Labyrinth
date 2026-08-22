@@ -77,6 +77,9 @@ public class BuildingDormancy : MonoBehaviour
         if (TryGetComponent<FarmPlot>(out var fp))      yield return fp;
         if (TryGetComponent<CraftingTable>(out var ct)) yield return ct;
         if (TryGetComponent<WaterSource>(out var ws))   yield return ws;
+        // 화톳불: 재우면 `OnDisable`이 불을 끈다. 안 넣으면 **영역 밖에서 혼자 타면서
+        // 창고의 목재를 계속 먹는다** — 휴면은 "전면 사용 불가"인데 그 하나만 예외가 된다.
+        if (TryGetComponent<Campfire>(out var fire))    yield return fire;
         // 침대: enabled=false면 OnDisable로 정적 목록에서 빠져 배정/사용 대상에서 제외된다.
         // (배정 정보 AssignedUnit은 남아 영역 복구 시 그대로 복원)
         if (TryGetComponent<Bed>(out var bed))          yield return bed;

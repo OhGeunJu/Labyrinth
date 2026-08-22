@@ -69,7 +69,7 @@ NavMesh 제거. 켄시급 대형 맵이라 전체를 1m 격자로 못 덮으므�
 - Raid: `EnemyPrefabs: List<GameObject>`, `EnemyCount`
 - Merchant: `MerchantPrefabs: List<GameObject>`(종족) × `MerchantVariants: List<MerchantData>`(상품)
 - Reinforcement: `ReinforcementPrefabs: List<GameObject>`, `ReinforcementCount`
-- Discovery: `ResourceNodePrefab`, `DiscoveryMinDist`, `DiscoveryMaxDist`
+- Discovery: `DiscoveryItems`(비우면 레지스트리 전체, **화폐 제외**), `DiscoveryMinAmount`/`DiscoveryMaxAmount` — **거점 둘레 바닥에 떨군다.** 자원 노드를 세우던 시절이 있었는데 노드는 영구히 남아 거점 둘레가 광맥 밭이 됐다(**발견은 사건이지 지형 변화가 아니다**), 창고 직행도 아니다(**숫자가 조용히 오르는 것은 사건이 아니다**)
 
 **`EventManager`** (MonoBehaviour 싱글톤, **씬에 배치 필요**):
 - `checkInterval` (기본 300초) 주기로 가중치 기반 랜덤 이벤트 발동

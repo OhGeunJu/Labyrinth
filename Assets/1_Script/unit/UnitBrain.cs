@@ -695,7 +695,7 @@ public partial class UnitBrain : MonoBehaviour
         // 몸이 남아야 한다(`Corpse.WasPlayer`는 원래 그걸 상정하고 있던 자리다).
         //
         // 갈랐던 이유였던 "내 폰 시체가 쌓인다"는 **치우는 길**로 풀 일이지, 몸을 없애서
-        // 풀 일이 아니다 — 지금은 업어서 옮기는 것까지만 있고 부패·매장은 아직 없다.
+        // 풀 일이 아니다 — 그 길은 셋이다(도축·매장·화장).
         BecomeCorpse();
     }
 

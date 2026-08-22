@@ -19,7 +19,9 @@ public class BuildingData : ScriptableObject
     [TextArea(2, 4)]
     public string           Description;
 
-    public BuildCategory    Category      = BuildCategory.Building;
+    [Tooltip("건설 목록의 어느 갈래에 뜨는가. **비워 두면 `기타`** — 어디에도 안 붙는 것이라는 " +
+             "뜻이지 '아직 안 정했다'는 뜻이 아니므로, 새 건물은 갈래를 골라 줄 것.")]
+    public BuildCategory    Category      = BuildCategory.Misc;
 
     [Tooltip("건설 목록 안에서의 순서. 작을수록 앞. 같으면 이름순. " +
              "폴더 스캔은 순서를 보장하지 않으므로 이 값이 메뉴 순서의 유일한 근거다.")]

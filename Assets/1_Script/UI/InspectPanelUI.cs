@@ -390,7 +390,7 @@ public class InspectPanelUI : MonoBehaviour
             sb.AppendLine($"  오른다리  {FormatPart(body, BodyPartType.RightLeg)}");
         }
 
-        if (infoText != null) infoText.text = sb.ToString();
+        if (infoText != null) infoText.text = Josa.Fix(sb.ToString());
     }
 
     // ── 청사진 ────────────────────────────────────────────────────────────
@@ -436,7 +436,7 @@ public class InspectPanelUI : MonoBehaviour
             sb.AppendLine("<color=#888>자재가 필요 없습니다.</color>");
         }
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString());
 
         // **버튼과 우클릭이 같은 `Cancel()`을 부른다.** 문이 여럿이어도 하는 일이 한 곳에
         // 있으면 어긋날 데가 없다 — 갈라지는 건 판단이 여러 곳에 흩어질 때다.
@@ -488,6 +488,9 @@ public class InspectPanelUI : MonoBehaviour
         var butcher = pb.GetComponent<ButcherTable>();
         if (butcher != null) AppendButcherState(sb, butcher);
 
+        var fire = pb.GetComponent<Campfire>();
+        if (fire != null) AppendCampfireState(sb, fire);
+
         // **휴면은 여기서 말해 줘야 한다** — 그 건물의 패널은 아예 안 열리므로, 안 열리는
         // 이유를 들을 데가 없었다.
         var dorm = pb.GetComponent<BuildingDormancy>();
@@ -497,7 +500,7 @@ public class InspectPanelUI : MonoBehaviour
         if (data != null && data.CostAmount > 0 && data.CostItem != null)
             sb.AppendLine($"<color=#888>분해하면 {data.CostItem.ItemName} {data.CostAmount}을(를) 전부 돌려받습니다.</color>");
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString());
 
         SetActions(new List<(string, Action)>
         {
@@ -546,6 +549,23 @@ public class InspectPanelUI : MonoBehaviour
         if (pyre.BlockedReason != null)
             sb.AppendLine($"<color=#F90>{pyre.BlockedReason}</color>");
 
+    }
+
+    // ── 화톳불 ───────────────────────────────────────────────────────────────
+    //
+    // 답해야 하는 것은 둘뿐이다: **지금 타고 있나**, 그리고 **안 타면 그게 시간 탓인가 내가
+    // 꺼 둔 탓인가.** 태우는 것이 없으니 게이지도 막힌 사유도 없다.
+    static void AppendCampfireState(StringBuilder sb, Campfire fire)
+    {
+        if (!fire.WantsFire)
+        {
+            sb.AppendLine("<color=#888>꺼 두었다. 우클릭해서 지필 수 있다.</color>");
+            return;
+        }
+
+        sb.AppendLine(fire.IsLit
+            ? "<color=#FF8C26>타는 중 — 이 둘레는 밤에도 낮처럼 보인다.</color>"
+            : "<color=#888>밝을 때는 꺼져 있다. 저녁이 되면 저절로 붙는다.</color>");
     }
 
     // ── 도축대 ───────────────────────────────────────────────────────────────
@@ -655,7 +675,7 @@ public class InspectPanelUI : MonoBehaviour
                 sb.AppendLine($"<color=#8BC34A>운반 지정됨{scope} — 폰이 창고로 옮깁니다.</color>");
         }
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString());
     }
 
     // 이름줄은 **이름만**, 아랫줄이 `등급 · 종류` — `ItemInfoUI`와 같은 규약이다
@@ -702,7 +722,7 @@ public class InspectPanelUI : MonoBehaviour
         if (stock > 0)
             sb.AppendLine($"<color=#888>쌓인 것 {stock}개 — 폰이 창고로 나릅니다.</color>");
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString());
 
         // 씬에 흩어진 나무·바위는 `PlacedBuilding`이 없다 — 건드릴 수 없는 지형이므로 버튼도 없다.
         if (pb != null)
@@ -756,7 +776,7 @@ public class InspectPanelUI : MonoBehaviour
         if (core.Data != null)
             sb.AppendLine($"<color=#888>영역 반경 {core.Data.BaseRadius:F0}m</color>");
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString());
 
         // 소환·목록은 핵 제 패널(`DungeonCoreUI`)이 다룬다 — 여기는 **핵 자체**를 다루는 자리다.
         SetActions(new List<(string, Action)>

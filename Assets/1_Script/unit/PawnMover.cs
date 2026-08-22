@@ -63,12 +63,18 @@ public class PawnMover : MonoBehaviour
     [Tooltip("막혔을 때 옆으로 비켜 걷는 시간(초)")]
     public float sidestepTime = 0.6f;
 
+    [Tooltip("목적지에 이만큼(초) 동안 한 번도 더 가까워지지 못하면 포기한다. " +
+             "**움직이는데 안 가까워지는** 경우를 잡는 그물이라, 정직한 우회를 끊지 않게 넉넉히 둔다.")]
+    public float goalStallTime = 8f;
+
     // 회피/정체 상태
     Vector3 _progressAnchor;
     float   _progressTimer;
     int     _blockedCount;
     Vector3 _sidestepDir;
     float   _sidestepTimer;
+    float   _bestGoalDist;      // 지금까지 목적지에 가장 가까웠던 거리
+    float   _noGainTimer;       // 그 기록을 못 깬 채로 흐른 시간
     float   _lastDiagLogTime = -999f;   // 계측 로그 폰당 1초 제한
 
     [Header("Athletics 성장")]
@@ -143,7 +149,13 @@ public class PawnMover : MonoBehaviour
 
         worldPoint.y = transform.position.y;
 
+        // **설 수 없는 칸은 목적지가 못 된다.** 스냅은 **여기 한 곳**에서 한다 — 이 함수가
+        // 이동으로 들어오는 유일한 문이라, 부르는 쪽마다 챙기게 하면 언젠가 한 경로가 빠뜨린다.
+        worldPoint = SnapToStandable(worldPoint);
+
         // 목표가 거의 동일하고 이미 이동 중이면 재계획 생략 (재베이크 방지).
+        // **스냅한 뒤에 비교한다** — 건물을 계속 겨누는 명령이 매 틱 들어와도 같은 칸으로
+        // 접히므로 재계획이 안 돈다.
         if (_hasTarget && HorizDistSqr(worldPoint, _finalGoal) < goalEpsilon * goalEpsilon)
             return;
 
@@ -153,6 +165,35 @@ public class PawnMover : MonoBehaviour
         _hasTarget   = true;
         ResetProgress();
         ReplanLocal();
+    }
+
+    // **못 서는 자리를 겨누면 폰은 영영 도착하지 못한다.**
+    //
+    // 건물 코앞을 우클릭하면 그 칸이 건물 발자국(통행 불가)일 때가 흔하다. 그러면 도착
+    // 판정(`arriveDistance`)에 절대 안 걸리고, 벽에 막힐 때마다 `RememberBlockedSpot`이 그
+    // 자리를 잠시 막아 플래너가 **건물을 빙 돌아** 반대편으로 보낸다 — 거기서도 막히고,
+    // 3초 뒤 옛 기억이 풀려 도로 온다. **폰은 내내 움직이므로** 정체 감시(`TrackProgress`)에
+    // 걸리지도 않아, 멈추지도 포기하지도 않고 건물 둘레를 도는 그림이 된다.
+    //
+    // 답은 `MapManager.FindWorkableNear` — **작업 자리(`WorkSpot.TileFor`)가 쓰는 그것**이다.
+    // "폰이 설 수 있는 칸"을 묻는 곳이 둘이면 한쪽만 청사진 발자국이나 공허를 알게 된다.
+    //
+    // **설 수 있는 칸이면 누른 자리 그대로 둔다** — 칸 중심으로 당기면 작업 자리·집결 자리처럼
+    // 칸 안의 특정 지점을 겨눈 명령이 전부 어긋난다.
+    Vector3 SnapToStandable(Vector3 point)
+    {
+        var map = MapManager.GetForPosition(point);
+        if (map == null) return point;
+
+        var tile = map.WorldToTile(point);
+        if (map.IsWorkable(tile)) return point;
+
+        var near = map.FindWorkableNear(tile);
+        if (near == tile) return point;      // 둘레까지 다 막혔다 — 여기서 더 해 줄 것이 없다
+
+        var snapped = map.TileToWorld(near);
+        snapped.y = point.y;
+        return snapped;
     }
 
     public void StopMovement()
@@ -426,8 +467,45 @@ public class PawnMover : MonoBehaviour
         if (moved >= expected) _blockedCount = 0;
         else                   OnBlocked(pos, desired);
 
+        TrackGoalGain(pos, _progressTimer);
+
         _progressAnchor = pos;
         _progressTimer  = 0f;
+    }
+
+    // **움직이는 것과 가까워지는 것은 다르다.**
+    //
+    // 위의 감시는 *얼마나 움직였나*만 잰다. 그래서 도달할 수 없는 자리를 겨눈 폰이 건물
+    // 둘레를 도는 동안에는 **한 번도 안 걸린다** — 부지런히 걷고 있으니까. 멈추지도
+    // 포기하지도 않는 그 왕복이 이 그물이 잡는 것이다.
+    //
+    // **기록을 깰 때만 시계를 되돌린다**(가장 가까웠던 거리). 지금 거리와 견주면 제자리에서
+    // 반 걸음씩 오가는 것도 "가까워졌다"가 되어 영영 안 걸린다.
+    //
+    // 여유(`GoalGainEpsilon`)를 두는 것은 조향의 미세한 떨림이 기록을 조금씩 갱신하며
+    // 시계를 무한정 되돌리는 것을 막기 위해서다. 시간은 넉넉히 준다 — **큰 건물을 빙 도는
+    // 정직한 우회도 한동안은 안 가까워진다.**
+    const float GoalGainEpsilon = 0.25f;
+
+    void TrackGoalGain(Vector3 pos, float elapsed)
+    {
+        float dist = Mathf.Sqrt(HorizDistSqr(pos, _finalGoal));
+
+        if (dist < _bestGoalDist - GoalGainEpsilon)
+        {
+            _bestGoalDist = dist;
+            _noGainTimer  = 0f;
+            return;
+        }
+
+        _noGainTimer += elapsed;
+        if (_noGainTimer < goalStallTime) return;
+
+        // 갈 수 없는 곳이다. **BT가 다음 행동을 고르게 놓아 준다** — 막혔을 때의 마지막
+        // 단계와 같은 자리이고, 여기서 계속 붙들면 그 폰은 다른 일을 영영 못 한다.
+        MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
+                                      pos, _finalGoal, _localPath != null);
+        StopMovement();
     }
 
     // 막혔을 때의 대응. **좌우로 번갈아 비켜서지 않는다** — U자로 둘러싸인 자리에서
@@ -484,6 +562,11 @@ public class PawnMover : MonoBehaviour
         _progressTimer  = 0f;
         _blockedCount   = 0;
         _sidestepTimer  = 0f;
+
+        // 새 목적지다 — 기록은 **지금 거리에서** 시작한다. `MaxValue`로 두면 첫 측정이
+        // 무조건 기록을 깨서 시계가 한 번 공짜로 되돌아간다.
+        _bestGoalDist = Mathf.Sqrt(HorizDistSqr(transform.position, _finalGoal));
+        _noGainTimer  = 0f;
     }
 
     static float HorizDistSqr(Vector3 a, Vector3 b)

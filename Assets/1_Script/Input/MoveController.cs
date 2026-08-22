@@ -450,7 +450,10 @@ public class MoveController : MonoBehaviour
             // **침대도 뺀다.** `Bed.OnWorldClick`은 일부러 비어 있다(전용 패널을 없앴고, 침대로
             // 하는 일은 전부 아래 [여기 눕는다]·[치료한다]…에 있다). 눌러도 아무 일이 안
             // 일어나는 줄은 "먹혔나?"를 남길 뿐이고, 침대가 무엇인지는 좌클릭이 답한다.
-            bool opensSomething = go.GetComponent<Bed>() == null;
+            // **화톳불도 뺀다** — `Campfire.OnWorldClick`은 침대와 같은 이유로 비어 있다
+            // (조작은 아래 [불을 끈다] 한 줄뿐이고, 무엇이 얼마나 남았는지는 좌클릭이 답한다).
+            bool opensSomething = go.GetComponent<Bed>() == null
+                                  && go.GetComponentInParent<Campfire>() == null;
             if (opensSomething && !BuildingDormancy.IsDormantAt(hit.collider))
                 options.Add((verb, clickable.OnWorldClick));
 
@@ -470,6 +473,9 @@ public class MoveController : MonoBehaviour
 
             var pyre = go.GetComponentInParent<Pyre>();
             if (pyre != null) AddPyreOptions(pyre, commanders, options);
+
+            var fire = go.GetComponentInParent<Campfire>();
+            if (fire != null) AddCampfireOptions(fire, options);
         }
 
         // **청사진은 콜라이더가 없어 여기까지 걸리지 않는다.**
@@ -1100,6 +1106,21 @@ public class MoveController : MonoBehaviour
 
         AddPutDownOption(commanders, options, "업은 시체를 여기서 태운다",
                          pyre.PyrePosition, pyre);
+    }
+
+    // **화톳불 — 켜고 끄는 줄 하나.**
+    //
+    // 어두워지면 저절로 붙으므로 평소에는 누를 일이 없다. 이 줄이 있는 이유는 **목재가
+    // 아쉬운 며칠**이다 — 그때 어느 불을 죽일지가 실제 결정이 되고, 그 결정을 내릴 자리가
+    // 없으면 화톳불은 지어 두고 잊는 물건이 된다.
+    //
+    // **명령 받을 폰이 필요 없다** — 폰이 장작을 나르지 않으므로(`MaterialPool.Consume`)
+    // 이건 건물에 거는 스위치지 누구에게 시키는 일이 아니다.
+    static void AddCampfireOptions(Campfire fire, List<PawnMenuOption> options)
+    {
+        options.Add(fire.WantsFire
+            ? ("불을 끈다",   () => fire.SetWanted(false))
+            : ("불을 지핀다", () => fire.SetWanted(true)));
     }
 
     static void AddBedOptions(Bed bed, List<PawnMover> commanders,

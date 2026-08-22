@@ -192,7 +192,7 @@ public class PawnContextMenuUI : MonoBehaviour
         foreach (var r in _rows) if (r != null) Destroy(r);
         _rows.Clear();
 
-        if (titleText != null) titleText.text = title;
+        if (titleText != null) titleText.text = Josa.Fix(title);
 
         foreach (var opt in options)
         {
@@ -200,7 +200,7 @@ public class PawnContextMenuUI : MonoBehaviour
             row.gameObject.SetActive(true);
 
             var txt = row.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (txt != null) txt.text = opt.Label;
+            if (txt != null) txt.text = Josa.Fix(opt.Label);
 
             // **사유가 있으면 마우스를 올렸을 때 뜬다.** 되는 줄에도 붙을 수 있다 — 지금은
             // 못 하는 줄에만 쓰지만, "왜 이걸 고르나"를 적을 자리가 같은 곳이어야 나중에
