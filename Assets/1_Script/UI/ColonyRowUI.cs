@@ -302,17 +302,31 @@ public static class ColonyColumns
     public const float JobW      = 52f;
     public const float JobGap    = 4f;
 
-    // **작업 열은 `짐내림`을 뺀 것들이다.** 짐내림은 큐를 타긴 하지만 플레이어에게는
-    // "무슨 일을 시킬까"가 아니라 "이 폰이 짐을 지고 다니게 둘까"에 가깝다 —
-    // 작업 체크 사이에 끼면 남이 시킨 일과 같은 무게로 읽힌다. 그래서 성향 옆에 따로 세운다.
+    // **작업 열은 `짐내림`을 뺀 것들 + 채굴·벌목이다.**
+    //
+    // 짐내림은 큐를 타긴 하지만 플레이어에게는 "무슨 일을 시킬까"가 아니라 "이 폰이 짐을 지고
+    // 다니게 둘까"에 가깝다 — 작업 체크 사이에 끼면 남이 시킨 일과 같은 무게로 읽힌다.
+    // 그래서 성향 옆에 따로 세운다.
+    //
+    // **채굴·벌목은 반대다 — 큐에는 없는데 여기에는 있어야 한다.** 그 둘은 일감을 만들지
+    // 않으므로(`WorkNode.TickAssigned`가 노드를 직접 캔다) `QueueOrder`에 넣을 수 없지만,
+    // 자율 배정(`ResourceNode.ClaimFreeFor`)이 이 스위치를 본다. **칸이 없으면 끌 수가 없고,
+    // 그러면 자율 배정이 강제가 된다.** 그래서 이 배열과 `QueueOrder`는 이제 다른 물음에
+    // 답한다: 저쪽은 *큐 배정 순서*, 이쪽은 *무슨 일을 시킬까*.
+    //
+    // **경비는 안 넣는다** — 순찰 구역은 자율 배정이 없어 여전히 손으로만 붙인다.
     public static readonly JobCategory[] WorkColumns = BuildWorkColumns();
 
     static JobCategory[] BuildWorkColumns()
     {
         var src = JobCategoryInfo.QueueOrder;
-        var list = new List<JobCategory>(src.Length);
+        var list = new List<JobCategory>(src.Length + 2);
         foreach (var c in src)
             if (c != JobCategory.Unload) list.Add(c);
+
+        // 맨 뒤 — 자율 배정이 큐를 다 비운 뒤에 돌므로 우선순위도 실제로 여기다.
+        list.Add(JobCategory.Mining);
+        list.Add(JobCategory.Logging);
         return list.ToArray();
     }
 

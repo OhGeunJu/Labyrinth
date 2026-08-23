@@ -136,7 +136,7 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 | `UnitData` | `DungeonColony/UnitData` | RaceName, NamePool, MaxHP, MoveSpeed, AttackDamage, AttackRange, DetectRange, DefaultMin/MaxGrade, StatGrades, StatGrowthRates |
 | `MinionData` | `DungeonColony/MinionData` | (UnitData) + SummonCostItem, SummonCostAmount, AllowedJobs, CanProvideWater, Prefab, SortOrder |
 | `NpcData` | `DungeonColony/NpcData` | **역할 전용**(종족 상속 아님) — NpcType, WanderRadius, FleeDetectRange, StayDuration, ArrivalOffset, MerchantData |
-| `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged, BlockBonus, RangedBlockBonus, DamageCategory, PhysicalType, DamageElement, EffectChance |
+| `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged, BlockBonus, RangedBlockBonus, **DamageType**, EffectChance |
 | `ArmorData` | `DungeonColony/ArmorData` | ArmorSlot, DamageReduction |
 | `BuildingData` | `DungeonColony/BuildingData` | BuildingName, Category, SortOrder, **Size**, CostItem, CostAmount, Prefab, UsesBlueprint, IsFloor, **OccupiesTile**, RequiredResearch |
 | `DungeonCoreData` | `DungeonColony/DungeonCoreData` | CoreType, BaseRadius, MaxGrade, BaseMinionCap, HungerRateModifier, per-frame modifiers |

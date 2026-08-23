@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // **주변에서 세력을 훑는 일 한 곳.** 탐지(`DetectNode`)·도주(`FleeNode`)·수적 보너스
@@ -63,6 +64,40 @@ public static class FactionScan
             best    = other.gameObject;
         }
         return best;
+    }
+
+    // 범위 안 적대 **전부**. 도발처럼 여럿을 한꺼번에 잡는 능력이 쓴다.
+    //
+    // **담을 그릇을 받는다** — 새 리스트를 돌려주면 이 파일이 `OverlapSphere`를 그만둔 이유
+    // (매번 배열을 새로 만들지 않는다)를 그대로 되돌리는 셈이다. 부르는 쪽이 한 벌을 돌려 쓴다.
+    //
+    // 거르는 규칙은 `NearestHostile`과 **같다**(적대 · 범위 · 칠 수 있는 상대) — 갈라 두면
+    // "탐지에는 걸리는데 도발은 안 되는" 상대가 생긴다.
+    public static int HostilesWithin(GameObject self, Faction mine, float range,
+                                     bool theirsToMine, List<GameObject> into)
+    {
+        if (into == null) return 0;
+        into.Clear();
+        if (self == null || mine == null) return 0;
+
+        Vector3 pos    = self.transform.position;
+        float rangeSqr = range * range;
+
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var other = all[i];
+            if (other == null || other.gameObject == self) continue;
+
+            bool hostile = theirsToMine ? other.IsHostileTo(mine) : mine.IsHostileTo(other);
+            if (!hostile) continue;
+
+            if ((other.transform.position - pos).sqrMagnitude > rangeSqr) continue;
+            if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
+
+            into.Add(other.gameObject);
+        }
+        return into.Count;
     }
 
     // 범위 안 적대 세력 수. **최소 1** — 수적 보너스 계산이 0으로 나누지 않게 하는 것이

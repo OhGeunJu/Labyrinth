@@ -1156,7 +1156,11 @@ public class WorldMapView : MonoBehaviour
         var wm = WorldMap.Instance;
         var sb = new System.Text.StringBuilder();
 
+        // **위험도를 먼저 적는다**(2026-08-23). 오픈월드라 갈 수는 있지만 대개 죽는데,
+        // 말해 주지 않으면 그건 선택이 아니라 사고다 — *"모르게 굴리지 않는다"*가 걸리는 자리.
+        int tier = BiomeTier.Of(tile.Biome);
         sb.Append($"{tile.Biome.DisplayName()} · ({node.x}, {node.y}) · ");
+        sb.Append($"<color={BiomeTier.Color(tier)}>{BiomeTier.Label(tier)}</color> · ");
         // 원정대 없이 들여다보는 중이면 인원·등짐 대신 그 사실을 적는다.
         sb.Append(pt == null
             ? "<color=#FFFFFF80>원정대 없음</color>"

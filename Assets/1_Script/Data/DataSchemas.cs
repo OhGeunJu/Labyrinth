@@ -49,10 +49,21 @@ public class WeaponSchema : ItemSchema
     public float  attackRange        = 1.5f;
     public float  blockBonus;
     public float  rangedBlockBonus;
-    public string damageCategory     = "Physical";
-    public string physicalType       = "Slash";
-    public string damageElement      = "None";
+    // **축이 하나다**(2026-08-23) — 물리 셋(Slash/Pierce/Blunt) + 원소 일곱
+    // (Fire/Water/Earth/Lightning/Arcane/Dark/Holy). 옛 `damageCategory`·`physicalType`·
+    // `damageElement` 셋은 여기 하나로 접혔다.
+    public string damageType         = "Slash";
+
+    // 옛 키 — 모드 JSON이 아직 이걸 들고 있을 수 있어 읽어는 준다(경고하고 옮긴다).
+    public string damageCategory     = "";
+    public string physicalType       = "";
+    public string damageElement      = "";
     public float  effectChance       = 0.2f;
+
+    // **장비가 능동을 준다**(2026-08-23). JSON 아이템은 런타임 생성이라 SO를 참조할 수
+    // 없으므로 **id로 가리킨다** — `LoadoutData.ItemId`·`MerchantPoolEntry`와 같은 규약이다.
+    // 비우면 능동이 없다. 오타는 조용히 "능동 없음"이 되므로 콘솔에 적는다.
+    public string abilityId = "";
 }
 
 [Serializable]
@@ -60,6 +71,11 @@ public class ArmorSchema : ItemSchema
 {
     public string armorSlot       = "Chest";
     public float  damageReduction = 5f;
+
+    // **장비가 능동을 준다**(2026-08-23). JSON 아이템은 런타임 생성이라 SO를 참조할 수
+    // 없으므로 **id로 가리킨다** — `LoadoutData.ItemId`·`MerchantPoolEntry`와 같은 규약이다.
+    // 비우면 능동이 없다. 오타는 조용히 "능동 없음"이 되므로 콘솔에 적는다.
+    public string abilityId = "";
 }
 
 [Serializable]

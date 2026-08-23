@@ -25,18 +25,13 @@ cook_cheese,치즈 만들기,food_cheese,1,vegetables x2 + herbs x1,22,36,1.64,C
 cook_stew,스튜 끓이기,food_stew,1,Food_RawMeat x1 + vegetables x2,24,40,1.67,Cooking,15,12.0,Res_Cooking,JSON
 cook_tough_stew,질긴 고기 스튜,food_stew,1,food_toughmeat x3 + vegetables x2,25,40,1.6,Cooking,15,16.0,Res_Cooking,JSON
 cook_feast,진수성찬 준비,food_feast,1,Food_CookedMeat x2 + vegetables x2 + Food_Bread x2,58,110,1.9,Cooking,40,20.0,Res_Cooking,JSON
-gem_elemental_fire,원소 화염 결정 제작,crystal_elemental_fire,1,Res_Ruby x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
-gem_elemental_ice,원소 냉기 결정 제작,crystal_elemental_ice,1,Res_Sapphire x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
-gem_elemental_lightning,원소 번개 결정 제작,crystal_elemental_lightning,1,Res_Topaz x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
-gem_elemental_poison,원소 독 결정 제작,crystal_elemental_poison,1,Res_Emerald x1 + Res_MagicStone x1,190,285,1.5,Gemcutting,0,10.0,,JSON
-gem_dark_fire,암흑 화염 결정 제작,crystal_dark_fire,1,Res_Ruby x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
-gem_dark_ice,암흑 냉기 결정 제작,crystal_dark_ice,1,Res_Sapphire x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
-gem_dark_lightning,암흑 번개 결정 제작,crystal_dark_lightning,1,Res_Topaz x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
-gem_dark_poison,암흑 독 결정 제작,crystal_dark_poison,1,Res_Emerald x1 + Res_Voidstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
-gem_holy_fire,신성 화염 결정 제작,crystal_holy_fire,1,Res_Ruby x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
-gem_holy_ice,신성 냉기 결정 제작,crystal_holy_ice,1,Res_Sapphire x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
-gem_holy_lightning,신성 번개 결정 제작,crystal_holy_lightning,1,Res_Topaz x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
-gem_holy_poison,신성 독 결정 제작,crystal_holy_poison,1,Res_Emerald x1 + Res_Etherstone x1,210,357,1.7,Gemcutting,20,12.0,,JSON
+gem_arcane,비전 결정 제작,crystal_arcane,1,Res_MagicStone x2,140,336,2.4,Gemcutting,0,10.0,,JSON
+gem_dark,공허 결정 제작,crystal_dark,1,Res_Voidstone x1 + Res_MagicStone x1,160,332,2.08,Gemcutting,0,10.0,,JSON
+gem_earth,지반 결정 제작,crystal_earth,1,Res_Emerald x1 + Res_MagicStone x1,190,311,1.64,Gemcutting,0,10.0,,JSON
+gem_fire,화염 결정 제작,crystal_fire,1,Res_Ruby x1 + Res_MagicStone x1,190,314,1.65,Gemcutting,0,10.0,,JSON
+gem_holy,성광 결정 제작,crystal_holy,1,Res_Etherstone x1 + Res_MagicStone x1,160,328,2.05,Gemcutting,0,10.0,,JSON
+gem_lightning,뇌전 결정 제작,crystal_lightning,1,Res_Topaz x1 + Res_MagicStone x1,190,322,1.69,Gemcutting,0,10.0,,JSON
+gem_water,해류 결정 제작,crystal_water,1,Res_Sapphire x1 + Res_MagicStone x1,190,301,1.58,Gemcutting,0,10.0,,JSON
 craft_bandage,붕대 만들기,med_bandage,2,cloth x2,28,44,1.57,Labor,0,5.0,,JSON
 craft_cloth,천 짜기,cloth,2,herbs x3,18,28,1.56,Labor,0,5.0,,JSON
 craft_leather,가죽 무두질,leather,1,res_rawhide x2,22,24,1.09,Labor,0,6.0,,JSON
@@ -55,11 +50,14 @@ craft_steel_spear,강철 창 제작,wpn_steel_spear,1,Res_Steel x2 + Res_Lumber 
 craft_crossbow,석궁 제작,Wpn_Crossbow,1,Res_Lumber x4 + Res_IronOre x2 + rope x1,114,200,1.75,WeaponCrafting,25,18.0,Res_WeaponSmithing,JSON
 craft_steel_axe,강철 도끼 제작,wpn_steel_axe,1,Res_Steel x3 + Res_Lumber x2,406,710,1.75,WeaponCrafting,25,16.0,Res_WeaponSmithing,JSON
 craft_silver_dagger,은 단검 제작,wpn_silver_dagger,1,Res_SilverIngot x2 + Res_Lumber x1,394,709,1.8,WeaponCrafting,30,12.0,Res_WeaponSmithing,JSON
-craft_flame_staff,화염 지팡이 제작,wpn_flame_staff,1,crystal_elemental_fire x1 + Res_Lumber x3,309,572,1.85,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
-craft_frost_staff,냉기 지팡이 제작,wpn_frost_staff,1,crystal_elemental_ice x1 + Res_Lumber x3,309,572,1.85,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_arcane_staff,비전 지팡이 제작,wpn_arcane_staff,1,crystal_arcane x1 + Res_Lumber x3,360,612,1.7,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_dark_staff,공허 지팡이 제작,wpn_dark_staff,1,crystal_dark x1 + Res_Lumber x3,356,604,1.7,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_earth_staff,지반 지팡이 제작,wpn_earth_staff,1,crystal_earth x1 + Res_Lumber x3,335,566,1.69,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_fire_staff,화염 지팡이 제작,wpn_fire_staff,1,crystal_fire x1 + Res_Lumber x3,338,572,1.69,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_holy_staff,성광 지팡이 제작,wpn_holy_staff,1,crystal_holy x1 + Res_Lumber x3,352,598,1.7,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
+craft_lightning_staff,뇌전 지팡이 제작,wpn_lightning_staff,1,crystal_lightning x1 + Res_Lumber x3,346,587,1.7,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
 craft_steel_sword,강철 대검 제작,Wpn_SteelSword,1,Res_Steel x4 + Res_Lumber x2,536,992,1.85,WeaponCrafting,35,20.0,Res_Steelmaking,JSON
-craft_venom_staff,맹독 지팡이 제작,wpn_venom_staff,1,crystal_elemental_poison x1 + Res_Lumber x2,301,557,1.85,WeaponCrafting,35,18.0,Res_ElementalCraft,JSON
-craft_storm_staff,뇌전 지팡이 제작,wpn_storm_staff,1,crystal_elemental_lightning x1 + Res_Lumber x3,309,587,1.9,WeaponCrafting,40,22.0,Res_ElementalCraft,JSON
+craft_water_staff,해류 지팡이 제작,wpn_water_staff,1,crystal_water x1 + Res_Lumber x3,325,548,1.69,WeaponCrafting,35,20.0,Res_ElementalCraft,JSON
 Rec_Lumber,판자,Res_Lumber,2,Res_Wood x3,9,16,1.78,목공,3,12.0,,SO
 Rec_IronSword,철검,Wpn_IronSword,1,Res_IronOre x4 + Res_Lumber x1,88,144,1.64,무기제작,14,90.0,,SO
 Rec_IronChest,철 갑옷,Arm_IronChest,1,Res_Steel x3 + Res_Lumber x1,398,669,1.68,방어구제작,18,120.0,,SO

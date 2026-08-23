@@ -710,12 +710,34 @@ public class InspectPanelUI : MonoBehaviour
             sb.AppendLine();
         }
 
-        // **직접 배정이라 아무도 안 붙으면 영영 안 캔다** — 큐 작업이 아니라서 켜고 끄는
-        // 문제가 아니고, 여기서 말해 주지 않으면 "왜 안 캐지"의 답이 화면에 없다.
+        // **"왜 안 캐지"의 답이 화면에 있어야 한다.** 이제 답이 자리에 따라 갈린다:
+        // 핵 영역 안이면 할 일 없는 폰이 저 혼자 붙지만(`ResourceNode.ClaimFreeFor`),
+        // **밖이면 여전히 손으로만 붙인다** — 안 그러면 폰이 맵 전체의 나무를 베러 떠난다.
+        // 안 갈라 적으면 영역 밖 광맥 앞에서 오지 않는 폰을 기다리게 된다.
         if (node.AssignedCount == 0)
-            sb.AppendLine("<color=#F90>배정된 폰이 없습니다. 폰을 고르고 우클릭해 시키세요.</color>");
+        {
+            var core = DungeonCore.Instance;
+            bool inTerritory = core == null || core.IsWithinAnyRangeWorld(node.transform.position);
+
+            sb.AppendLine(inTerritory
+                ? "<color=#F90>배정된 폰이 없습니다. 할 일이 없는 폰이 곧 붙습니다 " +
+                  $"— {(tree ? "벌목" : "채굴")}을 켜 둔 폰이 있어야 합니다(P).</color>"
+                : "<color=#F90>핵 영역 밖이라 저절로 붙지 않습니다. 폰을 고르고 우클릭해 시키세요.</color>");
+        }
         else
+        {
             sb.AppendLine($"진행  {BarColored(node.GaugeProgress, 1f, "#6C9", "#353")}");
+
+            // **손으로 붙인 것과 저 혼자 간 것을 가른다** — 안 가르면 *"내가 붙였던가"*를
+            // 알 수 없고, 그러면 자율 배정을 끄는 스위치가 어디에 걸리는지도 모른다
+            // (침대의 `AutoClaimed`가 같은 물음에 답한 자리).
+            int auto = 0;
+            foreach (var p in node.AssignedPawns)
+                if (p != null && p.Blackboard != null && p.Blackboard.NodeAutoClaimed) auto++;
+
+            if (auto > 0)
+                sb.AppendLine($"<color=#888>{auto}명은 저 혼자 붙었습니다 — 작업을 끄면 놓습니다.</color>");
+        }
 
         int stock = node.Inventory != null && d != null && d.DropItem != null
                   ? node.Inventory.GetTotalQuantity(d.DropItem) : 0;

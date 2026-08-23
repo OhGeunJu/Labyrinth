@@ -74,7 +74,8 @@ public class StatusEffectSystem : MonoBehaviour
         _active.RemoveAll(e => e.Type == StatusEffectType.Burning
                             || e.Type == StatusEffectType.HealReduction
                             || e.Type == StatusEffectType.Slowed
-                            || e.Type == StatusEffectType.Weakened);
+                            || e.Type == StatusEffectType.Weakened
+                            || e.Type == StatusEffectType.Wet);
         Debug.Log($"[Status] {gameObject.name} 디버프 제거");
     }
 
@@ -128,9 +129,30 @@ public class StatusEffectSystem : MonoBehaviour
                     AttackIntervalMult = Mathf.Min(AttackIntervalMult, 1f - e.Strength * 0.5f);
                     MoveSpeedMult      = Mathf.Max(MoveSpeedMult,      1f + e.Strength * 0.5f);
                     break;
+                // 젖으면 무거워 느려진다. 감속은 얕고(0.25×) **본체는 전기 증폭**이다
+                // (`BodyPartSystem`이 `IsWet`을 본다) — 물 하나로 눕히는 것이 아니라
+                // 다음 한 방을 아프게 하는 원소다.
+                case StatusEffectType.Wet:
+                    MoveSpeedMult = Mathf.Min(MoveSpeedMult, 1f - e.Strength * 0.25f);
+                    break;
             }
         }
     }
+
+    // **젖어 있나** — 전기 증폭(`BodyPartSystem`)이 묻는다.
+    public bool IsWet
+    {
+        get
+        {
+            foreach (var e in _active)
+                if (e.Type == StatusEffectType.Wet) return true;
+            return false;
+        }
+    }
+
+    // **불이 물을 말린다.** 안 그러면 젖은 채로 계속 타는 그림이 되고, 무엇보다 물을 끼얹어
+    // 두면 불·전기가 **둘 다** 잘 드는 공짜 조합이 된다(물의 값은 전기 하나여야 한다).
+    public void DryOff() => _active.RemoveAll(e => e.Type == StatusEffectType.Wet);
 
     void ApplyBurningDoT()
     {
@@ -142,8 +164,7 @@ public class StatusEffectSystem : MonoBehaviour
             _bodyParts.TakeDamage(new DamageInfo
             {
                 Amount       = e.Strength * Time.deltaTime,
-                Category     = DamageCategory.Elemental,
-                Element      = DamageElement.Fire,
+                Type         = DamageType.Fire,
                 EffectChance = 0f,   // DoT는 상태이상 연쇄 없음
                 IgnoreArmor  = true, // 매 틱 미세 피해가 방어구 고정 감소로 0이 되던 것 방지 (화상이 방어구로 무효화되던 버그)
             });

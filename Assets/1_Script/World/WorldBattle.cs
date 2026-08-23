@@ -38,7 +38,7 @@ public static class WorldBattle
         // 원거리형도 제 몫을 하게 공격은 **둘 중 큰 쪽**을 쓴다 — 궁수의 근접공격이 낮다고
         // 전력이 0에 가까워지면 활을 든 폰을 데려갈 이유가 없어진다.
         float atk = Mathf.Max(stat(StatName.MeleeAttack), stat(StatName.PrecisionShooting));
-        float def = (stat(StatName.MeleeDefense) + stat(StatName.RangedDefense)) * 0.5f;
+        float def = stat(StatName.Defense);   // 방어는 하나다(2026-08-23)
 
         return atk * 0.45f + def * 0.30f + stat(StatName.Toughness) * 0.15f
              + stat(StatName.Evasion) * 0.10f;

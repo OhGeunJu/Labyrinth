@@ -29,6 +29,20 @@ public class ResourceNode : MonoBehaviour, IHaulSource
     readonly List<UnitBrain> _assigned = new();
     public IReadOnlyList<UnitBrain> AssignedPawns => _assigned;
 
+    // **레지스트리** — 자율 배정(`ClaimFreeFor`)이 매 틱 `FindObjectsByType`을 돌 수는 없다.
+    // 휴면 노드는 물어볼 것도 없다: `BuildingDormancy`가 컴포넌트를 끄면 `OnDisable`이
+    // 목록에서 빼 준다(`Bed._all`과 같은 자리).
+    static readonly List<ResourceNode> _all = new();
+    public static IReadOnlyList<ResourceNode> All => _all;
+
+    void OnEnable()  => _all.Add(this);
+    void OnDisable() => _all.Remove(this);
+
+    // 이 노드를 캐려면 어떤 작업이 켜져 있어야 하나. **여기 하나가 답한다** —
+    // `Assign`·`ClaimFreeFor`·`WorkNode`가 각자 `IsTree`를 물으면 하나가 어긋난다.
+    public JobCategory NeededCategory =>
+        data != null && data.IsTree ? JobCategory.Logging : JobCategory.Mining;
+
     // 동시에 붙을 수 있는 인원. 0이면 제한 없음(`ResourceNodeData`에 그렇게 적은 경우).
     public int MaxWorkers => data != null ? Mathf.Max(0, data.MaxWorkers) : 0;
 
@@ -52,16 +66,60 @@ public class ResourceNode : MonoBehaviour, IHaulSource
         // **못 하는 일이면 배정 자체를 안 받는다**(성장 배경). 채굴·벌목은 큐를 안 타므로
         // `WorkSettings.IsEnabled`가 걸러 주지 않는다 — 여기서 물어야 *"무능력인데 바위는
         // 캔다"*가 안 된다.
-        var need = Data != null && Data.IsTree ? JobCategory.Logging : JobCategory.Mining;
-        if (brain.Work != null && brain.Work.IsBlocked(need)) return false;
+        if (brain.Work != null && brain.Work.IsBlocked(NeededCategory)) return false;
 
         var prev = brain.Blackboard.AssignedNode;
         if (prev != null && prev != this) prev.Unassign(brain);
 
         _assigned.Add(brain);
-        brain.Blackboard.AssignedNode = this;
+        brain.Blackboard.AssignedNode      = this;
+        brain.Blackboard.NodeAutoClaimed   = false;   // 손으로 붙인 것 — `ClaimFreeFor`만 참으로 되돌린다
         OnAssignmentChanged?.Invoke(this);
         return true;
+    }
+
+    // **할 일이 없는 폰이 빈 광맥을 잡는다**(`WorkNode`, 큐가 빈 다음).
+    //
+    // 큐 작업 여덟 중 **채굴·벌목만 큐를 안 탄다** — 건설·농사·운반은 폰이 알아서 집어가는데
+    // 광맥은 열셋을 하나씩 손으로 붙여야 했고, 집결할 때 `AbandonWork`가 **배정까지 거둬**
+    // 원정을 갔다 오면 다시 붙여 줘야 했다. 손으로 붙이는 길은 그대로 있고 **그쪽이 이긴다**
+    // (이미 배정된 폰은 여기까지 오지 않는다).
+    //
+    // **핵 영역 안만 본다.** 야생 나무·바위도 `ResourceNode`라, 안 묶으면 폰이 맵 전체의
+    // 나무를 베러 떠난다 — 그건 자동화가 아니라 통제를 잃는 것이다. 심은 광맥은 영역 안에만
+    // 설 수 있으므로(건설이 핵 union을 요구한다) 이 한 줄이 *"내 거점의 것만"*을 뜻한다.
+    // 밖의 것은 지금처럼 손으로 붙인다.
+    public static ResourceNode ClaimFreeFor(UnitBrain unit)
+    {
+        if (unit == null) return null;
+
+        // `WorkSettings`는 플레이어 세력 일꾼에만 붙는다 — 없으면 자율 배정도 없다.
+        var work = unit.Work;
+        if (work == null) return null;
+
+        var  core = DungeonCore.Instance;
+        var  from = unit.transform.position;
+        ResourceNode best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (var node in _all)
+        {
+            if (node == null || node.data == null || node.IsFull) continue;
+
+            var need = node.NeededCategory;
+            if (!work.IsEnabled(need) || work.IsBlocked(need)) continue;
+
+            var at = node.transform.position;
+            if (core != null && !core.IsWithinAnyRangeWorld(at)) continue;
+
+            float d = (at - from).sqrMagnitude;
+            if (d < bestDist) { bestDist = d; best = node; }
+        }
+
+        if (best == null || !best.Assign(unit)) return null;
+
+        unit.Blackboard.NodeAutoClaimed = true;   // 저 혼자 잡은 것 — 그 작업을 끄면 놓는다
+        return best;
     }
 
     public void Unassign(UnitBrain brain)

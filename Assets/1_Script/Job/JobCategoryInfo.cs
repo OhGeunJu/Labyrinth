@@ -50,6 +50,21 @@ public static class JobCategoryInfo
     public static bool IsQueued(JobCategory category)
         => Array.IndexOf(QueueOrder, category) >= 0;
 
+    // **폰마다 켜고 끌 수 있는 작업인가** — `IsQueued`와 **다른 물음이다.**
+    //
+    // 오래도록 둘이 같았다(큐를 타는 것만 껐다 켰다 할 수 있었다). 채굴·벌목에 자율 배정이
+    // 생기면서 갈렸다(`ResourceNode.ClaimFreeFor`): 그 둘은 **일감을 만들지 않으므로**
+    // 큐에는 못 들어가지만, *할 일이 없을 때 빈 광맥을 잡을까*는 사람이 정해야 한다.
+    //
+    // **안 가르면 스위치가 조용히 죽는다** — `WorkSettings.IsEnabled`가 `IsQueued`로 막고
+    // 있어서 채굴은 **늘 꺼진 것으로 답했고**, 그러면 자율 배정이 한 번도 안 돈다.
+    //
+    // **경비는 빠진다** — 순찰 구역에는 자율 배정이 없어 여전히 손으로만 붙인다.
+    public static bool IsToggleable(JobCategory category)
+        => IsQueued(category)
+        || category == JobCategory.Mining
+        || category == JobCategory.Logging;
+
     // 작업 점수용 가중치 — 앞에 있을수록 크다. 큐 밖 카테고리는 0(배정 대상 아님).
     public static int Weight(JobCategory category)
     {

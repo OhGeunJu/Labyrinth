@@ -44,7 +44,7 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 - `RandomBetween(min, max)` — 미니언 등급 추첨용
 - `GetColor()` — 9단계 티어별 색상 (회색~빨강 무지개)
 
-`StatName` enum — **53개** 스탯 식별자. `UnitStats.GetStat(StatName)` / `SetStat(StatName, float)` / `GrowStat(StatName, float)` / `GetGrade(StatName)`로 통합 접근.
+`StatName` enum — **46개** 스탯 식별자(2026-08-23: 마법 15 → 원소 7, `Shield` 신설). `UnitStats.GetStat(StatName)` / `SetStat(StatName, float)` / `GrowStat(StatName, float)` / `GetGrade(StatName)`로 통합 접근.
 
 ### UnitData 등급 정의
 
@@ -76,18 +76,16 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 | 카테고리 | 필드 |
 |---|---|
 | **속성** | Strength, Toughness, Dexterity, Cognition |
-| **전투 기술** | MeleeAttack, MeleeDefense, RangedDefense, PrecisionShooting |
+| **전투 기술** | MeleeAttack, MeleeDefense, RangedDefense, PrecisionShooting, **Shield** |
 | **근접 무기** | OneHandSword, OneHandAxe, OneHandMace, TwoHandSword, TwoHandAxe, TwoHandMace, Polearm |
 | **원거리 무기** | Bow, Crossbow, Javelin |
-| **마법 (카테고리)** | ElementalMagic, DarkMagic, HolyMagic |
-| **마법 원소** | ElementalFire/Ice/Lightning/Poison, DarkFire/Ice/Lightning/Poison, HolyFire/Ice/Lightning/Poison |
+| **마법 원소** | FireMagic, WaterMagic, EarthMagic, LightningMagic, ArcaneMagic, DarkMagic, HolyMagic |
 | **신체 기술** | MartialArts, Evasion, Athletics, Swimming |
-| **노동** | Labor, Mining, Growing, Cutting, Taming, Cooking, Medicine, Research, WeaponCrafting, ArmorCrafting, Alchemy, Smelting, Stonecutting, Woodworking, Gemcutting |
+| **노동** | Labor, Mining, Growing, Cutting, Taming, Cooking, Medicine, Research, Social, WeaponCrafting, ArmorCrafting, Alchemy, Smelting, Stonecutting, Woodworking, Gemcutting |
 
 `UnitStats` 헬퍼:
-- `GetSkillForWeapon(WeaponType)` — 무기 종류별 숙련도 반환
-- `GrowSkillForWeapon(WeaponType, amount)` — 해당 스킬 성장 (100 캡)
-- `GetMagicCategorySkill(WeaponType)` — 마법 카테고리 스킬 (정확도/빈도용)
+- **`StatFor(WeaponData)`** — 그 무기가 쓰는 스탯. **무기 종류가 아니라 무기를 받는다** — 지팡이는 전부 `WeaponType.Staff`라 `Type`만 보면 불과 암흑이 같아진다(`MagicStatFor(DamageType)`가 짝을 짓는다). 방패도 여기서 `StatName.Shield`로 답한다(전에는 `_ => MartialArts` 폴백에 떨어져 **자라지 않았다**)
+- `GetSkillFor(WeaponData)` / `GrowSkillFor(WeaponData, amount)` — 위를 통해 읽고 키운다
 - `GetAttackCombatSkill(bool unarmed)` — 비무장이면 MartialArts, 아니면 MeleeAttack
 - `GetDefenseCombatSkill(bool unarmed)` — 비무장이면 MartialArts, 아니면 MeleeDefense
 
@@ -106,9 +104,9 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 - `GetArmorQualityMult(ArmorSlot)` — 갑옷 슬롯별 등급 배율 노출
 - 장착/해제 시 `Inventory.TryAdd(item, amount, quality)`로 등급 보존
 
-`WeaponData` 주요 필드: `WeaponType`, `BaseDamage`, `BaseAttackInterval`, `AttackRange`, `IsLargeWeapon`, `IsBladed`, `IsRanged`, `BlockBonus`, `RangedBlockBonus`, `DamageCategory`, `PhysicalType`, `DamageElement`, `EffectChance`
+`WeaponData` 주요 필드: `WeaponType`, `BaseDamage`, `BaseAttackInterval`, `AttackRange`, `IsLargeWeapon`, `IsBladed`, `IsRanged`, `BlockBonus`, `RangedBlockBonus`, **`DamageType`**, `EffectChance`
 
-`WeaponType` enum: Unarmed, Shield, OneHand/TwoHand 근접, Bow/Crossbow/Javelin, ElementalFire/Ice/Lightning/Poison, DarkFire/Ice/Lightning/Poison, HolyFire/Ice/Lightning/Poison
+`WeaponType` enum: Unarmed, Shield, OneHand/TwoHand 근접, Polearm, Bow/Crossbow/Javelin, **Staff**(마법 열둘을 하나로 — 무엇을 쏘느냐는 `DamageType`이 든다)
 
 ## Movement (`PawnMover.cs`)
 

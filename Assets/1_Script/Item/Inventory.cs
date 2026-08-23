@@ -103,7 +103,10 @@ public class Inventory : MonoBehaviour
             remaining -= batch;
         }
 
-        if (remaining < amount) OnChanged?.Invoke();
+        if (remaining < amount)
+        {
+            OnChanged?.Invoke();
+        }
         return amount - remaining;
     }
 

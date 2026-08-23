@@ -347,6 +347,12 @@ public partial class UnitBrain : MonoBehaviour
         Equipment = GetComponent<Equipment>() ?? gameObject.AddComponent<Equipment>();
         gameObject.AddComponent<StatusEffectSystem>();
 
+        // **능동은 장비가 주므로 그릇은 누구에게나 붙인다.** 세력으로 가르면(플레이어만)
+        // 적에게 능동을 쥐여 주려는 순간 그 분기를 도로 찾아야 하고, 장비를 안 찬 폰에게는
+        // 어차피 목록이 비어 아무 일도 안 한다(`WorkSettings`가 일꾼에만 붙는 것과 다른 축 —
+        // 저쪽은 저작 대상이고 이건 장비에서 파생된다).
+        gameObject.AddComponent<AbilityUser>();
+
         Stats = UnitStats.FromData(unitData);
         // 성장이 잠기는 건 **내가 소환한** 하수인이다. 같은 종족 에셋을 쓰는 야생 개체까지
         // 잠그면 "고블린은 성장하지 않는다"가 되는데, 그건 종족의 성질이 아니다.

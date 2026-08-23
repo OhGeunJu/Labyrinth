@@ -114,8 +114,11 @@ public class ResearchManager : MonoBehaviour
     {
         if (research == null) return false;
         if (_completed.Contains(research)) return false;           // 이미 완료
-        if (research.Prerequisite == null) return true;            // 선행 없음
-        return _completed.Contains(research.Prerequisite);
+        // **하나라도 안 끝났으면 잠긴다.** 비어 있으면 처음부터 열린 연구다.
+        if (research.Prerequisites == null) return true;
+        foreach (var pre in research.Prerequisites)
+            if (pre != null && !_completed.Contains(pre)) return false;
+        return true;
     }
 
     public bool IsCompleted(ResearchData research) => _completed.Contains(research);

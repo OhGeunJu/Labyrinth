@@ -15,6 +15,25 @@ public class CombatHandler : MonoBehaviour
     [Tooltip("공격자 우위 계수 — 클수록 파리티(공격=방어) 기본 방어/회피율이 낮아짐 (1이면 50%)")]
     [SerializeField] float attackerBias = 4f;
 
+    // **막기와 회피가 같은 식을 쓰되 몫이 다르다**(2026-08-23).
+    //
+    // 전에는 둘이 같은 확률(파리티 20%)이었는데, **막기를 먼저 굴리므로** 실제 기여는
+    // 막기 20% · 회피 16%가 되어 **막기 쪽으로 기운다.** 막기를 눌러 주고 회피를 올리면
+    // *안 맞는 총량은 그대로 두면서* 둘이 비슷해진다:
+    //
+    //   가중 없음 : 막기 20.0% · 회피 20.0%(기여 16.0%) · **총 36.0%**
+    //   0.75/1.25 : 막기 15.0% · 회피 25.0%(기여 21.2%) · **총 36.3%**
+    //
+    // **총량이 그대로인 것이 요점이다** — 맞는 빈도를 바꾸려던 게 아니라 *무엇으로 안 맞는가*의
+    // 비율을 바꾸려던 것이다.
+    //
+    // **새 필드라 프리팹이 코드 기본값을 그대로 받는다** — 이미 있는 필드였다면 프리팹에 박힌
+    // 값이 이겨서 아무 일도 안 일어났을 것이다(`EventManager.checkInterval`이 그랬다).
+    [Tooltip("막기 확률에 곱한다. 1 미만이면 막기가 덜 뜬다")]
+    [SerializeField] float blockWeight = 0.75f;
+    [Tooltip("회피 확률에 곱한다. 1 초과면 회피가 더 뜬다")]
+    [SerializeField] float dodgeWeight = 1.25f;
+
     float _attackTimer;
     UnitStats _stats;
     UnitBrain _brain;
@@ -95,12 +114,33 @@ public class CombatHandler : MonoBehaviour
         unit._stats.GrowStat(stat, xp);
     }
 
-    void GrowWeaponXp(CombatHandler unit, WeaponType type, float mySkill, float oppSkill, float eventMult = 1f)
+    // **무기 자체를 받는다** — 지팡이는 종류가 하나라 `WeaponType`으로는 불과 암흑이 갈리지
+    // 않는다(`UnitStats.StatFor`).
+    void GrowWeaponXp(CombatHandler unit, WeaponData weapon, float mySkill, float oppSkill, float eventMult = 1f)
     {
         if (unit == null) return;
         int enemyCount = CombatXp.CountNearbyEnemies(unit.gameObject);
         float xp = growthRate * eventMult * CombatXp.Calculate(mySkill, oppSkill, enemyCount);
-        unit._stats.GrowSkillForWeapon(type, xp);
+        unit._stats.GrowSkillFor(weapon, xp);
+    }
+
+    // **방패 스탯이 방패의 몫을 키운다**(2026-08-23).
+    //
+    // `Defense`(막나)와 **다른 축이다** — 이건 *방패가 얼마나 일하나*라 `BlockBonus`에
+    // 곱해진다. 무기가 `MeleeAttack`(맞히나) × 무기 스탯(얼마나 아픈가)으로 갈린 것과 대칭.
+    //
+    // **방패를 안 들면 저절로 0이다**(0 × 무엇 = 0) — *"방패를 든 폰만 자란다"*가 규칙을
+    // 따로 만들지 않아도 나온다.
+    float ShieldBonus(float baseBonus)
+        => baseBonus <= 0f ? 0f : baseBonus * (1f + _stats.Shield / 100f);
+
+    bool HasShield => Shield != null && (Shield.BlockBonus > 0f || Shield.RangedBlockBonus > 0f);
+
+    // 방패를 들고 있을 때만 얹는다 — 안 그러면 맨몸으로 맞은 폰의 방패 솜씨가 는다.
+    void GrowShieldXp(CombatHandler unit, float oppSkill, float eventMult)
+    {
+        if (unit == null || !unit.HasShield) return;
+        GrowXp(unit, StatName.Shield, unit._stats.Shield, oppSkill, eventMult);
     }
 
     // ── 근접 공격 ────────────────────────────────────────────────────
@@ -116,7 +156,7 @@ public class CombatHandler : MonoBehaviour
 
         WeaponType weaponType = GetWeaponType();
         bool unarmed          = weaponType == WeaponType.Unarmed;
-        float weaponSkill     = _stats.GetSkillForWeapon(weaponType);
+        float weaponSkill     = _stats.GetSkillFor(Weapon);
         float attackSkill     = _stats.GetAttackCombatSkill(unarmed);
 
         // Weakened 디버프: 공격 적중률 감소
@@ -124,14 +164,15 @@ public class CombatHandler : MonoBehaviour
 
         bool defUnarmed     = targetCombat != null && targetCombat.GetWeaponType() == WeaponType.Unarmed;
         float defSkill      = targetCombat != null ? targetCombat._stats.GetDefenseCombatSkill(defUnarmed) : 0f;
-        StatName defStatName = defUnarmed ? StatName.MartialArts : StatName.MeleeDefense;
+        StatName defStatName = defUnarmed ? StatName.MartialArts : StatName.Defense;
 
         if (targetCombat != null && TryBlock(targetCombat, attackSkill))
         {
             // 방어 성공: 적은 XP (baseline 1x)
             GrowXp(targetCombat, defStatName, defSkill, attackSkill, 1f);
+            GrowShieldXp(targetCombat, attackSkill, 1f);
             // 공격자: 블록 당함 = 0.5x
-            GrowWeaponXp(this, weaponType, weaponSkill, defSkill, 0.5f);
+            GrowWeaponXp(this, Weapon, weaponSkill, defSkill, 0.5f);
             if (!unarmed) GrowXp(this, StatName.MeleeAttack, attackSkill, defSkill, 0.25f);
             Debug.Log($"[Combat] {target.name} 방어 성공");
             return;
@@ -155,17 +196,20 @@ public class CombatHandler : MonoBehaviour
 
         // 신성 무기: 공격 성공 시 힐/버프 발동
         var weapon = Weapon;
-        if (weapon != null && weapon.EffectiveDamageCategory == DamageCategory.Holy
+        if (weapon != null && weapon.DamageType == DamageType.Holy
             && weapon.EffectChance > 0f && UnityEngine.Random.value < weapon.EffectChance)
             ApplyHolyEffect(weapon, target);
 
         // 피격 시: 방어자는 방어 실패 = 8x XP, 공격자는 무기/MeleeAttack 정상
         if (targetCombat != null)
         {
+            // **맞았을 때가 더 크다** — 방어 스탯이 이미 그 모양이다(1.0x ↔ 8.0x).
+            // *두들겨 맞으면서 배운다*는 켄시의 성장이 방패에도 그대로 걸린다.
             GrowXp(targetCombat, defStatName, defSkill, attackSkill, 8f);
             GrowXp(targetCombat, StatName.Evasion, targetCombat._stats.Evasion, attackSkill, 2f);
+            GrowShieldXp(targetCombat, attackSkill, 8f);
         }
-        GrowWeaponXp(this, weaponType, weaponSkill, defSkill, 1f);
+        GrowWeaponXp(this, Weapon, weaponSkill, defSkill, 1f);
         if (!unarmed) GrowXp(this, StatName.MeleeAttack, attackSkill, defSkill, 0.5f);
 
         OnDamageDealt?.Invoke(this, damage);
@@ -220,20 +264,26 @@ public class CombatHandler : MonoBehaviour
         if (IsDown(defender)) return false;
         bool defUnarmed    = defender.GetWeaponType() == WeaponType.Unarmed;
         float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
-        float shieldBonus  = defender.Shield?.BlockBonus ?? 0f;
+        float shieldBonus  = defender.ShieldBonus(defender.Shield?.BlockBonus ?? 0f);
         float effective    = defenseSkill + shieldBonus;
-        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
+        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias)
+                           * defender.blockWeight;
         if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
         return UnityEngine.Random.value < blockChance;
     }
 
+    // **막는 솜씨는 하나다** — 근접이든 원거리든 `Defense`(맨손이면 무술)를 굴린다.
+    // 갈리는 것은 **방패**뿐이다: `BlockBonus` ↔ `RangedBlockBonus`. 그래서 *"화살은 잘 막는데
+    // 칼은 못 막는 방패"*는 그대로 표현되면서, 폰에게는 *"막는 솜씨"*가 하나로 남는다.
     bool TryBlockRanged(CombatHandler defender, float attackerAttackSkill)
     {
         if (IsDown(defender)) return false;
-        float defenseSkill = defender._stats.RangedDefense;
-        float shieldBonus  = defender.Shield?.RangedBlockBonus ?? 0f;
+        bool defUnarmed    = defender.GetWeaponType() == WeaponType.Unarmed;
+        float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
+        float shieldBonus  = defender.ShieldBonus(defender.Shield?.RangedBlockBonus ?? 0f);
         float effective    = defenseSkill + shieldBonus;
-        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
+        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias)
+                           * defender.blockWeight;
         if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
         return UnityEngine.Random.value < blockChance;
     }
@@ -242,7 +292,8 @@ public class CombatHandler : MonoBehaviour
     {
         if (IsDown(defender)) return false;
         float evasion     = defender._stats.Evasion;
-        float dodgeChance = OpposedChance(evasion, attackerAttackSkill, defender.defenseExponent, defender.attackerBias);
+        float dodgeChance = OpposedChance(evasion, attackerAttackSkill, defender.defenseExponent, defender.attackerBias)
+                          * defender.dodgeWeight;
         if (defender._sfx != null) dodgeChance *= defender._sfx.DefenseChanceMod;
         return UnityEngine.Random.value < dodgeChance;
     }
@@ -300,17 +351,31 @@ public class CombatHandler : MonoBehaviour
         var targetCombat = target.GetComponent<CombatHandler>();
 
         WeaponType weaponType  = GetWeaponType();
-        float weaponSkill      = _stats.GetSkillForWeapon(weaponType);
+        float weaponSkill      = _stats.GetSkillFor(Weapon);
         float attackSkill      = _stats.PrecisionShooting;
         if (_sfx != null) attackSkill *= _sfx.AttackChanceMod;
 
-        float defRangedSkill = targetCombat != null ? targetCombat._stats.RangedDefense : 0f;
+        bool defUnarmed      = targetCombat != null && targetCombat.GetWeaponType() == WeaponType.Unarmed;
+        float defRangedSkill = targetCombat != null ? targetCombat._stats.GetDefenseCombatSkill(defUnarmed) : 0f;
+        StatName defStatName = defUnarmed ? StatName.MartialArts : StatName.Defense;
 
         if (targetCombat != null && TryBlockRanged(targetCombat, attackSkill))
         {
-            GrowXp(targetCombat, StatName.RangedDefense, defRangedSkill, attackSkill, 1f);
-            GrowWeaponXp(this, weaponType, weaponSkill, defRangedSkill, 0.5f);
+            GrowXp(targetCombat, defStatName, defRangedSkill, attackSkill, 1f);
+            GrowShieldXp(targetCombat, attackSkill, 1f);
+            GrowWeaponXp(this, Weapon, weaponSkill, defRangedSkill, 0.5f);
             Debug.Log($"[Combat] {target.name} 원거리 방어 성공");
+            return;
+        }
+
+        // **날아오는 것도 피한다**(2026-08-23). 전에는 원거리에 회피 굴림이 아예 없어서
+        // **근접은 막기 → 회피 두 번, 원거리는 막기 한 번**이었다 — 같은 폰이 칼보다 화살에
+        // 훨씬 잘 맞았고, `Evasion`의 설명(*"몸으로 피한다"*)과도 어긋났다. 화살을 몸으로
+        // 피하는 것이 칼을 피하는 것보다 어려울 이유가 없다.
+        if (targetCombat != null && TryDodge(targetCombat, attackSkill))
+        {
+            GrowXp(targetCombat, StatName.Evasion, targetCombat._stats.Evasion, attackSkill, 1f);
+            Debug.Log($"[Combat] {target.name} 원거리 회피 성공");
             return;
         }
 
@@ -326,8 +391,11 @@ public class CombatHandler : MonoBehaviour
         else if (brain != null) brain.TakeDamage(dmgInfo);
 
         if (targetCombat != null)
-            GrowXp(targetCombat, StatName.RangedDefense, defRangedSkill, attackSkill, 8f);
-        GrowWeaponXp(this, weaponType, weaponSkill, defRangedSkill, 1f);
+        {
+            GrowXp(targetCombat, defStatName, defRangedSkill, attackSkill, 8f);
+            GrowShieldXp(targetCombat, attackSkill, 8f);
+        }
+        GrowWeaponXp(this, Weapon, weaponSkill, defRangedSkill, 1f);
         OnDamageDealt?.Invoke(this, damage);
         Debug.Log($"[Combat] {gameObject.name} 원거리 → {target.name} {damage:F1}{(friendly ? " (동료!)" : "")}");
     }
@@ -400,48 +468,26 @@ public class CombatHandler : MonoBehaviour
     }
 
     // ── 신성 효과 ────────────────────────────────────────────────────
+    //
+    // **넷이던 것을 하나로 접었다**(2026-08-23). 계열 × 원소 시절에는 신성 불/얼음/전기/독이
+    // 저마다 다른 축복을 줬는데, 그 넷을 가르는 축이 **원소였고 그 축이 없어졌다.**
+    // 지금 신성이 하는 일은 둘이다: **언데드에게 두 배**(`BodyPartSystem`) + 휘두른 사람을
+    // 추스르는 것. 여기는 그 둘째다.
     void ApplyHolyEffect(WeaponData weapon, GameObject target)
     {
         var mySfx  = GetComponent<StatusEffectSystem>();
         var myBody = GetComponent<BodyPartSystem>();
 
-        switch (weapon.EffectiveDamageElement)
-        {
-            case DamageElement.Fire:
-                // 큰 단일 회복 (혈액 + 신체 부위) + 디버프 제거
-                myBody?.Heal(bloodAmount: 30f, partsAmount: 10f);
-                mySfx?.ClearDebuffs();
-                Debug.Log($"[Holy] {gameObject.name} 신성 불: 회복 + 디버프 제거");
-                break;
-
-            case DamageElement.Ice:
-                // 보호막 (별도 체력) + 피해 감소 + 상태이상 저항
-                mySfx?.AddShield(40f);
-                mySfx?.ApplyEffect(StatusEffectType.Shielded, 8f, 0.3f);
-                Debug.Log($"[Holy] {gameObject.name} 신성 얼음: 보호막 + 피해감소");
-                break;
-
-            case DamageElement.Lightning:
-                // 공격속도/이동속도 증가 + 추가 타격
-                mySfx?.ApplyEffect(StatusEffectType.Hasted, 6f, 0.5f);
-                ExtraHit(target);
-                Debug.Log($"[Holy] {gameObject.name} 신성 전기: 가속 + 추가 타격");
-                break;
-
-            case DamageElement.Poison:
-                // 광역 회복 (혈액 + 신체) + 부패 게이지 제거
-                HolyAoEHeal(bloodAmount: 10f, partsAmount: 3f);
-                mySfx?.ClearCorruption();
-                Debug.Log($"[Holy] {gameObject.name} 신성 독: 광역 회복 + 부패 제거");
-                break;
-        }
+        myBody?.Heal(bloodAmount: 30f, partsAmount: 10f);
+        mySfx?.ClearDebuffs();
+        Debug.Log($"[Holy] {gameObject.name} 신성: 회복 + 디버프 제거");
     }
 
     void ExtraHit(GameObject target)
     {
         if (target == null) return;
         var weaponType = GetWeaponType();
-        float extraDamage = CalcMeleeDamage(weaponType, _stats.GetSkillForWeapon(weaponType), false) * 0.5f;
+        float extraDamage = CalcMeleeDamage(weaponType, _stats.GetSkillFor(Weapon), false) * 0.5f;
         var dmg = BuildDamageInfo(extraDamage);
         var body = target.GetComponent<BodyPartSystem>();
         if (body != null) body.TakeDamage(dmg);
@@ -468,14 +514,12 @@ public class CombatHandler : MonoBehaviour
     {
         WeaponData weapon = Weapon;
         if (weapon == null)
-            return DamageInfo.MakePhysical(amount, PhysicalType.Blunt, gameObject);
+            return DamageInfo.MakePhysical(amount, DamageType.Blunt, gameObject);
 
         return new DamageInfo
         {
             Amount       = amount,
-            Category     = weapon.EffectiveDamageCategory,
-            PhysicalType = weapon.PhysicalType,
-            Element      = weapon.EffectiveDamageElement,
+            Type         = weapon.DamageType,
             EffectChance = weapon.EffectChance,
             Source       = gameObject,
         };

@@ -31,6 +31,11 @@ MonoBehaviour:
   AttackRange: 1.7
   DetectRange: 11
   NightVision: 0.5
+  Resistances:
+  - Type: 0
+    Amount: 0.2
+  - Type: 3
+    Amount: -0.3
   DefaultMinGrade: 1
   DefaultMaxGrade: 4
   StatGrades:
@@ -40,13 +45,13 @@ MonoBehaviour:
   - Stat: 1
     Min: 10
     Max: 13
-  - Stat: 33
+  - Stat: 24
     Min: 9
     Max: 11
-  - Stat: 35
+  - Stat: 26
     Min: 6
     Max: 7
-  - Stat: 34
+  - Stat: 25
     Min: 2
     Max: 6
   - Stat: 2

@@ -19,23 +19,13 @@ public enum WeaponType
     Crossbow,
     Javelin,
 
-    // 원소 마법
-    ElementalFire,
-    ElementalIce,
-    ElementalLightning,
-    ElementalPoison,
-
-    // 암흑 마법
-    DarkFire,
-    DarkIce,
-    DarkLightning,
-    DarkPoison,
-
-    // 신성 마법
-    HolyFire,
-    HolyIce,
-    HolyLightning,
-    HolyPoison,
+    // **마법 — 지팡이 하나다**(2026-08-23).
+    //
+    // 전에는 계열 셋 × 원소 넷 = 열두 종이었다. 무엇을 쏘느냐는 이제 `WeaponData.DamageType`이
+    // 들므로, 종류로도 가르면 **원소를 하나 더할 때마다 `WeaponType`이 같이 늘어난다**
+    // (게다가 툴팁은 열둘을 전부 "지팡이"라고 부르고 있었다 — 갈라 둔 것이 화면에 나타난
+    // 적이 없다).
+    Staff,
 }
 
 // 화면에 보이는 분류 이름. 툴팁이 등급 옆에 붙인다.
@@ -57,6 +47,7 @@ public static class WeaponTypeExt
         WeaponType.Bow          => "활",
         WeaponType.Crossbow     => "쇠뇌",
         WeaponType.Javelin      => "투창",
-        _                       => "지팡이",
+        WeaponType.Staff        => "지팡이",
+        _                       => t.ToString(),
     };
 }

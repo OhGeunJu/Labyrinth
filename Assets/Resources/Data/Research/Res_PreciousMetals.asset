@@ -21,7 +21,8 @@ MonoBehaviour:
     Amount: 10
   ResearchTime: 700
   SkillGrowthAmount: 1
-  Prerequisite: {fileID: 11400000, guid: d13567a11a2630e4988e7455d8da7a15, type: 2}
+  Prerequisites:
+  - {fileID: 11400000, guid: d13567a11a2630e4988e7455d8da7a15, type: 2}
   UnlockedRecipes:
   - {fileID: 11400000, guid: 36569179c5a785e46979b88d839f66d6, type: 2}
   - {fileID: 11400000, guid: 68fff78290068cd49823ba791599ddea, type: 2}

@@ -62,23 +62,10 @@ public class DungeonCore : MonoBehaviour
 
     [SerializeField] Color selectedColor = new Color(1f, 0.9f, 0.2f, 0.8f);
 
-    Material _mat;
+    RangeCircle _circle;
 
-    void Awake()
-    {
-        Instance = this;
-        _mat = new Material(Shader.Find("Hidden/Internal-Colored"))
-        {
-            hideFlags = HideFlags.HideAndDontSave
-        };
-        _mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-        _mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-        _mat.SetInt("_Cull",    (int)CullMode.Off);
-        _mat.SetInt("_ZWrite", 0);
-    }
+    void Awake() => Instance = this;
 
-    void OnEnable()  => RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
-    void OnDisable() => RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
 
     // ── 갇힌 하수인 종족을 지배한다 ──────────────────────────────────────────
     //
@@ -92,6 +79,9 @@ public class DungeonCore : MonoBehaviour
 
     void Update()
     {
+        // 원은 메시라 **매 프레임 다시 짓지 않는다** — 자리·반경·색이 그대로면 그냥 돌아온다.
+        DrawRange();
+
         if (Time.time < _nextDominate) return;
         float dt = Time.time - _nextDominate + DominateInterval;
         _nextDominate = Time.time + DominateInterval;
@@ -111,7 +101,7 @@ public class DungeonCore : MonoBehaviour
 
     void OnDestroy()
     {
-        Destroy(_mat);
+        _circle?.Dispose();
         Release();   // 막아 두었던 칸을 돌려준다 — 안 풀면 핵이 사라진 자리가 영영 막힌다
     }
 
@@ -370,39 +360,15 @@ public class DungeonCore : MonoBehaviour
         return dx * dx + dz * dz <= data.BaseRadius * data.BaseRadius;
     }
 
-    void OnEndCameraRendering(ScriptableRenderContext ctx, Camera cam)
-    {
-        if (cam != Camera.main) return;
-        DrawRange();
-    }
-
-    void OnRenderObject()
-    {
-        if (GraphicsSettings.currentRenderPipeline != null) return;
-        DrawRange();
-    }
-
+    // **원은 메시로 그린다**(`RangeCircle`) — 즉시 모드(`GL`)로 카메라 렌더 끝에 그리면
+    // **오버레이 UI 위에 얹힌다**(스탯 창을 열어 두면 그 위로 원이 지나갔다).
     void DrawRange()
     {
-        if (data == null) return;
+        if (data == null) { _circle?.Hide(); return; }
 
-        float radius = data.BaseRadius;
-        Vector3 center = new Vector3(transform.position.x, 0.02f, transform.position.z);
-
-        _mat.SetPass(0);
-        GL.PushMatrix();
-        GL.Begin(GL.LINE_STRIP);
-        GL.Color(IsSelected ? selectedColor : rangeColor);
-
-        for (int i = 0; i <= rangeSegments; i++)
-        {
-            float angle = i * Mathf.PI * 2f / rangeSegments;
-            GL.Vertex3(center.x + Mathf.Cos(angle) * radius,
-                       center.y,
-                       center.z + Mathf.Sin(angle) * radius);
-        }
-
-        GL.End();
-        GL.PopMatrix();
+        _circle ??= new RangeCircle(transform, "RangeCircle");
+        _circle.Draw(new Vector3(transform.position.x, RangeCircle.Lift, transform.position.z),
+                     data.BaseRadius, IsSelected ? selectedColor : rangeColor);
     }
+
 }

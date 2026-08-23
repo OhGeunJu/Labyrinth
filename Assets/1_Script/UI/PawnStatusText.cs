@@ -14,6 +14,10 @@ public static class PawnStatusText
         if (bb == null) return "-";
 
         if (bb.IsKnockedOut) return "기절";
+
+        // **도발당한 것은 전투보다 먼저 적는다** — 그냥 "전투"라고만 뜨면 저 놈이 왜 딴 데를
+        // 놔두고 탱커에게만 달려드는지가 화면 어디에도 안 남는다.
+        if (Taunt.HolderOf(bb) != null) return "도발당함";
         if (bb.IsDrafted)    return "소집";
         if (bb.Target != null) return "전투";
 

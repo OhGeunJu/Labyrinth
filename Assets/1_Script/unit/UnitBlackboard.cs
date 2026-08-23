@@ -50,6 +50,16 @@ public class UnitBlackboard
     public JobBase CurrentJob;
     public ResourceNode AssignedNode;
 
+    // **누가 붙였느냐가 배정의 뜻을 가른다**(`Bed.AutoClaimed`와 같은 축).
+    //
+    // 손으로 붙였으면 *"너는 저기를 캐라"*라는 **명령**이라 작업 설정(P패널 on/off)을 안 본다
+    // — `[치료한다]`·`[먹인다]`가 설정을 안 보는 것과 같은 규칙. 폰이 저 혼자 잡았으면
+    // 그건 *"할 일이 없어서 간 것"*이라, 그 작업을 끄면 놓고 나와야 한다.
+    //
+    // **침대와 달리 자리가 아니라 폰이 든다** — 노드 하나에 `MaxWorkers`만큼 붙으므로
+    // 노드에 두면 누구 것인지를 또 갈라야 하는데, 폰은 배정을 하나만 갖는다.
+    public bool NodeAutoClaimed;
+
     // 이번 틱에 RestNode가 실행됐는가 — 상위 분기(전투/소집 등)가 휴식을 밀어냈을 때
     // UnitBrain이 누워 있는 폰을 일으켜 세우는 데 쓴다. 매 틱 UnitBrain이 리셋한다.
     public bool RestTicked;
@@ -157,6 +167,15 @@ public class UnitBlackboard
     // 자동 경로(탐지·반격)에서 빼는 것은 KO가 사형선고가 되지 않게 하려는 것이고(켄시식),
     // 그 규칙은 그대로 둔다 — 대신 **사람이 우클릭으로 지목한 하나만** 예외로 통과시킨다.
     // 자동으로는 절대 붙지 않으므로 "내버려 두면 일어난다"가 그대로 성립한다.
+    // ── 도발 ──────────────────────────────────────────────────────────────
+    // 누가 나를 붙들어 놨나, 언제까지. **묻는 곳은 `Taunt.HolderOf` 하나** — 만료·죽음·기절을
+    // 거기서 한꺼번에 보므로 읽는 쪽마다 시간을 비교하지 않는다.
+    //
+    // **`Target`과 따로 든다.** 표적에 바로 꽂기만 하면 다음 틱에 `DetectNode`가 *"더 가까운
+    // 적이 있다"*며 갈아타 **도발이 한 틱만 산다.**
+    public GameObject TauntedBy;
+    public float      TauntedUntil;
+
     public GameObject FinishTarget;
 
     // 순찰

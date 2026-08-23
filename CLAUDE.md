@@ -4,9 +4,17 @@ Guidance for Claude Code in this repository.
 
 **상세 문서:** `docs/units.md` | `docs/combat.md` | `docs/jobs.md` | `docs/world.md` | `docs/ui.md` | `docs/data.md`
 
+**설계(구현 예정):** `docs/design_progression.md` | `docs/design_combat_rework.md` | `docs/design_world_field.md` | `docs/design_core_creep.md` | `docs/design_traits.md`
+
 ## Project Overview
 
-**DungeonColony** — RimWorld + Kenshi + Dungeon Core 시뮬레이터. 두 유닛 타입: **방랑자(Wanderer)** (직접 제어), **하수인(Minion)** (자동 AI, 던전 코어 소환).
+**DungeonColony** — RimWorld + Kenshi + Palworld + Mount&Blade + Dungeon Core. 두 유닛 타입: **방랑자(Wanderer)** (직접 제어), **하수인(Minion)** (자동 AI, 던전 코어 소환).
+
+**루프는 탐험이 본류다**(2026-08-23 방향 확정, `docs/design_progression.md`) — 기지는 **잠깐 들러
+점검하는 곳**이고, 탐험해 가져온 자원으로 기지에 광맥을 심고, 그것으로 만든 장비·하수인으로 더
+험한 지역에 간다. **2026-08-23에 그 축이 전부 들어갔다** — 자율 배정 · 지역 티어 · 광맥 이식 ·
+원소 1축 · 방패 스탯. **남은 것은 도발과 능동 능력(`AbilityData`)뿐이고 그건 아직 설계다**
+(`docs/design_combat_rework.md` 5·6절).
 
 ## Development Environment
 
@@ -24,7 +32,7 @@ Guidance for Claude Code in this repository.
 ├── Campfire.cs               ← 화톳불 (저녁에 켜지고 아침에 꺼진다)
 ├── DayNightLighting.cs       ← 하루를 빛에 얹는다 (방향광 한 바퀴)
 ├── LightSource.cs            ← 불빛 레지스트리 (`Vision`이 훑는다)
-├── Combat/                   ← DamageInfo, DamageCategory, DamageElement, PhysicalType
+├── Combat/                   ← DamageInfo, DamageType(물리3+원소7), DamageResistance
 ├── Data/                     ← DataManager (static), DataSchemas
 ├── GameTimeManager.cs        ← 게임 내 시간 (낮/밤, 일수)
 ├── Event/                    ← GameEventType, GameEventData, EventManager, Merchant, MerchantData
@@ -106,7 +114,7 @@ Guidance for Claude Code in this repository.
 - `aiProfile`을 비우면 타입별 기본값(일반·경비=교전+배회 / NPC 주민=도주+배회 / 상점상인=도주+제자리). 트리 조립은 `AddCombatBranch`/`AddWanderBranch` 공용. 상세 `docs/units.md`.
 
 - `MoveController` — 방랑자만 우클릭 명령 (`!(brain.Data is MinionData)`)
-- `MinionData.AllowedJobs` — 하수인 작업 설정의 **초기값**(이후 조정은 `WorkSettings`로 개체별). **큐 작업만 뜻이 있다** — 채굴·벌목·경비는 직접 배정이라 여기 적어도 켜고 꺼지지 않는다. 큐 작업이 하나도 없는 목록은 빈 목록과 같게(전부 허용) 보고 경고한다
+- `MinionData.AllowedJobs` — 하수인 작업 설정의 **초기값**(이후 조정은 `WorkSettings`로 개체별). **큐 작업 + 채굴·벌목에 뜻이 있다**(`IsToggleable`) — `[채굴, 벌목]`은 이제 *"캐고 벨 뿐 나르지 않는다"*라는 저작이다(끌 수 없던 시절엔 그 목록이 큐를 통째로 꺼 버리는 사고여서 "아무 말도 안 한 것"으로 쳤다). **경비만 여전히 직접 배정이라 적어도 안 걸린다.** 켜고 끌 수 있는 작업이 하나도 없는 목록은 빈 목록과 같게(전부 허용) 보고 경고한다
 - `MinionData.CanProvideWater` — 우물 없이 직접 물 공급
 
 ### Key Singletons
@@ -120,13 +128,14 @@ Guidance for Claude Code in this repository.
 | `EventManager` | `checkInterval`(기본 300초) 주기 랜덤 이벤트 발동. `OnEventTriggered` static event. **습격에는 구원이 딸려 올 수 있다**(`GameEventData.RescueOnRaid`/`RescueChance`/`RescueDelay`) — 지원군이 추첨으로만 오면 **조용한 날에 와서 어슬렁거리다 정작 몰려올 때는 없다.** 습격이 벌어질 때마다 따로 굴리고, **늦게 도착한다**(같이 나타나면 구원이 아니라 그냥 편이 하나 더 있는 판이다). **먼저 예고하지 않는다** — 올지 모르는 채로 막아야 오는 것이 반가운 일이 되고, 늘 오면 습격이 안 무섭다. 후보는 **추첨 풀에서 찾는다**(씬에 필드를 하나 더 두면 배선을 빠뜨렸을 때 조용히 아무 일도 안 일어난다). **이벤트 습격과 지도에서 걸어온 습격 둘 다**에 붙는다 — 플레이어에게 그 둘은 똑같이 '적이 몰려온 것'이다 |
 | `GameTimeManager` | **하루 1800초(실제 30분)이고 다섯 때로 나뉜다** — 새벽 00\~04 · 아침 05\~09 · 낮 10\~16 · 저녁 17\~20 · 밤 21\~23(`TimePhase`, 경계는 상수). **때는 시각(`Hour`)이 정한다** — 비율로 얹으면 시계와 라벨이 따로 논다. `IsDay`는 거기서 나온다(아침·낮·저녁 = 16시간 / 새벽·밤 = 8시간). **하루는 자정에 바뀐다**(`NormalizedTime` 0 = 00:00). **모든 지속시간 데이터의 기준 축** — 하루 길이를 바꾸면 허기·작물·연구·제작·채굴을 같이 옮겨야 한다(`docs/data.md` "시간 축"). **밤이 세 가지를 바꾼다**(2026-08-19) — **어두워지고**(`DayNightLighting`) · **덜 보이고**(`Vision`) · **습격이 몰린다**(`GameEventData.NightWeight`). 셋이 같이 있어야 뜻이 선다: 어둡기만 하면 불편이고, 시야만 줄면 표의 숫자고, 습격만 몰리면 왜 밤에 몰려오는지가 화면에 없다. **그리고 밤에 잔다**(2026-08-20, `Needs`의 피로) — 피로 1200초 + 회복 600초가 정확히 하루 한 번이고, 그 600초가 어두운 때(밤+새벽)와 같은 길이라 잘 굴러가는 콜로니는 저절로 *밤에 자고 낮에 일하는* 모양이 된다. **밤을 되돌리는 손잡이는 불이다**(`LightSource`·화톳불 — 어두워지는 것과 덜 보이는 것 둘에 답한다). **판은 아침에 시작한다**(`startHour` 7 — `NormalizedTime` 0은 자정이라 손대지 않으면 새 판이 캄캄하게 열린다). **`Elapsed`에는 안 얹는다** — 그건 *시작하고 얼마나 지났나*라 이벤트 게이팅이 쓰는 축이고, 더하면 판이 열리자마자 일곱 시간이 지난 것이 된다. `NormalizedTime`(0-1) / `Phase` / `PhaseAt(hour)` / `PhaseName` / `IsDay` / `Hour` / `Minute` / `CurrentDay` / `Speed` / `SetSpeed` / `OnDayChanged` / `OnTimeChanged(float)` |
 | `HierarchicalPathfinder` | 씬에 배치 필요. `ComputeCoarseRoute(from,to)`(메소/L2) + `FindLocalPath(pos,target,self)`(유닛 중심 Theta* 윈도우) / `RebakeObstacleAt`. `obstacleLayer`=Wall만. **통행 판정은 타일 단위** — 반경 부풀림은 타일보다 큰 에이전트에만. **코스 라우트는 도착점이 아니라 복도 안내다** — 메소(2m)·L2(100m) **셀 중심**의 나열이라 마지막 점이 목적지와 어긋난다. `PawnMover.SelectSteeringTarget`이 **마지막 구간에서 `_finalGoal`을 직접 겨누지 않으면** 폰이 셀 중심에 서서 멈추고 재계획해도 같은 답이 나와 **2~3m 앞에서 영영 맴돈다**. 마지막 칸은 L1 정밀 경로 몫. **못 서는 칸은 목적지가 못 된다** — `PawnMover.SetMoveTarget`이 `MapManager.FindWorkableNear`로 접는다(작업 자리가 쓰는 그 함수. 부르는 곳이 스물일곱이라 **문 하나에서** 접는다). 안 접으면 건물 발자국을 겨눈 폰이 **도착 판정에 영영 안 걸리고**, 막힐 때마다 `RememberBlockedSpot`이 그 자리를 3초 막아 플래너가 건물을 빙 돌리므로 **멈추지도 포기하지도 않고 둘레를 돈다**(2026-08-22). 그때 정체 감시가 안 걸린 것은 그것이 *얼마나 움직였나*만 재기 때문 — **움직이는 것과 가까워지는 것은 다르다**. `TrackGoalGain`이 *가장 가까웠던 거리*의 기록이 8초간 안 깨지면 포기한다(기록 대신 지금 거리와 견주면 반 걸음씩 오가는 것도 "가까워졌다"가 된다). 상세 `docs/world.md` |
-| `ResearchManager` | `IsUnlocked(recipe)` / `GetRequiredResearch(recipe)` / `CanResearch(data)` / `Complete(data)`. 진행률은 `ResearchTable.ActiveResearch` / `ActiveProgress`(폰이 연구대에 붙어 타이머가 도는 동안만 — 큐 예약은 안 잡힘) / `PendingResearch`(폰이 안 왔어도 맡은 것 — UI가 버튼/게이지를 가르는 기준). **한 연구대는 한 번에 하나만 맡는다** — `StartResearch(data)`가 하던 것을 접고 갈아탄다(진행도는 남아 다시 고르면 이어서 한다). UI의 [연구] 버튼과 진행 게이지는 **같은 칸을 번갈아 쓴다**(`ResearchTableUI.PrepareSlot`이 런타임에 게이지를 버튼 자리로 옮긴다 — 씬 수정 불필요). **잠금은 양방향 어느 쪽으로 적어도 걸린다** — `ResearchData.UnlockedRecipes`(큐레이션, 역인덱스를 Awake에서 생성) ∥ `RecipeData.RequiredResearch`(개별 지정). 둘 다 비면 처음부터 열린 레시피 |
+| `ResearchManager` | `IsUnlocked(recipe)` / `GetRequiredResearch(recipe)` / `CanResearch(data)` / `Complete(data)`. 진행률은 `ResearchTable.ActiveResearch` / `ActiveProgress`(폰이 연구대에 붙어 타이머가 도는 동안만 — 큐 예약은 안 잡힘) / `PendingResearch`(폰이 안 왔어도 맡은 것 — UI가 버튼/게이지를 가르는 기준). **한 연구대는 한 번에 하나만 맡는다** — `StartResearch(data)`가 하던 것을 접고 갈아탄다(진행도는 남아 다시 고르면 이어서 한다). UI의 [연구] 버튼과 진행 게이지는 **같은 칸을 번갈아 쓴다**(`ResearchTableUI.PrepareSlot`이 런타임에 게이지를 버튼 자리로 옮긴다 — 씬 수정 불필요). **잠금은 양방향 어느 쪽으로 적어도 걸린다** — `ResearchData.UnlockedRecipes`(큐레이션, 역인덱스를 Awake에서 생성) ∥ `RecipeData.RequiredResearch`(개별 지정). 둘 다 비면 처음부터 열린 레시피. **연구는 그래프다**(2026-08-23) — `ResearchData.Prerequisites`가 **리스트**라 *"둘을 다 끝내야 열리는 것"*을 적을 수 있다(단일 참조였을 때는 사슬만 됐고, 그러면 연구가 아무리 늘어도 화면이 일렬로만 뻗는다). **자리는 `ResearchGraphLayout` 하나가 정하고 노드와 선이 그 답을 같이 읽는다** — 각자 재면 선이 노드에 안 붙는다. 열 = 가장 긴 선행 사슬(순환은 끊고 경고), 행은 **두 번 정한다**(왼쪽부터 부모 옆에 → 오른쪽부터 되돌아오며 부모를 자식 쪽으로). 선은 `ResearchLinkGraphic`이 **메시 한 장**으로 긋는다(선마다 `Image`를 두면 연구 수만큼 오브젝트가 늘고 다시 지을 때마다 전부 만든다) — `GridOverlay`가 즉시 모드를 버린 것과 같은 자리. **규격은 씬이 갖고 런타임은 그 안을 채운다** — 창 크기·스크롤 축·레이아웃 그룹 제거·선 판은 `DungeonColony → Setup Research Graph`가 **씬에 세우고**(몇 번 돌려도 같다), 런타임은 노드를 찍고 선을 그을 뿐이다. 코드가 창을 넓히면 **편집 중에 보이는 모양과 게임의 모양이 갈린다.** **노드 크기는 노드 프리팹이, 간격·여백은 인스펙터가 든다**(`nodeGap`·`graphPadding`) — 상수로 박으면 프리팹을 손봐도 그래프가 옛 크기로 자리를 잡아 노드가 겹친다. 선 판이 안 배선됐으면 **콘솔에 한 번 적는다**(노드만 뜨는 증상으로는 배선이 빠진 것인지 선행이 없는 것인지 구별이 안 된다) |
 | `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill(CraftSkill)` / `GetBuilding(name)` / `GetUnit(id)` / `AllItems` / `AllRecipes` / `AllResearch` / **`AllBuildings`**(Category→SortOrder→이름 순) / **`AllUnits`**(`Resources/Data/Units/` 스캔 — `MinionData`·`NpcData` 포함) / **`AllMinions`**(SortOrder→이름 순, 소환 메뉴 순서) |
 | `GameModeManager` | **화면·입력**이 필드냐 월드냐의 단일 소유자. `Current` / `IsField` / `IsWorld` / `SwitchTo(GameMode)` / `Toggle()` / `OnModeChanged`. 월드 전환 = 필드 UI·입력·카메라 off + 월드 UI/루트/카메라 on. **UI 캔버스는 하나** — 캔버스가 아니라 그 **직속 자식들**을 다루고 월드 전용 묶음(`Canvas/WorldUI`)만 반대로 켠다(월드 UI를 캔버스째 끄지 않으려고). 필드 UI는 **떠날 때 열려 있던 상태를 기억했다 복원**(`ApplyFieldUi`) — 일괄로 켜면 닫아 뒀던 패널까지 따라 열린다. **정착지 루트는 안 건드린다 — 거점 시뮬은 월드맵을 보는 동안에도 계속 돈다**(2026-07-30 결정, 07-29의 "필드 통째 정지"를 되돌림). `EventManager`도 계속 돈다(원정 중 습격 → M키로 복귀해 대응, 추상 방어 판정 불필요) |
 | `OutpostManager` | **채집기지**(`WorldNodeContent.Outpost`)의 단일 소유자. `Build(node)` / `At(node)` / `LoadInto(outpost, party)` / `CanAfford` / `CostSummary` / `OnChanged`. **필드맵을 만들지 않는 추상 시설** — 매일(`OnDayChanged`) 남은 매장에서 골고루 캐 기지에 쌓고, **원정대가 들러 등짐으로 실어와야** 창고에 들어간다(본거지 순간이동 없음). 건설 비용 `buildCost`(비우면 무료)는 활성 거점 창고에서 빠진다 |
 | `ExpeditionFormation` | 원정 편성의 **집결** 단계. `Begin(members)` / `Cancel()` / `IsGathering` / `ArrivedCount` / `OnChanged`. 핵의 `WorkSpot`을 중심으로 한 **반지름 고정 원**에 벌려 서고(인원이 늘면 원이 커지는 게 아니라 촘촘해진다 — 집결 범위가 인원마다 달라지면 "저기 모인다"를 예측할 수 없다), 자리는 설 수 있는 칸으로 스냅한다. **도착 판정은 자리가 아니라 원이다** — 원 안에 들어오면 도착. 자리는 안내지 조건이 아니라서, 그 칸에 못 서는 폰 하나가 출발을 막으면 안 된다. 그래서 자리를 원보다 `approachInset`만큼 **안쪽**에 잡는다(판정선 위에 세우면 경계에서 아슬아슬해진다). 자리 근처 판정은 폴백으로만 남는다. **전원 도착 시 일괄 출발** → `WorldMapView.AddMembers` + 월드맵 전환. 도착한 폰은 `UnitBlackboard.HoldPosition`으로 붙들어 둔다(`ManualMove`는 목적지 소진 시 자동 해제돼 못 잡는다) |
 | `ExpeditionParty` | 월드맵 원정대(논리 데이터). `Members` / `CurrentNode` / **`Cargo`**(등짐) / `Capacity`(멤버 근력 합 × 5 — **필드 폰 적재와 같은 식**) / `TryAdd`(실제 받은 개수 반환) / `ClearCargo`. 자원 채집물이 여기 쌓이고 거점 진입 시 창고로 비워진다 |
 | `SettlementManager` | 정착지 전환형. `Active` / `SwitchTo` / `SwitchToNode` / `RegisterAt` / `ActiveBiome`. **루트 활성화의 소유자** — 한 번에 하나만 시뮬되는 건 모드가 아니라 "활성 정착지는 하나"라는 규칙 때문. 시뮬 안 되는(= 지금 안 보는 다른) 정착지는 매일 오프라인 추상 생산 |
+| `BiomeTier` | **지역 난도의 단일 출처**(2026-08-23). `Of(biome)`(1~5, `BiomeContentData.Tier`) / `PowerMult`(티어마다 +35% → 5티어 2.4배) / `Label`·`Color`(화면). **오픈월드다 — 갈 수 있고 대개 죽는다**(켄시식): 티어는 **막지 않고** 무리·소굴 전력에 곱해지고 **도착 메뉴가 경고한다**(*"모르게 굴리지 않는다"* — 죽는 것이 선택이어야지 사고면 안 된다). **칸마다 저작하지 않는다** — 지도를 그릴 때마다 위험도를 손으로 찍어야 하고 그러면 저작한 지도와 실제 난도가 어긋난다(칸 단위 예외는 소굴이 이미 든다). **무리 에셋을 티어마다 복제하지 않는다**(바이옴 × 무리의 곱셈이 된다) — `WorldBand.Power`가 **근거지 바이옴**의 티어를 곱한다. 평원 1 · 숲 2 · 사막·설원 3 · 동굴·늪 4 · 용암지대 5 |
 | `WorldBandManager` | **지도 위를 도는 무리**의 소유자 + **예고된 습격**. `Bands` / `FindContact(pos)` / `PushApart(band)` / `RemoveIfDead` / `BandFor(go)` / `TryGetRaidFrom(lairNode, …)`. **둘은 다른 축이다**(2026-08-10): 무리(`Roam`/`Caravan`/`Patrol`)는 제 볼일로 돌아다니고 **마주치는 것이 사건**이며, 작정하고 오는 습격은 **토큰 없는 사건**이라 며칠 전에 예고만 하고 도착 시 필드맵에 실제 적이 선다. **습격 빈도는 지도 전체가 하나로 정한다**(`raidIntervalDays`·`raidFirstDelayDays`·`maxPlannedRaids`) — 소굴마다 제 시계를 들면 **소굴이 늘어난 만큼 습격이 곱해져**, 바이옴에 소굴 종류를 얹는 것만으로 초반에 사방에서 몰려와 맞을 수밖에 없다(2026-08-14 수정). 전역 시계가 "언제 하나 온다"를 정하고 소굴은 **누가 올 차례인가**만 겨룬다(`LairEntry.RaidIntervalDays`가 절대 주기가 아니라 **가중치**로 읽힌다 — 작을수록 자주, 0이면 안 온다). 그래서 소굴을 늘리는 것은 **빈도가 아니라 다양성**을 늘린다. 습격을 토큰으로 걸어오게 하면 며칠짜리 행군이 화면을 기어가고 "가로막을 수 있나"가 또 다른 규칙이 된다 — **막는 길은 소굴을 치는 것 하나로 족하다**(치면 무산되고, 두들겨 놓으면 그만큼 적게 온다). **포로**(`WorldBand.Captives` → 근거지에 닿으면 `WorldLair.Captives`): 진 원정대는 밀려나는 게 아니라 **붙잡혀 끌려간다**(폰은 안 지운다 — 꺼진 채로 실려 다니므로 이름·스탯·특성이 살아 있다). 되찾는 길 다섯(**몸값**(`WorldRansom`) / 그 무리를 이긴다 / 소굴을 친다 / 무리가 전멸한다 / 하루마다 굴리는 탈출)은 **전부 `WorldMapView.RestoreParty` 하나로 모은다** — 길이 넷인데 처리가 넷이면 하나가 어긋나 사람이 조용히 증발한다. **탈출 확률은 안전장치다**: 되찾을 길이 "이긴다"뿐이면 인원을 다 잃은 뒤엔 이길 수가 없어 지는 것이 손실이 아니라 막다른 길이 된다. 소굴 해방은 `WorldLairs.Clear` 안에 둔다(소굴이 없어지는 길이 여럿이라 호출처마다 챙기면 빠뜨린다). 떠돌이는 `RoamDays` 뒤 근거지로 돌아가 **병력을 복귀시킨다**(무한정 떠돌면 `maxBands`가 차서 새 무리가 못 나오고 소굴을 쳐도 이미 나온 것이 남는다). 소굴·마을이 무리를 내보내고, 실시간으로 목적지까지 걷고, **무리끼리의 조우는 여기서 조용히 결판난다**(알림 없음 — 남들 싸움에 창이 뜨면 내 원정대 알림이 묻힌다). **원정대와의 조우는 `WorldMapView`가 메뉴로 받는다**(이동을 멈추고 창을 여는 주인이 그쪽). **월드맵을 안 보고 있어도 돈다**(거점 시뮬이 계속 도는 것과 짝). 씬 배선은 이미 서 있다(`WorldBandManager` + `Band_Caravan`·`Band_Goblin_Raiders`·`Band_Militia`) — **연결이 여섯 군데**라 하나만 빠져도 조용히 아무 일도 안 일어난다(세력 SO 미연결 → 전부 중립 / 바이옴 풀 비었음 → 소굴이 아무도 안 내보냄 / 씬에 매니저 없음 → 무리 자체가 없음) |
 | `WorldLairs` | 적 소굴(`EnemyLair` 칸)의 병력·출격 상태. `At(node)` / `BuildAll()`(미리 다 깨운다 — 가보지 않은 지역의 소굴도 저 혼자 내보내야 한다) / `Clear(lair)` / `RegenAll()`. 어떤 소굴인지는 `BiomeContentData.Lairs` + **칸 좌표 + 시드로 결정적**(`TownMarket` 패턴). **날짜는 안 섞는다** — 병력은 그날의 사정이 아니라 누적된 상태라 매일 굴리면 어제 친 소굴이 멀쩡해진다 |
 | `WorldRansom` | **붙잡힌 사람을 돈으로 되찾는다.** `Gold`(`Wallet.Balance`) / `PriceFor(폰\|여럿)` / `Available(party)` / `TryPay`. **값 = 스탯 + 장비**이고 사람 값은 고용가(`PawnSpec.PriceBase/PricePerGrade`)와 **같은 상수**를 쓴다(값이 두 벌이면 "고용은 싼데 되찾는 건 비싸다"가 사고가 된다). 되사는 값이라 ×1.4, **흔들림 없음**(창을 여닫을 때마다 바뀌면 값이 나올 때까지 여닫게 된다). 등급 평균은 명세가 아니라 **실제 스탯**에서 낸다(굴려서 태어난 폰도 붙잡히고, 자란 만큼도 값에 실린다). 지불은 **배낭 먼저 그다음 창고**(`MaterialPool.Consume`과 같은 순서) — `TakeGold`가 전액 아니면 0이므로 **가진 만큼만 청구**한다(부족한 액수를 그대로 넣으면 한 푼도 안 나와 "둘을 합치면 되는데 못 낸다"가 된다) |
@@ -395,19 +404,94 @@ InventoryGridUI.FindCounterpart(mine, item)  // 같이 열려 있는 반대편 �
 
 **두 갈래** — `JobCategoryInfo`가 단일 출처.
 - **큐 작업**(`QueueOrder`: **치료** → **간수** → 건설 → 농사 → 제작 → 연구 → 운반 → 짐내림 — 치료가 맨 앞인 건 피 흘리는 사람은 기다릴 수 없고, 그 일감은 다친 폰이 침대에 누웠을 때만 생겨 늘 있지도 않기 때문이다. 간수가 그다음인 건 **붙잡은 적이 깨어나면 걸어 나가기** 때문이다 — 늦으면 붙잡은 것 자체가 없던 일이 된다): 건물/농지/작업대가 일감 등록 → 폰이 집어감. **배열 순서 = 전역 우선순위**(모든 폰 공통). `QueueOrder`에 없는 카테고리는 큐에서 배정되지 않는다.
-- **직접 배정**(Mining/Logging = 자원 노드, Guard = 순찰 구역): 플레이어가 대상에 폰을 붙임(`Blackboard.AssignedNode`/`AssignedPatrolZone`). 큐를 타지 않으므로 on/off 대상이 아님. **일감을 안 만든다** — `WorkNode.TickAssigned`가 배정된 노드를 직접 캔다.
+- **직접 배정**(Mining/Logging = 자원 노드, Guard = 순찰 구역): 플레이어가 대상에 폰을 붙임(`Blackboard.AssignedNode`/`AssignedPatrolZone`). **일감을 안 만든다** — `WorkNode.TickAssigned`가 배정된 노드를 직접 캔다.
+
+**채굴·벌목은 저 혼자도 붙는다 — 자율 배정**(`ResourceNode.ClaimFreeFor`, 2026-08-23). 큐 작업 여덟 중 이 둘만 손으로 붙여야 했는데 광맥은 열셋이고, 집결할 때 `AbandonWork`가 **배정까지 거둬** 원정을 갔다 오면 하나씩 다시 붙여 줘야 했다.
+- **`QueueOrder`에는 안 넣는다** — 그 둘은 일감을 만들지 않으므로 넣으면 *"큐에서 배정되는 카테고리"*라는 그 배열의 뜻이 거짓이 된다. **`WorkNode`가 `RequestJob`이 빈손일 때 부르는 것**으로 족하다: 그 자리가 곧 "우선순위 맨 끝"이라 *캐 놓은 것을 나르는 일이 캐는 일보다 앞선다*가 저절로 성립한다.
+- **핵 영역 안만 본다.** 야생 나무·바위도 `ResourceNode`라, 안 묶으면 폰이 맵 전체의 나무를 베러 떠난다 — 자동화가 아니라 통제를 잃는 것이다. 심은 광맥은 영역 안에만 설 수 있으므로(건설이 핵 union을 요구한다) 이 한 줄이 *"내 거점의 것만"*을 뜻한다.
+- **손으로 붙인 것이 이긴다** — 이미 배정된 폰은 여기까지 안 온다. 그리고 **손 배정은 작업 설정을 안 본다**(그건 명령이다). **저 혼자 잡은 것만** 설정을 따라 놓는다(`UnitBlackboard.NodeAutoClaimed` — 침대의 `AutoClaimed`와 같은 축이되 **자리가 아니라 폰이 든다**: 노드 하나에 `MaxWorkers`만큼 붙지만 폰은 배정을 하나만 갖는다).
+- **`WorkSettings.IsEnabled`는 `IsQueued`가 아니라 `JobCategoryInfo.IsToggleable`로 묻는다.** 안 가르면 채굴·벌목이 **늘 꺼진 것으로 답해 자율 배정이 한 번도 안 돈다**(`IsQueued`가 게이트였다). **경비는 빠진다** — 순찰 구역엔 자율 배정이 없다.
+- **P패널에 칸이 있어야 끌 수 있다** — `ColonyColumns.WorkColumns`가 `QueueOrder`(−짐내림) **+ 채굴·벌목**이다. 이제 그 배열과 `QueueOrder`는 다른 물음에 답한다(*무슨 일을 시킬까* ↔ *큐 배정 순서*). 칸이 없으면 자율 배정이 강제가 된다.
+- **`ResourceNode`가 레지스트리를 든다**(`_all`, `OnEnable`/`OnDisable`) — 매 틱 `FindObjectsByType`을 돌 수 없고, 휴면 노드는 `OnDisable`이 알아서 뺀다(`Bed._all`과 같은 자리).
 
 Job score = `JobCategoryInfo.Weight(category) × 100 + job.Priority`.
 
 폰별 설정은 **숫자 우선순위가 아니라 on/off** — `WorkSettings`(`UnitBrain.Work`, 플레이어 세력 일꾼에만 자동 부착). UI는 `ColonyUI`(P키). 상세 `docs/jobs.md`.
 
-### Damage Quick Ref
+### Damage Quick Ref — **축은 하나다**
 
 ```
-DamageCategory: Physical / Elemental / Dark / Holy
-PhysicalType:   Slash / Pierce / Blunt          (Physical일 때)
-DamageElement:  None / Fire / Ice / Lightning / Poison  (비Physical일 때)
+DamageType:  물리 Slash / Pierce / Blunt        ← 갑옷이 막는다
+             원소 Fire / Water / Earth / Lightning / Arcane / Dark / Holy  ← 저항이 막는다
 ```
+
+2026-08-23에 `DamageCategory` × `DamageElement` 2D를 접었다 — **물음 하나에 답이 둘**이었고,
+그 결과 열두 칸 중 `Holy` 넉 줄은 효과가 아예 없고 `Dark`·`Holy` 무기는 0개였다.
+
+- **원소마다 하는 일이 하나씩**(불=화상 · 물=젖음 → **전기 ×1.5** · 땅=기절 굴림 +0.35 ·
+  전기=경직 · 비전=**갑옷·저항 무시** · 암흑=회복 차단+부패 · 신성=**언데드 ×2**).
+  **독은 원소가 아니라 효과다** — `StatusEffectSystem`이 든다.
+- **신성 ×2는 저항표가 아니라 `UnitBrain.IsUndead`가 답한다** — 표에 적으면 **일으켜진 몸**은
+  사람 종족이라 표에 없어서 성물이 안 듣는다.
+- **저항이 없으면 원소는 장식이다** — `ArmorData.Resistances` + `UnitData.Resistances`가
+  더해진다(`DamageResistance.Multiplier`, 0.1~3.0). **갑옷의 `DamageReduction`은 물리에만.**
+- **마법 무기는 `WeaponType.Staff` 하나** — 무엇을 쏘느냐는 `DamageType`이 든다. 어느 스탯이
+  자라는지는 **`UnitStats.StatFor(WeaponData)` 하나**가 답한다(`Type`만 보면 불과 암흑이 같아진다).
+- **마법 스탯 15 → 7**(계열 셋은 전투에서 한 번도 안 읽혔다). **`Shield` 신설** — 방패만
+  스탯이 없어 자라지 않았다. `Defense`(막나) × `Shield`(방패가 얼마나 일하나)로 무기와
+  대칭이고, 방패를 안 들면 `BlockBonus` 0이 곱해져 저절로 아무것도 안 한다. **스탯 53 → 45개.** **방어도 하나로 접혔다**(2026-08-23) — `MeleeDefense`·`RangedDefense`가 `Defense` 하나다. *"막는 솜씨"*라는 물음은 하나뿐이고 **날아오는 것을 막는 것도 막는 것**이다. 둘로 두던 진짜 이유(방패가 근접·원거리를 다르게 막는다)는 **방패가 든다**(`BlockBonus` ↔ `RangedBlockBonus`) — 스탯을 갈라 두면 같은 것을 두 번 표현하는 셈이고, 실제로 `RangedDefense`는 **저작 에셋에서 한 번도 안 쓰였다**. 그리고 **원거리에도 회피를 붙였다** — 전에는 근접만 *막기 → 회피* 둘을 굴리고 원거리는 막기 한 번뿐이라 **같은 폰이 칼보다 화살에 훨씬 잘 맞았다**
+- **`StatName` 정수 자리가 옮겨졌다** — 에셋 45개를 같이 옮겼다(쓰이던 것은 옛 `DarkMagic` 19
+  하나뿐이었고 새 자리 23에 산다). **앞으로도 뒤에만 붙일 것.**
+
+### 능동 능력 — 장비가 준다 (`AbilityData`)
+
+**스킬 트리도 스킬 포인트도 없다**(2026-08-23, `docs/design_combat_rework.md` 6절). 그건 빌드
+최적화 게임이고, 켄시·림월드의 매력은 **캐릭터를 고르는 것이 아니라 상황을 관리하는 것**이다 —
+스킬 트리가 늘리는 결정은 전투 중의 결정이 아니라 **창을 열고 점을 찍는 결정**이다.
+
+- **능동은 폰이 아니라 장비가 준다** — `WeaponData.Ability` · `ArmorData.Ability`. 폰에 슬롯을
+  두면 *"어느 폰에게 무엇을 배울까"*가 폰 수만큼 늘어나는 잡일이 되는데, 장비가 주면 **갈아입히는
+  것이 곧 역할을 바꾸는 것**이라 이미 있는 조작으로 끝난다. 성장은 `CombatXp` 그대로 — **쓰면 는다.**
+- **JSON 장비는 `abilityId`로 가리킨다**(`Resources/Data/Abilities/`의 에셋 이름) — 런타임 생성이라
+  SO를 참조할 수 없다(`LoadoutData.ItemId`·`MerchantPoolEntry`와 같은 규약). **오타는 콘솔에 적는다** —
+  안 적으면 *"방패를 들었는데 칸이 안 뜬다"*가 된다.
+- **`AbilityUser`가 폰마다 붙는다**(`UnitBrain.Awake`, 세력을 안 가린다 — 장비에서 파생되므로
+  안 찬 폰은 목록이 비어 저절로 아무 일도 안 한다). 목록은 **장비가 바뀔 때만** 다시 모으고,
+  **같은 능력을 두 번 담지 않는다**(중갑 네 벌이 다 도발을 주면 칸이 넷인데 쿨다운은 하나라
+  **눌러도 세 칸이 회색인 채로 남는다**).
+- **아무도 안 걸려도 쿨다운은 돈다**(사용자 결정). 한때 헛친 것은 안 물렸는데, 그러면 **걸릴
+  때까지 눌러 보는 것이 최선**이 되어 *언제 쓰느냐*가 결정이 아니게 된다 — 그 결정을 만들려고
+  능동으로 둔 것이다. **다만 스탯은 안 는다**(헛친 것은 아무 일도 안 일어난 것이라 배울 것도 없다).
+- **효과는 종류마다 제 주인이 있다**(`Taunt`) — `AbilityUser`에서 분기하면 능력이 늘 때마다
+  그 파일이 전투 규칙을 알게 된다.
+
+**도발 — 새 전투 규칙이 아니라 `DetectNode`의 답을 덮어쓰는 것 하나다**(`FinishTarget`이 자동
+표적에 예외를 뚫은 것과 같은 자리).
+
+- **`DetectNode` 맨 위여야 한다.** 아래의 *"더 가까운 적으로 갈아탄다"*보다 뒤에 두면 도발한
+  순간 옆의 다른 적이 더 가깝다는 이유로 **한 틱 만에 풀린다** — 붙들어 두는 것이 도발의 전부라
+  그러면 능력이 아무것도 안 한 것이 된다.
+- **`Target`과 따로 든다**(`UnitBlackboard.TauntedBy`/`TauntedUntil`). 표적에 바로 꽂기만 하면
+  같은 이유로 다음 틱에 갈아탄다. 만료·죽음·기절은 **`Taunt.HolderOf` 하나**가 본다 —
+  지우는 코드를 따로 두면 그 경로 중 하나를 반드시 빠뜨린다.
+- **강인함이 인원과 범위를 정한다**(인원 = 1 + 강인함/40 · 범위 = 4 + 강인함/30 m). 이미 KO
+  저항을 정하지만 **다른 축**이라 겹치지 않는다(`Social`이 설득과 흥정을 함께 정하는 것과 같다).
+  *맞고 버티는 놈이 앞에 선다*가 스탯 이름 그대로 읽힌다.
+- **가까운 N명이지 위험한 N명이 아니다** — 가까운 쪽이 예측 가능하고, 위험도를 재려면 그 정의가
+  또 하나 늘어난다(전력? 남은 체력? 나를 노리는 중인가?).
+- **패시브가 아니라 능동인 이유**: 늘 켜져 있으면 ① 탱커를 데려가는 순간 다른 전술이 사라지고
+  ② *"도발 중"*이 화면에 안 보인다. 지속 + 쿨다운이라 **언제 쓰느냐가 결정**이 된다.
+  도발당한 쪽은 `PawnStatusText`가 **`도발당함`**으로 적는다(그냥 "전투"면 저 놈이 왜 딴 데를
+  놔두고 탱커에게만 달려드는지가 화면에 안 남는다).
+- **적은 아직 안 쓴다** — 그릇(`AbilityUser`)은 붙어 있고 장비에 능력을 물리면 되지만, 적 BT에
+  *언제 쓸까*를 판단하는 자리가 없다. 넣으면 도발이 일방적이지 않게 되는 대신 적 BT가 는다(미결).
+
+**조작**: 단축키 **1~4**(`AbilityController` — `DraftController`처럼 **씬 배선이 없다**) ·
+액션 바 클릭. **고른 폰 전부**가 각자 제 칸의 능력을 쓰고 **화면은 첫 번째 폰만** 보여준다
+(소집이 이미 그 모양이다 — 화면은 대표 한 명, 명령은 전원). **칸은 폰마다 제 목록의 순서**라
+같은 칸이 폰마다 다른 능력일 수 있다 — 전역 목록으로 모으면 방패를 안 든 폰의 칸이 비어
+번호가 밀린다. 바의 **규격은 씬이 갖는다**(`DungeonColony → Create Ability Bar`), 런타임은
+칸을 몇 개 켜고 무엇을 그릴지만 정한다. **쓸 것이 없으면 바를 통째로 끈다.**
 
 ### 몸의 눈금 — 켄시 값 (부위 100 균일 · 혈액 100)
 
@@ -830,6 +914,7 @@ Wallet.IsCurrency(item)
 ### BuildMode
 
 - **갈래는 여덟이고 화면 순서는 `BuildCategoryExt.Order`가 정한다**(2026-08-22) — 바닥·방어·보관·제작·거주·수용·자원(광맥 포함)·기타(서브코어·무덤·화장터). **쪼개는 값은 "고를 것이 갈리는가"다** — 광맥을 자원에서 떼고 장례를 따로 두었다가 되돌렸다(광맥과 밭·나무는 둘 다 지형에 놓는 것이라 헷갈릴 일이 없고, 장례는 둘뿐이라 제 칸이 늘 비어 있다). **값은 꼬리에 붙인다**(직렬화가 정수라 중간에 끼우면 마흔한 개가 밀린다) — 대신 `Building`은 **`Living`으로 이름만 바꿔** 죽은 값을 안 남겼다. **`Order`에 안 적은 갈래는 화면에 없다**(목록의 유일한 근거). 갈래 버튼은 **씬의 첫 자식을 본떠 찍고** **빈 갈래는 접는다**. 짓는 것은 `Start`가 아니라 **처음 열 때** — `BuildModeManager`가 목록을 실은 뒤여야 빈 갈래를 가릴 수 있다. 갈래 재배정·띠 크기는 `DungeonColony → Update Build Menu`(**이름표로 매기고 자리 값은 절대값이라 몇 번 돌려도 같다** — 상대로 옮기면 두 번째 실행이 두 번 넓힌다). **UI 기준은 1920×1080 · 1:1**(`CanvasScaler`도 `ScaleWithScreenSize` 1920×1080) — **크기는 게임 뷰 배율 1x에서 잰다**(줄여 놓고 재면 실제보다 크게 만든다). **갈래는 띠에 없다 — 왼쪽 아래에 선 세로 판이다**(256×252, 두 열 × 네 줄; 타일 줄은 그 오른쪽에 가로로, **띠 배경은 없다**): 갈래는 여덟로 끝나고 지을 것은 계속 느는데, 한 줄에 두면 **갈래를 더할 때마다 띠 높이를 다시 재야 한다**(줄 수가 곧 높이였다). 빼내는 방법은 **`LayoutElement.ignoreLayout`** — 별도 오브젝트로 꺼내면 `panel.SetActive` 한 번에 같이 꺼지던 것이 깨진다. **`BuildMode_Panel`에 `HorizontalLayoutGroup`이 있어 자식의 `sizeDelta`·`anchoredPosition`은 매번 덮인다**(폭은 `LayoutElement`, 높이는 `childForceExpandHeight`) — 좌표를 쓰기 전에 그 자리에 레이아웃 그룹이 있는지부터 볼 것. **타일은 오른쪽 끝에 닿으면 윗줄로 올라간다**(`GridLayoutGroup` + `Constraint.Flexible`, `startCorner = LowerLeft` — 아래 줄부터 채워야 한 줄뿐인 갈래가 허공에 안 뜬다). **열 수는 안 적는다** — 폭에서 나온다. **타일에는 그림과 이름만** 두고 설명·크기·`목재 12/20`·잠김 사유는 **마우스를 올렸을 때**(`HoverTooltipUI`) 뜬다(92픽셀 폭에 잠금 문구를 넣으면 잘려서 못 읽는다). **커서 툴팁의 자리 계산은 `CursorTooltip.Place` 한 벌이다** — 규칙은 **밀어 넣지 말고 반대편으로 뒤집는다**(밀면 툴팁이 커서 밑으로 기어들어온다). 그 설명은 **`Func<string>`으로 넘긴다** — 구워 두면 창고가 바뀌어도 안 따라온다. `OnPointerExit`는 파괴 시 안 오므로 `OnDisable`에서 거둔다. 목록 폭은 아무 데도 안 적고(`flexibleWidth` 1이 띠 전체를 준다) **타일이 시작하는 x는 `padding.left`로 민다**. 밑선은 갈래 판을 띠의 **왼쪽 아래** 모서리에 걸고 타일 줄을 `LowerLeft`로 붙여 맞춘다. **안 보이는 배경은 레이캐스트도 끈다** — 투명한 판이 클릭을 먹으면 "여기는 왜 클릭이 안 되지"가 된다. 아래 띠는 **피벗이 (0.5, 0)**이라 `anchoredPosition.y`가 *높이의 절반*이 아니라 **바닥에서 띄우는 값**이다. 붙일 값은 부모(`BuildMode_UI`, 화면 바닥에 가운데를 둔다) 높이의 절반이고 **부모에서 읽는다**
+- **광맥은 연구로 연다**(2026-08-23 결정, 저작 예정) — `BuildingData.RequiredResearch` + 비용은 **그 자원 실물 25개**(`CostItem`/`CostAmount`, 13종 저작 완료). 광맥 13종이 전에는 **전부 무료·무연구**라 용암지대에 가 본 적 없어도 첫날 공허 결정을 심었다. **광맥마다 연구 하나** — 순차적으로 발전해 가는 축이라 묶으면 그 계단이 사라진다(사용자 결정). **연구 재료(`ResearchData.Ingredients`)에 그 자원을 넣으면 *"가져와야 한다"*가 연구 안에 그대로 남는다** — 한때 그것 때문에 `Discovery`라는 별도 축을 뒀다가 **걷어냈다**(축이 둘일 이유가 없다). 잠금 사유는 **`BuildingData.LockReason` 하나**가 답한다
 - **건설 목록은 레지스트리에서 온다** — `Assets/Resources/Data/Buildings/`에 `BuildingData` 에셋을 두면 그것만으로 목록에 오른다(`DataManager.AllBuildings`, `Category`→`SortOrder`→이름 순). 씬의 `placeableBuildings`는 **비워 두는 게 기본**이고, 채우면 그게 이기는 큐레이션 오버라이드다(`ResearchTable.availableResearch`와 같은 관례). `UsesBlueprint=true` → 2단계 건설, `false` → 즉시 배치
 - 설계 원칙: `BuildingData`는 배치 방법만 담당. 각 컴포넌트(Storage, SubCore, FarmPlot 등)가 동작 데이터를 프리팹 SerializeField로 직접 보유
 - **콜라이더 크기와 `OccupiesTile`은 다른 축이고, 짝을 맞춰야 한다.** 크기 = **어디를 눌러야 잡히나**(클릭 판정 — 늘 `Size − 0.2`), `OccupiesTile` = **길을 막나**(길찾기는 타일 점유만 보고 콜라이더는 안 본다, `obstacleLayer`는 Wall뿐). 둘을 같은 것으로 보면 *2×2 창고인데 콜라이더가 1×1이라 가운데만 눌리는* 일이 난다(실제로 그랬다 — 고치는 도구가 `OccupiesTile`로 걸러 창고만 건너뛰었다). **`OccupiesTile`이 false면 콜라이더는 트리거여야 한다** — 안 그러면 지도는 "빈 칸"인데 몸이 부딪혀 길찾기가 통과 경로를 내고 폰이 처박힌다(침대·밭이 그랬다). 콜라이더는 **바닥만 빼고** `Size − 0.2`다(바닥은 서로 맞닿아야 해서 — 0.2를 깎으면 틈으로 커서 레이가 빠진다)
@@ -841,7 +926,7 @@ Wallet.IsCurrency(item)
 - **청사진 취소는 건설 모드 밖에서도 된다** — 같은 `PickAt`을 좌·우클릭에도 붙였다. **우클릭 = `[건설을 취소한다]`**(`MoveController`, 아무것도 안 걸렸을 때만 — 그 위에 폰이 서 있으면 폰이 이긴다), **좌클릭 = 폰 정보 패널에 진행 표시 + 같은 버튼**. 문이 셋이어도 전부 `bp.Cancel()` 하나를 부르므로 갈라질 데가 없다 — **어긋나는 건 판단이 여러 곳에 흩어질 때**지 문이 여럿일 때가 아니다. 패널이 답하는 건 "왜 아직 안 지어졌나" 하나라 `자재 12/20` 옆에 **가진 것**(`AvailableAnywhere`)을 같이 적는다. 조사 해제는 `SelectSingle` 맨 앞 **한 곳**에서 한다(분기마다 적으면 새 분기가 하나 빠뜨린다)
 - **철거·취소 환불은 전액**(`refundRatio` 1.0). 손실을 물리면 "지어 놓고 아니다 싶으면 옮긴다"가 벌칙이 된다 — 잘못 놓은 값은 자재가 아니라 **들인 시간**으로 이미 치른다. 돌아가는 곳은 **창고 먼저**(`MaterialPool.Refund`) — 바닥에 떨구면 그 짐이 다시 운반 일감이 되고, 나르는 동안 창고 집계에서 빠져 같은 자재를 기다리던 작업이 "재료 부족"으로 죽는다
 - **`InspectPanel`은 "고른 것을 보는 자리"다** — 폰 / 시체 / 자원 노드 / **바닥에 떨어진 물건**(무엇이·얼마나·얼마어치 + **자동 운반이 켜졌나**, 버튼으로 켜고 끈다. 초록 구슬이 안 보일 때 그것이 "안 찍었다"인지 "찍었는데 창고가 없다"인지 구별이 안 됐다 — 둘은 할 일이 다르다) / 청사진 / **다 지은 건물**(이름·**설명**·크기·휴면 + [이동한다]·[분해한다]) / **던전 핵**(`OnCoreInspected` — `PlacedBuilding`이 아니라 분해·환불이 없고 [이동한다]만). 저마다의 건물 패널(창고·침대·농지…)을 **대신하지 않고 곁들인다**: 그쪽은 그 건물로 무엇을 하는지, 여기는 **건물 자체**를 다룬다. **휴면 건물도 이 줄은 뜬다**(제 패널은 안 열려도 옮기고 분해할 수는 있어야 한다 — 오히려 그때 제일 필요하다). **바닥은 뺀다** — 바닥도 `PlacedBuilding`이라 세면 빈 땅을 누를 때마다 건물 창이 뜬다. 버튼 줄은 씬의 `ActionTemplate` 복제, **세로로 쌓는다**(가로면 300px 패널에서 글자가 잘린다)
-- **자원 노드는 설명을 손으로 안 적는다** — 알고 싶은 것(무엇이 나오나 · 캐나 베나 · 몇 명이 붙나 · 권장 스킬)이 전부 `ResourceNodeData`에 있어 거기서 만든다(적어 두면 값을 고칠 때마다 문장이 뒤처져 **표가 아니라 거짓말이 된다**). `InspectPanelUI`가 기존 **`OnNodeSelected`를 같이 듣는다**(이벤트를 새로 만들면 둘이 어긋난다). **"배정된 폰이 없습니다"가 이 창의 값어치** — 채굴·벌목은 큐가 아니라 직접 배정이라 아무도 안 붙으면 영영 안 캐는데 그걸 말해 주는 곳이 없었다. 씬에 흩어진 나무·바위는 `PlacedBuilding`이 없어 [이동]·[분해]가 안 뜬다(건드릴 수 없는 지형)
+- **자원 노드는 설명을 손으로 안 적는다** — 알고 싶은 것(무엇이 나오나 · 캐나 베나 · 몇 명이 붙나 · 권장 스킬)이 전부 `ResourceNodeData`에 있어 거기서 만든다(적어 두면 값을 고칠 때마다 문장이 뒤처져 **표가 아니라 거짓말이 된다**). `InspectPanelUI`가 기존 **`OnNodeSelected`를 같이 듣는다**(이벤트를 새로 만들면 둘이 어긋난다). **"왜 안 캐지"에 답하는 것이 이 창의 값어치** — 그리고 그 답이 **자리에 따라 갈린다**: 핵 영역 안이면 할 일 없는 폰이 곧 붙고(자율 배정), **밖이면 손으로만 붙는다.** 안 갈라 적으면 영역 밖 광맥 앞에서 오지 않는 폰을 기다리게 된다. 붙어 있을 때는 **몇이 저 혼자 왔는지**도 적는다(작업을 끄면 놓는 쪽이라서). 씬에 흩어진 나무·바위는 `PlacedBuilding`이 없어 [이동]·[분해]가 안 뜬다(건드릴 수 없는 지형)
 - **`BuildingData.Description`이 "무엇을 하는 물건인가"에 답한다**(전부 채움). 크기·환불액은 이미 아는 사람에게나 쓸모가 있고, `보석 연마대`·`서브코어`는 이름이 답을 안 준다. 청사진에도 띄운다 — 아직 물건이 아니니 **무엇이 될 것인지**를 알아야 취소할지 정할 수 있다
 - **건물 프리팹에 `PlacedBuilding` + `data`가 실제로 붙어 있어야 한다** — 적어만 두고 안 붙어 있었다(`LargeStorage` 하나뿐). 없으면 씬에 손으로 놓은 건물이 **발자국을 등록 안 해** 모델 한복판을 가로지르는 경로가 나오고, 좌클릭해도 **어느 건물인지 몰라** 정보 패널이 안 뜬다. **건물 프리팹을 새로 만들 때마다 손으로 붙일 것**(전수 확인 — 41종 전부 붙어 있다)
 - **`BuildingRelocator`** — 다 지은 건물 이전. `CoreRelocator`와 **나란한 물건이지 일반화가 아니다**(핵은 한 칸이고 옮기면 영역이 따라 움직여 휴면/재가동 수를 미리 세어 준다). **값을 안 받는다**(환불이 전액이라 "분해 후 재건축"이 늘 더 싸므로 값을 받아 봐야 조작만 는다). **자기 발자국은 장애물로 안 센다**(안 그러면 한 칸 옆으로도 못 옮긴다). `PlacedBuilding.MoveTo` = `ReleaseTiles` → 이동 → `OccupyFootprint`(폰 밀어내기 포함) → **떠난 자리와 새 자리 둘 다** 재베이크 → `BuildingDormancy.Reevaluate`(영역은 그대로고 건물만 움직여 `OnTerritoryChanged`가 안 뜬다)
@@ -1004,7 +1089,7 @@ Wallet.IsCurrency(item)
 - **그래서 무리마다 칸마다 여럿이어야 한다** — 하나뿐이면 잡아 온 산적이 하나같이 `도망친 아이 · 산적`이 되어 이력이 개성이 아니라 딱지가 된다. 지금 **36종**: 유년기 16(civilian 7 · bandit 4 · cult 3 · mercenary 2) · 성년기 20(civilian 6 · bandit 7 · cult 3 · mercenary 4).
 - **적으로 태어난 사람도 굴려는 둔다 — 얹지 않을 뿐이다**(`UnitBrain._rolledChildhood/_rolledAdulthood`). 안 굴려 두면 **회유해 온 산적이 배경 없는 사람**이 된다. 데려오고 나서 굴리면 그건 이력이 아니라 합류 보너스다.
 - **작업도 막는다 — 그러나 막는 길은 `WorkSettings` 하나다**(`BackstoryData.DisabledJobs` → `WorkSettings.SetBlocked`). 큐 배정이 이미 `IsEnabled` 하나를 지나가므로(`JobManager.RequestJob`) 거기서 거짓을 돌려주면 **작업·전투 코드는 성장 배경을 몰라도 된다** — 특성이 스탯만 얹는 것과 같은 취지다(모델 A: 분기를 늘리지 않는다). **끈 것(`_disabled`)과 다른 축**이라 사람이 P패널에서 켤 수 없고, 칸에 **`×`로 뜬다**(빈 칸으로 두면 "안 켠 것"과 구별이 안 돼 눌러 보고 나서야 안다).
-- **직접 배정만 예외로 한 번 더 묻는다** — 채굴·벌목·경비는 큐를 안 타므로 `IsEnabled`가 걸러 주지 않는다. `ResourceNode.Assign`·`PatrolZone.Assign`이 `IsBlocked`를 보고 **배정 자체를 거절**한다(안 그러면 *"무능력인데 바위는 캔다"*).
+- **직접 배정만 예외로 한 번 더 묻는다** — 손으로 붙이는 길은 작업 설정을 안 보므로(그건 명령이다) `IsEnabled`가 걸러 주지 않는다. `ResourceNode.Assign`·`PatrolZone.Assign`이 `IsBlocked`를 보고 **배정 자체를 거절**한다(안 그러면 *"무능력인데 바위는 캔다"*). **막힌 것은 켤 수도 없으므로**(`SetEnabled`) 자율 배정도 저절로 걸러진다.
 - **무능력은 드물다** — 17종 중 셋만 막는다(귀족가의 아이=운반 · 학자=경비 · 옥살이=간수). 전부가 하나씩 막으면 개성이 아니라 세금이고, 폰을 뽑을 때마다 "이번엔 뭘 못 하나"를 확인하는 일이 된다.
 - **`TraitData.StatOffset`을 빌려 쓴다** — 같은 모양을 하나 더 만들면 두 벌이 되고, 공용 타입으로 **옮기면** 유니티가 직렬화 타입을 못 찾아 **기존 특성 에셋의 값이 통째로 날아간다**.
 - 표시: 스탯 창(C) `■ 성장 배경`(특성 **위** — 기질보다 내력이 먼저 읽힌다) + `<link>` 툴팁, `InspectPanel`은 이름만 한 줄. 첫 벌은 `DungeonColony → Create Backstories`가 만들었다.

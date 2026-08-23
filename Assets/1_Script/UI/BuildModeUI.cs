@@ -44,7 +44,9 @@ public class BuildModeUI : MonoBehaviour
         ResearchManager.OnResearchCompleted -= OnResearchDone;
     }
 
-    void OnResearchDone(ResearchData _)
+    void OnResearchDone(ResearchData _) => Rebuild();
+
+    void Rebuild()
     {
         if (panel != null && panel.activeSelf) ShowCategory(_selectedCat);
     }
@@ -200,8 +202,14 @@ public class BuildModeUI : MonoBehaviour
         }
         else sb.AppendLine("<color=#888>무료</color>");
 
-        if (!bd.IsUnlocked && bd.RequiredResearch != null)
-            sb.AppendLine($"<color=#F90>[잠김] {bd.RequiredResearch.ResearchName} 연구 필요</color>");
+        // **사유는 `BuildingData.LockReason` 하나가 답한다** — 잠그는 축이 둘이 되면서
+        // (연구 · 가져와 봤는가) 여기서 조립하면 창마다 다른 말이 뜬다.
+        if (!bd.IsUnlocked)
+        {
+            var why = bd.LockReason;
+            if (!string.IsNullOrEmpty(why))
+                sb.AppendLine($"<color=#F90>[잠김] {why}</color>");
+        }
 
         return sb.ToString().TrimEnd();
     }

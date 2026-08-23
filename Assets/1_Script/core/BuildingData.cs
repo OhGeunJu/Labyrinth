@@ -53,10 +53,23 @@ public class BuildingData : ScriptableObject
 
     // 지금 지을 수 있나. `ResearchManager`가 없으면(씬에 안 놓였으면) 막지 않는다 —
     // 연구 시스템이 없는 씬에서 건설이 통째로 죽는 것보다 낫다.
-    public bool IsUnlocked =>
+    public bool IsUnlocked => ResearchDone;
+
+    public bool ResearchDone =>
         RequiredResearch == null
         || ResearchManager.Instance == null
         || ResearchManager.Instance.IsCompleted(RequiredResearch);
+
+    // **왜 잠겼는지 한 줄로.** 잠금 사유를 부르는 쪽마다 조립하면 창마다 다른 말이 뜬다
+    // (건설 타일 호버 · 청사진 · 살펴보기 창).
+    public string LockReason
+    {
+        get
+        {
+            if (!ResearchDone) return $"{RequiredResearch.ResearchName} 연구가 필요합니다";
+            return null;
+        }
+    }
     public GameObject       Prefab;
     [Tooltip("자재 운반 후 건설 (서브 코어 등 2단계 건설)")]
     public bool             UsesBlueprint = false;

@@ -66,6 +66,21 @@ public class DetectNode : BTNode
     {
         Vector3 selfPos = bb.Self.transform.position;
 
+        // **도발이 표적 선정을 덮어쓴다.** 새 전투 규칙이 아니라 **이 한 곳의 답을 갈아
+        // 끼우는 것**이다(`FinishTarget`이 자동 표적에 예외를 뚫은 것과 같은 자리).
+        //
+        // **맨 위여야 한다** — 아래의 "더 가까운 적으로 갈아탄다"보다 뒤에 두면, 탱커가
+        // 도발한 순간 그 옆의 다른 적이 더 가깝다는 이유로 **한 틱 만에 풀린다.** 붙들어
+        // 두는 것이 도발의 전부라 그러면 능력이 아무것도 안 한 것이 된다.
+        //
+        // 만료·죽음·기절은 `Taunt.HolderOf`가 한꺼번에 본다.
+        var holder = Taunt.HolderOf(bb);
+        if (holder != null)
+        {
+            bb.Target = holder;
+            return BTStatus.Success;
+        }
+
         // 이미 잡은 타겟이 유효하면 유지하되, 훨씬 가까운 적이 생기면 갈아탄다.
         // (옆에 적을 두고 멀리 있는 상대를 패러 가는 것 방지 — 단 매 틱 흔들리지 않게 여유를 둔다)
         // 들고 있던 타겟은 `bb`를 같이 물어본다(지목한 마무리 대상이면 기절해도 유지).
@@ -492,9 +507,21 @@ public class WorkNode : BTNode
         if (bb.IsDrafted) return BTStatus.Failure;
         if (bb.Carrying != null && bb.CurrentJob == null) return BTStatus.Failure;
 
-        // 배정된 노드가 있으면 우선 처리
+        // 배정된 노드가 있으면 우선 처리.
+        //
+        // **저 혼자 잡은 것만 작업 설정을 따른다.** 손으로 붙인 것은 *"너는 저기를 캐라"*라는
+        // 명령이라 P패널 on/off를 안 본다(`[치료한다]`가 설정을 안 보는 것과 같은 규칙).
+        // 자율 배정된 것까지 안 따르면 **끄는 스위치가 거짓말이 된다** — 껐는데도 계속 캔다.
         if (bb.AssignedNode != null)
+        {
+            if (bb.NodeAutoClaimed && !StillAllowed(bb))
+            {
+                bb.AssignedNode.Unassign(bb.Brain);
+                bb.NodeAutoClaimed = false;
+                return BTStatus.Failure;
+            }
             return TickAssigned(bb);
+        }
 
         // 기존 JobManager 경로
         if (bb.CurrentJob == null)
@@ -502,7 +529,21 @@ public class WorkNode : BTNode
             var brain = bb.Brain;
             var job   = JobManager.Instance.RequestJob(brain);
 
-            if (job == null) return BTStatus.Failure;
+            // **큐가 비면 빈 광맥을 잡는다** — 자율 배정(`ResourceNode.ClaimFreeFor`).
+            //
+            // 여기가 곧 "우선순위 맨 끝"이다. `QueueOrder`에는 안 넣는다 — 채굴·벌목은
+            // **일감을 만들지 않으므로**(`TickAssigned`가 노드를 직접 캔다) 그 배열에 적으면
+            // *"큐에서 배정되는 카테고리"*라는 그 배열의 뜻이 거짓이 된다. 큐를 먼저 비우고
+            // 나서 도는 것만으로 "캐 놓은 것을 나르는 일이 캐는 일보다 앞선다"가 성립한다.
+            if (job == null)
+            {
+                if (ResourceNode.ClaimFreeFor(brain) != null)
+                {
+                    ResetProgress();
+                    return BTStatus.Running;   // 다음 틱부터 `TickAssigned`가 데려간다
+                }
+                return BTStatus.Failure;
+            }
             bb.CurrentJob = job;
             job.Start();
             // OnStart이 즉시 종료(예: 재료 부족으로 주문 재큐)한 경우 헛걸음 방지 — 바로 놓는다.
@@ -583,6 +624,17 @@ public class WorkNode : BTNode
         }
 
         return BTStatus.Running;
+    }
+
+    // 저 혼자 잡은 배정이 아직 유효한가 — 그 작업이 켜져 있고 막히지 않았나.
+    // 노드가 답을 든다(`NeededCategory`) — 여기서 `IsTree`를 또 물으면 답이 두 벌이 된다.
+    static bool StillAllowed(UnitBlackboard bb)
+    {
+        var work = bb.Brain != null ? bb.Brain.Work : null;
+        if (work == null) return true;   // 설정이 없으면 막을 근거도 없다
+
+        var need = bb.AssignedNode.NeededCategory;
+        return work.IsEnabled(need) && !work.IsBlocked(need);
     }
 
     BTStatus TickAssigned(UnitBlackboard bb)

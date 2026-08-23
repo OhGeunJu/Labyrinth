@@ -15,10 +15,13 @@ public static class StatInfo
 
         // 전투
         StatName.MeleeAttack       => "근접 무기를 맞힌다. 상대의 근접방어·회피와 겨뤄 명중을 가른다.",
-        StatName.MeleeDefense      => "근접 공격을 막는다. 무기로 받아내는 쪽이라 무장 상태에 영향을 받는다.",
-        StatName.RangedDefense     => "날아오는 것을 피하거나 막는다.",
+        StatName.Defense           => "공격을 막아 낸다. 근접도 원거리도 같은 솜씨다 — " +
+                                      "다만 무기로 받아내는 쪽이라 맨손이면 무술로 대신한다. " +
+                                      "방패는 근접·원거리를 저마다 다르게 막아 준다.",
         StatName.PrecisionShooting => "원거리 명중. 거리가 멀수록 더 크게 걸린다.",
-        StatName.MartialArts       => "맨손 전투. 무기를 안 들었을 때의 공격력과 명중을 정한다.",
+        StatName.MartialArts       => "맨손 전투. 무기를 안 들었을 때 **근접공격과 방어를 겸한다** — " +
+                                      "때리는 솜씨와 막는 솜씨가 한 스탯이라, 맨손 폰은 이것만 " +
+                                      "올리면 둘 다 오른다.",
         StatName.Evasion           => "몸으로 피한다. 방어와 달리 무기가 없어도 걸린다.",
         StatName.Athletics         => "이동 속도와 지구력. 걸으면 저절로 자란다.",
         StatName.Swimming          => "물에서의 이동.",
@@ -36,22 +39,15 @@ public static class StatInfo
         StatName.Javelin      => "투창 숙련.",
 
         // 마법 — 계통과 원소가 곱해진다
-        StatName.ElementalMagic => "원소 계통 전반. 그 계통 주문 전체에 걸린다.",
-        StatName.DarkMagic      => "암흑 계통 전반. 그 계통 주문 전체에 걸린다.",
-        StatName.HolyMagic      => "신성 계통 전반. 그 계통 주문 전체에 걸린다.",
-
-        StatName.ElementalFire      => "원소 계통의 불 주문.",
-        StatName.ElementalIce       => "원소 계통의 얼음 주문.",
-        StatName.ElementalLightning => "원소 계통의 전기 주문.",
-        StatName.ElementalPoison    => "원소 계통의 독 주문.",
-        StatName.DarkFire           => "암흑 계통의 불 주문.",
-        StatName.DarkIce            => "암흑 계통의 얼음 주문.",
-        StatName.DarkLightning      => "암흑 계통의 전기 주문.",
-        StatName.DarkPoison         => "암흑 계통의 독 주문.",
-        StatName.HolyFire           => "신성 계통의 불 주문.",
-        StatName.HolyIce            => "신성 계통의 얼음 주문.",
-        StatName.HolyLightning      => "신성 계통의 전기 주문.",
-        StatName.HolyPoison         => "신성 계통의 독 주문.",
+        StatName.FireMagic      => "불 지팡이. 화상을 남긴다.",
+        StatName.WaterMagic     => "물 지팡이. 젖게 해 느리게 하고, **전기가 더 아프게** 한다.",
+        StatName.EarthMagic     => "땅 지팡이. 넘어뜨린다(기절 굴림 보정).",
+        StatName.LightningMagic => "전기 지팡이. 경직시킨다. 젖은 상대에게 1.5배.",
+        StatName.ArcaneMagic    => "비전 지팡이. **갑옷도 저항도 지나간다** — 대신 계수가 낮다.",
+        StatName.DarkMagic      => "암흑 지팡이. 회복을 막고 부패를 쌓는다.",
+        StatName.HolyMagic      => "신성 지팡이. **언데드에게 두 배.**",
+        StatName.Shield         => "방패를 다루는 솜씨. 막기 확률에서 **방패의 몫**을 키운다 " +
+                                   "(방패를 들지 않으면 아무것도 안 한다).",
 
         // 노동 — 일감이 요구하는 것
         StatName.Labor          => "잡일 전반. 특정 기술이 없는 작업의 속도.",

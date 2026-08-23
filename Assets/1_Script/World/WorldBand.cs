@@ -85,7 +85,15 @@ public class WorldBand
         {
             float sum = 0f;
             foreach (var m in Members) sum += WorldBattle.PowerOf(m);
-            return sum * (Data != null ? Data.PowerMultiplier : 1f);
+            sum *= Data != null ? Data.PowerMultiplier : 1f;
+
+            // **어디서 나온 무리인가가 전력을 가른다**(2026-08-23) — 같은 고블린이라도
+            // 용암지대에서 나온 것은 다르다. 근거지(`Home`)의 바이옴 티어를 곱한다.
+            // 무리 에셋을 티어마다 복제하면 바이옴 × 무리의 곱셈이 된다.
+            var map = WorldMap.Instance;
+            if (map != null) sum *= BiomeTier.PowerMultOf(map.GetTile(Home).Biome);
+
+            return sum;
         }
     }
 

@@ -153,7 +153,7 @@ public class BodyPartSystem : MonoBehaviour
 
     // ── 피해 처리 ────────────────────────────────────────────────────
     public void TakeDamage(float damage) =>
-        TakeDamage(new DamageInfo { Amount = damage, Category = DamageCategory.Physical, PhysicalType = PhysicalType.Blunt });
+        TakeDamage(new DamageInfo { Amount = damage, Type = DamageType.Blunt });
 
     public void TakeDamage(DamageInfo info)
     {
@@ -171,10 +171,20 @@ public class BodyPartSystem : MonoBehaviour
         }
 
         // 타입 배율
-        if (info.Category == DamageCategory.Physical && info.PhysicalType == PhysicalType.Blunt)
-            damage *= 1.3f;
-        if (info.Category == DamageCategory.Elemental && info.Element == DamageElement.Lightning)
-            damage *= 1.2f;
+        if (info.Type == DamageType.Blunt)     damage *= 1.3f;
+        if (info.Type == DamageType.Lightning) damage *= 1.2f;
+
+        // **젖으면 전기가 더 아프다** — 물이 혼자서는 약한 감속기인데, 이 한 줄이 물을
+        // *다음 한 방을 아프게 하는 원소*로 만든다. 원소끼리 얽히는 유일한 자리다.
+        if (info.Type == DamageType.Lightning && sfx != null && sfx.IsWet)
+            damage *= 1.5f;
+
+        // **언데드에게 신성은 두 배.** 저항표가 아니라 여기서 묻는 이유: `UnitBrain.IsUndead`는
+        // 해골 종족 **∥ 일으켜진 몸**을 함께 답하는데, 일어난 동료는 사람 종족이라
+        // `UnitData.Resistances`에 적을 자리가 없다 — 표에만 적으면 **성물이 걔들에게 안 듣는다.**
+        // 시체가 일어나는 게임에서 그건 신성을 넣은 뜻을 통째로 지운다.
+        if (info.Type == DamageType.Holy && _brain != null && _brain.IsUndead)
+            damage *= 2f;
 
         // 보호막 흡수 (타입 배율 이후, 갑옷 이전)
         if (sfx != null && sfx.ShieldPool > 0f)
@@ -185,17 +195,28 @@ public class BodyPartSystem : MonoBehaviour
 
         var partType = GetRandomBodyPart();
 
-        // 갑옷 감소 (관통 계열·DoT 우회 제외, 등급 배율 반영)
-        bool isPiercing = (info.Category == DamageCategory.Physical  && info.PhysicalType == PhysicalType.Pierce)
-                       || (info.Category == DamageCategory.Elemental && info.Element      == DamageElement.Ice);
-        if (!isPiercing && !info.IgnoreArmor)
+        // **막는 것이 갈린다: 물리는 갑옷 두께, 원소는 저항.**
+        //
+        // `Arcane`은 둘 다 지나간다 — 그게 비전의 일이고, 그 대신 계수가 낮다.
+        // 저항표가 아무리 두꺼워도 뚫는 답이 하나는 있어야 한다.
+        var  armorSlot = BodyPartToArmorSlot(partType);
+        var  armor     = Equip?.GetArmor(armorSlot);
+        bool ignoresDefense = info.Type == DamageType.Arcane;
+
+        if (!ignoresDefense && !info.IgnoreArmor)
         {
-            var armorSlot = BodyPartToArmorSlot(partType);
-            var armor     = Equip?.GetArmor(armorSlot);
-            if (armor != null)
+            if (info.Type.IsPhysical())
             {
-                float qualMult = Equip?.GetArmorQualityMult(armorSlot) ?? 1f;
-                damage = Mathf.Max(0f, damage - armor.DamageReduction * qualMult);
+                // 관통은 두께를 지나간다(예전 `Pierce` 그대로).
+                if (info.Type != DamageType.Pierce && armor != null)
+                {
+                    float qualMult = Equip?.GetArmorQualityMult(armorSlot) ?? 1f;
+                    damage = Mathf.Max(0f, damage - armor.DamageReduction * qualMult);
+                }
+            }
+            else
+            {
+                damage *= ResistanceMult(info.Type, armor);
             }
         }
 
@@ -225,12 +246,12 @@ public class BodyPartSystem : MonoBehaviour
         }
 
         // 모든 피해는 혈액도 깎는다 — 베기는 출혈이 심하고 둔기는 덜함
-        float bloodFactor = otherBloodFactor;
-        if (info.Category == DamageCategory.Physical)
+        float bloodFactor = info.Type switch
         {
-            if      (info.PhysicalType == PhysicalType.Slash) bloodFactor = slashBloodFactor;
-            else if (info.PhysicalType == PhysicalType.Blunt) bloodFactor = bluntBloodFactor;
-        }
+            DamageType.Slash => slashBloodFactor,
+            DamageType.Blunt => bluntBloodFactor,
+            _                => otherBloodFactor,
+        };
         Blood -= actualDamage * bloodFactor;   // 음수 허용 (기절→사망 사이 구간)
         if (CheckBloodState()) return;
 
@@ -248,26 +269,53 @@ public class BodyPartSystem : MonoBehaviour
         sfx ??= GetComponent<StatusEffectSystem>();
         if (sfx == null) return;
 
-        switch (info.Category)
+        // **원소마다 하는 일이 하나씩이다.** 겹치면 색만 다른 피해가 된다.
+        switch (info.Type)
         {
-            case DamageCategory.Elemental:
-                if (info.Element == DamageElement.Fire)
-                    sfx.ApplyEffect(StatusEffectType.Burning, 5f, 5f);
-                // Ice: 방어구 관통 (갑옷 시스템에서 처리)
-                if (info.Element == DamageElement.Poison)
-                    ApplyPoisonAoE(info.Amount);
+            case DamageType.Fire:
+                sfx.ApplyEffect(StatusEffectType.Burning, 5f, 5f);
+                sfx.DryOff();   // 불이 물을 말린다 — 안 그러면 불·전기가 둘 다 잘 드는 공짜 조합
                 break;
 
-            case DamageCategory.Dark:
-                switch (info.Element)
-                {
-                    case DamageElement.Fire:      sfx.ApplyEffect(StatusEffectType.HealReduction, 10f, 0.5f); break;
-                    case DamageElement.Ice:       sfx.ApplyEffect(StatusEffectType.Slowed,         8f, 0.5f); break;
-                    case DamageElement.Lightning: sfx.ApplyEffect(StatusEffectType.Weakened,       8f, 0.5f); break;
-                    case DamageElement.Poison:    sfx.AddCorruption(info.Amount * 0.3f);                      break;
-                }
+            case DamageType.Water:
+                sfx.ApplyEffect(StatusEffectType.Wet, 8f, 0.4f);
+                break;
+
+            case DamageType.Earth:
+                // **켄시식 KO 체계에 직접 얹힌다** — 땅의 일은 피해가 아니라 *넘어뜨리는 것*이다.
+                TryKnockOut(0.35f);
+                break;
+
+            case DamageType.Lightning:
+                sfx.ApplyEffect(StatusEffectType.Slowed, 8f, 0.5f);
+                break;
+
+            // 비전은 상태이상이 없다 — 갑옷·저항을 지나가는 것이 그 일이다.
+            case DamageType.Arcane:
+                break;
+
+            case DamageType.Dark:
+                sfx.ApplyEffect(StatusEffectType.HealReduction, 10f, 0.5f);
+                sfx.AddCorruption(info.Amount * 0.3f);
+                break;
+
+            // 신성은 언데드 특효가 그 일(위 타입 배율). 산 사람에게는 그냥 피해다.
+            case DamageType.Holy:
                 break;
         }
+    }
+
+    // **저항은 종족 + 갑옷이다.** 답을 한 곳에 둔다 — 부르는 데가 늘 때 한쪽만 세면
+    // "갑옷을 벗었는데 저항이 그대로"가 된다.
+    float ResistanceMult(DamageType type, ArmorData armor)
+    {
+        float mult = 1f;
+
+        var race = _brain != null ? _brain.Data : null;
+        if (race != null) mult *= race.Resistances.Multiplier(type);
+        if (armor != null) mult *= armor.Resistances.Multiplier(type);
+
+        return mult;
     }
 
     // ── 기능 상실 (0) ────────────────────────────────────────────────
@@ -334,11 +382,13 @@ public class BodyPartSystem : MonoBehaviour
         type == BodyPartType.Head || type == BodyPartType.Chest || type == BodyPartType.Abdomen;
 
     // ── 강인함 판정 ──────────────────────────────────────────────────
-    void TryKnockOut()
+    // `bonus`는 **넘어뜨리는 쪽의 보정**(땅 원소가 0.35를 넣는다). 저항에서 곧장 뺀다 —
+    // 강인함을 깎는 식으로 넣으면 같은 값이 다른 판정(사망 문턱 등)에도 새어 나간다.
+    void TryKnockOut(float bonus = 0f)
     {
         float toughness   = _brain.Stats.Toughness;
         // 스탯 범위가 0~130이라 상한 없이는 100+에서 완전 면역 — 최대 90%까지만 저항
-        float resistChance = Mathf.Min(0.9f, toughness / 100f);
+        float resistChance = Mathf.Clamp01(Mathf.Min(0.9f, toughness / 100f) - bonus);
 
         if (UnityEngine.Random.value > resistChance)
             KnockOut();
@@ -650,23 +700,6 @@ public class BodyPartSystem : MonoBehaviour
         if (amount <= 0f) return;
         Blood -= amount;   // 음수 허용 — CheckBloodState가 기절/사망까지 처리
         CheckBloodState();
-    }
-
-    void ApplyPoisonAoE(float originalDamage)
-    {
-        float aoeDamage = originalDamage * 0.5f;
-        foreach (var col in Physics.OverlapSphere(transform.position, 3f))
-        {
-            if (col.gameObject == gameObject) continue;
-            col.GetComponent<BodyPartSystem>()?.TakeDamage(new DamageInfo
-            {
-                Amount       = aoeDamage,
-                Category     = DamageCategory.Elemental,
-                Element      = DamageElement.Poison,
-                EffectChance = 0f,  // AoE 연쇄 없음
-            });
-        }
-        Debug.Log($"[Poison] {gameObject.name} 주변 독 AoE {aoeDamage:F1} 피해");
     }
 
     static ArmorSlot BodyPartToArmorSlot(BodyPartType type) => type switch

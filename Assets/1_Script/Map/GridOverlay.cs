@@ -60,11 +60,12 @@ public class GridOverlay : MonoBehaviour
         _mesh.MarkDynamic();
         _filter.sharedMesh = _mesh;
 
-        // 정점 색을 쓰는 가장 단순한 셰이더. `Sprites/Default`는 URP에서도 그대로 돌고
-        // 알파 블렌딩이 기본이다. 없으면 내부 셰이더로 떨어진다.
-        var sh = Shader.Find("Sprites/Default") ?? Shader.Find("Hidden/Internal-Colored");
-        _mat = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
-        _mat.renderQueue = 3000;              // 투명 — 바닥 위에 얹힌다
+        // **깊이 판정을 끈 오버레이 머티리얼**(`OverlayMaterial` — 영역 원과 한 벌).
+        //
+        // 전에는 `Sprites/Default`에 렌더 큐만 올려 뒀는데, 그건 **그리는 순서**만 바꿀 뿐
+        // 깊이 판정은 그대로라 **바닥을 깔면 격자가 그 아래로 들어가 사라졌다** — 정작
+        // 건설할 자리에서만 안 보이는 격자였다. 슬래브 위 `lift`(0.02)로는 못 넘는다.
+        _mat = OverlayMaterial.Create();
 
         _renderer.sharedMaterial   = _mat;
         _renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

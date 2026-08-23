@@ -13,25 +13,13 @@ public class SubCore : MonoBehaviour
     [SerializeField] float moveSpeedModifier = 0f;
     [SerializeField] float damagePerSecond   = 0f;
 
-    Material _mat;
+    RangeCircle _circle;
     float    _effectTimer;
 
     public float Radius             => radius;
     public int   MinionCapBonus     => minionCapBonus;
     public float MoveSpeedModifier  => moveSpeedModifier;
     public float DamagePerSecond    => damagePerSecond;
-
-    void Awake()
-    {
-        _mat = new Material(Shader.Find("Hidden/Internal-Colored"))
-        {
-            hideFlags = HideFlags.HideAndDontSave
-        };
-        _mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-        _mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-        _mat.SetInt("_Cull",    (int)CullMode.Off);
-        _mat.SetInt("_ZWrite", 0);
-    }
 
     void Start()
     {
@@ -41,11 +29,19 @@ public class SubCore : MonoBehaviour
     void OnDestroy()
     {
         DungeonCore.Instance?.UnregisterSubCore(this);
-        Destroy(_mat);
+        _circle?.Dispose();
     }
 
     void Update()
     {
+        // 원은 메시라 **매 프레임 다시 짓지 않는다** — 자리·반경·색이 그대로면 그냥 돌아온다.
+        //
+        // **원은 메시로 그린다**(`RangeCircle`) — `GL`로 카메라 렌더 끝에 그리면 오버레이 UI
+        // 위에 얹힌다.
+        _circle ??= new RangeCircle(transform, "RangeCircle");
+        _circle.Draw(new Vector3(transform.position.x, RangeCircle.Lift, transform.position.z),
+                     radius, new Color(0.6f, 0.4f, 1f, 0.6f));
+
         _effectTimer += Time.deltaTime;
         if (_effectTimer < EffectInterval) return;
         _effectTimer = 0f;
@@ -84,8 +80,6 @@ public class SubCore : MonoBehaviour
         }
     }
 
-    void OnEnable()  => RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
-    void OnDisable() => RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
 
     public bool IsWithinRange(Vector2Int tile)
     {
@@ -100,33 +94,6 @@ public class SubCore : MonoBehaviour
         return dx * dx + dz * dz <= radius * radius;
     }
 
-    void OnEndCameraRendering(ScriptableRenderContext ctx, Camera cam)
-    {
-        if (cam == Camera.main) DrawRange();
-    }
-
-    void OnRenderObject()
-    {
-        if (GraphicsSettings.currentRenderPipeline == null) DrawRange();
-    }
-
-    void DrawRange()
-    {
-        const int segments = 48;
-        Vector3 center = new Vector3(transform.position.x, 0.02f, transform.position.z);
-
-        _mat.SetPass(0);
-        GL.PushMatrix();
-        GL.Begin(GL.LINE_STRIP);
-        GL.Color(new Color(0.6f, 0.4f, 1f, 0.6f));
-        for (int i = 0; i <= segments; i++)
-        {
-            float angle = i * Mathf.PI * 2f / segments;
-            GL.Vertex3(center.x + Mathf.Cos(angle) * radius,
-                       center.y,
-                       center.z + Mathf.Sin(angle) * radius);
-        }
-        GL.End();
-        GL.PopMatrix();
-    }
+    // **원은 메시로 그린다**(`RangeCircle`) — `GL`로 카메라 렌더 끝에 그리면 오버레이 UI
+    // 위에 얹힌다.
 }

@@ -38,6 +38,21 @@ public class ResearchTableUI : MonoBehaviour
     ResearchData _markedResearch;   // 목록 표식이 가리키는 연구 — 바뀔 때만 다시 칠한다
     bool         _slotPrepared;
 
+    // ── 그래프 ────────────────────────────────────────────────────────────
+    //
+    // **규격은 씬이 갖고 이 코드는 그 안을 채운다.** 창 크기·스크롤 칸·선을 그릴 자리는
+    // `DungeonColony → Setup Research Graph`가 씬에 세워 두고, 여기서는 노드를 찍고 선을
+    // 그을 뿐이다. 코드가 창을 넓히면 **편집 중에 보이는 모양과 게임의 모양이 갈린다.**
+    [Header("그래프")]
+    [Tooltip("선을 그리는 판. `Content`의 첫 자식으로 씬에 세워 둔다 (에디터 도구가 만든다)")]
+    [SerializeField] ResearchLinkGraphic links;
+    [Tooltip("노드 사이 간격 (가로=열, 세로=행). 노드 **크기**는 노드 프리팹이 갖는다")]
+    [SerializeField] Vector2 nodeGap = new(64f, 14f);
+    [Tooltip("그래프 가장자리 여백")]
+    [SerializeField] Vector2 graphPadding = new(18f, 18f);
+
+    bool _warnedNoLinks;
+
     void Awake()
     {
         if (panel != null) panel.SetActive(false);
@@ -60,7 +75,7 @@ public class ResearchTableUI : MonoBehaviour
         ResearchManager.OnResearchCompleted -= HandleResearchCompleted;
     }
 
-    void HandleResearchCompleted(ResearchData _) => RebuildList();
+    void HandleResearchCompleted(ResearchData _) => RebuildGraph();
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }
 
@@ -219,7 +234,7 @@ public class ResearchTableUI : MonoBehaviour
         _selected     = null;
         WindowRaiser.Open(panel);
         if (detailPanel != null) detailPanel.SetActive(false);
-        RebuildList();
+        RebuildGraph();
     }
 
     public void Close()
@@ -228,23 +243,111 @@ public class ResearchTableUI : MonoBehaviour
         if (panel != null) panel.SetActive(false);
     }
 
-    void RebuildList()
+    // **노드를 놓고 선을 긋는다.** 자리는 `ResearchGraphLayout`이 한 번 계산하고
+    // 노드와 선이 **같은 답을 읽는다** — 각자 재면 선이 노드에 안 붙는다.
+    void RebuildGraph()
     {
         if (entryContainer == null || entryPrefab == null || _currentTable == null) return;
+        WarnIfUnwired();
 
+        // **선을 그리는 판은 남긴다** — 같이 지우면 `links`가 파괴된 참조가 되어 다음 줄에서
+        // 선이 통째로, 그리고 **조용히** 안 그려진다.
         foreach (Transform child in entryContainer)
-            Destroy(child.gameObject);
+            if (links == null || child != links.transform) Destroy(child.gameObject);
         _entries.Clear();
 
+        // **노드 크기는 프리팹이 든다** — 코드가 정하면 프리팹을 손봐도 그래프는 옛 크기로
+        // 자리를 잡아 노드끼리 겹치거나 사이가 벌어진다.
+        var all     = _currentTable.AllResearch;
+        var graph   = ResearchGraphLayout.Build(all, NodeSize(), nodeGap, graphPadding);
         var pending = _currentTable.PendingResearch;
-        foreach (var data in _currentTable.AllResearch)
+
+        foreach (var data in all)
         {
+            if (data == null || !graph.Slots.TryGetValue(data, out var slot)) continue;
+
             var entry = Instantiate(entryPrefab, entryContainer);
             entry.Setup(data, pending);
             entry.OnSelected += SelectResearch;
             _entries.Add(entry);
+
+            if (entry.transform is RectTransform rt)
+            {
+                rt.anchorMin        = new Vector2(0f, 1f);
+                rt.anchorMax        = new Vector2(0f, 1f);
+                rt.pivot            = new Vector2(0f, 1f);
+                rt.sizeDelta        = graph.NodeSize;
+                rt.anchoredPosition = slot.TopLeft;
+            }
         }
+
+        // 스크롤 범위는 **내용이 정한다** — 그래프가 자라면 스크롤도 같이 자라야 한다.
+        if (entryContainer is RectTransform content) content.sizeDelta = graph.Size;
+        if (links != null)
+        {
+            (links.transform as RectTransform).sizeDelta = graph.Size;
+            links.SetLinks(BuildLinks(graph));
+        }
+
+        // 열었을 때 **왼쪽 위**를 본다 — 뿌리가 거기 있다. 안 맞추면 지난번 스크롤 자리가
+        // 남아 빈 곳을 보게 된다.
+        // 꺼진 것까지 본다 — 연구가 끝나 목록을 다시 지을 때 창이 닫혀 있을 수 있다.
+        var scroll = entryContainer.GetComponentInParent<ScrollRect>(true);
+        if (scroll != null)
+        {
+            scroll.horizontalNormalizedPosition = 0f;
+            scroll.verticalNormalizedPosition   = 1f;
+        }
+
         _markedResearch = pending;
+    }
+
+    // 선은 **선행의 오른쪽 가장자리에서 나와 뒤 연구의 왼쪽 가장자리로** 들어간다.
+    // 중심끼리 이으면 선이 노드 위를 가로질러 글자를 덮는다.
+    static List<ResearchLinkGraphic.Link> BuildLinks(ResearchGraphLayout.Result graph)
+    {
+        var result = new List<ResearchLinkGraphic.Link>();
+        var mgr    = ResearchManager.Instance;
+        float halfH = graph.NodeSize.y * 0.5f;
+
+        foreach (var kv in graph.Slots)
+        {
+            var data = kv.Key;
+            if (data.Prerequisites == null) continue;
+
+            foreach (var pre in data.Prerequisites)
+            {
+                if (pre == null || !graph.Slots.TryGetValue(pre, out var from)) continue;
+
+                result.Add(new ResearchLinkGraphic.Link
+                {
+                    From = from.TopLeft + new Vector2(graph.NodeSize.x, -halfH),
+                    To   = kv.Value.TopLeft + new Vector2(0f, -halfH),
+                    Done = mgr != null && mgr.IsCompleted(pre),
+                });
+            }
+        }
+        return result;
+    }
+
+    // 노드 크기 = **프리팹의 크기**. 프리팹이 없거나 0이면 그래프가 한 자리에 쌓이므로
+    // 최소값으로 받쳐 둔다.
+    Vector2 NodeSize()
+    {
+        var rt = entryPrefab != null ? entryPrefab.transform as RectTransform : null;
+        var size = rt != null ? rt.rect.size : Vector2.zero;
+        return new Vector2(size.x > 1f ? size.x : 156f, size.y > 1f ? size.y : 38f);
+    }
+
+    // **안 배선된 것을 조용히 넘기지 않는다.** 선을 그릴 판이 없으면 노드만 뜨고 그래프가
+    // 그냥 흩어진 상자들로 보이는데, 그 증상만으로는 배선이 빠진 것인지 선행이 없는 것인지
+    // 구별이 안 된다. 한 번만 적는다(매 프레임 적으면 콘솔이 묻힌다).
+    void WarnIfUnwired()
+    {
+        if (links != null || _warnedNoLinks) return;
+        _warnedNoLinks = true;
+        Debug.LogWarning("[연구] 선을 그릴 판이 배선되지 않았습니다 — " +
+                         "`DungeonColony → Setup Research Graph`를 한 번 돌리세요.");
     }
 
     void SelectResearch(ResearchData data)
@@ -269,12 +372,23 @@ public class ResearchTableUI : MonoBehaviour
         {
             var sb = new StringBuilder();
 
-            if (data.Prerequisite != null)
+            // **선행마다 끝났는지를 따로 칠한다** — 둘 중 하나만 남았을 때 어느 쪽인지가
+            // 안 보이면 "왜 아직 잠겼지"에 답이 없다.
+            if (data.Prerequisites != null && data.Prerequisites.Count > 0)
             {
-                bool done = ResearchManager.Instance != null
-                         && ResearchManager.Instance.IsCompleted(data.Prerequisite);
-                string col = done ? "#88FF88" : "#FF6666";
-                sb.AppendLine($"선행 연구: <color={col}>{data.Prerequisite.ResearchName}</color>");
+                sb.Append("선행 연구: ");
+                bool first = true;
+                foreach (var pre in data.Prerequisites)
+                {
+                    if (pre == null) continue;
+                    if (!first) sb.Append(", ");
+                    first = false;
+
+                    bool done = ResearchManager.Instance != null
+                             && ResearchManager.Instance.IsCompleted(pre);
+                    sb.Append($"<color={(done ? "#88FF88" : "#FF6666")}>{pre.ResearchName}</color>");
+                }
+                sb.AppendLine();
             }
 
             // **이걸 하면 뭐가 열리나** — 연구를 고르는 유일한 근거다.

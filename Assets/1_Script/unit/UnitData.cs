@@ -71,6 +71,14 @@ public class UnitData : ScriptableObject
              "붙잡기·회유·몸값이 전부 기절에서 시작하므로, 켜면 그 종족은 산 채로 못 잡는다.")]
     public bool IsUndead;
 
+    // **타고난 저항**(2026-08-23). 갑옷과 더해진다.
+    //
+    // **신성 특효는 여기 안 적는다** — 그건 `UnitBrain.IsUndead`가 답한다(해골 종족 ∥
+    // **일으켜진 몸**). 표에 적으면 일어난 동료는 사람 종족이라 표에 없어서 **성물이 안 듣는다.**
+    [Tooltip("이 종족이 타고난 원소 저항. 음수는 취약. 비우면 전부 0.")]
+    public List<DamageResistance> Resistances = new();
+
+
     // **살아온 내력이 있는 종족인가.**
     //
     // 켜면 태어날 때 유년기·성년기 배경을 하나씩 굴려 갖는다(`BackstoryPool`).

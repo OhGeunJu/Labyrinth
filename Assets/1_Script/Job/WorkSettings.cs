@@ -58,14 +58,17 @@ public class WorkSettings : MonoBehaviour
         OnChanged?.Invoke();
     }
 
+    // **`IsToggleable`이지 `IsQueued`가 아니다.** 채굴·벌목은 큐를 안 타지만(일감을 안 만든다)
+    // 자율 배정(`ResourceNode.ClaimFreeFor`)이 이 답을 본다 — `IsQueued`로 막으면 그 둘이
+    // **늘 꺼진 것으로 답해** 자율 배정이 한 번도 안 돈다.
     public bool IsEnabled(JobCategory category)
-        => JobCategoryInfo.IsQueued(category)
+        => JobCategoryInfo.IsToggleable(category)
         && !_blocked.Contains(category)
         && !_disabled.Contains(category);
 
     public void SetEnabled(JobCategory category, bool enabled)
     {
-        if (!JobCategoryInfo.IsQueued(category)) return;
+        if (!JobCategoryInfo.IsToggleable(category)) return;
         if (_blocked.Contains(category)) return;   // 못 하는 일은 켤 수 없다
 
         bool changed = enabled ? _disabled.Remove(category) : _disabled.Add(category);
@@ -120,15 +123,21 @@ public class WorkSettings : MonoBehaviour
             return;
         }
 
-        bool mentionsQueue = false;
+        // **`IsToggleable`로 묻는다.** 채굴·벌목은 큐를 안 타지만 자율 배정이 이 설정을 보므로
+        // (`ResourceNode.ClaimFreeFor`) 목록에 적는 것이 이제 뜻을 갖는다 — `[채굴, 벌목]`은
+        // *"이 하수인은 캐고 벨 뿐 나르지 않는다"*라는 저작이다. 옛날엔 그 목록이 큐 작업을
+        // 통째로 꺼 버리는 사고여서 "아무 말도 안 한 것"으로 쳤는데, 끌 수 없던 시절의
+        // 이야기다. **경비만 여전히 직접 배정이라 여기 적어도 켜고 꺼지지 않는다.**
+        bool mentionsToggleable = false;
         for (int i = 0; i < allowed.Count; i++)
-            if (JobCategoryInfo.IsQueued(allowed[i])) { mentionsQueue = true; break; }
+            if (JobCategoryInfo.IsToggleable(allowed[i])) { mentionsToggleable = true; break; }
 
-        if (!mentionsQueue)
+        if (!mentionsToggleable)
         {
-            Debug.LogWarning($"[WorkSettings] {name}: 허용 작업 목록에 큐 작업이 하나도 없습니다 " +
-                             "(채굴·벌목·경비는 직접 배정이라 여기서 켜고 끄는 대상이 아닙니다). " +
-                             "전부 허용으로 둡니다 — 의도한 제한이 있다면 MinionData에 큐 작업으로 적으세요.");
+            Debug.LogWarning($"[WorkSettings] {name}: 허용 작업 목록에 켜고 끌 수 있는 작업이 " +
+                             "하나도 없습니다(경비는 직접 배정이라 대상이 아닙니다). " +
+                             "전부 허용으로 둡니다 — 의도한 제한이 있다면 MinionData에 큐 작업이나 " +
+                             "채굴·벌목으로 적으세요.");
             foreach (var c in DefaultOff) _disabled.Add(c);
             OnChanged?.Invoke();
             return;
@@ -137,6 +146,10 @@ public class WorkSettings : MonoBehaviour
         foreach (var category in JobCategoryInfo.QueueOrder)
             if (!Contains(allowed, category))
                 _disabled.Add(category);
+
+        // 채굴·벌목도 같은 규칙 — 적혔으면 켜고, 안 적혔으면 끈다.
+        if (!Contains(allowed, JobCategory.Mining))  _disabled.Add(JobCategory.Mining);
+        if (!Contains(allowed, JobCategory.Logging)) _disabled.Add(JobCategory.Logging);
 
         OnChanged?.Invoke();
     }

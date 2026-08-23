@@ -16,14 +16,25 @@ public enum StatGrade
 public enum StatName
 {
     Strength, Toughness, Dexterity, Cognition,
-    MeleeAttack, MeleeDefense, RangedDefense, PrecisionShooting,
+    // **방어는 하나다**(2026-08-23). 전에는 `MeleeDefense`·`RangedDefense` 둘이었는데,
+    // *"막는 솜씨"*라는 물음은 하나뿐이고 **날아오는 것을 막는 것도 막는 것**이다.
+    // 근접·원거리를 가르던 진짜 이유(방패가 둘을 다르게 막는다)는 **방패가 든다** —
+    // `WeaponData.BlockBonus` ↔ `RangedBlockBonus`. 스탯을 둘로 두면 같은 것을 두 번
+    // 표현하는 셈이고, 실제로 `RangedDefense`는 **저작 에셋에서 한 번도 안 쓰였다**.
+    MeleeAttack, Defense, PrecisionShooting,
     OneHandSword, OneHandAxe, OneHandMace,
     TwoHandSword, TwoHandAxe, TwoHandMace, Polearm,
     Bow, Crossbow, Javelin,
-    ElementalMagic, DarkMagic, HolyMagic,
-    ElementalFire, ElementalIce, ElementalLightning, ElementalPoison,
-    DarkFire, DarkIce, DarkLightning, DarkPoison,
-    HolyFire, HolyIce, HolyLightning, HolyPoison,
+
+    // **마법은 원소 하나로 잰다**(2026-08-23). 전에는 계열 셋(`ElementalMagic`·`DarkMagic`·
+    // `HolyMagic`) × 원소 넷 = 열다섯이었는데, **계열 셋은 전투에서 한 번도 안 읽혔고**
+    // (`GetMagicCategorySkill`을 부르는 곳이 없었다) 조합 열둘 중 여덟은 무기가 없었다.
+    // 피해 축이 `DamageType` 하나로 접히면서 "계열"이라는 층 자체가 사라졌다.
+    //
+    // **자리를 옮겼으므로 에셋의 정수도 같이 옮겼다** — 실제로 저작에 쓰이던 것은
+    // 옛 `DarkMagic`(19) 하나뿐이었고(교단 성장 배경 다섯), 그건 여기 그대로 살아 있다.
+    FireMagic, WaterMagic, EarthMagic, LightningMagic, ArcaneMagic, DarkMagic, HolyMagic,
+
     MartialArts, Evasion, Athletics, Swimming,
     Labor, Mining, Growing, Cutting, Taming, Cooking, Medicine, Research,
     WeaponCrafting, ArmorCrafting, Alchemy,
@@ -49,7 +60,18 @@ public enum StatName
     //
     // 이름만 바꿨고 **자리는 그대로 맨 끝이다** — 직렬화가 정수라 순서를 건드리면 이미
     // 저작한 에셋이 통째로 밀린다(에셋에 문자열로 박힌 곳은 없음을 전수 확인).
-    Social
+    Social,
+
+    // **방패**(2026-08-23). 무기는 종류마다 스탯이 있는데 방패만 없었다 — `WeaponToStat`에서
+    // `WeaponType.Shield`만 `_ => MartialArts` 폴백에 떨어졌고, 막기 계산은 평탄 `BlockBonus`만
+    // 더했다. **그래서 방패는 자라지 않았다**: 천 번을 막아도 나아지지 않고 좋은 방패를 사는
+    // 것이 유일한 개선이었다(`Warden`을 만든 그 자리와 같다 — 작업마다 스탯이 있는데 간수만
+    // 없어서 인지력을 빌려 쓰고 있었다).
+    //
+    // **무기와 대칭으로 든다**: 공통 스탯이 굴림(`Defense` = 막나), 종류 스탯이 크기
+    // (`Shield` = 방패가 얼마나 일하나). 방패가 없으면 `BlockBonus`가 0이라 이 스탯도 저절로
+    // 아무것도 안 한다 — *"방패를 든 폰만 자란다"*가 규칙 없이 나온다.
+    Shield
 }
 
 // **스탯 이름의 표시명 — 여기 하나뿐이다.**
@@ -66,8 +88,7 @@ public static class StatNameExt
         StatName.Dexterity         => "손재주",
         StatName.Cognition         => "인지력",
         StatName.MeleeAttack       => "근접공격",
-        StatName.MeleeDefense      => "근접방어",
-        StatName.RangedDefense     => "원거리방어",
+        StatName.Defense           => "방어",
         StatName.PrecisionShooting => "정밀사격",
         StatName.MartialArts       => "무술",
         StatName.Evasion           => "회피",
@@ -99,21 +120,14 @@ public static class StatNameExt
         StatName.Bow               => "활",
         StatName.Crossbow          => "쇠뇌",
         StatName.Javelin           => "투창",
-        StatName.ElementalMagic    => "원소마법",
-        StatName.DarkMagic         => "암흑마법",
-        StatName.HolyMagic         => "신성마법",
-        StatName.ElementalFire     => "원소·불",
-        StatName.ElementalIce      => "원소·얼음",
-        StatName.ElementalLightning=> "원소·전기",
-        StatName.ElementalPoison   => "원소·독",
-        StatName.DarkFire          => "암흑·불",
-        StatName.DarkIce           => "암흑·얼음",
-        StatName.DarkLightning     => "암흑·전기",
-        StatName.DarkPoison        => "암흑·독",
-        StatName.HolyFire          => "신성·불",
-        StatName.HolyIce           => "신성·얼음",
-        StatName.HolyLightning     => "신성·전기",
-        StatName.HolyPoison        => "신성·독",
+        StatName.Shield            => "방패",
+        StatName.FireMagic         => "불 마법",
+        StatName.WaterMagic        => "물 마법",
+        StatName.EarthMagic        => "땅 마법",
+        StatName.LightningMagic    => "전기 마법",
+        StatName.ArcaneMagic       => "비전 마법",
+        StatName.DarkMagic         => "암흑 마법",
+        StatName.HolyMagic         => "신성 마법",
         _                          => s.ToString(),
     };
 }
