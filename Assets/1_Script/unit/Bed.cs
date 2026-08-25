@@ -19,6 +19,19 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
     // 붙는다(살려서 회유할 사람은 침대에). **갇힌 상태 자체는 `Imprisonment` 하나가 정한다.**
     [SerializeField] bool forPrisoners;
 
+    // **잠자리의 질**(2026-08-25). 피로가 얼마나 빨리 차는지를 이 침대가 답한다 —
+    // `Needs.SleepPerSecond`가 곧바로 배율로 쓴다(바닥은 `Needs.FloorQuality` 0.5).
+    //
+    // **침대마다 다를 수 있어야 가구를 지을 이유가 생긴다.** 전에는 `bool inBed` 하나라
+    // 짚더미든 깃털 요든 똑같이 600초였고, 그러면 더 나은 침대라는 것이 표현될 자리가 없다.
+    //
+    // 1.0이 보통이다 — **아래로 내리는 데는 안 쓴다**(나쁜 침대는 바닥과 구별이 안 가고,
+    // 그건 짓지 말라는 뜻이라 선택이 아니다).
+    [Tooltip("피로 회복 배율. 보통 침대 1.0 · 좋은 침대 1.4 (바닥은 0.5로 고정)")]
+    [SerializeField] float restQuality = 1f;
+
+    public float RestQuality => Mathf.Max(0.1f, restQuality);
+
     public bool ForPrisoners => forPrisoners;
 
     public void SetForPrisoners(bool on)

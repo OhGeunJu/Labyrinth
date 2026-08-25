@@ -12,13 +12,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
   m_Name: Res_Woodworking
   m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
   ResearchName: "\uBAA9\uACF5\uC220"
   Description: "\uD1B5\uB098\uBB34\uB97C \uCF1C\uC11C \uD310\uC790\uB97C \uB9CC\uB4E0\uB2E4."
   Ingredients:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
+    ItemId: 
     Amount: 15
   ResearchTime: 300
   SkillGrowthAmount: 1
   Prerequisites: []
+  GraphColumn: 0
+  GraphRow: 5
   UnlockedRecipes:
   - {fileID: 11400000, guid: 943fff1db03df7b4e8870d269038a8bd, type: 2}

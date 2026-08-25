@@ -1,2 +1,17 @@
-{ "id": "craft_hardleather_chest", "recipeName": "질긴 가죽 갑옷 제작", "ingredients": [ { "itemId": "res_hardleather", "amount": 5 } ],
-  "resultItemId": "arm_hardleather_chest", "resultAmount": 1, "craftTime": 20.0, "requiredSkillType": "ArmorCrafting", "requiredSkillLevel": 22, "skillGrowthAmount": 0.7 }
+{
+  "id": "craft_hardleather_chest",
+  "recipeName": "질긴 가죽 갑옷 제작",
+  "ingredients": [
+    {
+      "itemId": "res_hardleather",
+      "amount": 5
+    }
+  ],
+  "resultItemId": "arm_hardleather_chest",
+  "resultAmount": 1,
+  "craftTime": 20.0,
+  "requiredSkillType": "Tailoring",
+  "requiredSkillLevel": 22,
+  "skillGrowthAmount": 0.7,
+  "requiredResearchId": "Res_Tailoring"
+}

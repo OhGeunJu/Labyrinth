@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Baking
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uC81C\uBE75"
+  Description: "\uAC00\uB8E8\uB97C \uBC18\uC8FD\uD574 \uAD7D\uB294\uB2E4. \uB09F\uC54C\uC744
+    \uADF8\uB0E5 \uC539\uB358 \uAC83\uC5D0\uC11C \uD55C \uAC78\uC74C."
+  Ingredients:
+  - Item: {fileID: 0}
+    ItemId: flour
+    Amount: 12
+  ResearchTime: 350
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: eb8395468e9e8144c961c1bb695c2246, type: 2}
+  GraphColumn: 1
+  GraphRow: 10
+  UnlockedRecipes: []

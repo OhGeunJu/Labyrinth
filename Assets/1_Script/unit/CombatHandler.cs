@@ -34,9 +34,22 @@ public class CombatHandler : MonoBehaviour
     [Tooltip("회피 확률에 곱한다. 1 초과면 회피가 더 뜬다")]
     [SerializeField] float dodgeWeight = 1.25f;
 
+    // **천장이 없으면 위의 몫은 파리티에서만 뜻이 있다**(2026-08-24).
+    //
+    // 위 표는 공격=방어일 때의 값이고, 그 값만 보고 맞췄기에 **격차가 벌어지는 쪽을 아무도
+    // 안 쟀다.** 방어 100 대 공격 20이면 총 96%(27:1)였고, 130 대 10에서는 `dodgeWeight`
+    // 1.25가 확률을 1 너머로 밀어 `Random.value < 1.25`가 **항상 참** — 회피 100%로 굳었다.
+    // **막는 솜씨가 격차를 버는 것은 맞다. 잘못된 것은 그 끝이 없다는 것이다.**
+    [Tooltip("막기+회피를 합쳐 이 이상은 못 피한다. 격차가 아무리 나도 이만큼은 맞는다")]
+    [SerializeField, Range(0.1f, 0.95f)] float maxAvoidChance = 0.6f;
+
+    [Tooltip("원거리 발사 직전 이만큼은 멈춰 서서 겨눠야 한다. 움직이면 이 구간이 다시 시작된다")]
+    [SerializeField] float aimTime = 0.55f;
+
     float _attackTimer;
     UnitStats _stats;
     UnitBrain _brain;
+    PawnMover _mover;
     BodyPartSystem _bodyParts;
     Equipment _equipment;
     StatusEffectSystem _sfx;
@@ -75,14 +88,46 @@ public class CombatHandler : MonoBehaviour
         _bodyParts = GetComponent<BodyPartSystem>();
         _equipment = GetComponent<Equipment>();
         _sfx       = GetComponent<StatusEffectSystem>();
+        _mover     = GetComponent<PawnMover>();
     }
 
     void Update()
     {
         if (!IsInCombat) return;
 
+        // **싸우는 동안에는 표적을 본다**(2026-08-24). 폰은 그전까지 아예 안 돌아서 태어난
+        // 방향을 보고 섰고, 그래서 **석궁을 옆으로 쏘고 칼을 등 뒤로 휘둘렀다.** 확률을 아무리
+        // 맞춰도 화면에서 무슨 일이 벌어지는지 안 보이는 것이 이 자리였다.
+        //
+        // 도는 것은 `PawnMover`가 한다 — 자세(잠·기절·업힘)를 그쪽이 들고 있어서 여기서
+        // `transform.rotation`을 만지면 누운 폰을 세운다.
+        var facing = _brain != null ? _brain.Blackboard.Target : null;
+        if (facing != null && _mover != null) _mover.FaceTowards(facing.transform.position);
+
         _attackTimer += Time.deltaTime;
-        if (_attackTimer >= CalcAttackInterval())
+
+        float interval = CalcAttackInterval();
+
+        // **간격의 마지막 구간은 조준이다 — 그리고 움직이면 풀린다**(2026-08-24).
+        //
+        // 석궁의 3.4초는 그전까지 **간격일 뿐 화면에 없었다**: 그동안 폰이 아무것도 안 하니
+        // *언제 쏘는지*를 예측할 수 없고, 타이머가 차는 순간 갑자기 피가 깎였다.
+        //
+        // 조준을 **정지로 표현한다** — 게이지를 띄우지 않는 이유는 난전에서 바가 열 개씩
+        // 뜨면 화면이 지저분해지고, 무엇보다 **움직임은 그 자체로 읽히기** 때문이다.
+        // 딸려 오는 것이 요점이다: **밀고 들어가면 사수가 못 쏜다.** 장전은 다 됐는데 조준만
+        // 못 한 상태로 붙들리므로, 거리를 좁히는 것이 그대로 전술이 된다.
+        //
+        // **되돌리는 것은 조준뿐이다**(`Min`) — 타이머를 0으로 밀면 사수를 슬쩍슬쩍 건드리는
+        // 것만으로 영영 못 쏘게 만들 수 있다. 이건 장전을 취소하는 게 아니라 겨냥이 흔들리는 것이다.
+        //
+        // **근접은 안 건다** — 칼은 걸어 들어가면서 휘두르는 것이고, 걸면 근접전이 통째로 멎는다.
+        if (_attackTimer >= interval - aimTime
+            && Weapon != null && Weapon.IsRanged
+            && _mover != null && _mover.IsMoving())
+            _attackTimer = Mathf.Min(_attackTimer, interval - aimTime);
+
+        if (_attackTimer >= interval)
         {
             _attackTimer = 0f;
             WeaponData weapon = Weapon;
@@ -166,7 +211,8 @@ public class CombatHandler : MonoBehaviour
         float defSkill      = targetCombat != null ? targetCombat._stats.GetDefenseCombatSkill(defUnarmed) : 0f;
         StatName defStatName = defUnarmed ? StatName.MartialArts : StatName.Defense;
 
-        if (targetCombat != null && TryBlock(targetCombat, attackSkill))
+        var avoid = Measure(targetCombat, attackSkill, ranged: false);
+        if (targetCombat != null && avoid.RollBlock())
         {
             // 방어 성공: 적은 XP (baseline 1x)
             GrowXp(targetCombat, defStatName, defSkill, attackSkill, 1f);
@@ -178,7 +224,7 @@ public class CombatHandler : MonoBehaviour
             return;
         }
 
-        if (targetCombat != null && TryDodge(targetCombat, attackSkill))
+        if (targetCombat != null && avoid.RollDodge())
         {
             // 회피 성공: Evasion baseline XP, 공격자는 히트박스 미접촉 → 0
             GrowXp(targetCombat, StatName.Evasion, targetCombat._stats.Evasion, attackSkill, 1f);
@@ -259,54 +305,95 @@ public class CombatHandler : MonoBehaviour
         return d / (a + d);
     }
 
-    bool TryBlock(CombatHandler defender, float attackerAttackSkill)
+    // ── 안 맞는 것은 한 물음이다 — 막기와 회피를 같이 잰다 ──────────────────
+    //
+    // **따로 굴리면 답이 둘 어긋난다**(2026-08-24).
+    //
+    // ① **총량에 천장을 씌울 자리가 없다.** 막기는 제 확률만 알고 회피도 제 확률만 알아서
+    //    *"합쳐서 얼마나 피하나"*에 답하는 곳이 없었다 — 둘 다 멀쩡해 보이는데 합이 96%가 된다.
+    //
+    // ② **몫이 격차마다 달라진다.** 막기를 먼저 굴리므로 막기가 커질수록 회피에게 남는 자리가
+    //    줄어드는데, 뒤집히는 자리가 있다:
+    //
+    //      `0.75p == (1 − 0.75p) × 1.25p` → **p = 0.533**
+    //      (= 방어자의 막는 솜씨가 공격자의 유효 솜씨보다 **2.75배** 높을 때)
+    //
+    //    원거리는 거리·움직임이 **공격자 쪽만** 깎아 그 배수를 쉽게 넘는다. 그래서 등급이
+    //    같아도 멀리서 쏘면 **회피보다 방어가 더 자주 떴다**(사용자 관찰). 0.75/1.25는
+    //    *"회피가 더 잦다"*는 뜻으로 저작한 값인데 **파리티 언저리에서만 참**이었다.
+    //
+    // **총량을 먼저 정하고 몫으로 나눈다** — 그러면 비율이 격차와 무관하게 늘 37.5 : 62.5다.
+    readonly struct Avoidance
     {
-        if (IsDown(defender)) return false;
-        bool defUnarmed    = defender.GetWeaponType() == WeaponType.Unarmed;
-        float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
-        float shieldBonus  = defender.ShieldBonus(defender.Shield?.BlockBonus ?? 0f);
-        float effective    = defenseSkill + shieldBonus;
-        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias)
-                           * defender.blockWeight;
-        if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
-        return UnityEngine.Random.value < blockChance;
+        public readonly float Block, Dodge;
+        public Avoidance(float block, float dodge) { Block = block; Dodge = dodge; }
+
+        // `Dodge`는 **막기가 실패한 다음의** 확률이다 — 호출처는 예전대로 둘을 차례로 굴리면
+        // 되고, 몫은 `Measure`가 이미 맞춰 놓았다.
+        public bool RollBlock() => UnityEngine.Random.value < Block;
+        public bool RollDodge() => UnityEngine.Random.value < Dodge;
     }
 
     // **막는 솜씨는 하나다** — 근접이든 원거리든 `Defense`(맨손이면 무술)를 굴린다.
     // 갈리는 것은 **방패**뿐이다: `BlockBonus` ↔ `RangedBlockBonus`. 그래서 *"화살은 잘 막는데
     // 칼은 못 막는 방패"*는 그대로 표현되면서, 폰에게는 *"막는 솜씨"*가 하나로 남는다.
-    bool TryBlockRanged(CombatHandler defender, float attackerAttackSkill)
+    Avoidance Measure(CombatHandler defender, float attackerAttackSkill, bool ranged)
     {
-        if (IsDown(defender)) return false;
-        bool defUnarmed    = defender.GetWeaponType() == WeaponType.Unarmed;
-        float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
-        float shieldBonus  = defender.ShieldBonus(defender.Shield?.RangedBlockBonus ?? 0f);
-        float effective    = defenseSkill + shieldBonus;
-        float blockChance  = OpposedChance(effective, attackerAttackSkill, defender.defenseExponent, defender.attackerBias)
-                           * defender.blockWeight;
-        if (defender._sfx != null) blockChance *= defender._sfx.DefenseChanceMod;
-        return UnityEngine.Random.value < blockChance;
-    }
+        // **쓰러진 놈은 막지도 피하지도 못한다** — 둘 다 능동적인 동작이다. 회피를 `Evasion`으로
+        // 굴리면 회피 높은 폰은 기절해서도 잘 안 맞아 **눕힌 보람이 사라진다.**
+        if (defender == null || IsDown(defender)) return default;
 
-    bool TryDodge(CombatHandler defender, float attackerAttackSkill)
-    {
-        if (IsDown(defender)) return false;
-        float evasion     = defender._stats.Evasion;
-        float dodgeChance = OpposedChance(evasion, attackerAttackSkill, defender.defenseExponent, defender.attackerBias)
-                          * defender.dodgeWeight;
-        if (defender._sfx != null) dodgeChance *= defender._sfx.DefenseChanceMod;
-        return UnityEngine.Random.value < dodgeChance;
+        bool  defUnarmed   = defender.GetWeaponType() == WeaponType.Unarmed;
+        float defenseSkill = defender._stats.GetDefenseCombatSkill(defUnarmed);
+        float shieldBonus  = defender.ShieldBonus(
+            (ranged ? defender.Shield?.RangedBlockBonus : defender.Shield?.BlockBonus) ?? 0f);
+
+        float blockRaw = OpposedChance(defenseSkill + shieldBonus, attackerAttackSkill,
+                                       defender.defenseExponent, defender.attackerBias) * defender.blockWeight;
+        float dodgeRaw = OpposedChance(defender._stats.Evasion, attackerAttackSkill,
+                                       defender.defenseExponent, defender.attackerBias) * defender.dodgeWeight;
+
+        float sum = blockRaw + dodgeRaw;
+        if (sum <= 0f) return default;
+
+        // ① **몫** — 여기서 정해지고 격차가 얼마든 안 변한다. 방패를 들면 막기 쪽이 커진다.
+        float blockShare = blockRaw / sum;
+
+        // ② **총량** — 둘을 독립으로 겹쳐 재고 천장을 씌운다.
+        float total = 1f - (1f - Mathf.Clamp01(blockRaw)) * (1f - Mathf.Clamp01(dodgeRaw));
+        if (defender._sfx != null) total *= defender._sfx.DefenseChanceMod;
+        total = Mathf.Clamp(total, 0f, defender.maxAvoidChance);
+
+        // ③ 총량을 몫대로 갈라 **막기 → (실패하면) 회피** 두 굴림으로 되돌린다.
+        float block = total * blockShare;
+        float dodge = block >= 1f ? 0f : Mathf.Clamp01((total - block) / (1f - block));
+        return new Avoidance(block, dodge);
     }
 
     // ── 원거리/마법 ──────────────────────────────────────────────────
+    //
+    // **맞나? 는 한 물음이라 굴림도 하나다**(2026-08-24).
+    //
+    // 전에는 **셋**이었다: ① 조준(`인지력/100 × 거리 × 움직임`) ② 명중(`0.6 + 정밀/100 × 0.4`)
+    // ③ 방어자의 막기·회피. 셋을 곱하면 평범한 상황(인지 50 · 정밀 50 · 방어자 50 · 사거리
+    // 절반 · 움직이는 표적)에서 **16%, 여섯 발에 한 대**였고, 방어자가 자란 폰이면 1% 아래로
+    // 떨어져 **사실상 안 맞았다.** 근접은 굴림이 하나(대립)뿐인데 원거리만 셋이라, 같은 폰이
+    // 화살로는 아무것도 못 했다.
+    //
+    // **게다가 ①이 `인지력/100`이라 인지력 0이면 정밀사격이 얼마든 명중 0%였다** — 정작
+    // 사격 스탯은 ②에만 들었다. 쏘는 솜씨를 정하는 스탯이 명중을 못 정하고 있었다.
+    //
+    // 지금은 공격자 쪽 요인을 **유효 사격 솜씨 하나로 접어** 대립 굴림에 넘긴다. 거리와
+    // 움직임은 그 솜씨를 깎고(멀수록·움직일수록 겨냥이 나빠진다), 인지력은 **움직이는 표적을
+    // 읽는 데만** 든다(제 자리를 지키되 명중을 통째로 막지는 않는다).
     public void TryFireRanged(GameObject intendedTarget)
     {
         if (intendedTarget == null) return;
+
         float distance       = Vector3.Distance(transform.position, intendedTarget.transform.position);
         float effectiveRange = _brain.Blackboard.AttackRange;
         float normalized     = distance / Mathf.Max(effectiveRange, 0.1f);
 
-        // TODO: 거리 페널티 수치 추후 조정 필요
         // 사거리 내: 0~40%, 사거리 초과: 40%~100%
         float distancePenalty = normalized <= 1f
             ? normalized * 0.4f
@@ -319,47 +406,34 @@ public class CombatHandler : MonoBehaviour
             ? Mathf.Lerp(0.4f, 0f, _stats.Cognition / 100f)
             : 0f;
 
-        float accuracyChance = (_stats.Cognition / 100f) * (1f - distancePenalty) * (1f - movingPenalty);
-
-        if (UnityEngine.Random.value > accuracyChance)
-        {
-            Debug.Log($"[Combat] {gameObject.name} → 허공 (빗나감)");
-            return;
-        }
-
-        FireRanged(intendedTarget);
+        // **유효 사격 솜씨** — 이것 하나가 대립 굴림의 공격자 쪽이 된다.
+        float aimSkill = _stats.PrecisionShooting * (1f - distancePenalty) * (1f - movingPenalty);
+        FireRanged(intendedTarget, aimSkill);
     }
 
-    public void FireRanged(GameObject intendedTarget)
+    public void FireRanged(GameObject intendedTarget, float aimSkill)
     {
-        float hitChance = 0.6f + (_stats.PrecisionShooting / 100f) * 0.4f;
-        // PrecisionShooting은 도전 대상이 없어 SOL만 적용
+        // PrecisionShooting은 도전 대상이 없어 SOL만 적용. **쏘면 는다** — 맞았는지는 안 본다.
         _stats.GrowStat(StatName.PrecisionShooting, growthRate * CombatXp.Sol(_stats.PrecisionShooting));
-
-        if (UnityEngine.Random.value < hitChance)
-            DealRangedDamage(intendedTarget, false);
-        else
-        {
-            GameObject ally = FindAllyInLineOfFire(intendedTarget);
-            if (ally != null) DealRangedDamage(ally, true);
-            else Debug.Log($"[Combat] {gameObject.name} → 허공 (동료 없음)");
-        }
+        ShotTracer.Show(this, intendedTarget);
+        DealRangedDamage(intendedTarget, aimSkill, friendly: false);
     }
 
-    void DealRangedDamage(GameObject target, bool friendly)
+    void DealRangedDamage(GameObject target, float aimSkill, bool friendly)
     {
         var targetCombat = target.GetComponent<CombatHandler>();
 
         WeaponType weaponType  = GetWeaponType();
         float weaponSkill      = _stats.GetSkillFor(Weapon);
-        float attackSkill      = _stats.PrecisionShooting;
+        float attackSkill      = aimSkill;
         if (_sfx != null) attackSkill *= _sfx.AttackChanceMod;
 
         bool defUnarmed      = targetCombat != null && targetCombat.GetWeaponType() == WeaponType.Unarmed;
         float defRangedSkill = targetCombat != null ? targetCombat._stats.GetDefenseCombatSkill(defUnarmed) : 0f;
         StatName defStatName = defUnarmed ? StatName.MartialArts : StatName.Defense;
 
-        if (targetCombat != null && TryBlockRanged(targetCombat, attackSkill))
+        var avoid = Measure(targetCombat, attackSkill, ranged: true);
+        if (targetCombat != null && avoid.RollBlock())
         {
             GrowXp(targetCombat, defStatName, defRangedSkill, attackSkill, 1f);
             GrowShieldXp(targetCombat, attackSkill, 1f);
@@ -372,10 +446,27 @@ public class CombatHandler : MonoBehaviour
         // **근접은 막기 → 회피 두 번, 원거리는 막기 한 번**이었다 — 같은 폰이 칼보다 화살에
         // 훨씬 잘 맞았고, `Evasion`의 설명(*"몸으로 피한다"*)과도 어긋났다. 화살을 몸으로
         // 피하는 것이 칼을 피하는 것보다 어려울 이유가 없다.
-        if (targetCombat != null && TryDodge(targetCombat, attackSkill))
+        if (targetCombat != null && avoid.RollDodge())
         {
             GrowXp(targetCombat, StatName.Evasion, targetCombat._stats.Evasion, attackSkill, 1f);
             Debug.Log($"[Combat] {target.name} 원거리 회피 성공");
+
+            // **피한 화살은 사라지지 않는다 — 뒤에 선 동료에게 간다.**
+            //
+            // 오사가 여기로 옮겨 왔다. 전에는 *공격자가 빗맞은 것*에 붙어 있었는데 그 굴림을
+            // 대립 하나로 접으면서 갈 곳이 없어졌다. **회피 쪽이 오히려 더 맞는 자리다** —
+            // 몸을 비켜 준 화살이 그대로 날아가는 그림이고, 막은 화살은 거기서 멎는다.
+            //
+            // **동료가 또 피해도 거기서 끝난다**(`friendly`) — 안 끊으면 한 발이 줄줄이 이어진다.
+            if (!friendly)
+            {
+                var ally = FindAllyInLineOfFire(target);
+                if (ally != null)
+                {
+                    ShotTracer.Show(this, ally, friendly: true);
+                    DealRangedDamage(ally, aimSkill, friendly: true);
+                }
+            }
             return;
         }
 
@@ -400,25 +491,49 @@ public class CombatHandler : MonoBehaviour
         Debug.Log($"[Combat] {gameObject.name} 원거리 → {target.name} {damage:F1}{(friendly ? " (동료!)" : "")}");
     }
 
+    // **오사는 실제로 일어나야 뜻이 있다**(2026-08-24).
+    //
+    // 전에는 **발밑에서 발밑으로 두께 0인 선**을 쐈다: 원점이 `transform.position`인데 폰의
+    // 피벗은 **발밑**이라(`PawnPlacement`) 레이가 땅바닥을 기었고, 몸통 캡슐(y 0~2)의 맨
+    // 아래 모서리만 스쳤다 — 조금만 오르내리막이면 그마저 빗나간다. 게다가 두께가 없어
+    // 동료가 **선 위에 정확히 서 있어야만** 걸렸다. 그래서 규칙은 있는데 **한 번도 안 났다**.
+    //
+    // 지금은 **가슴에서 가슴으로, 몸통 굵기만큼 두껍게** 훑는다. 화살이 지나가는 길은 선이
+    // 아니라 **통**이라, 옆에 바짝 붙어 선 동료도 그 길 위에 있다.
+    const float ShotRadius = 0.35f;
+
     GameObject FindAllyInLineOfFire(GameObject intendedTarget)
     {
         var myFaction = GetComponent<Faction>();
         if (myFaction == null) return null;
 
-        Vector3 origin    = transform.position;
-        Vector3 direction = (intendedTarget.transform.position - origin).normalized;
-        float   distance  = Vector3.Distance(origin, intendedTarget.transform.position);
+        Vector3 origin = transform.position + Vector3.up * PawnPlacement.CenterOffset(gameObject);
+        Vector3 aim    = intendedTarget.transform.position
+                       + Vector3.up * PawnPlacement.CenterOffset(intendedTarget);
+        Vector3 delta  = aim - origin;
+        float   dist   = delta.magnitude;
+        if (dist <= 0.01f) return null;
 
-        foreach (var hit in Physics.RaycastAll(origin, direction, distance))
+        // **가장 가까운 동료가 맞는다** — 여럿이 겹쳐 서 있으면 앞사람이 먼저다.
+        GameObject best = null;
+        float bestDist  = float.MaxValue;
+        foreach (var hit in Physics.SphereCastAll(origin, ShotRadius, delta / dist, dist))
         {
-            if (hit.collider.gameObject == gameObject)           continue;
-            if (hit.collider.gameObject == intendedTarget)       continue;
-            // 적대 대상이 아니면(아군·중립) 오사 회피 대상 — 중립을 쏴서 원한 사는 것도 막는다.
+            if (hit.collider.gameObject == gameObject)     continue;
+            if (hit.collider.gameObject == intendedTarget) continue;
+
+            // 적대 대상이 아니면(아군·중립) 오사 대상 — 중립을 쏴서 원한 사는 것도 이 길이다.
             var f = hit.collider.GetComponent<Faction>();
             if (f == null || myFaction.IsHostileTo(f)) continue;
-            return hit.collider.gameObject;
+
+            // **쓰러진 놈은 안 맞는다** — 바닥에 누운 몸은 화살이 지나가는 높이에 없고,
+            // 무엇보다 기절이 회복 가능한 상태라는 규칙을 오사가 뒤로 뚫으면 안 된다.
+            var c = hit.collider.GetComponent<CombatHandler>();
+            if (IsDown(c)) continue;
+
+            if (hit.distance < bestDist) { bestDist = hit.distance; best = hit.collider.gameObject; }
         }
-        return null;
+        return best;
     }
 
     // ── 공격 속도 ────────────────────────────────────────────────────

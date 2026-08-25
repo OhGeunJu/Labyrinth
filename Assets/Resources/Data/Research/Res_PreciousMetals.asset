@@ -12,17 +12,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
   m_Name: Res_PreciousMetals
   m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
   ResearchName: "\uADC0\uAE08\uC18D \uC81C\uB828"
-  Description: "\uC740\uACFC \uAE08\uC740 \uB354 \uB0AE\uC740 \uC5F4\uC5D0\uC11C \uB179\uACE0 \uBD88\uC21C\uBB3C\uC774 \uB9CE\uB2E4. \uB530\uB85C \uC775\uD600\uC57C \uD55C\uB2E4."
+  Description: "\uC740\uACFC \uAE08\uC740 \uB354 \uB0AE\uC740 \uC5F4\uC5D0\uC11C
+    \uB179\uACE0 \uBD88\uC21C\uBB3C\uC774 \uB9CE\uB2E4. \uB530\uB85C \uC775\uD600\uC57C
+    \uD55C\uB2E4."
   Ingredients:
   - Item: {fileID: 11400000, guid: f4a7523e974a1454c9091626f374fef7, type: 2}
+    ItemId: 
     Amount: 5
   - Item: {fileID: 11400000, guid: 7f78a163531853440bcf98dcb4b2a71d, type: 2}
+    ItemId: 
     Amount: 10
-  ResearchTime: 700
+  ResearchTime: 850
   SkillGrowthAmount: 1
   Prerequisites:
   - {fileID: 11400000, guid: d13567a11a2630e4988e7455d8da7a15, type: 2}
+  GraphColumn: 3
+  GraphRow: 7
   UnlockedRecipes:
   - {fileID: 11400000, guid: 36569179c5a785e46979b88d839f66d6, type: 2}
   - {fileID: 11400000, guid: 68fff78290068cd49823ba791599ddea, type: 2}

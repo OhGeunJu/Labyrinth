@@ -123,6 +123,19 @@ public static class PawnCarry
         // 걷던 중이면 멈춘다 — 멀쩡한 우리 폰도 업을 수 있으므로 가던 길이 남아 있을 수 있다.
         target.GetComponent<PawnMover>()?.StopMovement();
 
+        // **싸우던 중이었으면 여기서 끈다**(`BodyPartSystem.KnockOut`과 **같은 이유·같은 자리**).
+        // 업히면 BT가 통째로 멎는데(`UnitBrain.Update`) 전투 상태를 끄는 자리는 그 BT의
+        // `FightNode`뿐이라, **아무도 안 끄면 `IsInCombat`이 참인 채로 얼어붙는다.**
+        //
+        // `CombatHandler.Update`는 BT가 아니라 **매 프레임 도는 MonoBehaviour**라 그대로 살아서
+        // 둘을 한다: ① `FaceTowards`가 월드 회전을 덮어 **어깨 위에서 벌떡 선다**(업힌 자세는
+        // 로컬 90도로 눕혀 둔 것이다) ② 공격 타이머가 계속 차서 **어깨 위에서 휘두른다**
+        // (사거리 게이트도 BT에 있어 거리를 안 본다).
+        //
+        // 기절해서 업히는 쪽은 `KnockOut`이 이미 껐다 — 남는 것은 **멀쩡한 우리 편을 싸움
+        // 한복판에서 업어 나르는 길**이고, 그게 업기를 만든 이유다.
+        target.GetComponent<CombatHandler>()?.ExitCombat();
+
         var cc = target.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;   // 켜진 채 부모에 붙이면 콜라이더가 제자리로 되민다
 

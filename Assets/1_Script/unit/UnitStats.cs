@@ -131,6 +131,12 @@ public class UnitStats
         CraftSkill.Stonecutting   => StatName.Stonecutting,
         CraftSkill.Woodworking    => StatName.Woodworking,
         CraftSkill.Gemcutting     => StatName.Gemcutting,
+        // **재봉대도 방어구 솜씨를 쓴다**(2026-08-25). 작업대를 갈랐다고 스탯까지 가르면
+        // *가죽 갑옷만 잘 만드는 사람*이 생기고, 온전한 갑옷장이가 되려면 두 스탯을 따로
+        // 키워야 한다 — 갈래를 늘린 값이 결정이 아니라 잡일로 돌아온다.
+        // **안 적으면 `Labor`로 조용히 떨어진다** — 재봉대의 속도·품질이 노동 스탯을 타고,
+        // 완성해도 `ArmorCrafting`이 안 자란다(실제로 그랬다).
+        CraftSkill.Tailoring      => StatName.ArmorCrafting,
         _                         => StatName.Labor,
     };
 

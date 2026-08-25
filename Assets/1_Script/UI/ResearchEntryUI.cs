@@ -11,7 +11,11 @@ public class ResearchEntryUI : MonoBehaviour
 
     public event Action<ResearchData> OnSelected;
 
-    ResearchData _data;
+    // **구워 둔 노드가 제 연구를 기억한다**(2026-08-25). 런타임에만 들고 있으면 씬에 미리
+    // 놓아 둘 수가 없어 **에디터의 연구 창이 텅 빈다** — 자리를 저작해 놓고 결과를 못 본다.
+    [SerializeField] ResearchData _data;
+
+    public ResearchData Data => _data;
 
     void Awake()
     {
@@ -20,9 +24,18 @@ public class ResearchEntryUI : MonoBehaviour
         le.minHeight       = preferredHeight;
     }
 
+    // **`Setup`은 이 노드를 처음부터 다시 묶는 일이다.**
+    //
+    // 구독을 여기서 지우는 이유: 구워 둔 노드는 **창을 닫아도 안 지워지므로**(2026-08-25)
+    // 열 때마다 `RebuildGraph`가 `OnSelected +=` 를 한 번씩 더 한다 — 세 번 열면 노드를
+    // 한 번 눌렀을 때 **셋이 한꺼번에 불린다.** 지우고 나서 찍던 시절엔 오브젝트가 사라져
+    // 저절로 풀리던 것이라, 재사용으로 바꾸는 순간 딸려 오는 값이다.
+    //
+    // 버튼 쪽은 `Refresh`가 `RemoveAllListeners`로 이미 같은 일을 한다.
     public void Setup(ResearchData data, ResearchData activeResearch = null)
     {
-        _data = data;
+        OnSelected = null;
+        _data      = data;
         Refresh(activeResearch);
     }
 
@@ -81,8 +94,14 @@ public class ResearchEntryUI : MonoBehaviour
 
     static bool StorageHasIngredients(ResearchData data)
     {
+        // **에디터에는 창고가 없다** — 안 막으면 구워 둔 노드가 전부 빨갛게 뜬다(재료 부족).
+        if (!Application.isPlaying) return true;
+
         foreach (var ing in data.Ingredients)
-            if (Storage.GetTotalByItem(ing.Item) < ing.Amount) return false;
+            // **`Resolve()`다 — `Item`을 직접 읽으면 JSON 재료가 조용히 null이 된다**
+            // (2026-08-24에 읽는 곳 넷을 돌렸는데 **여기를 빠뜨렸다**). 천·약초·붕대·두꺼운
+            // 가죽이 전부 JSON이라, 그것을 쓰는 연구는 창고에 쌓여 있어도 **늘 빨갛게** 떴다.
+            if (Storage.GetTotalByItem(ing.Resolve()) < ing.Amount) return false;
         return true;
     }
 }

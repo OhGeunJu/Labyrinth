@@ -658,6 +658,18 @@ public class PawnMover : MonoBehaviour
                 move += steer * effectiveSpeed;
                 TrackProgress(pos, desired, effectiveSpeed);
 
+                // **가는 쪽을 본다 — 다만 싸우는 중이면 표적이 이긴다.** 겨누는 것과 걷는 것이
+                // 같은 프레임에 서로 다른 방향을 요구할 수 있고(사수가 비켜서며 쏜다), 그때
+                // 몸이 봐야 하는 것은 **표적**이다. `MonoBehaviour` 실행 순서는 정해져 있지
+                // 않으므로 둘 다 쓰게 두면 **어느 쪽이 이길지가 프레임마다 달라져 떤다.**
+                //
+                // 보통은 겹치지 않는다 — `FightNode`가 사거리 안에서는 `StopMovement`,
+                // 밖에서는 `ExitCombat`이라 걷는 동안엔 전투가 꺼져 있다. 여기서 막는 것은
+                // 그 사이에 낀 프레임뿐이다.
+                if (_brain == null || _brain.Blackboard?.Combat == null
+                    || !_brain.Blackboard.Combat.IsInCombat)
+                    FaceDirection(steer);
+
                 if (_stats != null)
                 {
                     _stats.GrowStat(StatName.Athletics, athleticsGrowthRate * Time.deltaTime * CombatXp.Sol(_stats.Athletics));
@@ -709,6 +721,38 @@ public class PawnMover : MonoBehaviour
         float currentWeight = CarryCapacity.Load(_brain);
         if (maxWeight <= 0f || currentWeight <= maxWeight) return 1f;
         return maxWeight / currentWeight;
+    }
+
+    // **도는 것은 여기 하나가 한다**(2026-08-24).
+    //
+    // 그전까지 **폰은 아예 회전하지 않았다** — 코드 어디에도 회전이 없어서 태어난 방향을
+    // 영영 보고 섰다. 그래서 석궁을 쏴도 **옆을 보고 쏜다**: 확률을 아무리 손봐도 화면에서는
+    // 무슨 일이 벌어지는지 안 보인다.
+    //
+    // **자세를 이미 이 파일이 들고 있어서**(`SetSleeping`이 눕히고, 기절 회복이 `_preKoRotation`
+    // 으로 되돌린다) 회전도 여기 있어야 한다. 밖에서 `transform.rotation`을 만지면 **누운 폰을
+    // 세우거나 업힌 폰을 어깨 위에서 돌린다** — 이 저장소가 자세 때문에 여러 번 겪은 자리다.
+    //
+    // **수평만 돈다** — 위아래로 겨누면 몸이 기울어 발이 땅에서 뜬다.
+    public void FaceTowards(Vector3 worldPos, float degreesPerSecond = 540f)
+        => FaceDirection(worldPos - transform.position, degreesPerSecond);
+
+    // **걸어가는 쪽도 본다**(2026-08-25). 08-24에 붙인 것은 *싸우는 동안*뿐이라, 폰은 여전히
+    // **옆걸음·뒷걸음으로 맵을 가로질렀다** — 회전을 넣은 이유가 절반만 선 셈이다.
+    //
+    // 겨누는 자리(`FaceTowards`)와 같은 함수를 쓴다: 다른 것은 **무엇을 넘기느냐**뿐이고
+    // (표적의 자리냐 · 실제로 가는 방향이냐) 자세 가드와 수평 제약은 한 벌이어야 한다.
+    public void FaceDirection(Vector3 dir, float degreesPerSecond = 540f)
+    {
+        if (IsSleeping) return;   // 누운 폰은 안 돈다 — 자세가 곧 상태다
+
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.0004f) return;   // 겹쳐 서 있으면 방향이 없다
+
+        transform.rotation = Quaternion.RotateTowards(
+            transform.rotation,
+            Quaternion.LookRotation(dir),
+            degreesPerSecond * Time.deltaTime);
     }
 
     public bool HasTarget()  => _hasTarget;

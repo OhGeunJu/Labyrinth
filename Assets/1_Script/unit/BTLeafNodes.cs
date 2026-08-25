@@ -912,10 +912,11 @@ public class RestNode : BTNode
 
         bb.RestTicked = true;   // 이번 틱에 쉬고 있음 (상위 분기로 넘어가면 UnitBrain이 깨운다)
 
-        // **자면 피로가 찬다** — 침대에서는 온전히, 바닥에서는 절반(`Needs.SleepPerSecond`).
+        // **자면 피로가 찬다** — 얼마나 빨리 차는지는 **그 잠자리가 답한다**
+        // (`Bed.RestQuality`: 보통 1.0 · 좋은 침대 1.4 · 바닥은 `Needs.FloorQuality` 0.5).
         // 일어나는 판단은 **위 `stay` 하나**가 한다(다음 틱에 걸린다) — 여기서 또 물으면
         // 문턱이 두 곳이 된다.
-        Needs.Fill(bb, NeedKind.Rest, Needs.SleepPerSecond(inBed: true) * bb.TickDelta);
+        Needs.Fill(bb, NeedKind.Rest, Needs.SleepPerSecond(_bed.RestQuality) * bb.TickDelta);
 
         // 누워 있는 동안 회복 (캡 감소 없이, 부위 HP 포함)
         var body = bb.Body;
@@ -1001,7 +1002,7 @@ public class RestNode : BTNode
             bb.Mover.SetSleeping(true, bb.Self.transform.position, bb.Self.transform.rotation);
         }
 
-        Needs.Fill(bb, NeedKind.Rest, Needs.SleepPerSecond(inBed: false) * bb.TickDelta);
+        Needs.Fill(bb, NeedKind.Rest, Needs.SleepPerSecond(Needs.FloorQuality) * bb.TickDelta);
         bb.RestTicked = true;
         return BTStatus.Running;
     }

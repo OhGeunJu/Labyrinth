@@ -1,2 +1,21 @@
-{ "id": "craft_steel_head", "recipeName": "강철 투구 제작", "ingredients": [ { "itemId": "Res_Steel", "amount": 3 }, { "itemId": "leather", "amount": 1 } ],
-  "resultItemId": "arm_steel_head", "resultAmount": 1, "craftTime": 15.0, "requiredResearchId": "Res_Steelmaking", "requiredSkillType": "ArmorCrafting", "requiredSkillLevel": 20, "skillGrowthAmount": 0.6 }
+{
+  "id": "craft_steel_head",
+  "recipeName": "강철 투구 제작",
+  "ingredients": [
+    {
+      "itemId": "Res_Steel",
+      "amount": 3
+    },
+    {
+      "itemId": "leather",
+      "amount": 1
+    }
+  ],
+  "resultItemId": "arm_steel_head",
+  "resultAmount": 1,
+  "craftTime": 15.0,
+  "requiredResearchId": "Res_Casting",
+  "requiredSkillType": "ArmorCrafting",
+  "requiredSkillLevel": 20,
+  "skillGrowthAmount": 0.6
+}

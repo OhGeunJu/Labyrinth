@@ -140,7 +140,8 @@ public class HaulDispatcher
 
         var forLot = lot;   // 클로저 캡처용 — 반복 변수를 그대로 넘기지 않는다
         JobManager.Instance.RegisterJob(
-            new HaulJob(_source, lot.Item, lot.Quality, free, storage, n => Release(forLot, n)));
+            new HaulJob(_source, lot.Item, lot.Quality, free, storage, threshold,
+                        n => Release(forLot, n)));
     }
 
     // 일감이 "이만큼은 내 몫이 아니다"라고 돌려준 것. 곧바로 다시 발행해 본다 —

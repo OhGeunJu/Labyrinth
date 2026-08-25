@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Vein_Iron
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uCCA0 \uAD11\uB9E5 \uC774\uC2DD"
+  Description: "\uBD88\uACFC \uAD6C\uB9AC\uB97C \uB2E4\uB904 \uBCF8 \uC190\uB9CC\uC774
+    \uCCA0\uC758 \uACB0\uC744 \uC77D\uB294\uB2E4."
+  Ingredients:
+  - Item: {fileID: 11400000, guid: 904f5016b1a6dea47b6c4c14277cff0a, type: 2}
+    ItemId: 
+    Amount: 15
+  ResearchTime: 450
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: a9e98e5466464ed48be61859a3b7ea81, type: 2}
+  - {fileID: 11400000, guid: 170959ed06cf8954da158cff19cb83ee, type: 2}
+  GraphColumn: 3
+  GraphRow: 1
+  UnlockedRecipes: []

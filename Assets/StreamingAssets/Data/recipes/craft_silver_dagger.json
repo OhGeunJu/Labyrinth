@@ -1,2 +1,21 @@
-{ "id": "craft_silver_dagger", "recipeName": "은 단검 제작", "ingredients": [ { "itemId": "Res_SilverIngot", "amount": 2 }, { "itemId": "Res_Lumber", "amount": 1 } ],
-  "resultItemId": "wpn_silver_dagger", "resultAmount": 1, "craftTime": 12.0, "requiredResearchId": "Res_WeaponSmithing", "requiredSkillType": "WeaponCrafting", "requiredSkillLevel": 30, "skillGrowthAmount": 0.7 }
+{
+  "id": "craft_silver_dagger",
+  "recipeName": "은 단검 제작",
+  "ingredients": [
+    {
+      "itemId": "Res_SilverIngot",
+      "amount": 2
+    },
+    {
+      "itemId": "Res_Lumber",
+      "amount": 1
+    }
+  ],
+  "resultItemId": "wpn_silver_dagger",
+  "resultAmount": 1,
+  "craftTime": 12.0,
+  "requiredResearchId": "Res_PreciousMetals",
+  "requiredSkillType": "WeaponCrafting",
+  "requiredSkillLevel": 30,
+  "skillGrowthAmount": 0.7
+}

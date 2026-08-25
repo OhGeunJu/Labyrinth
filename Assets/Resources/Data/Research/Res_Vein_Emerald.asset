@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Vein_Emerald
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uC5D0\uBA54\uB784\uB4DC \uAD11\uB9E5 \uC774\uC2DD"
+  Description: "\uBE5B\uAE54\uC774 \uB2E4\uB978 \uC138 \uC54C\uC744 \uB2E4 \uB2E4\uB904
+    \uBCF8 \uC190\uB9CC\uC774 \uC774 \uACB0\uC744 \uC77D\uB294\uB2E4."
+  Ingredients:
+  - Item: {fileID: 11400000, guid: 46db14333ec5f614ca38bc0ce353b682, type: 2}
+    ItemId: 
+    Amount: 15
+  ResearchTime: 1000
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: 9e266e834d4209444923776162257299, type: 2}
+  - {fileID: 11400000, guid: 5d9c69b9eec5f23438ee9fb375fb110e, type: 2}
+  - {fileID: 11400000, guid: c750e62395ee22247ad127f085bc8ea9, type: 2}
+  GraphColumn: 7
+  GraphRow: 1
+  UnlockedRecipes: []

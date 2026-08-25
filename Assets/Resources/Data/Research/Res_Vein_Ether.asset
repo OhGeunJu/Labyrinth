@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Vein_Ether
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uC5D0\uD14C\uB974\uC11D \uACB0\uC815 \uBC30\uC591"
+  Description: "\uB9C8\uB825\uC11D\uC5D0 \uAE08\uC744 \uBB3C\uB824\uC57C \uACB0\uC815\uC774
+    \uB354 \uB9D1\uC740 \uAC83\uC744 \uBD99\uB4E0\uB2E4."
+  Ingredients:
+  - Item: {fileID: 11400000, guid: ad8e399c2bb6f2846964995ce1c189d9, type: 2}
+    ItemId: 
+    Amount: 15
+  ResearchTime: 850
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: 69e1db4aca1c4f1458a6fa37711606c7, type: 2}
+  - {fileID: 11400000, guid: ea91c4d22731f074d8ce82f2f4cdaebc, type: 2}
+  GraphColumn: 6
+  GraphRow: 3
+  UnlockedRecipes: []

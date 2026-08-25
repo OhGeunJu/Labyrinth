@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_MasterSmithing
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uBA85\uC7A5 \uB2E8\uC870"
+  Description: "\uD569\uAE08\uC744 \uC815\uBC00\uD558\uAC8C \uBCBC\uB978\uB2E4. \uD55C
+    \uC790\uB8E8\uC5D0 \uAD11\uC0B0 \uD558\uB098\uAC00 \uB4E4\uC5B4\uAC00\uACE0,
+    \uADF8\uB9CC\uD55C \uAC12\uC744 \uD55C\uB2E4."
+  Ingredients:
+  - Item: {fileID: 0}
+    ItemId: res_alloy
+    Amount: 6
+  - Item: {fileID: 11400000, guid: 99bff93aafd46f84f95072636401371f, type: 2}
+    ItemId: 
+    Amount: 3
+  ResearchTime: 1500
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: 9a363c24ce25af74e89d4a998a493c46, type: 2}
+  - {fileID: 11400000, guid: d2e27e0e0278a2c42adaa63b764e99e1, type: 2}
+  GraphColumn: 5
+  GraphRow: 11
+  UnlockedRecipes: []

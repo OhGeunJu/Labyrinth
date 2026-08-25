@@ -37,7 +37,7 @@ public class ResearchJob : JobBase
     {
         if (_data == null || Resuming) return true;
         foreach (var ing in _data.Ingredients)
-            if (MaterialPool.Available(ing.Item, unit) < ing.Amount) return false;
+            if (MaterialPool.Available(ing.Resolve(), unit) < ing.Amount) return false;
         return true;
     }
 
@@ -81,9 +81,9 @@ public class ResearchJob : JobBase
             // 재료는 **창고 + 이 폰의 배낭**에서 센다(`MaterialPool`).
             foreach (var ing in _data.Ingredients)
             {
-                if (MaterialPool.Available(ing.Item, ReservedBy) < ing.Amount)
+                if (MaterialPool.Available(ing.Resolve(), ReservedBy) < ing.Amount)
                 {
-                    Debug.Log($"[ResearchJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요");
+                    Debug.Log($"[ResearchJob] 재료 부족 — {ing.DisplayName} ×{ing.Amount} 필요");
                     // **예약은 잃지 않는다.** 그냥 끝내면 눌러 둔 연구가 조용히 사라진다 —
                     // 큐에 되돌리면 `IsReady`가 재료가 들어올 때까지 배정을 미뤄 준다.
                     _table?.QueueResearch(_data);
@@ -93,7 +93,7 @@ public class ResearchJob : JobBase
             }
 
             foreach (var ing in _data.Ingredients)
-                MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy);   // 배낭 먼저
+                MaterialPool.Consume(ing.Resolve(), ing.Amount, ReservedBy);   // 배낭 먼저
             _consumed = true;
         }
 
@@ -121,7 +121,7 @@ public class ResearchJob : JobBase
             _consumed = false;
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
             foreach (var ing in _data.Ingredients)
-                MaterialPool.Refund(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+                MaterialPool.Refund(ing.Resolve(), ing.Amount, pos + Vector3.up * 0.3f);
         }
 
         if (_requeueOnCancel) _table?.QueueResearch(_data);

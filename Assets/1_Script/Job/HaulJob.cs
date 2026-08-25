@@ -26,15 +26,20 @@ public class HaulJob : JobBase
     // 일감이 겹쳐 등록되지 않게 세는 장부다. 누가 올지 모르므로 미배정 재고를 통째로 맡고,
     // 폰이 정해지는 순간(`OnReserved`) 그 폰이 못 질 만큼을 놓아 다음 일감이 되게 한다.
     // 실어 갈 양은 도착해서 정한다(`Execute`).
+    // **임계값도 같이 들고 간다**(2026-08-25). 발행할 때만 재면 **도착했을 때는 안 재게 되고**,
+    // 그러면 플레이어가 걸어 둔 "이만큼 쌓이면 나른다"가 조용히 풀린다 — 아래 `Execute` 참조.
+    int _threshold;
+
     public HaulJob(IHaulSource source, ItemData itemData, ItemQuality quality, int amount,
-                   Storage storage, Action<int> release = null)
+                   Storage storage, int threshold = 1, Action<int> release = null)
     {
-        _source   = source;
-        _itemData = itemData;
-        _quality  = quality;
-        _claim    = amount;
-        _storage  = storage;
-        _release  = release;
+        _source    = source;
+        _itemData  = itemData;
+        _quality   = quality;
+        _claim     = amount;
+        _storage   = storage;
+        _threshold = Mathf.Max(1, threshold);
+        _release   = release;
         TileCoord = source.TileCoord;
         Priority  = 5;
     }
@@ -77,6 +82,23 @@ public class HaulJob : JobBase
             //
             // 맡은 것보다 많이 실으면 다른 일감의 몫을 먹지만, 그 일감도 도착해서 다시 재므로
             // 있는 만큼만 가져간다. 넘친 장부는 `HaulDispatcher`가 재고를 넘는 맡음을 깎아 맞춘다.
+            // **도착해서 임계값을 다시 잰다.**
+            //
+            // 발행할 때만 재면 플레이어가 걸어 둔 *"이만큼 쌓이면 나른다"*가 **여럿이 붙는 순간
+            // 풀린다**: 재고 30·임계값 10이면 일감이 여럿 나가는데, 힘센 폰이 먼저 28을 쓸어
+            // 가면 **뒤에 도착한 폰이 남은 2를 그냥 집어 간다.** 그 폰에게는 "있는 만큼"이
+            // 전부였고, 임계값은 아무도 다시 안 봤다.
+            //
+            // 여기서 물러서면 잔량은 출처에 그대로 남는다 — `HaulDispatcher`도 임계값 아래로는
+            // 일감을 안 내므로 **두 곳의 답이 같아진다.** 헛걸음 한 번이 값이지만, 그러라고
+            // 걸어 둔 숫자다.
+            if (available < _threshold)
+            {
+                Status = JobStatus.Done;
+                ReleaseAll();
+                return;
+            }
+
             int want = Mathf.Min(available, CarryCapacity.RoomFor(unit, _itemData));
             if (want <= 0)
             {

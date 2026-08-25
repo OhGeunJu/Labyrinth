@@ -10,19 +10,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
-  m_Name: Res_Steelmaking
+  m_Name: Res_Vein_Coal
   m_EditorClassIdentifier: Assembly-CSharp::ResearchData
-  ResearchName: "\uC81C\uAC15\uC220"
-  Description: "\uB354 \uB2E8\uB2E8\uD55C \uAC15\uCCA0\uC744 \uBF51\uB294\uB2E4."
+  Id: 
+  ResearchName: "\uC11D\uD0C4\uCE35 \uC774\uC2DD"
+  Description: "\uD0C4\uCE35\uC774 \uC5B4\uB290 \uACB0\uC744 \uB530\uB77C \uBED7\uB294\uC9C0
+    \uC77D\uC5B4 \uB0B8\uB2E4."
   Ingredients:
-  - Item: {fileID: 11400000, guid: a958c72b5d727c14c9b1e996e6da83df, type: 2}
-    Amount: 5
   - Item: {fileID: 11400000, guid: 7f78a163531853440bcf98dcb4b2a71d, type: 2}
-    Amount: 10
-  ResearchTime: 900
+    ItemId: 
+    Amount: 15
+  ResearchTime: 200
   SkillGrowthAmount: 1
   Prerequisites:
-  - {fileID: 11400000, guid: d13567a11a2630e4988e7455d8da7a15, type: 2}
-  UnlockedRecipes:
-  - {fileID: 11400000, guid: a4a4c2f013e498c43b38c2ea1638ab35, type: 2}
-  - {fileID: 11400000, guid: 938da551963470d47b3951119a07dae0, type: 2}
+  - {fileID: 11400000, guid: ac14056f8bdecc848bd75cb30768fa66, type: 2}
+  GraphColumn: 1
+  GraphRow: 2
+  UnlockedRecipes: []

@@ -250,17 +250,54 @@ public class ResearchTableUI : MonoBehaviour
         if (entryContainer == null || entryPrefab == null || _currentTable == null) return;
         WarnIfUnwired();
 
+        var all     = _currentTable.AllResearch;
+        var pending = _currentTable.PendingResearch;
+
+        // ── 씬에 구워 둔 것이 있으면 **그것이 진짜다** ──────────────────────
+        //
+        // (2026-08-25, 사용자 *"런타임에서 쓰는 걸 굽는게 아니라 그냥 진짜 씬에 배치한걸
+        // 런타임에 썼으면 좋겠는데"*.)
+        //
+        // 전에는 구운 노드를 **오브젝트로만** 쓰고 자리는 매번 다시 계산했다 — 그러면
+        // **씬에서 노드를 옮겨 놔도 게임에서는 제자리로 돌아간다.** 굽는 뜻이 절반만 서는 것이고,
+        // 무엇보다 *편집 중에 보이는 모양*과 *게임의 모양*이 갈린다.
+        //
+        // 이제 자리도 선도 **안 건드린다.** 런타임이 하는 일은 두 가지뿐이다:
+        // 노드의 글자·색을 지금 상태로 칠하고(`Setup`), 선의 **완료 색만** 다시 칠한다
+        // (`RefreshDone` — 그래서 선이 제 양 끝을 기억한다).
+        var baked = CollectBaked(all);
+        if (baked != null)
+        {
+            _entries.Clear();
+            foreach (var data in all)
+            {
+                if (data == null || !baked.TryGetValue(data, out var e)) continue;
+                e.Setup(data, pending);
+                e.OnSelected += SelectResearch;
+                _entries.Add(e);
+            }
+
+            // **선은 씬에 놓인 노드의 자리에서 다시 긋는다** — 계산해서 긋는 것이 아니라
+            // *거기 있는 것*을 읽는 것이라, 씬에서 노드를 끌어 옮기면 **선이 따라온다.**
+            // (완료 색도 여기서 같이 정해진다.)
+            if (links != null) links.SetLinks(BuildLinksFromScene(baked));
+
+            ScrollToTopLeft();
+            _markedResearch = pending;
+            return;
+        }
+
+        // ── 구운 것이 없으면(또는 낡았으면) 계산해서 찍는다 ────────────────
+        //
+        // **노드 크기는 프리팹이 든다** — 코드가 정하면 프리팹을 손봐도 그래프는 옛 크기로
+        // 자리를 잡아 노드끼리 겹치거나 사이가 벌어진다.
+        var graph = ResearchGraphLayout.Build(all, NodeSize(), nodeGap, graphPadding);
+
         // **선을 그리는 판은 남긴다** — 같이 지우면 `links`가 파괴된 참조가 되어 다음 줄에서
         // 선이 통째로, 그리고 **조용히** 안 그려진다.
         foreach (Transform child in entryContainer)
             if (links == null || child != links.transform) Destroy(child.gameObject);
         _entries.Clear();
-
-        // **노드 크기는 프리팹이 든다** — 코드가 정하면 프리팹을 손봐도 그래프는 옛 크기로
-        // 자리를 잡아 노드끼리 겹치거나 사이가 벌어진다.
-        var all     = _currentTable.AllResearch;
-        var graph   = ResearchGraphLayout.Build(all, NodeSize(), nodeGap, graphPadding);
-        var pending = _currentTable.PendingResearch;
 
         foreach (var data in all)
         {
@@ -289,17 +326,91 @@ public class ResearchTableUI : MonoBehaviour
             links.SetLinks(BuildLinks(graph));
         }
 
-        // 열었을 때 **왼쪽 위**를 본다 — 뿌리가 거기 있다. 안 맞추면 지난번 스크롤 자리가
-        // 남아 빈 곳을 보게 된다.
-        // 꺼진 것까지 본다 — 연구가 끝나 목록을 다시 지을 때 창이 닫혀 있을 수 있다.
+        ScrollToTopLeft();
+        _markedResearch = pending;
+    }
+
+    // 열었을 때 **왼쪽 위**를 본다 — 뿌리가 거기 있다. 안 맞추면 지난번 스크롤 자리가
+    // 남아 빈 곳을 보게 된다. 꺼진 것까지 찾는다 — 연구가 끝나 목록을 다시 지을 때
+    // 창이 닫혀 있을 수 있다.
+    void ScrollToTopLeft()
+    {
         var scroll = entryContainer.GetComponentInParent<ScrollRect>(true);
-        if (scroll != null)
+        if (scroll == null) return;
+        scroll.horizontalNormalizedPosition = 0f;
+        scroll.verticalNormalizedPosition   = 1f;
+    }
+
+    // 씬에 구워 둔 노드를 모은다. **연구 목록과 정확히 맞을 때만** 쓴다 —
+    // 하나라도 모자라거나 남으면 `null`을 돌려주고 부르는 쪽이 통째로 다시 찍는다.
+    //
+    // 반쯤 맞을 때 섞어 쓰지 않는 이유: 남는 노드를 골라 지우고 없는 것만 새로 찍는 길을
+    // 두면 **구운 것이 낡았을 때 화면이 조용히 반만 맞는다.** 다 맞거나 다 새로 찍거나다.
+    Dictionary<ResearchData, ResearchEntryUI> CollectBaked(IReadOnlyList<ResearchData> all)
+    {
+        var found = new Dictionary<ResearchData, ResearchEntryUI>();
+
+        foreach (Transform child in entryContainer)
         {
-            scroll.horizontalNormalizedPosition = 0f;
-            scroll.verticalNormalizedPosition   = 1f;
+            if (links != null && child == links.transform) continue;
+            if (!child.TryGetComponent<ResearchEntryUI>(out var e) || e.Data == null) return null;
+            if (!found.TryAdd(e.Data, e)) return null;   // 같은 연구가 둘
         }
 
-        _markedResearch = pending;
+        if (found.Count == 0) return null;
+
+        int need = 0;
+        foreach (var d in all) if (d != null) need++;
+        if (found.Count != need) { WarnStaleBake(found.Count, need); return null; }
+
+        foreach (var d in all)
+            if (d != null && !found.ContainsKey(d)) { WarnStaleBake(found.Count, need); return null; }
+
+        return found;
+    }
+
+    bool _warnedStale;
+
+    // **낡은 것을 조용히 다시 찍지 않는다.** 다시 찍으면 게임은 멀쩡한데 **에디터에서 보이는
+    // 그래프만 옛것**으로 남아, 자리를 저작하는 사람이 화면을 믿을 수 없게 된다.
+    void WarnStaleBake(int baked, int need)
+    {
+        if (_warnedStale) return;
+        _warnedStale = true;
+        Debug.LogWarning($"[연구 그래프] 씬에 구워 둔 노드가 {baked}개인데 연구는 {need}개입니다 — "
+                       + "런타임에 다시 찍습니다. `DungeonColony → Bake Research Graph`로 다시 구우세요.");
+    }
+
+    // 씬에 놓인 노드에서 선을 긋는다. **자리를 계산하지 않는다** — `RectTransform`이 지금
+    // 어디 있는지를 읽을 뿐이라, 저작자가 노드를 끌어 옮기면 선이 그대로 따라온다.
+    //
+    // 좌표 규약은 구울 때와 같다(앵커·피벗이 왼쪽 위) — 그래서 `anchoredPosition`이 곧
+    // `Content` 기준 왼쪽 위 모서리다.
+    List<ResearchLinkGraphic.Link> BuildLinksFromScene(Dictionary<ResearchData, ResearchEntryUI> nodes)
+    {
+        var result = new List<ResearchLinkGraphic.Link>();
+        var mgr    = ResearchManager.Instance;
+
+        foreach (var kv in nodes)
+        {
+            var data = kv.Key;
+            if (data.Prerequisites == null) continue;
+            if (kv.Value.transform is not RectTransform to) continue;
+
+            foreach (var pre in data.Prerequisites)
+            {
+                if (pre == null || !nodes.TryGetValue(pre, out var fromEntry)) continue;
+                if (fromEntry.transform is not RectTransform from) continue;
+
+                result.Add(new ResearchLinkGraphic.Link
+                {
+                    From = from.anchoredPosition + new Vector2(from.rect.width, -from.rect.height * 0.5f),
+                    To   = to.anchoredPosition   + new Vector2(0f,              -to.rect.height   * 0.5f),
+                    Done = mgr != null && mgr.IsCompleted(pre),
+                });
+            }
+        }
+        return result;
     }
 
     // 선은 **선행의 오른쪽 가장자리에서 나와 뒤 연구의 왼쪽 가장자리로** 들어간다.
@@ -438,6 +549,26 @@ public class ResearchTableUI : MonoBehaviour
                 sb.Append("</color>");
             }
 
+            // **하수인도 적는다**(2026-08-25). `골각 세공`의 설명이 *"던전 핵이 해골을 일으켜
+            // 세울 수 있게 된다"*고 말하는데 **해금 목록에는 그 줄이 없었다** — 설명이 약속한
+            // 것을 목록이 확인해 주지 않으면, 연구를 고르는 사람은 그 문장을 믿을 수가 없다.
+            // (게이트 자체는 `MinionData.RequiredResearch`로 진작 돌고 있었다. 안 보였을 뿐이다.)
+            var minions = ResearchManager.Instance != null
+                        ? ResearchManager.Instance.GetUnlockedMinions(data)
+                        : null;
+
+            if (minions != null && minions.Count > 0)
+            {
+                if (sb.Length > 0) sb.AppendLine();
+                sb.Append("<color=#D8A8FF>소환 — ");
+                for (int i = 0; i < minions.Count; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    sb.Append(minions[i].RaceName);
+                }
+                sb.Append("</color>");
+            }
+
             prerequisiteText.text = sb.ToString();
 
             // **글자가 칸에 맞춰 줄어들게 한다.** 칸이 한두 줄짜리라 자르기만 하면 한두 개밖에 안 보인다 —
@@ -470,9 +601,9 @@ public class ResearchTableUI : MonoBehaviour
         var sb = new StringBuilder();
         foreach (var ing in data.Ingredients)
         {
-            int have = Storage.GetTotalByItem(ing.Item);
+            int have = Storage.GetTotalByItem(ing.Resolve());
             string col = have >= ing.Amount ? "#88FF88" : "#FF6666";
-            sb.AppendLine($"<color={col}>{ing.Item?.ItemName}  {have} / {ing.Amount}</color>");
+            sb.AppendLine($"<color={col}>{ing.DisplayName}  {have} / {ing.Amount}</color>");
         }
         ingredientsText.text = sb.ToString();
     }

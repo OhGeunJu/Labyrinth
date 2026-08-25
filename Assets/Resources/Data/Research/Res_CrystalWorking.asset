@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_CrystalWorking
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uACB0\uC815 \uC138\uACF5"
+  Description: "\uACB0\uC815 \uC5EC\uB7FF\uC744 \uBB3C\uB824 \uC11C\uB85C\uB97C \uC6B8\uB9AC\uAC8C
+    \uD55C\uB2E4. \uD558\uB098\uB9CC \uBC15\uC740 \uAC83\uACFC\uB294 \uB2E4\uB978
+    \uBB3C\uAC74\uC774 \uB098\uC628\uB2E4."
+  Ingredients:
+  - Item: {fileID: 0}
+    ItemId: crystal_arcane
+    Amount: 4
+  - Item: {fileID: 11400000, guid: 46db14333ec5f614ca38bc0ce353b682, type: 2}
+    ItemId: 
+    Amount: 3
+  ResearchTime: 1300
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: d19a299aecd0e2f4fbeab6392453aafc, type: 2}
+  GraphColumn: 5
+  GraphRow: 7
+  UnlockedRecipes: []

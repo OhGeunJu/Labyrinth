@@ -9,7 +9,6 @@ public class DungeonCore : MonoBehaviour
 
     [SerializeField] DungeonCoreData data;
     [SerializeField] Color rangeColor = new Color(0.4f, 0.8f, 1f, 0.6f);
-    [SerializeField] int rangeSegments = 64;
 
     public DungeonCoreData Data => data;
     public bool IsSelected { get; private set; }

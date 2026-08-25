@@ -83,6 +83,9 @@ public class BuildingDormancy : MonoBehaviour
         // 침대: enabled=false면 OnDisable로 정적 목록에서 빠져 배정/사용 대상에서 제외된다.
         // (배정 정보 AssignedUnit은 남아 영역 복구 시 그대로 복원)
         if (TryGetComponent<Bed>(out var bed))          yield return bed;
+        // 관개 수로: `OnDisable`이 레지스트리에서 빠지므로 **영역 밖 수로는 아무것도 안 적신다.**
+        // 안 넣으면 핵에서 떨어진 곳에 수로만 놓아도 밭이 영영 안 마른다(화톳불과 같은 자리).
+        if (TryGetComponent<Irrigation>(out var irr))   yield return irr;
     }
 
     // 이 오브젝트(또는 부모)가 휴면 중인가 — 클릭/주문 등 외부 진입점 게이트용.

@@ -13,6 +13,10 @@ using UnityEngine.UI;
 [RequireComponent(typeof(CanvasRenderer))]
 public class ResearchLinkGraphic : MaskableGraphic
 {
+    // **[Serializable]이라야 씬에 남는다**(2026-08-25). 그전에는 런타임에만 채워져서
+    // **에디터의 연구 창이 텅 비어 보였다** — 자리를 저작해 놓고도 플레이를 눌러야만
+    // 결과를 볼 수 있었다.
+    [System.Serializable]
     public struct Link
     {
         public Vector2 From;    // 선행 노드의 오른쪽 가장자리
@@ -25,7 +29,9 @@ public class ResearchLinkGraphic : MaskableGraphic
     static readonly Color DoneColor   = new(0.45f, 0.80f, 0.45f, 0.95f);
     static readonly Color UndoneColor = new(0.45f, 0.45f, 0.45f, 0.70f);
 
-    readonly List<Link> _links = new();
+    // **`readonly`면 유니티가 직렬화하지 않는다.** 구워 둔 선이 씬에 남아야 에디터에서
+    // 그래프가 보인다(`ResearchGraphBaker`가 채운다). 런타임은 그대로 덮어쓴다.
+    [SerializeField] List<Link> _links = new();
 
     protected override void Awake()
     {
@@ -45,44 +51,36 @@ public class ResearchLinkGraphic : MaskableGraphic
         vh.Clear();
         if (_links.Count == 0) return;
 
+        // **곧게 잇는다**(2026-08-25, 사용자 *"선을 직각으로 하지말고 그냥 바로 이어봐 림월드는
+        // 그렇게 하던데"*).
+        //
+        // 직각으로 꺾던 시절의 진짜 문제는 미관이 아니라 **거짓말**이었다: 꺾인 선의 세로 구간이
+        // 두 열 사이 한가운데 서는데, 그 자리가 **왼쪽 열 노드의 바로 오른쪽**이라 상관없는
+        // 노드에서 선이 나가는 것처럼 보였다. 실제로 `목공술 → 석공술` 선이 `가죽 세공` 옆을
+        // 지나 **가죽 세공에서 석공술로 이어진 것처럼** 읽혔다.
+        //
+        // 곧게 이으면 그 착시가 통째로 없어진다 — **선은 반드시 제 부모의 오른쪽 끝에서
+        // 출발한다.** 그리고 이웃 열끼리 잇는 선은 **어떤 노드도 가로지를 수 없다**(두 열
+        // 사이에는 노드가 없다). 통로를 비워 두던 규칙도 그래서 사라진다.
         foreach (var link in _links)
-        {
-            var color = link.Done ? DoneColor : UndoneColor;
-
-            // **직각으로 꺾어 잇는다**(림월드식). 곧은 대각선은 열이 늘어날수록 서로 겹쳐
-            // 어느 선이 어디로 가는지 못 읽는다. 꺾으면 세로 구간이 열과 열 사이에 모인다.
-            float midX = (link.From.x + link.To.x) * 0.5f;
-
-            Segment(vh, link.From, new Vector2(midX, link.From.y), color);
-            Segment(vh, new Vector2(midX, link.From.y), new Vector2(midX, link.To.y), color);
-            Segment(vh, new Vector2(midX, link.To.y), link.To, color);
-        }
+            Segment(vh, link.From, link.To, link.Done ? DoneColor : UndoneColor);
     }
 
-    // 두 점을 잇는 굵기 있는 사각형 하나. **가로·세로만 들어오므로** 일반 회전을 안 쓴다 —
-    // 법선을 구해 두께를 밀면 짧은 구간에서 모서리가 벌어진다.
+    // 두 점을 잇는 굵기 있는 사각형 하나. **어느 방향이든 된다** — 진행 방향의 법선으로
+    // 두께를 밀어 낸다(가로·세로만 그리던 시절의 특수 처리는 필요 없어졌다).
     void Segment(VertexHelper vh, Vector2 a, Vector2 b, Color color)
     {
-        float half = thickness * 0.5f;
-        Vector2 min, max;
+        Vector2 d   = b - a;
+        float   len = d.magnitude;
+        if (len < 0.001f) return;               // 겹쳐 있으면 방향이 없다
 
-        if (Mathf.Approximately(a.y, b.y))
-        {
-            min = new Vector2(Mathf.Min(a.x, b.x), a.y - half);
-            max = new Vector2(Mathf.Max(a.x, b.x), a.y + half);
-        }
-        else
-        {
-            // 꺾이는 자리를 반 두께만큼 늘려 이음매에 구멍이 안 나게 한다.
-            min = new Vector2(a.x - half, Mathf.Min(a.y, b.y) - half);
-            max = new Vector2(a.x + half, Mathf.Max(a.y, b.y) + half);
-        }
+        Vector2 n = new Vector2(-d.y, d.x) * (thickness * 0.5f / len);
 
         int i = vh.currentVertCount;
-        vh.AddVert(new Vector3(min.x, min.y), color, Vector2.zero);
-        vh.AddVert(new Vector3(min.x, max.y), color, Vector2.zero);
-        vh.AddVert(new Vector3(max.x, max.y), color, Vector2.zero);
-        vh.AddVert(new Vector3(max.x, min.y), color, Vector2.zero);
+        vh.AddVert(a - n, color, Vector2.zero);
+        vh.AddVert(a + n, color, Vector2.zero);
+        vh.AddVert(b + n, color, Vector2.zero);
+        vh.AddVert(b - n, color, Vector2.zero);
         vh.AddTriangle(i, i + 1, i + 2);
         vh.AddTriangle(i + 2, i + 3, i);
     }

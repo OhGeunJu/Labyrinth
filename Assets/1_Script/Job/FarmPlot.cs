@@ -13,6 +13,18 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
     [Tooltip("비우면 등록된 씨앗 **전부**를 쓴다. 이 밭만 일부만 심게 하고 싶을 때만 채운다.")]
     [SerializeField] SeedData[] availableSeeds;
 
+    // **같은 밭인데 더 빨리 자란다**(2026-08-25, 온실). 씨앗의 `GrowthTime`을 나눈다 —
+    // 작물마다 따로 저작하지 않아야 **씨앗을 하나 더할 때 온실 표까지 손보는 일**이 안 생긴다.
+    //
+    // 1.0이 보통이다. **아래로는 안 쓴다** — 느린 밭은 짓지 말라는 뜻이라 선택이 아니다.
+    [Tooltip("성장 속도 배율. 보통 밭 1.0 · 온실 1.5")]
+    [SerializeField] float growthMultiplier = 1f;
+
+    public float GrowthMultiplier => Mathf.Max(0.1f, growthMultiplier);
+
+    // 지금 물길이 닿고 있나 — 살펴보기·패널이 *"왜 안 마르지"*에 답할 수 있게 밖으로 낸다.
+    public bool IsIrrigated => Irrigation.Covers(transform.position);
+
     // **비어 있으면 레지스트리에서 끌어온다.**
     // 프리팹 배열에만 의존하면 상인에게 씨앗을 사 와도 목록에 안 떠서 심을 수가 없다
     // — 런타임에 지은 밭은 특히 그렇다(아무도 배열을 채워 주지 않는다).
@@ -74,8 +86,13 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
 
         if (Moisture > 0f)
         {
-            Moisture       = Mathf.Max(0f, Moisture - SelectedSeed.MoistureDecay * Time.deltaTime);
-            GrowthProgress += Time.deltaTime / SelectedSeed.GrowthTime;
+            // **물길이 닿으면 안 마른다 — 채워 주지는 않는다**(`Irrigation`). 저절로 차오르게
+            // 하면 물 긷는 일이 통째로 사라지고(우물도 물통도 뜻을 잃는다) 무엇보다 **심자마자
+            // 자란다.** 첫 물은 사람이 대고, 그 뒤로 안 마르는 것이 관개가 사는 값이다.
+            if (!IsIrrigated)
+                Moisture = Mathf.Max(0f, Moisture - SelectedSeed.MoistureDecay * Time.deltaTime);
+
+            GrowthProgress += Time.deltaTime * GrowthMultiplier / SelectedSeed.GrowthTime;
 
             if (GrowthProgress >= 1f)
             {

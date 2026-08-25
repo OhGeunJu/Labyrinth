@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Furniture
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uAC00\uAD6C \uACF5\uBC29"
+  Description: "\uB110\uC744 \uCF1C\uC11C \uC9DC \uB9DE\uCD98\uB2E4. \uC0AC\uB78C\uC774
+    \uB215\uB294 \uC790\uB9AC\uBD80\uD130 \uB2EC\uB77C\uC9C4\uB2E4."
+  Ingredients:
+  - Item: {fileID: 0}
+    ItemId: res_plywood
+    Amount: 10
+  - Item: {fileID: 0}
+    ItemId: cloth
+    Amount: 8
+  ResearchTime: 600
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: 701f9bdd5c38e7c47bc32bca1b437035, type: 2}
+  GraphColumn: 2
+  GraphRow: 6
+  UnlockedRecipes: []

@@ -69,8 +69,17 @@ public static class Needs
     // 눕히는 물건일 뿐이고, 지어야 할 이유가 방 하나만큼도 안 된다. 절반이면 밤새 자도
     // 다 못 채워서 **다음 날 낮에 또 졸린다.**
     public const  float SleepDays      = 1f / 3f;
-    public static float SleepPerSecond(bool inBed)
-        => Band / (GameTimeManager.DayDuration * SleepDays) * (inBed ? 1f : 0.5f);
+
+    // **잠자리의 질이 곧 배율이다**(2026-08-25). 전에는 `bool inBed` 하나라 침대는 전부
+    // 똑같았고, 그래서 *더 좋은 침대*라는 것이 표현될 자리가 없었다 — 가구를 지을 이유가
+    // 없다는 뜻이기도 하다.
+    //
+    // 눈금은 그대로다: **바닥 0.5 · 보통 침대 1.0**(`Bed.RestQuality` 기본값). 그 위는
+    // 침대가 저작한다(좋은 침대 1.4 → 임계에서 가득까지 600초가 **429초**).
+    public const float FloorQuality = 0.5f;
+
+    public static float SleepPerSecond(float quality)
+        => Band / (GameTimeManager.DayDuration * SleepDays) * Mathf.Max(0f, quality);
 
     // **자러 가는 문턱과 일어나는 문턱은 다르다**(히스테리시스). 같으면 문턱 위에서 **떤다** —
     // 자러 가서 조금 차면 "이제 안 졸리다"가 되어 일어나고, 걸어 나가면 다시 졸려서 돌아온다.
