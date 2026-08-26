@@ -111,7 +111,7 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
             // **폰이 들고 있는 씨앗도 센다.** 창고만 보면 상점에서 막 사 온 씨앗(배낭에 있다)으로는
             // 일감이 영영 안 걸린다 — 씨앗이 있는데 아무 일도 안 일어나던 원인이 이것이었다.
             // 누가 심을지는 아직 모르므로 넓게 보고, 실제 배정은 `SeedJob.CanAssignTo`가 거른다.
-            if (MaterialPool.AvailableAnywhere(SelectedSeed) > 0)
+            if (MaterialPool.AvailableNear(SelectedSeed, transform.position) > 0)
             {
                 _seedJobPending = true;
                 JobManager.Instance.RegisterJob(new SeedJob(this, SelectedSeed));

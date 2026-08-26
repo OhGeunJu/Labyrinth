@@ -112,16 +112,45 @@ IgnoreArmor, Source }`.
 
 ### CombatHandler 이벤트별 XP 배율
 
+**막았으면 방어가, 피했으면 회피가, 맞았으면 강인함이 자란다**(2026-08-26). 켄시의 배치다 —
+**못 막고 못 피한 것이라 그 솜씨가 늘 이유가 없고**, 배우는 것은 *아픔을 견디는 법*이다.
+
 | 상황 | 방어자 | 공격자 |
 |---|---|---|
-| Block 성공 | 방어 1.0x + **Shield 1.0x** | 무기 0.5x, MeleeAttack 0.25x |
-| Dodge 성공 | Evasion 1.0x | 0 (히트박스 미접촉) |
-| 피격 (적중) | 방어 8.0x + Evasion 2.0x + **Shield 8.0x** | 무기 1.0x, MeleeAttack 0.5x |
-| 원거리 Block | RangedDef 1.0x + **Shield 1.0x** | 무기 0.5x |
-| 원거리 적중 | RangedDef 8.0x + **Shield 8.0x** | 무기 1.0x |
+| Block 성공 | 방어(맨손=무술) **3.0x** + **Shield 3.0x** | 무기 0.5x, MeleeAttack 0.25x(원거리는 인지력 0.25x) |
+| Dodge 성공 | Evasion **1.5x** | 0 (히트박스 미접촉) |
+| 피격 (적중) | **Toughness 1.0x** | 무기 1.0x, MeleeAttack 0.5x(원거리는 인지력 0.5x) |
 
-**`Shield`는 방패를 들고 있을 때만 얹는다**(`GrowShieldXp` → `HasShield`) — 안 그러면 맨몸으로
-맞은 폰의 방패 솜씨가 는다. **맞았을 때가 여덟 배인 것이 켄시다**(*두들겨 맞으면서 배운다*).
+근접·원거리가 **같은 표**다(방어 스탯이 하나이므로).
+
+**사건당 기대 성장**(파리티: 막기 13.6% · 회피 22.7% · 피격 63.7%) — 넷이 나란하다:
+
+```
+무기 0.705 · 강인함 0.637 · 방어 0.408 · 근접공격 0.353 · 회피 0.340
+```
+
+**8배는 걷어냈다.** 근거가 어디에도 없었고(2026-06-04에 그냥 들어왔다) 셋이 어긋나 있었다:
+같은 줄에서 **방어 8배 ↔ 회피 2배** · `ChallengeMult`(최대 6배)와 곱해 **48배** ·
+**막는 데 성공할수록 손해**. 무엇보다 **방어가 다른 전투 스탯보다 7~15배 빨리 자랐다**(5.255).
+떼면 방어가 막기에서만 자라 2.6%로 죽으므로 **막기 배수를 3.0으로 같이 올렸다.**
+
+**`Shield`는 방패를 들고 있을 때만 얹는다**(`GrowShieldXp` → `HasShield`). 이제 **막았을 때만**
+자라므로 방패가 방패 노릇을 한다 — 전에는 맞을 때마다 8배로 올랐다.
+
+**강인함은 이 길이 생기기 전까지 도발을 쓸 때만 자랐다**(`AbilityUser`) — 도발 능력이 붙은
+장비를 안 찬 폰은 기절 저항·피해 감소·지도 전력을 정하는 스탯이 **평생 그대로**였다.
+
+### 속성 넷은 저마다 자라는 길이 하나씩이다 (2026-08-26)
+
+| 속성 | 자라는 자리 | 하는 일 |
+|---|---|---|
+| 근력 | 짐을 지고 걷기(`PawnMover.GrowStrengthFromLoad`) | 적재 한도 · 피해 |
+| 강인함 | **맞기**(`CombatHandler`, 1.0x) | 기절 저항 · 피해 감소 · 도발 |
+| 인지력 | **원거리 명중**(막힘 0.25x / 명중 0.5x) | 원거리 명중 · 사거리 |
+| 손재주 | **근접 공격**(막힘 0.25x / 명중 0.5x) | 근접 공격 간격 · 베기 피해 |
+
+**넷 다 길이 있어야 한다** — 강인함은 도발을 쓸 때만, 손재주는 **아무 데서도** 안 자라서
+태어난 값 그대로 평생 갔다(둘 다 08-26에 닫았다).
 
 ### 노동/제작/연구 적용
 
@@ -139,16 +168,38 @@ IgnoreArmor, Source }`.
 
 `Equipment.MainHand`로 무기 타입 결정. `CombatHandler.Update()`에서 `weapon.IsRanged`로 분기.
 
-**근접 공격 흐름:**
+**안 맞는 것은 한 물음이다 — `Measure`가 근접·원거리에 같이 답한다**(2026-08-24):
 1. Weakened 디버프: attackSkill × AttackChanceMod
-2. Block chance = `(defenderMeleeDefense + shield.BlockBonus × (1 + Shield/100)) / (attackerMeleeAttack + effective)` × DefenseChanceMod
-3. Dodge chance = `defenderEvasion / (attackerMeleeAttack + evasion)` × DefenseChanceMod
-4. 피격 → `BodyPartSystem.TakeDamage(DamageInfo)`
+2. `blockRaw` = OpposedChance(Defense + 방패보너스, attackSkill) × `blockWeight`(0.75)
+   — 맨손이면 `MartialArts`, 방패 보너스는 근접 `BlockBonus` ↔ 원거리 `RangedBlockBonus`
+3. `dodgeRaw` = OpposedChance(Evasion, attackSkill) × `dodgeWeight`(1.25)
+4. **몫**은 `blockRaw : dodgeRaw`로 먼저 고정, **총량**은 둘을 겹쳐 재 × DefenseChanceMod
+   → `maxAvoidChance`(0.6)로 자른다 — **천장은 *방어자의 솜씨*에만 걸린다**
+5. 총량을 몫대로 갈라 **막기 → (실패하면) 회피** 두 굴림
+6. 피격 → `BodyPartSystem.TakeDamage(DamageInfo)`
 
-**원거리 공격 흐름:**
-1. `TryFireRanged` — Cognition × (1 − distancePenalty) 정확도 판정
-2. `TryBlockRanged` — `(RangedDefense + shield.RangedBlockBonus × (1 + Shield/100)) / (attackerSkill + effective)` × DefenseChanceMod
-3. `FireRanged` — PrecisionShooting 분기: 60~100% 타겟 적중, 0~40% 아군 오사
+**공격자 쪽 스탯**은 근접 `MeleeAttack`(맨손 `MartialArts`) ↔ 원거리 **`Cognition`**(2026-08-26).
+움직이는 표적이면 명중 솜씨가 `Lerp(0.6, 1, 인지력/130)`만큼만 남는다 — **그 깎임을 지우는
+것도 인지력**이라 키우면 이긴다.
+
+**원거리 스탯 셋 — 하는 일이 하나씩이다**(2026-08-26):
+
+| 스탯 | 하는 일 | 눈금 |
+|---|---|---|
+| `Cognition` | 명중 · 움직이는 표적 · **사거리** | 130 → 사거리 1.5배(석궁 14 → 21m) |
+| `PrecisionShooting` | **겨눈 것을 맞히나**(그것 하나) | 빗나갈 확률 `(1 − 정밀/130) × 0.4` |
+| 무기 숙련(`Bow`·`Crossbow`·`Javelin`·지팡이 7) | **재장전** | 130 → 1.5배 빠름(3.4 → 2.27s) |
+
+- 사거리는 `UnitBlackboard.AttackRange`(프로퍼티) = `BaseAttackRange × CombatHandler.RangeMult`.
+  배수가 붙을지는 `RangedWeapon`이 가른다.
+- 원거리 재장전에는 손재주·근력이 **안 걸린다**(근접 몫). 원거리 피해에 무기 숙련도 **안 얹힌다**
+  (재장전이 곧 DPS라 두 번 값을 하면 안 된다). 근접은 둘 다 예전 그대로.
+
+**빗맞음** — `TryFireRanged`가 막기·회피보다 **먼저** 굴린다(겨냥이 흔들린 것이라 겨눈 쪽은
+관여 안 함): `FactionScan.NearestPawnInCone`이 표적 방향 **반각 20° · 표적까지**의 부채꼴에서
+가장 가까운 사람을 찾는다. **세력을 안 가린다** — 동료면 손해고 옆에 선 다른 적이면 그냥 다른
+놈이 맞는다. **아무도 없으면 굴림 자체가 없다**(허허벌판의 한 놈은 늘 겨눈 대로 맞는다).
+**겨눈 표적은 뺀다**(`exclude`) · 쓰러진 몸·시체는 `IsAttackable`이 뺀다.
 
 **데미지 공식:**
 ```

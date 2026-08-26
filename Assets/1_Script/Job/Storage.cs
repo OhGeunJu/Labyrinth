@@ -108,25 +108,36 @@ public class Storage : MonoBehaviour, IWorldClickable
     // ── 집계는 **아이템 기준 하나뿐**이다 ─────────────────────────────
     // 예전엔 `GetTotal(ResourceType)`과 `GetTotalByItem(ItemData)`가 같은 일을 두 벌로 했다.
     // 종류가 아이템으로 흡수되면서 앞엣것은 뒤엣것과 완전히 같은 뜻이 됐다 — 그래서 지웠다.
-    public static int GetTotalByItem(ItemData item)
+    //
+    // **`near`는 선택 인자가 아니다**(2026-08-26). 세계가 29km로 이어지면서 거점이 동시에
+    // 살아 있게 됐는데, 전부 더하면 **29km 밖 창고의 목재로 여기서 집을 짓는다.** 기본값을
+    // 두면 부르는 쪽이 조용히 빠뜨리고, 그 증상은 *"분명히 없는데 지어진다"*라 잡기 어렵다
+    // (`Storage.FindNearest`의 `from`을 필수로 둔 것과 같은 이유).
+    //
+    // 가르는 것은 **핵 영역**이다(`Territory`) — 거리로 자르면 *"얼마나 멀면 다른 거점인가"*라는
+    // 새 숫자가 생기는데, 핵은 이미 영역을 갖고 있고 `BuildingDormancy`가 그 답을 쓰고 있다.
+    // **핵이 하나뿐인 판에서는 전부 같은 영역**이라 예전과 똑같이 돈다.
+    public static int GetTotalByItem(ItemData item, Vector3 near)
     {
         int total = 0;
         foreach (var sb in All)
         {
             if (!sb.IsActive) continue;
+            if (!Territory.Same(sb.transform.position, near)) continue;
             total += sb.Inventory.GetTotalQuantity(item);
         }
         return total;
     }
 
-    public static bool ConsumeByItem(ItemData item, int amount)
+    public static bool ConsumeByItem(ItemData item, int amount, Vector3 near)
     {
-        if (GetTotalByItem(item) < amount) return false;
+        if (GetTotalByItem(item, near) < amount) return false;
         int remaining = amount;
         foreach (var sb in All)
         {
             if (remaining <= 0) break;
             if (!sb.IsActive) continue;
+            if (!Territory.Same(sb.transform.position, near)) continue;
             remaining -= sb.Inventory.Remove(item, remaining);
         }
         return remaining <= 0;

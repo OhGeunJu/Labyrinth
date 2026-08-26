@@ -289,6 +289,10 @@ public class Equipment : MonoBehaviour
         _bb.AttackRange = MainHand != null
             ? MainHand.AttackRange
             : (_unitData != null ? _unitData.AttackRange : 1.5f);
+
+        // **인지력 배수가 붙을지는 무기가 정한다**(2026-08-26) — 맨손·근접에는 안 붙는다.
+        // 안 넣으면 칼을 든 폰이 인지력만으로 두 칸 밖에서 휘두른다.
+        _bb.RangedWeapon = MainHand != null && MainHand.IsRanged;
     }
 
     // 벗은 것을 배낭에 돌려준다. **자리가 없으면 발밑에 내려놓는다.**

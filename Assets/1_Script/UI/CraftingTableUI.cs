@@ -461,7 +461,7 @@ public class CraftingTableUI : MonoBehaviour
         {
             // 판정(`CanCraft`)과 **같은 기준**으로 센다. 다르면 화면이 두 답을 낸다 —
             // 재료가 3/3인데 버튼은 비활성이거나, 그 반대.
-            int have   = Storage.GetTotalByItem(ing.Item);
+            int have   = MaterialPool.AvailableHere(ing.Item);
             string col = have >= ing.Amount ? "#88FF88" : "#FF6666";
             sb.AppendLine($"<color={col}>{ing.Item?.ItemName}  {have} / {ing.Amount}</color>");
         }

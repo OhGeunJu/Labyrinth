@@ -601,7 +601,7 @@ public class ResearchTableUI : MonoBehaviour
         var sb = new StringBuilder();
         foreach (var ing in data.Ingredients)
         {
-            int have = Storage.GetTotalByItem(ing.Resolve());
+            int have = MaterialPool.AvailableHere(ing.Resolve());
             string col = have >= ing.Amount ? "#88FF88" : "#FF6666";
             sb.AppendLine($"<color={col}>{ing.DisplayName}  {have} / {ing.Amount}</color>");
         }

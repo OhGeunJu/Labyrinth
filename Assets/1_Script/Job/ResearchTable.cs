@@ -131,7 +131,7 @@ public class ResearchTable : MonoBehaviour, IWorldClickable
             return true;
 
         foreach (var ing in data.Ingredients)
-            if (Storage.GetTotalByItem(ing.Resolve()) < ing.Amount) return false;
+            if (Storage.GetTotalByItem(ing.Resolve(), transform.position) < ing.Amount) return false;
         return true;
     }
 }

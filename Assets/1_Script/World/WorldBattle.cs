@@ -33,11 +33,12 @@ public static class WorldBattle
     // ── 전력 ──────────────────────────────────────────────────────────────────
 
     // 사람 한 명 몫. 스탯은 0~130이므로 결과도 대략 그 범위다.
-    static float Power(System.Func<StatName, float> stat)
+    //
+    // **공격 스탯은 부르는 쪽이 넘긴다**(2026-08-26). 여기서 고르게 두면 *무엇을 들었나*를
+    // 모른 채 골라야 하는데, 원정대원은 실제 장비를 알고 무리 멤버는 명세뿐이라 **아는 것이
+    // 다르다.** 답이 갈리는 물음을 한 함수에 밀어 넣으면 한쪽이 반드시 틀린다.
+    static float Power(System.Func<StatName, float> stat, float atk)
     {
-        // 원거리형도 제 몫을 하게 공격은 **둘 중 큰 쪽**을 쓴다 — 궁수의 근접공격이 낮다고
-        // 전력이 0에 가까워지면 활을 든 폰을 데려갈 이유가 없어진다.
-        float atk = Mathf.Max(stat(StatName.MeleeAttack), stat(StatName.PrecisionShooting));
         float def = stat(StatName.Defense);   // 방어는 하나다(2026-08-23)
 
         return atk * 0.45f + def * 0.30f + stat(StatName.Toughness) * 0.15f
@@ -48,7 +49,12 @@ public static class WorldBattle
     public static float PowerOf(BandMember m)
     {
         if (m == null || m.Spec == null) return 0f;
-        return Power(s => m.Spec.Grades.TryGetValue(s, out var g) ? g.ToValue() : 1f);
+        System.Func<StatName, float> stat =
+            s => m.Spec.Grades.TryGetValue(s, out var g) ? g.ToValue() : 1f;
+
+        // **무엇을 들었는지 모르므로 둘 중 큰 쪽**(근접 ↔ 원거리). 무리 멤버는 전부
+        // 전투원이라 이 `Max`가 안전하다 — 원정대원 쪽은 그렇지 않다(아래).
+        return Power(stat, Mathf.Max(stat(StatName.MeleeAttack), stat(StatName.Cognition)));
     }
 
     // 원정대원 — 실제 스탯 + **실제로 들고 있는 장비**.
@@ -59,9 +65,25 @@ public static class WorldBattle
         // 쓰러져 있는 사람은 싸우지 못한다. 데려는 왔어도 전력에 세면 안 된다.
         if (u.Blackboard != null && u.Blackboard.IsKnockedOut) return 0f;
 
-        float p = Power(u.Stats.GetStat);
+        // **실제로 든 것이 쓰는 스탯을 그대로 본다**(2026-08-26). 전에는 `근접공격`과
+        // `정밀사격` 중 큰 쪽이었는데, **정밀사격은 이제 명중이 아니라 오사 스탯이라**
+        // 지도 위 전력이 엉뚱한 값을 셌다 — 인지력 높은 명사수가 약하게, 오사만 안 내는 폰이
+        // 강하게 잡혔다.
+        //
+        // **여기서 `Max`를 쓰면 안 된다** — 정밀사격은 전투 전용이라 큰 쪽을 골라도 안전했지만
+        // **인지력은 누구나 가진 속성**이라, 그대로 두면 **인지력 100짜리 학자가 공격력 100**으로
+        // 잡힌다. 원정대는 일꾼도 데려가는 자리다.
+        //
+        // **맨손은 무술이다** — 필드 판정(`GetAttackCombatSkill`)이 그러므로 여기도 같아야 한다.
+        var eq     = u.Equipment;
+        var weapon = eq != null ? eq.MainHand : null;
 
-        var eq = u.Equipment;
+        float atk = weapon == null       ? u.Stats.MartialArts
+                  : weapon.IsRanged      ? u.Stats.Cognition
+                                         : u.Stats.MeleeAttack;
+
+        float p = Power(u.Stats.GetStat, atk);
+
         if (eq != null)
         {
             // 무기의 초당 피해와 갑옷의 감소량을 스탯과 같은 눈금으로 환산한다.

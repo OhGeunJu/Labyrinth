@@ -423,7 +423,7 @@ public class InspectPanelUI : MonoBehaviour
                           $"{item.ItemName} {bp.Delivered}/{bp.CostRequired}");
 
             // **창고만 세면 손에 든 것이 없는 것이 된다** — 등록 판정과 같은 축으로 본다.
-            int stock = MaterialPool.AvailableAnywhere(item);
+            int stock = MaterialPool.AvailableHere(item);
             string col = stock >= bp.Remaining ? "#8BC34A" : "#F44336";
             sb.AppendLine($"남은 것  <b>{bp.Remaining}</b>   " +
                           $"가진 것  <color={col}>{stock}</color>");

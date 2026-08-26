@@ -40,7 +40,7 @@ public class MinionEntryUI : MonoBehaviour
     {
         if (_data == null) return;
         var  cost      = _data.SummonCostItem;
-        int  have      = Storage.GetTotalByItem(cost);
+        int  have      = MaterialPool.AvailableHere(cost);
         bool canAfford = _data.SummonCostAmount <= 0 || have >= _data.SummonCostAmount;
 
         if (costText != null)

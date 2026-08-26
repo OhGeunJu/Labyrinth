@@ -161,14 +161,10 @@ public class BodyPartSystem : MonoBehaviour
         var sfx = GetComponent<StatusEffectSystem>();
 
         // 가해자 기록 — 중립 세력도 선공당하면 반격/도망할 수 있게(관계와 무관한 축).
-        // 같은 편의 오사(사격 관통)는 원한으로 치지 않는다.
+        // **같은 편 오사를 거르는 것은 `RecordAttacker`가 한다** — 부르는 곳이 둘이라
+        // (여기와 `CombatHandler`의 공격 시도) 각자 적으면 한쪽이 반드시 빠진다.
         if (info.Source != null && _brain != null && _brain.Blackboard != null)
-        {
-            var mine  = GetComponent<Faction>();
-            var their = info.Source.GetComponent<Faction>();
-            if (mine == null || their == null || !mine.IsAllyOf(their))
-                _brain.Blackboard.RecordAttacker(info.Source);
-        }
+            _brain.Blackboard.RecordAttacker(info.Source);
 
         // 타입 배율
         if (info.Type == DamageType.Blunt)     damage *= 1.3f;

@@ -34,7 +34,9 @@ public class ShotTracer : MonoBehaviour
 
     // 아군 오사가 눈에 띄어야 한다 — 같은 색이면 누가 누구를 쐈는지 안 보인다.
     static readonly Color Normal   = new(1f, 0.93f, 0.6f, 0.9f);
-    static readonly Color Friendly = new(1f, 0.45f, 0.35f, 0.95f);
+    // **빗나간 화살은 색이 다르다** — 맞은 것이 동료든 옆에 선 다른 적이든, 이 색이
+    // 말하는 것은 *"겨눈 데로 안 갔다"* 하나다.
+    static readonly Color Stray    = new(1f, 0.45f, 0.35f, 0.95f);
 
     // **한 발마다 오브젝트를 만들지 않는다** — 난전에서는 초당 수십 발이고, 그때마다
     // `LineRenderer` + 머티리얼이 생겼다 사라지면 GC가 튄다(`ResearchLinkGraphic`이 선마다
@@ -47,15 +49,15 @@ public class ShotTracer : MonoBehaviour
     float        _age, _life;
     Color        _color;
 
-    public static void Show(Component shooter, GameObject target, bool friendly = false)
+    public static void Show(Component shooter, GameObject target, bool stray = false)
     {
         if (shooter == null || target == null) return;
         Vector3 from = Chest(shooter.gameObject);
         Vector3 to   = Chest(target);
-        Show(from, to, friendly);
+        Show(from, to, stray);
     }
 
-    public static void Show(Vector3 from, Vector3 to, bool friendly = false)
+    public static void Show(Vector3 from, Vector3 to, bool stray = false)
     {
         // **풀은 `static`인데 오브젝트는 씬과 함께 죽는다.** 씬을 다시 열면 풀에 파괴된
         // 것이 남아 `Pop`이 죽은 참조를 준다 — 그냥 돌아서면 **그만큼의 화살이 조용히
@@ -65,7 +67,7 @@ public class ShotTracer : MonoBehaviour
         if (t == null) t = Create();
         if (t == null) return;
 
-        t._color = friendly ? Friendly : Normal;
+        t._color = stray ? Stray : Normal;
         t._from  = from;
         t._to    = to;
         t._age   = 0f;

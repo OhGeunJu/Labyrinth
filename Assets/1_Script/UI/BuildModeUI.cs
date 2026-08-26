@@ -196,7 +196,7 @@ public class BuildModeUI : MonoBehaviour
         // 여기뿐이다(청사진 살펴보기 창이 같은 답을 쓴다).
         if (bd.CostAmount > 0 && bd.CostItem != null)
         {
-            int have = MaterialPool.AvailableAnywhere(bd.CostItem);
+            int have = MaterialPool.AvailableHere(bd.CostItem);
             string col = have >= bd.CostAmount ? "#CCC" : "#F66";
             sb.AppendLine($"<color={col}>{bd.CostItem.ItemName} {have}/{bd.CostAmount}</color>");
         }
@@ -260,6 +260,6 @@ public class BuildModeUI : MonoBehaviour
     {
         var bd = mgr.GetBuilding(idx);
         return bd == null || bd.CostAmount <= 0
-            || MaterialPool.AvailableAnywhere(bd.CostItem) >= bd.CostAmount;
+            || MaterialPool.AvailableHere(bd.CostItem) >= bd.CostAmount;
     }
 }

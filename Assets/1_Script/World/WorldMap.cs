@@ -194,6 +194,51 @@ public class WorldMap : MonoBehaviour
     public WorldTile GetTile(Vector2Int node) =>
         InBounds(node) ? _tiles[node.x, node.y] : default;
 
+    // **저작한 바이옴을 인스턴스 없이 읽는다** — 에디터에서 지형을 조각할 때는 `Awake`가
+    // 안 돌아 `Instance`도 `_tiles`도 없다. 그때 기본값(평원)으로 떨어지면 **도구가 게임과
+    // 다른 지형을 조각하고**, 구운 델타가 통째로 어긋난다(그 함정은 연구 재료에서 이미 겪었다).
+    // 저작한 지도의 한 변 — `TerrainGrid.RegionsPerAxis`가 이걸 읽는다.
+    // **지역의 크기는 세계가 아니라 저작한 해상도가 정한다.**
+    public static int AuthoredWidth
+    {
+        get
+        {
+            var inst = Instance;
+            if (inst != null && inst.width > 0) return inst.width;
+
+            var src = inst != null ? inst.mapData
+                    : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
+            return src != null && src.Width > 0 ? src.Width : 16;
+        }
+    }
+
+    // 저작한 칸 내용물 — 바이옴과 같은 이유로 인스턴스 없이도 읽힌다(도구가 쓴다).
+    public static WorldNodeContent AuthoredContent(int x, int y)
+    {
+        var inst = Instance;
+        if (inst != null && inst._tiles != null && inst.InBounds(new Vector2Int(x, y)))
+            return inst._tiles[x, y].Content;
+
+        var src = inst != null ? inst.mapData
+                : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
+        if (src != null && src.IsSized && src.InBounds(x, y)) return src.Get(x, y).Content;
+
+        return WorldNodeContent.Empty;
+    }
+
+    public static Biome AuthoredBiome(int x, int y)
+    {
+        var inst = Instance;
+        if (inst != null && inst._tiles != null && inst.InBounds(new Vector2Int(x, y)))
+            return inst._tiles[x, y].Biome;
+
+        var src = inst != null ? inst.mapData
+                : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
+        if (src != null && src.IsSized && src.InBounds(x, y)) return src.Get(x, y).Biome;
+
+        return Biome.Plains;
+    }
+
     // ── 변경 ─────────────────────────────────────────────────────────────────
 
     public void SetContent(Vector2Int node, WorldNodeContent content)

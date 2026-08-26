@@ -244,7 +244,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         foreach (var entry in _acceptedFuels)
         {
             if (entry.Item == null) continue;
-            if (Storage.GetTotalByItem(entry.Item) <= 0) continue;
+            if (Storage.GetTotalByItem(entry.Item, transform.position) <= 0) continue;
             _fuelJobPending = true;
             JobManager.Instance.RegisterJob(new FuelJob(this, entry));
             return;
@@ -267,7 +267,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         foreach (var ing in recipe.Ingredients)
         {
             if (ing.Item == null || ing.Amount <= 0) continue;
-            max = Mathf.Min(max, Storage.GetTotalByItem(ing.Item) / ing.Amount);
+            max = Mathf.Min(max, Storage.GetTotalByItem(ing.Item, transform.position) / ing.Amount);
         }
 
         // **셀 재료가 없는 레시피는 "못 만든다"가 아니라 "무엇도 막지 않는다"이다.**
@@ -325,7 +325,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
     {
         if (recipe == null) return false;
         foreach (var ing in recipe.Ingredients)
-            if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
+            if (Storage.GetTotalByItem(ing.Item, transform.position) < ing.Amount)
                 return false;
         return true;
     }

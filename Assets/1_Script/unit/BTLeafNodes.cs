@@ -58,10 +58,6 @@ public class ConditionNode : BTNode
 // 노드를 따로 만들면 그 셋이 두 벌이 된다.
 public class DetectNode : BTNode
 {
-    readonly bool _retaliateOnly;
-
-    public DetectNode(bool retaliateOnly = false) => _retaliateOnly = retaliateOnly;
-
     public override BTStatus Tick(UnitBlackboard bb)
     {
         Vector3 selfPos = bb.Self.transform.position;
@@ -107,10 +103,44 @@ public class DetectNode : BTNode
         //
         // **어두우면 덜 훑는다**(`Vision`) — 밤에는 적이 코앞까지 와야 보인다. 밤눈이 있는
         // 종족은 그만큼 덜 줄어든다.
-        bool scan  = (!_retaliateOnly || bb.IsDrafted) && myFaction != null;
+        // **먼저 거는가는 성향이 답한다**(2026-08-26, 사용자 결정). 전에는 트리마다 박아 둔
+        // `retaliateOnly` 플래그가 정했는데, 그래서 **P패널의 성향이 방랑자에게 안 먹혔다** —
+        // `교전`을 골라도 `자동`과 똑같이 반격만 했다(넷 중 `도주`만 `PlayerFleeNode`를 통해
+        // 따로 먹혔다). 플래그를 지우고 성향 하나로 모은다.
+        bool initiates = bb.Brain != null
+                      && bb.Brain.EffectiveStance != CombatStance.Retaliate
+                      && bb.Brain.EffectiveStance != CombatStance.Flee;
+
+        // **소집은 반대다 — 자리를 지키며 반격만 한다**(2026-08-26, 사용자 결정으로 뒤집었다).
+        //
+        // 08-20에는 *"소집은 싸울 태세라 먼저 친다"*로 두었는데, 그러면 **세워 둔 폰이 표적을
+        // 찾아 걸어 나가** 진형을 잡으려던 뜻이 사라진다. 소집의 뜻은 *"내가 조종할 때까지
+        // 그 자리에 있어라"*다 — 먼저 거는 것은 성향이 할 일이고, 소집은 그것을 **끈다.**
+        if (bb.IsDrafted) initiates = false;
+
+        // **맞은 뒤에는 성향도 소집도 훑기를 막지 않는다.** 이미 붙은 싸움에서 손을 놓는 것은
+        // 어느 성향의 뜻도 아니다 — 그전에는 때린 놈이 쓰러지는 순간 `Target`이 비고 새 후보를
+        // 안 훑어서, **옆에 적을 두고 멍하니 서서 맞았다**(사용자 검증에서 드러났다).
+        //
+        // **그리고 15초로는 모자랐다.** `HasFreshAttacker`만 보면 때린 놈을 눕히고 15초가
+        // 지나는 순간 다시 손을 놓는다 — 그건 *맞은 기억*의 길이지 **싸움의 길이가 아니다.**
+        // `Engaged`가 붙는 순간부터 **주위가 빌 때까지** 이어진다.
+        //
+        // **드는 길이 둘이다 — 맞았거나, 치고 있거나**(2026-08-26). 한동안 *맞았을 때*만
+        // 적어 두었는데, 그러면 **내가 먼저 친 싸움이 교전으로 안 쳐진다**: 우클릭으로 지목해
+        // 한 놈을 눕힌 폰이 (한 대도 안 맞았으면) 그 자리에서 손을 놓고 일하러 갔다. 진단
+        // 로그가 정확히 그 모양이었다 — `맞은놈=없음 Engaged=False`인데 적이 1.2m 앞에 있었다.
+        //
+        // **표적을 들고 있다는 것 자체가 교전이다** — 플레이어가 지목했든 반격으로 붙었든,
+        // 그 폰은 이미 싸우는 중이다.
+        if (bb.HasFreshAttacker || current != null) bb.Engaged = true;
+
+        bool scan  = (initiates || bb.Engaged) && myFaction != null;
+
+        // **소집 중에는 목줄이 짧다** — 다가온 것과 그 곁만 문다. 자리를 지키라는 명령이므로
+        // 반격으로 붙은 싸움이어도 표적을 찾아 멀리 나가면 안 된다.
         float range = Mathf.Min(Vision.RangeFor(bb),
-                                bb.IsDrafted && _retaliateOnly ? bb.AttackRange * DraftLeash
-                                                               : float.MaxValue);
+                                bb.IsDrafted ? bb.AttackRange * DraftLeash : float.MaxValue);
 
         GameObject best = scan
             ? FactionScan.NearestHostile(bb.Self, myFaction, range, theirsToMine: false)
@@ -131,6 +161,11 @@ public class DetectNode : BTNode
         if (best == null)
         {
             bb.Target = current;   // 새 후보가 없으면 기존 타겟 유지(추격 중 놓치지 않게)
+
+            // **훑어 봤는데 아무도 없으면 싸움이 끝난 것이다.** `scan`이 꺼져 있을 때는
+            // 훑지를 않았으므로 *없다*고 말할 근거가 없다 — 그대로 둔다.
+            if (scan && current == null) bb.Engaged = false;
+
             return current != null ? BTStatus.Success : BTStatus.Failure;
         }
 

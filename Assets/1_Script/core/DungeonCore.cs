@@ -63,7 +63,20 @@ public class DungeonCore : MonoBehaviour
 
     RangeCircle _circle;
 
-    void Awake() => Instance = this;
+    // **핵이 여럿이면 영역도 여럿이다**(2026-08-26). 세계가 29km로 이어지면서 거점이
+    // **동시에** 살아 있게 됐다 — `Instance` 하나로는 *"어느 거점의 창고인가"*에 답할 수가
+    // 없다. `Storage.All`·`Faction.All`과 같은 자리의 레지스트리를 낸다.
+    //
+    // **`Instance`는 남긴다** — *"지금 조작 중인 거점"*이라는 뜻으로 여전히 쓰이고
+    // (`SettlementManager.SetAsActive`가 갈아 끼운다), 부르는 곳이 수십이다.
+    public static readonly List<DungeonCore> All = new();
+
+    void Awake()
+    {
+        Instance = this;
+        if (!All.Contains(this)) All.Add(this);
+    }
+
 
 
     // ── 갇힌 하수인 종족을 지배한다 ──────────────────────────────────────────
@@ -102,6 +115,11 @@ public class DungeonCore : MonoBehaviour
     {
         _circle?.Dispose();
         Release();   // 막아 두었던 칸을 돌려준다 — 안 풀면 핵이 사라진 자리가 영영 막힌다
+
+        // 레지스트리에서 빠진다. **`Instance`도 넘긴다** — 안 넘기면 파괴된 참조가 남아
+        // `MaterialPool.Focus`가 널을 물고, 화면의 재료 집계가 통째로 0이 된다.
+        All.Remove(this);
+        if (Instance == this) Instance = All.Count > 0 ? All[0] : null;
     }
 
     // 씬에 저작된 부양 높이(표면 위로 얼마나 떠 있는가). 핵 이전 시 이 높이를 유지한다.
@@ -288,7 +306,7 @@ public class DungeonCore : MonoBehaviour
         }
 
         if (minionData.SummonCostAmount > 0 &&
-            !Storage.ConsumeByItem(minionData.SummonCostItem, minionData.SummonCostAmount))
+            !Storage.ConsumeByItem(minionData.SummonCostItem, minionData.SummonCostAmount, transform.position))
         {
             Debug.Log($"[DungeonCore] 자원 부족 — {minionData.SummonCostItem?.ItemName} ×{minionData.SummonCostAmount} 필요");
             return false;

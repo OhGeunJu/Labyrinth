@@ -50,7 +50,7 @@ public class RecipeEntryUI : MonoBehaviour
         if (nameText == null || _recipe == null) return;
         bool canCraft = true;
         foreach (var ing in _recipe.Ingredients)
-            if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
+            if (MaterialPool.AvailableHere(ing.Item) < ing.Amount)
             { canCraft = false; break; }
 
         nameText.color = canCraft ? Color.white : new Color(1f, 0.3f, 0.3f, 1f);

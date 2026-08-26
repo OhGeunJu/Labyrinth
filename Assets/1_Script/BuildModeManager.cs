@@ -857,7 +857,9 @@ public class BuildModeManager : MonoBehaviour
         // 얻고도 즉시 배치로 남아 있어, 자원이 모자라면 콘솔에 한 줄 남기고 **화면에서는
         // 클릭이 그냥 씹혔다** — *안 지어지는 것*과 *못 놓는 것*이 구별되지 않았다. 청사진이면
         // 파란 계획이 서고 자재가 들어오는 순간 폰이 저절로 간다.
-        if (data.CostAmount > 0 && !Storage.ConsumeByItem(data.CostItem, data.CostAmount))
+        // **자리에서 낸다** — 세계가 이어져 거점이 여럿이면 29km 밖 창고의 목재로 여기를
+        // 짓게 된다(`Territory`).
+        if (data.CostAmount > 0 && !Storage.ConsumeByItem(data.CostItem, data.CostAmount, pos))
         {
             Debug.Log($"[Build] 자원 부족 — {data.CostItem?.ItemName} ×{data.CostAmount}");
             return;

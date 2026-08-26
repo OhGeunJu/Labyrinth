@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class SeedJob : JobBase
 {
+    // 심는 것은 즉시라 속도에 걸 자리가 없다 — **자라기만 한다**(거두는 쪽이 값을 낸다).
+
     public override JobCategory Category => JobCategory.Farming;
 
     enum Phase { GoToStorage, GoToPlot }
@@ -84,6 +86,7 @@ public class SeedJob : JobBase
         else
         {
             _plot.OnSeeded();
+            Farming.Grow(unit, Farming.SeedXp);
             Status = JobStatus.Done;
         }
     }

@@ -160,10 +160,24 @@ public class WorldMapView : MonoBehaviour
         grid?.ClearHighlight();
     }
 
+    // **세계가 이어지면 이 화면은 갈 곳이 없다**(2026-08-26).
+    //
+    // 이 창은 *"필드맵이 200m 한 장"*이라는 전제 위에 서 있었다 — 그래서 지도가 **이동하는
+    // 곳**이었고, 3D로 그려서 원정대 토큰을 걷게 했다. 세계가 16,384m로 이어지면서 **진짜로
+    // 걸어 다니는 곳은 필드**가 되었고, 지도는 `WorldMapPanel`(2D 텍스처 · M키)이 대신한다.
+    //
+    // **아직 지우지는 않는다.** 이 파일을 가리키는 곳이 **40군데 / 15파일**이고
+    // (`GameModeManager` 26곳, 원정 편성 37곳이 더 있다) 씬 배선까지 걸려 있다.
+    // **진입로만 끊고 코드는 남긴다** — `WorldSite`(마을·소굴을 실제 좌표에)와
+    // `BandMaterializer`(무리 실체화)가 화면에서 확인되기 전에 지우면 돌아갈 데가 없다.
+    [Tooltip("옛 3D 월드맵 화면. 세계가 이어진 뒤로는 `WorldMapPanel`(M키)이 대신한다. " +
+             "켜면 옛 화면이 M키로 다시 열린다 — 지도가 둘 뜬다.")]
+    [SerializeField] bool legacyWorldScreen = false;
+
     void Update()
     {
         var kb = Keyboard.current;
-        if (kb != null && kb[toggleKey].wasPressedThisFrame)
+        if (legacyWorldScreen && kb != null && kb[toggleKey].wasPressedThisFrame)
         {
             CloseMenu();
             GameModeManager.Instance?.Toggle();

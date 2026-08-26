@@ -123,7 +123,7 @@ public class Pyre : MonoBehaviour, IWorldClickable, ICarrySite
                 if (!MaterialPool.Consume(fuelItem, fuelAmount, null))
                 {
                     BlockedReason = $"{fuelItem.ItemName}이(가) 모자란다 " +
-                                    $"({MaterialPool.AvailableAnywhere(fuelItem)}/{fuelAmount})";
+                                    $"({MaterialPool.AvailableNear(fuelItem, transform.position)}/{fuelAmount})";
                     return;
                 }
             }

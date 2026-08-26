@@ -39,13 +39,21 @@ public class FarmHarvestJob : JobBase
 
         if (_phase == Phase.GoToPlot)
         {
-            // 수확 후 인벤토리에 담기
-            _harvested       = unit.Inventory.TryAdd(_seed.HarvestItem, _seed.HarvestAmount);
-            int leftover     = _seed.HarvestAmount - _harvested;
+            // **원예가 수확량을 정한다**(2026-08-26). 그전까지 이 스탯은 이름과 설명
+            // (*"씨를 뿌리고 거둔다. 수확량에도 걸린다"*)만 있고 **코드 어디에서도 안 읽혔다** —
+            // 농지 일감이 스탯을 아예 안 봤다. 화면이 약속한 것을 그대로 코드에 옮긴다.
+            //
+            // **개수가 정수라 올림이 아니라 반올림한다** — 내림이면 원예 0~64가 전부 같은 값이
+            // 되어(2개 작물이면 3개가 되려면 65가 필요하다) 낮은 구간이 통째로 죽는다.
+            int amount = Farming.HarvestAmount(_seed.HarvestAmount, unit);
+
+            _harvested       = unit.Inventory.TryAdd(_seed.HarvestItem, amount);
+            int leftover     = amount - _harvested;
             if (leftover > 0)
                 DroppedItem.Spawn(_seed.HarvestItem, leftover, _plot.transform.position + Vector3.up * 0.3f);
 
             _plot.OnHarvested();
+            Farming.Grow(unit, Farming.HarvestXp);
 
             if (_harvested <= 0)
             {

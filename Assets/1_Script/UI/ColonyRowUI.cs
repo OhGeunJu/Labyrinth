@@ -23,6 +23,9 @@ public class ColonyRowUI : MonoBehaviour
     static readonly Color FightColor = new Color(0.72f, 0.84f, 0.72f, 1f);
     static readonly Color CareColor  = new Color(0.88f, 0.80f, 0.45f, 1f);
     static readonly Color FleeColor  = new Color(0.90f, 0.55f, 0.40f, 1f);
+    // **`자동`과 색을 나눈다** — 방랑자에게는 둘이 같은 동작이지만(역할 기본값이 반격),
+    // 프로필을 든 폰은 `자동`이 교전일 수 있어 같은 회색으로 두면 구별이 안 된다.
+    static readonly Color RetaliColor = new Color(0.62f, 0.76f, 0.82f, 1f);
 
     UnitBrain _brain;
     TextMeshProUGUI _nameText;
@@ -128,25 +131,44 @@ public class ColonyRowUI : MonoBehaviour
         if (_brain != null && _brain.Work != null) _brain.Work.OnChanged -= Refresh;
     }
 
-    // 자동(프로필/역할 기본값) → 교전 → 신중 → 도주 → 자동
+    // ── 고를 수 있는 성향 셋: 반격 → 교전 → 도주 ────────────────────────
+    //
+    // **`반격`이 맨 앞이다**(사용자 결정) — 그것이 기본값이라 목록의 첫 칸과 같아야 한다.
+    // 첫 칸이 `교전`이면 성향을 한 번 만지는 것만으로 **폰이 달려 나간다.**
+    //
+    // **`신중`은 뺐다**(2026-08-26, 사용자 결정 — *"신중이 40%가 남았을 때 도망가게 한다는 걸
+    // 알려주지도 않고 체력 제한을 내가 정하지도 않고"*). 갈리는 순간이 **다칠 때 하나뿐**인데
+    // 그 문턱(`FleeBloodRatio`)이 **화면 어디에도 없고 손잡이도 없다** — 그러면 고르는 일이
+    // 아니라 짐작하는 일이 된다. **프로필로는 그대로 쓴다**(NPC·용병이 저작으로 든다).
+    //
+    // **`자동`도 뺐다 — 프로필이 없는 폰에 한해서.** 방랑자 프리팹은 `aiProfile`이 비어 있어
+    // `자동`이 곧 역할 기본값(`반격`)이라, **화면에 두 칸인데 동작은 하나**였다. 프로필을 든
+    // 폰(용병·회유한 NPC)에서만 `자동`이 실제로 다른 답을 주므로 거기서는 남긴다.
+    static readonly CombatStance[] Choices =
+        { CombatStance.Retaliate, CombatStance.Fight, CombatStance.Flee };
+
+    // 프로필이 있으면 맨 앞에 **`자동`**(오버라이드 해제)이 한 칸 더 있다.
+    bool HasAuto => _brain != null && _brain.AiProfile != null;
+
     void CycleStance()
     {
         if (_brain == null) return;
 
-        if (!_brain.HasStanceOverride)
-            _brain.SetStanceOverride(CombatStance.Fight);
-        else
+        // 지금이 목록의 몇 번째인가 — `자동`은 −1로 둔다(있을 때만 순환에 낀다).
+        int at = _brain.HasStanceOverride
+            ? System.Array.IndexOf(Choices, _brain.EffectiveStance)
+            : -1;
+
+        // 목록에 없는 성향(프로필이 준 `신중`을 오버라이드로 들고 있는 옛 폰)은 맨 앞으로.
+        int next = at < 0 ? 0 : at + 1;
+
+        if (next >= Choices.Length)
         {
-            switch (_brain.EffectiveStance)
-            {
-                case CombatStance.Fight:
-                    _brain.SetStanceOverride(CombatStance.FightWhileHealthy); break;
-                case CombatStance.FightWhileHealthy:
-                    _brain.SetStanceOverride(CombatStance.Flee); break;
-                default:
-                    _brain.ClearStanceOverride(); break;
-            }
+            // 끝에 닿으면 — 프로필이 있으면 `자동`으로, 없으면 처음으로 되돌아간다.
+            if (HasAuto) _brain.ClearStanceOverride();
+            else         _brain.SetStanceOverride(Choices[0]);
         }
+        else _brain.SetStanceOverride(Choices[next]);
 
         Refresh();
     }
@@ -260,7 +282,10 @@ public class ColonyRowUI : MonoBehaviour
         }
 
         // 전투 성향
-        if (!_brain.HasStanceOverride)
+        //
+        // **오버라이드가 없어도 실제 성향을 띄운다 — 프로필이 없을 때는.** `자동`이라고만
+        // 적으면 그게 무슨 동작인지 창 어디에도 안 남는다(방랑자에게는 `반격`이다).
+        if (!_brain.HasStanceOverride && HasAuto)
         {
             _stanceLabel.text  = "자동";
             _stanceLabel.color = AutoColor;
@@ -273,6 +298,8 @@ public class ColonyRowUI : MonoBehaviour
                     _stanceLabel.text = "도주"; _stanceLabel.color = FleeColor; break;
                 case CombatStance.FightWhileHealthy:
                     _stanceLabel.text = "신중"; _stanceLabel.color = CareColor; break;
+                case CombatStance.Retaliate:
+                    _stanceLabel.text = "반격"; _stanceLabel.color = RetaliColor; break;
                 default:
                     _stanceLabel.text = "교전"; _stanceLabel.color = FightColor; break;
             }

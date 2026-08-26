@@ -101,7 +101,7 @@ public class ResearchEntryUI : MonoBehaviour
             // **`Resolve()`다 — `Item`을 직접 읽으면 JSON 재료가 조용히 null이 된다**
             // (2026-08-24에 읽는 곳 넷을 돌렸는데 **여기를 빠뜨렸다**). 천·약초·붕대·두꺼운
             // 가죽이 전부 JSON이라, 그것을 쓰는 연구는 창고에 쌓여 있어도 **늘 빨갛게** 떴다.
-            if (Storage.GetTotalByItem(ing.Resolve()) < ing.Amount) return false;
+            if (MaterialPool.AvailableHere(ing.Resolve()) < ing.Amount) return false;
         return true;
     }
 }

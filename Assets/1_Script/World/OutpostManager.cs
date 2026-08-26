@@ -94,7 +94,7 @@ public class OutpostManager : MonoBehaviour
         foreach (var c in buildCost)
         {
             if (c == null || c.Item == null || c.Amount <= 0) continue;
-            if (Storage.GetTotalByItem(c.Item) < c.Amount)
+            if (MaterialPool.AvailableHere(c.Item) < c.Amount)
             {
                 missing = ItemName(c.Item);
                 return false;
@@ -113,7 +113,7 @@ public class OutpostManager : MonoBehaviour
         {
             if (c == null || c.Item == null || c.Amount <= 0) continue;
             if (sb.Length > 0) sb.Append(" · ");
-            sb.Append($"{ItemName(c.Item)} {Storage.GetTotalByItem(c.Item)}/{c.Amount}");
+            sb.Append($"{ItemName(c.Item)} {MaterialPool.AvailableHere(c.Item)}/{c.Amount}");
         }
         return sb.Length == 0 ? "비용 없음" : sb.ToString();
     }
@@ -133,7 +133,7 @@ public class OutpostManager : MonoBehaviour
         foreach (var c in buildCost)
         {
             if (c == null || c.Item == null || c.Amount <= 0) continue;
-            Storage.ConsumeByItem(c.Item, c.Amount);
+            Storage.ConsumeByItem(c.Item, c.Amount, MaterialPool.Focus);
         }
 
         var outpost = new WorldOutpost { Node = node };

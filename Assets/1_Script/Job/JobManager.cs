@@ -87,6 +87,14 @@ public class JobManager : MonoBehaviour
             if (!job.IsReady) continue;   // 재료 부족 등 미준비 작업은 큐에 두고 배정 보류
             if (!job.IsSiteUsable) continue; // 휴면(핵 영역 밖) 건물의 일감도 대기 — 영역 복구 시 재개
 
+            // **너무 먼 일감은 안 준다**(2026-08-26). 아래 점수가 거리보다 먼저라, 컷오프가
+            // 없으면 **지도 반대편 일감을 집으러 29km를 걷는다** — 200m 맵에서는 그 차이가
+            // 안 보였다. 절차 지형이 꺼진 씬에서는 안 걸린다(`SimLocality.Active`).
+            //
+            // 일감의 자리는 **폰이 서는 칸**(`TileCoord`)이다 — 건물 자기 칸이 아니라.
+            if (SimLocality.JobTooFar(from, new Vector3(job.TileCoord.x + 0.5f, from.y,
+                                                        job.TileCoord.y + 0.5f))) continue;
+
             // 큐 밖 카테고리(채굴·벌목 등 직접 배정)는 애초에 여기서 배정되지 않는다.
             int weight = JobCategoryInfo.Weight(job.Category);
             if (weight <= 0) continue;

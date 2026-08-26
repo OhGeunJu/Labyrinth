@@ -147,7 +147,7 @@ public class FarmUI : MonoBehaviour
         foreach (var row in _rows)
         {
             // 창고 + 폰 배낭까지 센다 — 상점에서 막 사 온 씨앗은 배낭에 있다.
-            int have = MaterialPool.AvailableAnywhere(row.Seed);
+            int have = MaterialPool.AvailableHere(row.Seed);
 
             if (row.CountText != null) row.CountText.text = have.ToString();
             if (row.Bg != null)

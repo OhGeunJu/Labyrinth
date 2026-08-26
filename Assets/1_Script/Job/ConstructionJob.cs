@@ -42,7 +42,7 @@ public class ConstructionJob : JobBase
     public override float Reach => _phase == Phase.Fetch ? HandReach : StandReach;
 
     // 일감이 준비됐나 — 등록 시점엔 누가 할지 모르므로 넓게 본다(`MaterialPool` 규약).
-    public override bool IsReady => MaterialPool.AvailableAnywhere(_material) > 0;
+    public override bool IsReady => MaterialPool.AvailableNear(_material, new Vector3(TileCoord.x + 0.5f, 0f, TileCoord.y + 0.5f)) > 0;
 
     // 이 폰이 할 수 있나 — 창고 + **그 폰의** 배낭. 게이트가 없으면 자재에 닿지 못하는 폰이
     // 일감을 집어 `OnStart`에서 `Done`으로 끝내 버려, 예약 자체가 조용히 사라진다.

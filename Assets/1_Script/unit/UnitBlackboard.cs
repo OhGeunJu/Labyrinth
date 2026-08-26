@@ -33,17 +33,71 @@ public class UnitBlackboard
     public bool HasFreshAttacker =>
         LastAttacker != null && Time.time - LastAttackedTime <= RetaliationMemory;
 
+    // **같은 편의 오사는 원한으로 치지 않는다** — 빗나간 화살에 맞았다고 동료에게 칼을 뽑으면
+    // 오사가 곧 아군 오폭이 된다. 중립은 기록한다(*중립을 쏴서 원한을 사는* 길이 그것이다).
+    //
+    // **게이트를 여기 둔다** — 부르는 곳이 둘(피격 · 공격 시도)이라 각자 적으면 한쪽이 빠진다.
     public void RecordAttacker(GameObject attacker)
     {
         if (attacker == null || attacker == Self) return;
+
+        var their = attacker.GetComponent<Faction>();
+        if (Faction != null && their != null && Faction.IsAllyOf(their)) return;
+
         LastAttacker     = attacker;
         LastAttackedTime = Time.time;
     }
 
-    public float DetectRange  = 10f;
+    // **사수는 제가 쏠 수 있는 데까지 본다**(2026-08-26, 사용자 검증에서 드러났다).
+    //
+    // 그전에는 감지 범위가 종족 값(사람 10m)에 고정이라 **사거리가 그 위로 가면 아무 의미가
+    // 없었다** — `DetectNode`가 10m에서 적을 잡고 석궁 사거리는 14m라 폰은 **언제나 10m에서
+    // 쐈다.** 인지력으로 21m가 돼도 서는 자리가 한 치도 안 바뀐다. *"D와 SSS+가 차이가
+    // 없다"*의 정체가 이것이었다(수동 공격 명령일 때만 보였다 — 그때는 표적이 먼저 정해져
+    // `FightNode`가 사거리까지만 다가간다).
+    //
+    // **근접에는 안 붙인다** — 칼을 들었다고 멀리 보일 이유가 없고, 붙이면 사거리 1.5m라
+    // 어차피 아무 일도 안 한다.
+    public float BaseDetectRange = 10f;   // 종족(`UnitData.DetectRange`)이 정한 값
+
+    // **한번 붙은 싸움은 주위가 빌 때까지 이어진다**(2026-08-26, 사용자 결정).
+    //
+    // `HasFreshAttacker`(15초)만으로 훑기를 켜면, 때린 놈을 눕히고 15초가 지나는 순간
+    // **옆에 적을 두고도 손을 놓는다.** 15초는 *맞은 기억*의 길이지 **싸움의 길이가 아니다** —
+    // 싸움이 끝났는지는 시계가 아니라 **주위에 적이 남았는지**가 정한다.
+    //
+    // **드는 길은 둘 — 맞았거나, 치고 있거나.** *맞았을 때*만 보면 **내가 먼저 친 싸움이
+    // 교전으로 안 쳐진다**(우클릭으로 지목해 한 놈을 눕힌 폰이 한 대도 안 맞았으면 그 자리에서
+    // 손을 놓는다). **표적을 들고 있다는 것 자체가 교전이다.**
+    //
+    // 끄는 것은 **훑어 봤는데 아무도 없을 때** 하나다(둘 다 `DetectNode`).
+    // `CombatHandler.IsInCombat`과 **다른 물건이다** — 저쪽은 공격 타이머가 도는 중인지다.
+    public bool Engaged;
+
+    public float DetectRange
+    {
+        get => RangedWeapon ? Mathf.Max(BaseDetectRange, AttackRange) : BaseDetectRange;
+        set => BaseDetectRange = value;
+    }
     // 밤눈(0~1). 감지 범위에 어떻게 섞이는지는 `Vision`이 답한다 — 여기는 값만 든다.
     public float NightVision  = 0f;
-    public float AttackRange  = 1.5f;
+    // **원거리 사거리는 인지력이 늘린다**(2026-08-26). 무기가 정한 값이 바탕이고 거기에
+    // 배수가 곱해진다 — 읽는 곳이 여덟이라(`FightNode`·`DetectNode` 목줄·오사 부채꼴…)
+    // **여기서 한 번 계산하지 않으면** 어느 하나가 맨 무기 값을 그대로 쓴다.
+    //
+    // **필드가 아니라 프로퍼티인 것이 요점이다** — 인지력은 자라므로 장착할 때 한 번 구워
+    // 두면 **키운 만큼이 영영 안 붙는다**(다시 차야 반영된다). 셈은 곱 한 번이라 매 틱
+    // 읽어도 값이 없다.
+    public float BaseAttackRange = 1.5f;   // 무기(없으면 종족)가 정한 값 — `Equipment`가 넣는다
+    public bool  RangedWeapon;             // 지금 든 것이 원거리인가
+
+    public float AttackRange
+    {
+        get => RangedWeapon ? BaseAttackRange * CombatHandler.RangeMult(Brain?.Stats)
+                            : BaseAttackRange;
+        set => BaseAttackRange = value;
+    }
+
     public float AttackDamage = 10f;
 
     // 작업

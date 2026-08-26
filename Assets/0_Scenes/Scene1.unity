@@ -5340,6 +5340,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Npc_Merchant
       objectReference: {fileID: 0}
+    - target: {fileID: 7289360336258315712, guid: 62e80772fe22b0643964680f301e51fd, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -10879,6 +10883,7 @@ MonoBehaviour:
   tokenColor: {r: 1, g: 0.85, b: 0.2, a: 1}
   selectedColor: {r: 1, g: 1, b: 0.75, a: 1}
   boxColor: {r: 0.6, g: 0.9, b: 1, a: 0.25}
+  legacyWorldScreen: 0
 --- !u!4 &250837501
 Transform:
   m_ObjectHideFlags: 0
@@ -29543,6 +29548,92 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: 0
   m_LayoutPriority: 1
+--- !u!1 &663573227
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 663573228}
+  - component: {fileID: 663573230}
+  - component: {fileID: 663573231}
+  - component: {fileID: 663573229}
+  m_Layer: 0
+  m_Name: Map
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &663573228
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 663573227}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1660986295}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 852, y: 852}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &663573229
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 663573227}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1fc9c36c81d73ca46a724afd1f627320, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorldMapClickArea
+  panel: {fileID: 724666150}
+--- !u!222 &663573230
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 663573227}
+  m_CullTransparentMesh: 1
+--- !u!114 &663573231
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 663573227}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1344c3c82d62a2a41a3576d8abb8e3ea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.RawImage
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Texture: {fileID: 0}
+  m_UVRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
 --- !u!1 &665076486
 GameObject:
   m_ObjectHideFlags: 0
@@ -32475,6 +32566,7 @@ GameObject:
   - component: {fileID: 724666148}
   - component: {fileID: 724666147}
   - component: {fileID: 724666146}
+  - component: {fileID: 724666150}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -32585,6 +32677,7 @@ RectTransform:
   - {fileID: 1268278552}
   - {fileID: 530084591}
   - {fileID: 976126540}
+  - {fileID: 1660986295}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -32592,6 +32685,29 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!114 &724666150
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 724666145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 915c27b338fa27c4a9bfbb2e8156ce78, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorldMapPanel
+  panel: {fileID: 1660986294}
+  mapImage: {fileID: 663573231}
+  markerRoot: {fileID: 1994952928}
+  markerTemplate: {fileID: 2122681991}
+  resolution: 256
+  low: {r: 0.22, g: 0.3, b: 0.2, a: 1}
+  mid: {r: 0.42, g: 0.46, b: 0.3, a: 1}
+  high: {r: 0.72, g: 0.7, b: 0.66, a: 1}
+  playerColor: {r: 0.45, g: 0.85, b: 1, a: 1}
+  bandColor: {r: 1, g: 0.45, b: 0.35, a: 1}
+  coreColor: {r: 1, g: 0.9, b: 0.3, a: 1}
 --- !u!1 &727899658
 GameObject:
   m_ObjectHideFlags: 0
@@ -52825,7 +52941,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6072683599181711989, guid: f315438dab96417a8ff4b8e109d1c964, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6294665206596106787, guid: f315438dab96417a8ff4b8e109d1c964, type: 3}
       propertyPath: aiProfile
@@ -67684,6 +67800,83 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1653348333}
   m_CullTransparentMesh: 1
+--- !u!1 &1660986294
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1660986295}
+  - component: {fileID: 1660986297}
+  - component: {fileID: 1660986296}
+  m_Layer: 0
+  m_Name: WorldMap_Panel
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!224 &1660986295
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1660986294}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 663573228}
+  - {fileID: 1994952928}
+  m_Father: {fileID: 724666149}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 900, y: 900}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1660986296
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1660986294}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 0.08, g: 0.09, b: 0.11, a: 0.96}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &1660986297
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1660986294}
+  m_CullTransparentMesh: 1
 --- !u!1 &1663957351
 GameObject:
   m_ObjectHideFlags: 0
@@ -71936,6 +72129,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Npc_Villager
       objectReference: {fileID: 0}
+    - target: {fileID: 6072683599181711989, guid: e95cc67884064d8e8c0ec0ca7974493d, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -73055,6 +73252,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MapManager
   buildZoneSize: 200
   buildHeightTolerance: 0.5
+  proceduralTerrain: 1
   requireFloor: 1
   groundMask:
     serializedVersion: 2
@@ -73317,6 +73515,150 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: 0
   m_LayoutPriority: 1
+--- !u!1 &1793124769
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1793124772}
+  - component: {fileID: 1793124771}
+  - component: {fileID: 1793124770}
+  m_Layer: 0
+  m_Name: World
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1793124770
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1793124769}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb07a5d5b35429646912b55572715654, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorldContentStreamer
+  scatter:
+  - Name: "\uB098\uBB34"
+    Prefab: {fileID: 4185958040884079187, guid: 596c6a2609d89c94bbefebb73577d31b, type: 3}
+    PerChunk: 24
+    MaxSlope: 25
+    MinHeight: -100
+    MaxHeight: 260
+    ScaleRange: {x: 0.85, y: 1.25}
+    MinSpacing: 4
+  - Name: "\uBC14\uC704"
+    Prefab: {fileID: 6722047723907377790, guid: 25c7e080caa15eb4bb98160988bf37d1, type: 3}
+    PerChunk: 8
+    MaxSlope: 40
+    MinHeight: -100
+    MaxHeight: 400
+    ScaleRange: {x: 0.8, y: 1.4}
+    MinSpacing: 6
+  sites:
+  - Name: "\uC801 \uC18C\uAD74 3,3"
+    Prefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
+    Position: {x: 3412.4648, y: 3270.1985}
+    YOffset: 0
+    Rotation: 23.007881
+    Persistent: 1
+  - Name: "\uC801 \uC18C\uAD74 8,3"
+    Prefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
+    Position: {x: 8827.629, y: 3686.5635}
+    YOffset: 0
+    Rotation: 18.80149
+    Persistent: 1
+  - Name: "\uC801 \uC18C\uAD74 13,3"
+    Prefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
+    Position: {x: 13740.956, y: 3511.3198}
+    YOffset: 0
+    Rotation: 221.80595
+    Persistent: 1
+  - Name: "\uC790\uC6D0 \uC9C0\uB300 5,8"
+    Prefab: {fileID: 1456253355312773496, guid: 3931404c4ed60f045aca0e7310cb8ef9, type: 3}
+    Position: {x: 5885.8574, y: 8935.573}
+    YOffset: 0
+    Rotation: 92.80954
+    Persistent: 0
+  - Name: "\uB9C8\uC744 7,8"
+    Prefab: {fileID: 897856290311823943, guid: c3958ce0f807fa64881453ec54672ef9, type: 3}
+    Position: {x: 8000.8296, y: 8726.094}
+    YOffset: 0
+    Rotation: 142.22606
+    Persistent: 1
+  - Name: "\uC801 \uC18C\uAD74 13,8"
+    Prefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
+    Position: {x: 13895.998, y: 8708.6455}
+    YOffset: 0
+    Rotation: 309.89487
+    Persistent: 1
+  - Name: "\uC801 \uC18C\uAD74 8,13"
+    Prefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
+    Position: {x: 8411.295, y: 13526.824}
+    YOffset: 0
+    Rotation: 32.165607
+    Persistent: 1
+  - Name: "\uC801 \uC18C\uAD74 13,13"
+    Prefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
+    Position: {x: 13586.994, y: 13961.037}
+    YOffset: 0
+    Rotation: 64.80341
+    Persistent: 1
+  townPrefab: {fileID: 897856290311823943, guid: c3958ce0f807fa64881453ec54672ef9, type: 3}
+  lairPrefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
+  resourceSitePrefab: {fileID: 1456253355312773496, guid: 3931404c4ed60f045aca0e7310cb8ef9, type: 3}
+  scatterSeed: 20260826
+--- !u!114 &1793124771
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1793124769}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81b0747bf05a5d34ca784b77fcf6f36f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TerrainStreamer
+  profile:
+    Seed: 1337
+    BaseHeight: 30
+    ContinentPeriod: 4000
+    ContinentAmplitude: 60
+    HillPeriod: 400
+    HillAmplitude: 12
+    DetailPeriod: 80
+    DetailAmplitude: 2.5
+  features: []
+  radius: 2
+  buildsPerFrame: 1
+  simRadius: 1200
+  maxJobDistance: 600
+  viewer: {fileID: 0}
+  terrainMaterial: {fileID: 0}
+  terrainLayer: 9
+--- !u!4 &1793124772
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1793124769}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!224 &1795040407 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 7842819913568523799, guid: ae7552c98efd42c449bf6b05f214ca2a, type: 3}
@@ -81716,10 +82058,14 @@ PrefabInstance:
     - target: {fileID: 6395776536497501256, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
       propertyPath: pawnSpec
       value: 
-      objectReference: {fileID: 11400000, guid: fd547e036604155428d4fc29335b721b, type: 2}
+      objectReference: {fileID: 11400000, guid: 9837638b989d3a94c864d8bb2870a79d, type: 2}
     - target: {fileID: 8065809389404098821, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
       propertyPath: m_Name
       value: Wanderer_Human (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 8065809389404098821, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -82307,6 +82653,42 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1990950280}
   m_CullTransparentMesh: 1
+--- !u!1 &1994952927
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1994952928}
+  m_Layer: 0
+  m_Name: Markers
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1994952928
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1994952927}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 2122681994}
+  m_Father: {fileID: 1660986295}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 852, y: 852}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &2010178056
 GameObject:
   m_ObjectHideFlags: 0
@@ -83333,6 +83715,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   moveSpeed: 22.4
+  speedRefHeight: 20
+  maxSpeedMult: 30
   rotateSpeed: 10
   minPitch: 30
   maxPitch: 90
@@ -86963,6 +87347,81 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2122333638}
   m_CullTransparentMesh: 1
+--- !u!1 &2122681991
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2122681994}
+  - component: {fileID: 2122681993}
+  - component: {fileID: 2122681992}
+  m_Layer: 0
+  m_Name: MarkerTemplate
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &2122681992
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2122681991}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &2122681993
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2122681991}
+  m_CullTransparentMesh: 1
+--- !u!224 &2122681994
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2122681991}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1994952928}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 8, y: 8}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &2129868479
 GameObject:
   m_ObjectHideFlags: 0
@@ -88173,6 +88632,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   moveSpeed: 20
+  speedRefHeight: 20
+  maxSpeedMult: 30
   rotateSpeed: 20
   minPitch: 5
   maxPitch: 89
@@ -88212,3 +88673,4 @@ SceneRoots:
   - {fileID: 413337919}
   - {fileID: 1160576213}
   - {fileID: 1299556924}
+  - {fileID: 1793124772}

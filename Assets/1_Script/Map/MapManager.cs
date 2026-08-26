@@ -26,6 +26,14 @@ public class MapManager : MonoBehaviour
     [Header("건설")]
     [SerializeField] float buildHeightTolerance = 0.5f;
 
+    [Header("절차 지형 (켄시 규모 이어진 세계)")]
+    [Tooltip("켜면 지면 높이를 `TerrainHeight`(노이즈 + 손댄 델타)에서 읽는다. " +
+             "Terrain·콜라이더를 안 보므로 로드 안 된 청크도 답이 나온다. " +
+             "손으로 조각한 Terrain 한 장짜리 맵은 꺼 둘 것.")]
+    [SerializeField] bool proceduralTerrain = false;
+
+    public bool ProceduralTerrain => proceduralTerrain;
+
     [Header("바닥 (던전형 맵)")]
     [Tooltip("건물을 바닥(floored) 위에만 배치하도록 강제. 공허 던전 씬은 켤 것 — " +
              "바닥이 하나도 없는 상태에서도 게이트가 걸린다. 꺼도 바닥이 1개 이상 깔리면 자동으로 강제됨.")]
@@ -213,12 +221,22 @@ public class MapManager : MonoBehaviour
     // ── 온디맨드 지형 샘플 ──────────────────────────────────────────────────────
 
     // 월드 (x,z)의 지면 높이.
-    //  1) Terrain.activeTerrain → 지면만 샘플(건물/유닛에 안 걸림). 가장 안전.
+    //  0) 절차 지형이 켜져 있으면 `TerrainHeight`(노이즈 + 델타). **콜라이더도 Terrain도 안 본다.**
+    //  1) Terrain.activeTerrain → 지면만 샘플(건물/유닛에 안 걸림).
     //  2) groundMask가 "특정 레이어"로 설정된 경우에만 레이캐스트. Everything(~0)/Nothing(0)이면
     //     엉뚱한 콜라이더(건물·코어·유닛)를 지면으로 오인할 수 있어 건너뛰고 평지(0)로 처리.
     //  3) 그 외 → 0 (평지 가정). 평면 바닥 씬은 groundMask를 바닥 레이어로 지정하면 됨.
+    //
+    // **0번이 맨 앞인 이유**(2026-08-26): 켄시 규모의 이어진 세계에서는 지형이 청크로
+    // 스트리밍되므로 **아직 로드 안 된 곳의 높이를 물어야 할 때가 있다**(길찾기가 먼 곳의
+    // 통행을 재거나, 폰이 지도 반대편에 있을 때). 1·2번은 둘 다 **그 자리에 물건이 실제로
+    // 있어야** 답하므로 그때 0을 돌려주고, 폰이 지면 아래로 떨어진다.
+    //
+    // **기존 씬은 끄고 쓴다** — 손으로 조각한 Terrain 한 장짜리 맵은 1번이 맞다.
     public float SampleGroundHeight(float worldX, float worldZ)
     {
+        if (proceduralTerrain) return TerrainHeight.At(worldX, worldZ);
+
         var t = Terrain.activeTerrain;
         if (t != null) return t.SampleHeight(new Vector3(worldX, 0f, worldZ)) + t.transform.position.y;
 

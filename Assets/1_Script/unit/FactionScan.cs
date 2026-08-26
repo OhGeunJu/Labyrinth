@@ -100,6 +100,71 @@ public static class FactionScan
         return into.Count;
     }
 
+    // **사수 앞 부채꼴 안에 있는 사람** — 빗나간 화살이 이걸 묻는다(2026-08-26).
+    //
+    // **세력을 안 가린다**(사용자 결정 — *"오사가 아군오사뿐만 아니라 사실 그냥 다른 상대를
+    // 쏠 수도 있는거잖아"*). 빗나간 화살은 누가 거기 서 있는지를 따지지 않는다 — 동료가 맞으면
+    // 손해고 옆에 선 다른 적이 맞으면 그냥 다른 놈이 맞는 것이다. **한때 비적대만 훑었는데**,
+    // 그러면 *"적들만 있는 난전에 대고 쏘면 정밀사격이 아무 일도 안 한다"*가 되어 **겨눈 놈을
+    // 마무리하려는 순간에** 그 스탯이 사라졌다.
+    //
+    // 적대를 찾는 위 셋과 **묻는 각이 다를 뿐**이라 여기 나란히 둔다. 규칙은 같다(레지스트리를
+    // 훑는다 · 칠 수 있는 상대만 · 담을 그릇을 안 만든다).
+    //
+    // **선이 아니라 부채꼴이다**(사용자 결정) — 레이저처럼 가는 선으로 재면 동료가 그 위에
+    // 정확히 서 있어야만 걸려, 규칙은 있는데 **거의 안 난다.** 화살은 손이 흔들리면 옆으로도
+    // 벌어지므로, *"내 앞 이쯤에 우리 편이 있나"*가 물어야 할 것이다.
+    //
+    // **가장 가까운 하나** — 여럿이면 앞사람이 먼저 맞는다.
+    //
+    // **`exclude`는 겨눈 표적이다 — 반드시 넘길 것.** 안 빼면 표적 자신이 *"내 앞에 선
+    // 사람"*으로 걸려 **제 몫의 빗맞음 대상이 된다**(부채꼴의 축 위, 정확히 그 거리에 있다).
+    // 맞는 사람은 어차피 같지만 그건 빗맞은 것이 아니라 그냥 쏜 것이다.
+    public static GameObject NearestPawnInCone(GameObject self, Vector3 dir,
+                                               float range, float cosHalfAngle,
+                                               GameObject exclude = null)
+    {
+        if (self == null) return null;
+
+        float dirLen = dir.magnitude;
+        if (dirLen <= 0.001f) return null;
+        dir /= dirLen;
+
+        Vector3 pos    = self.transform.position;
+        float rangeSqr = range * range;
+
+        GameObject best = null;
+        float bestSqr   = float.MaxValue;
+
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var other = all[i];
+            if (other == null || other.gameObject == self) continue;
+            if (other.gameObject == exclude) continue;
+
+            Vector3 delta = other.transform.position - pos;
+            float d       = delta.sqrMagnitude;
+            if (d > rangeSqr || d >= bestSqr || d <= 0.0001f) continue;
+
+            // **높이는 안 본다** — 부채꼴은 수평으로 재고, 폰의 피벗이 발밑이라 위아래를
+            // 섞으면 오르막에 선 동료가 각도 밖으로 밀려난다.
+            Vector3 flat = new Vector3(delta.x, 0f, delta.z);
+            float flatLen = flat.magnitude;
+            if (flatLen <= 0.001f) continue;
+            if (Vector3.Dot(flat / flatLen, new Vector3(dir.x, 0f, dir.z).normalized) < cosHalfAngle)
+                continue;
+
+            // **쓰러진 몸은 안 맞는다** — 화살이 지나가는 높이에 없고, 무엇보다 기절이
+            // 회복 가능한 상태라는 규칙을 빗맞은 화살이 뒤로 뚫으면 안 된다(시체도 빠진다).
+            if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
+
+            bestSqr = d;
+            best    = other.gameObject;
+        }
+        return best;
+    }
+
     // 범위 안 적대 세력 수. **최소 1** — 수적 보너스 계산이 0으로 나누지 않게 하는 것이
     // 아니라, "혼자 상대한다"가 기준값(1)이기 때문이다.
     public static int CountHostiles(GameObject self, Faction mine, float range)

@@ -12,7 +12,7 @@ public partial class UnitBrain
 {
     BTNode BuildWandererTree()
     {
-        return new BTSelector()
+        var tree = new BTSelector()
             .Add(new ManualOrderNode())
             // **업기는 줍기보다 위다.** 둘 다 손으로 콕 집어 시킨 일인데, 사람을 업으라는
             // 명령은 대개 전투 직후 급한 것이다(피 흘리는 동료를 침대로). 물건은 기다린다.
@@ -26,19 +26,28 @@ public partial class UnitBrain
             // **`Target`이 저 혼자 붙는 길이 아예 없었다** — 우클릭으로 지목하기 전까지는
             // 두들겨 맞으면서 가만히 서서 일했다.
             //
-            // `retaliateOnly`라 범위 안의 적대를 훑지 않는다. 훑으면 지나가는 적을 보고 저
-            // 혼자 달려 나가서, 어디에 세워 둘지가 명령이 아니라 지형의 문제가 된다.
-            // 지목한 표적은 그대로 유지된다(`DetectNode`가 기존 `Target`을 안 버린다).
+            // **먼저 거는가는 성향이 정한다**(P패널) — 기본값 `반격`이면 안 훑는다. 훑으면
+            // 지나가는 적을 보고 저 혼자 달려 나가서, 어디에 세워 둘지가 명령이 아니라 지형의
+            // 문제가 된다. 지목한 표적은 그대로 유지된다(`DetectNode`가 기존 `Target`을 안 버린다).
             //
-            // **소집하면 먼저 친다** — 그때는 "싸워라"가 명령이라 지형의 문제가 아니다.
-            // 다만 **짧은 목줄**이 걸린다(`DetectNode`) — 세워 둔 자리를 벗어나 표적을 찾아
-            // 나서면 소집으로 진형을 잡는 뜻이 사라진다.
+            // **소집하면 오히려 안 건다** — 소집은 *"내가 조종할 때까지 그 자리에 있어라"*다.
+            // 다만 맞으면 되받아치고 **곁의 적까지는** 문다(짧은 목줄).
             .Add(new BTSequence()
-                .Add(new DetectNode(retaliateOnly: true))
+                .Add(new DetectNode())
                 .Add(new FightNode()))
             .Add(new RestNode())
             .Add(new EatNode())
             .Add(new WorkNode())
             .Add(new IdleNode());
+
+        // **역할 기본값은 `반격`이다** — P패널에서 아무것도 안 고른 폰(`자동`)은 지금까지처럼
+        // 먼저 걸지 않는다. `교전`으로 두면 **판을 시작하는 순간 모든 폰이 저 혼자 달려 나가서**,
+        // 어디에 세워 둘지가 명령이 아니라 지형의 문제가 된다.
+        //
+        // **반드시 트리를 조립한 *뒤*에 적을 것** — 위의 `PlayerFleeNode()`가 그 안에서
+        // `_roleStanceFallback = Fight`로 덮는다(하수인·적과 공용이라 그쪽 기본값을 세운다).
+        // 앞에 적으면 조용히 지워져 **`자동`이 교전이 되고, 판이 열리자마자 전원이 달려 나간다.**
+        _roleStanceFallback = CombatStance.Retaliate;
+        return tree;
     }
 }

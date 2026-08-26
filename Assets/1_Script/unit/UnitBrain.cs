@@ -479,6 +479,14 @@ public partial class UnitBrain : MonoBehaviour
 
         _tickTimer += Time.deltaTime;
         if (_tickTimer < tickInterval) return;
+
+        // **멀리 있는 남의 폰은 생각하지 않는다**(2026-08-26). 세계가 29km라 전부 돌릴 수
+        // 없다 — 플레이어 세력은 언제나 돌고(원정 나간 팀이 얼어붙으면 안 된다) 그 밖은
+        // 활성 반경 안에서만 돈다. 절차 지형이 꺼진 씬에서는 이 게이트가 통째로 안 걸린다.
+        //
+        // **타이머는 흘려보낸 뒤에 판단한다** — 위에서 막으면 `_tickTimer`가 쌓여 있다가
+        // 가까이 간 순간 델타가 몇 초짜리로 한 번에 들어온다.
+        if (!SimLocality.ShouldTick(this)) { _tickTimer = 0f; return; }
         _bb.TickDelta = _tickTimer;   // 노드가 쓸 실제 경과 시간 (한 프레임이 아니라 틱 간격)
         _tickTimer = 0f;
 

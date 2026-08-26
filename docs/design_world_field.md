@@ -1,4 +1,13 @@
-# 월드맵 + 필드맵 + 다중 정착지 설계 — 2026-06-18 결정, 구현 예정
+# 월드맵 + 필드맵 + 다중 정착지 설계 — 2026-06-18 결정, **구현 완료**(일부 남음)
+
+**2층 맵 구조는 다 섰다** — `WorldMap`(저작 격자) · `GameModeManager`(필드↔월드) ·
+`SettlementManager`(정착지 전환) · `ExpeditionParty`/`ExpeditionFormation`(원정) ·
+`OutpostManager`(채집기지) · `WorldBandManager`(무리·습격) · `TownMarket`/`TownRecruits`.
+그 위에 `docs/design_progression.md`(08-23)가 *"기지는 잠깐 들르는 곳"*으로 한 단계 더 밀었다.
+
+**남은 것은 하나** — 빈 야생 칸의 **`직접 건설`**(`WorldMapView.cs`, *"준비 중 · 필드맵 생성
+필요"*). 필드맵을 절차적으로 만들어야 해서 덩치가 크다. **게임 전체에 남은 마지막 "준비 중"이다.**
+
 
 림월드식 **2층 맵 구조**(추상 월드맵 + 디테일 필드맵)로 전환. **거점 중심 모험 게임**을 목표로, 켄시식 단일 심리스 대형 맵 노선(`docs/world.md`·기존 메모)을 폐기한다.
 

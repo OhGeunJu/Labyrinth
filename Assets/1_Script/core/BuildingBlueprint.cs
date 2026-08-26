@@ -158,7 +158,7 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
         // **창고만 세면 손에 든 자재가 없는 것이 된다.** `MaterialPool`이 답하는 것과 같은
         // 축으로 본다 — 창고 + 플레이어 폰들의 배낭. 등록 시점엔 누가 지을지 모르므로
         // 넓게 보고, 폰별 판정은 `ConstructionJob.CanAssignTo`가 다시 한다.
-        int available = MaterialPool.AvailableAnywhere(_costItem);
+        int available = MaterialPool.AvailableNear(_costItem, transform.position);
         if (available <= 0) return;
 
         _jobPending = true;
