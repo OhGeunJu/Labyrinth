@@ -421,3 +421,29 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 ```
 
 시작 시 제작 가능한 레시피는 **0개**다. 연구 재료(돌·목재·석탄·철광석·은광석)는 전부 채굴로만 얻을 수 있어 교착은 없다.
+
+---
+
+# CLAUDE.md에서 내려온 상세 (2026-08-27)
+
+## 게임 데이터 표 뽑기
+
+## 데이터 현황표
+
+`python Tools/export_gamedata.py` → `Tools/GameData.xlsx`(Items·Recipes·Buildings·**Traits·Backstories**·Enums, 시트마다 자동 필터) + `Tools/Items.csv`·`Tools/Recipes.csv`·**`Tools/Traits.csv`·`Tools/Backstories.csv`**(git diff용).
+
+**Items에는 `설명`이 맨 끝 칸으로 딸려 온다**(SO `Description` ∥ JSON `description`). 유일하게 긴 칸이라 가운데 두면 숫자 칸들이 화면 밖으로 밀린다. **Unity는 긴 문자열을 여러 줄로 접어 쓰므로** 뽑는 쪽이 이어 붙여야 한다 — 안 그러면 설명이 **말 중간에서 잘린다**(`text()`가 따옴표가 닫힐 때까지 잇는다. 들여쓰기 깊이로 세면 `Loot:` 같은 목록의 자식 줄까지 삼킨다).
+
+**특성·성장 배경의 표시명은 코드에서 읽는다** — 에셋이 `StatName`·`JobCategory`를 **정수로** 직렬화하므로 표에 한글을 손으로 적으면 스탯 하나 더하는 순간 조용히 어긋난다. 함정 둘: **enum 선언과 표시명이 다른 파일에 있을 수 있고**(`JobCategory` ↔ `JobCategoryInfo`, 한쪽만 보면 영어로 나온다), **원시 타입 리스트는 YAML 목록이 아니라 16진 덩어리다**(`DisabledJobs: 0200000006000000` — 네 바이트씩 리틀엔디언. 구조체 리스트인 `StatOffsets`는 평범한 목록이라 둘을 같은 방법으로 읽으면 한쪽이 빈다).
+
+**표는 저작물이 아니라 에셋의 그림자다** — 에셋과 코드를 직접 읽어 만든다. 값을 바꿨으면 다시 돌릴 것. **손으로 적은 표는 반드시 뒤처진다** — 적을 때만 맞고 그 뒤로는 아무도 고치지 않는다.
+
+제작 배수(산출값 ÷ 재료비)가 **1 미만이면 붉게** 칠해진다 — 만들수록 손해인 레시피가 표에서 가장 먼저 눈에 띈다.
+
+## SO냐 JSON이냐 · 모드 자산
+
+**SO냐 JSON이냐 — 기준은 "다른 에셋이 GUID로 가리켜야 하는가"다.** JSON 아이템은 런타임 생성이라 프리팹·SO가 **가리킬 방법이 없다**(그래서 상인 재고에 `ItemId` 문자열 경로를 따로 뒀다).
+- **SO여야 하는 것**: `ResourceNodeData.DropItem` · `BuildingData.CostItem` · `MinionData.SummonCostItem` · `SeedData.HarvestItem` · SO 레시피의 재료/결과처럼 **에셋이 가리키는** 아이템.
+- **`ItemId` 문자열 경로를 낸 곳**(에셋 참조와 나란히 두고 `Resolve()`가 고른다): `MerchantPoolEntry` · `LoadoutData`(장비·주머니) · **`ResearchData.Ingredient`**(2026-08-24). **읽는 쪽은 반드시 `Resolve()`를 쓸 것** — `Item`을 직접 읽으면 JSON 재료가 조용히 null이다. 실제로 공방 연구 다섯이 천·약초·붕대·두꺼운 가죽을 요구하는데 전부 JSON이라, 도구가 `DataManager.GetItem`으로 넣으려다 **에디터에서는 레지스트리가 안 서 있어 재료가 통째로 비었다** — 화면에는 *"재료 없음"*으로 떠서 틀린 줄도 몰랐다. **에디터 도구는 `AssetDatabase`로 먼저 찾고 없으면 `ItemId`를 적는다.**
+- **JSON이 나은 것**: 레시피로만 만들고 쓰는 것(무기·방어구 대부분). 모드가 고치거나 덮어쓸 수 있다. 2026-08-02에 옛 장비 16종을 이 기준으로 JSON에 옮겼다(참조 0건 실측 후).
+- **모드 자산(`ModAssets`)**: JSON의 `iconPath`/`modelPath`를 **그 콘텐츠 폴더 → 에셋 번들 → Resources** 순으로 찾는다. **1번이 본체** — 그림은 PNG/JPG, 모델은 **`.obj`(+`.mtl`+텍스처)** 를 폴더에 넣기만 하면 실린다(`ObjModel`이 직접 파싱). `.fbx`는 런타임 해석 불가 → 그렇게 알려 준다. 번들은 OBJ로 표현 못 하는 것(프리팹·뼈대·애니메이션)용 보조 경로(`DungeonColony → Build Mod AssetBundle`). 폴더 밖(`../`) 경로는 무시. 예시는 `StreamingAssets/Mods/ExampleMod/`. 상세 `docs/data.md`.

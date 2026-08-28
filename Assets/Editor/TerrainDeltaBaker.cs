@@ -25,7 +25,7 @@ public static class TerrainDeltaBaker
     [MenuItem("DungeonColony/Terrain/1. Open Chunk For Editing")]
     static void OpenChunk()
     {
-        SyncProfile();
+        TerrainAuthoring.SyncFromScene();
 
         var view = SceneView.lastActiveSceneView;
         Vector3 look = view != null ? view.pivot : Vector3.zero;
@@ -46,11 +46,9 @@ public static class TerrainDeltaBaker
         };
 
         // **노이즈 + 기존 델타로 채운다** — 이미 조각한 청크를 다시 열면 그 결과에서 이어야 한다.
-        var h = new float[res, res];
-        for (int vz = 0; vz < res; vz++)
-        for (int vx = 0; vx < res; vx++)
-            h[vz, vx] = Norm(TerrainHeight.VertexHeight(chunk, vx, vz));
-        data.SetHeights(0, 0, h);
+        // 채우는 식은 미리보기와 **한 벌이어야 한다**(`TerrainAuthoring.Fill`) — 갈리면 같은
+        // 자리를 두 도구가 다른 높이로 그린다.
+        TerrainAuthoring.Fill(data, chunk);
 
         var root = GameObject.Find(EditRoot) ?? new GameObject(EditRoot);
         var go = new GameObject("Edit_" + TerrainGrid.KeyOf(chunk));
@@ -67,10 +65,12 @@ public static class TerrainDeltaBaker
         Debug.Log("[지형] 청크 " + chunk + " 열림 — 붓으로 조각한 뒤 Bake Delta.");
     }
 
+    // **`Bake World`도 부른다** — 저작자는 *"여기를 고친다"*고 생각하지 *"지형을 고친다 /
+    // 물건을 고친다"*로 나눠 생각하지 않는다.
     [MenuItem("DungeonColony/Terrain/2. Bake Delta (열린 청크 전부)")]
-    static void BakeAll()
+    public static void BakeAll()
     {
-        SyncProfile();
+        TerrainAuthoring.SyncFromScene();
 
         var root = GameObject.Find(EditRoot);
         var terrains = root != null ? root.GetComponentsInChildren<Terrain>() : new Terrain[0];
@@ -155,24 +155,8 @@ public static class TerrainDeltaBaker
         Debug.Log("[지형] 조각용 청크를 치웠다 — 런타임은 TerrainStreamer가 세운다.");
     }
 
-    // **씬의 `TerrainStreamer`가 프로필의 주인이다.** 도구가 제 값을 들면 에디터에서 조각한
-    // 지형과 게임에서 도는 지형이 갈려 구운 델타가 통째로 어긋난다.
-    static void SyncProfile()
-    {
-        var s = Object.FindFirstObjectByType<TerrainStreamer>();
-        if (s != null)
-        {
-            TerrainHeight.Profile  = s.Profile;
-            TerrainHeight.Features = s.Features;   // **산까지 같이** — 빠뜨리면 산 전체가 델타로 구워진다
-        }
-        else Debug.LogWarning("[지형] 씬에 TerrainStreamer가 없다 — 기본 프로필로 조각한다. " +
-                              "게임에서 다른 값을 쓰면 구운 델타가 어긋난다.");
-        TerrainHeight.ForgetDeltas();
-        TerrainHeight.ForgetBiomes();
-    }
-
-    static float Norm(float worldHeight) =>
-        Mathf.Clamp01((worldHeight - TerrainStreamer.MinHeight) / TerrainStreamer.HeightRange);
+    // 씬에서 값을 읽어 오는 자리와 청크를 채우는 식은 `TerrainAuthoring`이 든다 —
+    // 저작 도구가 넷이라 각자 갖고 있으면 하나가 반드시 뒤처진다.
 
     static Terrain Find(Vector2Int chunk)
     {

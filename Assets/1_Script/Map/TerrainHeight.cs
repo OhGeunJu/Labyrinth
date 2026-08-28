@@ -30,6 +30,14 @@ public static class TerrainHeight
     // 씬의 `TerrainStreamer`가 넣어 준다 — 코드가 들면 저작할 수가 없다.
     public static TerrainFeature[] Features = System.Array.Empty<TerrainFeature>();
 
+    // **저작한 높이맵 — 있으면 대륙 축을 대신한다**(2026-08-27).
+    //
+    // 없으면 지금까지처럼 펄린 한 층이 큰 모양을 만든다. 있으면 그것이 **물길과 능선을 가진
+    // 진짜 지형**을 대신 답한다(`TerrainErosionBaker`가 굽는다).
+    //
+    // **여전히 함수다** — 메모리의 배열을 이중선형으로 뽑을 뿐이라 로드 안 된 청크도 답이 나온다.
+    public static TerrainHeightmap Heightmap;
+
     // ── 바이옴이 지형 성격을 정한다 ─────────────────────────────────────────
     //
     // 저작해 둔 월드맵(16×16)의 한 칸이 **1,024m짜리 지역**이고, 그 바이옴이 기복을 정한다
@@ -59,6 +67,34 @@ public static class TerrainHeight
         rx = Mathf.Clamp(rx, 0, n - 1);
         ry = Mathf.Clamp(ry, 0, n - 1);
         return _biomes[ry * n + rx];
+    }
+
+    // **그 자리에 어느 바이옴이 얼마나 섞였나.**
+    //
+    // `BlendedBiome`이 *"기복이 얼마나 험한가"*를 답한다면 이쪽은 *"무엇이 깔리나"*에 답한다 —
+    // 스플랫(`TerrainSplat`)이 쓴다. **같은 식이어야 한다**: 갈리면 기복이 바뀌는 자리와
+    // 텍스처가 바뀌는 자리가 어긋나 **경계가 두 줄로 보인다.**
+    public struct BiomeBlend
+    {
+        public Biome A, B, C, D;
+        public float Wa, Wb, Wc, Wd;
+    }
+
+    public static BiomeBlend BlendAt(float worldX, float worldZ)
+    {
+        var uv = TerrainGrid.RegionUV(worldX, worldZ);
+        float fx = uv.x - 0.5f, fy = uv.y - 0.5f;
+
+        int x0 = Mathf.FloorToInt(fx), y0 = Mathf.FloorToInt(fy);
+        float tx = fx - x0, ty = fy - y0;
+
+        return new BiomeBlend
+        {
+            A = BiomeAt(x0,     y0    ), Wa = (1f - tx) * (1f - ty),
+            B = BiomeAt(x0 + 1, y0    ), Wb = tx        * (1f - ty),
+            C = BiomeAt(x0,     y0 + 1), Wc = (1f - tx) * ty,
+            D = BiomeAt(x0 + 1, y0 + 1), Wd = tx        * ty,
+        };
     }
 
     // 그 자리의 지형 성격 — 이웃 넷을 섞은 것.
@@ -110,7 +146,22 @@ public static class TerrainHeight
         return h;
     }
 
-    static float BaseNoise(float worldX, float worldZ)
+    // **큰 모양 — 저작한 높이맵이 있으면 그것이 답한다**(2026-08-27).
+    //
+    // 세 층의 역할이 이걸로 깔끔하게 갈린다:
+    //   · 대륙(여기)   — 물길·능선·골짜기. **저작하거나** 노이즈
+    //   · 언덕·잔기복  — 바이옴이 크기와 잘기를 정한다
+    //   · 특징         — 손으로 얹은 산·분지
+    static float Macro(float worldX, float worldZ)
+    {
+        var hm = Heightmap;
+        if (hm != null && hm.IsUsable) return hm.SampleAt(worldX, worldZ);
+        return MacroNoise(worldX, worldZ);
+    }
+
+    // 높이맵이 **없을 때의** 큰 모양. **굽는 도구가 이것을 씨앗으로 쓴다** — `Macro`를 부르면
+    // 이미 구운 높이맵을 도로 읽어 되먹임이 된다(구울수록 지형이 제 그림자를 좇는다).
+    public static float MacroNoise(float worldX, float worldZ)
     {
         var p = Profile;
         var b = BlendedBiome(worldX, worldZ);
@@ -118,8 +169,17 @@ public static class TerrainHeight
 
         // **대륙은 바이옴을 안 탄다** — 그건 지역보다 큰 축(주기 4km)이라, 여기에 바이옴을
         // 곱하면 지역 경계에서 **대륙 전체가 들썩인다.**
-        float h = p.BaseHeight + b.Base * BiomeBaseScale;
-        h += Octave(worldX, worldZ, s,        p.ContinentPeriod) * p.ContinentAmplitude;
+        return p.BaseHeight + b.Base * BiomeBaseScale
+             + Octave(worldX, worldZ, s, p.ContinentPeriod) * p.ContinentAmplitude;
+    }
+
+    static float BaseNoise(float worldX, float worldZ)
+    {
+        var p = Profile;
+        var b = BlendedBiome(worldX, worldZ);
+        float s = p.Seed * 0.7913f;
+
+        float h = Macro(worldX, worldZ);
 
         // 언덕은 바이옴이 **크기**를, 잔기복은 **잘기**를 정한다.
         h += Octave(worldX, worldZ, s + 311f, p.HillPeriod)   * p.HillAmplitude   * b.Amplitude;
@@ -138,9 +198,8 @@ public static class TerrainHeight
         var b = BlendedBiome(worldX, worldZ);
         float s = p.Seed * 0.7913f;
 
-        float h = p.BaseHeight + b.Base * BiomeBaseScale;
-        h += Octave(worldX, worldZ, s,        p.ContinentPeriod) * p.ContinentAmplitude;
-        h += Octave(worldX, worldZ, s + 311f, p.HillPeriod)      * p.HillAmplitude * b.Amplitude;
+        float h = Macro(worldX, worldZ);
+        h += Octave(worldX, worldZ, s + 311f, p.HillPeriod) * p.HillAmplitude * b.Amplitude;
 
         var f = Features;
         for (int i = 0; i < f.Length; i++) h += f[i].Contribution(worldX, worldZ);

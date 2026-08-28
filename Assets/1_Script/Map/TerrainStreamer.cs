@@ -33,8 +33,18 @@ public class TerrainStreamer : MonoBehaviour
     [Tooltip("저작한 산·분지. 노이즈 위에 얹힌다 — 좌표로 적으므로 저장할 것이 없다.")]
     [SerializeField] TerrainFeature[] features = System.Array.Empty<TerrainFeature>();
 
+    [Tooltip("바이옴마다 무엇을 깔 것인가. 비우면 지형이 머티리얼 한 장으로만 보인다 — " +
+             "**걸어 다녀도 사막과 설원이 구별되지 않는다.**")]
+    [SerializeField] TerrainPalette palette;
+
+    [Tooltip("저작한 높이맵. 비우면 큰 모양을 펄린 한 층이 만든다 — **물길도 능선도 없다.** " +
+             "`Terrain → B. Bake Eroded Heightmap`이 굽는다.")]
+    [SerializeField] TerrainHeightmap heightmap;
+
     public TerrainProfile   Profile  => profile;
     public TerrainFeature[] Features => features;
+    public TerrainPalette   Palette  => palette;
+    public TerrainHeightmap Heightmap => heightmap;
 
     void Awake() => Apply();
 
@@ -51,6 +61,9 @@ public class TerrainStreamer : MonoBehaviour
     {
         TerrainHeight.Profile  = profile;
         TerrainHeight.Features = features ?? System.Array.Empty<TerrainFeature>();
+        TerrainHeight.Heightmap = heightmap;
+        TerrainSplat.Palette   = palette;
+        if (palette != null) palette.PushToShader();
         TerrainHeight.ForgetDeltas();
         TerrainHeight.ForgetBiomes();   // 지역 격자도 다시 읽는다
         SimLocality.MaxJobDistance = maxJobDistance;
@@ -63,6 +76,12 @@ public class TerrainStreamer : MonoBehaviour
     [Tooltip("한 프레임에 새로 세우는 청크 수. **콜라이더 굽기가 제일 무겁다** — " +
              "여러 개를 한꺼번에 세우면 걸어갈 때마다 뚝뚝 끊긴다.")]
     [SerializeField, Range(1, 4)] int buildsPerFrame = 1;
+
+    [Tooltip("한 프레임에 버리는 청크 수. **버리는 것도 공짜가 아니다** — 청크마다 뿌린 " +
+             "나무·바위가 딸려 있어서, 카메라를 멀리 옮기면 스물다섯 청크 × 수십 개가 " +
+             "**한 프레임에 통째로 파괴된다**. 걸어 다닐 때는 한 프레임에 한둘이라 " +
+             "이 값이 뭐든 티가 안 나고, 순간이동할 때만 갈린다.")]
+    [SerializeField, Range(1, 8)] int unloadsPerFrame = 2;
 
     [Header("시뮬 지역성")]
     [Tooltip("이 반경(m) 안의 **남의 폰**만 BT를 돌린다. 플레이어 세력은 거리를 안 본다 — " +
@@ -88,7 +107,7 @@ public class TerrainStreamer : MonoBehaviour
     // 깨진다.** 드롭다운으로 고르고 인덱스를 저장하는 것이 셋 중 유일하게 안 깨지는 길이다.
     [Layer]
     [Tooltip("청크가 놓일 레이어. 땅 클릭(건설·이동)의 groundMask가 이 레이어를 받아야 한다.")]
-    [SerializeField] int terrainLayer = 9;   // Ground
+    [SerializeField] int terrainLayer = 3;   // Ground
 
     readonly Dictionary<Vector2Int, Terrain> _live = new();
     readonly List<Vector2Int> _wanted = new();
@@ -150,9 +169,20 @@ public class TerrainStreamer : MonoBehaviour
         }
 
         // ② 벗어난 것 버리기 — **먼저 버린다.** 나중에 버리면 잠깐 둘 다 올라가 있다.
+        //
+        // **여기도 한 프레임에 몇 개만이다.** 걸어 다닐 때는 한둘씩이라 티가 안 나지만,
+        // 카메라를 멀리 옮기면 **스물다섯이 한꺼번에 벗어난다** — 청크마다 뿌린 나무·바위가
+        // 딸려 있어서 수백 개가 한 프레임에 파괴되고, 그게 순간이동할 때의 그 끊김이다.
+        //
+        // 남은 것은 다음 프레임에 다시 걸린다(`_live`에 그대로 있으므로). 그동안 몇 청크가
+        // 더 올라가 있지만, 이미 화면 밖이라 그리는 비용은 없고 메모리만 잠깐 는다.
         _stale.Clear();
         foreach (var kv in _live)
-            if (!_wanted.Contains(kv.Key)) _stale.Add(kv.Key);
+        {
+            if (_wanted.Contains(kv.Key)) continue;
+            _stale.Add(kv.Key);
+            if (_stale.Count >= unloadsPerFrame) break;
+        }
         foreach (var c in _stale) Unload(c);
 
         // ③ 없는 것 세우기 — **한 프레임에 몇 개만.** 가운데부터.
@@ -201,6 +231,9 @@ public class TerrainStreamer : MonoBehaviour
 
         data.SetHeights(0, 0, h);
 
+        // **텍스처를 깐다** — 높이·경사·바이옴에서 결정적으로. 저장되는 것은 없다.
+        TerrainSplat.Apply(data, chunk, h);
+
         var go = new GameObject($"Chunk_{TerrainGrid.KeyOf(chunk)}");
         go.transform.SetParent(Root, false);
         go.transform.position = TerrainGrid.OriginOf(chunk) + Vector3.up * MinHeight;
@@ -239,12 +272,20 @@ public class TerrainStreamer : MonoBehaviour
 
     Material _made;
 
+    // **청크 머티리얼의 답은 여기 하나다** — 에디터에서 지형을 세우는 도구도 같은 것을 써야
+    // 저작 중에 보는 땅과 게임에서 보는 땅이 같은 색이다.
+    public Material ChunkMaterial() => Material();
+
     Material Material()
     {
         if (terrainMaterial != null) return terrainMaterial;
         if (_made != null) return _made;
 
-        var sh = Shader.Find("Universal Render Pipeline/Terrain/Lit")
+        // **우리 사본을 먼저 찾는다** — URP 지형 셰이더에 매크로 변주를 얹은 것
+        // (`2_Material/TerrainShader/`). 없으면 URP 원본으로 떨어진다: 사본이 컴파일에
+        // 실패해도 **세상이 분홍색이 되지는 않는다.**
+        var sh = Shader.Find("DungeonColony/Terrain/Lit")
+              ?? Shader.Find("Universal Render Pipeline/Terrain/Lit")
               ?? Shader.Find("Nature/Terrain/Standard");
         if (sh == null)
         {

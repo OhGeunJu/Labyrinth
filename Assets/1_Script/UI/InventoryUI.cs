@@ -425,12 +425,27 @@ public class InventoryUI : MonoBehaviour
 
     void BindEquipSlots(Equipment eq)
     {
-        mainHandSlot?.Bind(eq);
-        offHandSlot?.Bind(eq);
-        headSlot?.Bind(eq);
-        chestSlot?.Bind(eq);
-        handsSlot?.Bind(eq);
-        legsSlot?.Bind(eq);
+        // **못 끼는 폰에게는 칸을 안 보여 준다**(`UnitData.CanEquip`) — 골렘·짐승.
+        //
+        // 막기만 하고 칸을 남기면 **넣어도 아무 일이 안 일어나는 칸**이 생긴다. 그건
+        // "안 되는 것"이 아니라 "고장 난 것"으로 읽힌다 — 이 저장소가 못 누르는 줄을
+        // 지우는 대신 흐리게 두고 이유를 띄우는 것과 같은 축이고, 여기서는 *"이 종족은
+        // 아예 장비를 안 쓴다"*라 칸 자체가 없는 것이 맞다.
+        bool show = eq == null || eq.CanEquip;
+
+        Show(mainHandSlot, eq, show);
+        Show(offHandSlot,  eq, show);
+        Show(headSlot,     eq, show);
+        Show(chestSlot,    eq, show);
+        Show(handsSlot,    eq, show);
+        Show(legsSlot,     eq, show);
+    }
+
+    static void Show(EquipSlotUI slot, Equipment eq, bool show)
+    {
+        if (slot == null) return;
+        slot.gameObject.SetActive(show);
+        if (show) slot.Bind(eq);
     }
 
     // ── 외부 진입점 ──────────────────────────────────────────────────────────

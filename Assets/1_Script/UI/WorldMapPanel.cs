@@ -134,34 +134,45 @@ public class WorldMapPanel : MonoBehaviour
         float span = markerRoot.rect.size.x;
         int used = 0;
 
-        // ── 저작한 칸 내용물 ────────────────────────────────────────────────
+        // ── 세계에 실제로 있는 장소 ─────────────────────────────────────────
         //
-        // **이게 빠져 있었다.** 지도가 폰·핵·무리만 그려서, `World Map Editor`에서 찍은
-        // 마을·소굴이 **게임 지도에는 하나도 안 나왔다** — 저작한 것과 화면이 딴판이었다.
+        // **저작한 격자가 아니라 구운 세계를 읽는다**(`WorldSites`, 2026-08-27).
         //
-        // **저작한 격자에서 직접 읽는다**(`WorldMap.AuthoredContent`) — 편집 창이 보는 것과
-        // **같은 출처**라 어긋날 수가 없다. `5. Place Sites`를 아직 안 돌렸어도 뜬다.
-        int rn = TerrainGrid.RegionsPerAxis;
-        float half = TerrainGrid.RegionSize * 0.5f;
-        for (int ry = 0; ry < rn; ry++)
-        for (int rx = 0; rx < rn; rx++)
+        // 전에는 `WorldMap.AuthoredContent`로 격자를 훑었다. 그때는 그것이 유일한 출처였지만,
+        // 세계를 저작 씬에서 짓게 되면서 **손으로 놓은 마을이 게임 지도에 안 떴다** —
+        // 격자에 안 찍혀 있으니까. **세계에 있는데 지도가 모르는 것**이 생긴 것이다.
+        //
+        // 색인은 굽힌 청크 에셋에서 온다. 그래서 **씬에서 옮기면 지도도 따라오고**, 한 지역에
+        // 하나라는 격자의 제한도 없어진다.
+        foreach (var site in WorldSites.All)
         {
-            var kind = WorldMap.AuthoredContent(rx, ry);
             Color col;
-            switch (kind)
+            switch (site.Kind)
             {
                 case WorldNodeContent.Town:         col = townColor;     break;
                 case WorldNodeContent.EnemyLair:    col = lairColor;     break;
                 case WorldNodeContent.ResourceSite: col = resourceColor; break;
-                case WorldNodeContent.Outpost:      col = outpostColor;  break;
-                case WorldNodeContent.MySettlement: col = coreColor;     break;
                 default: continue;
             }
 
-            var at = new Vector3(rx * TerrainGrid.RegionSize + half, 0f,
-                                 ry * TerrainGrid.RegionSize + half);
-            used = Mark(used, at, col, span * siteSize);
+            // **친 소굴은 안 그린다.** 저작물에는 그대로 있고 없어진 것은 런타임 상태다
+            // (`WorldLairs._gone`) — 전에는 저작 격자를 `Empty`로 고쳐서 지웠는데, 자리가
+            // 굽힌 에셋으로 오면서 그럴 수가 없다. **표식만 남으면 친 소굴과 안 친 소굴이
+            // 지도에서 같아 보인다.**
+            if (site.Kind == WorldNodeContent.EnemyLair && WorldLairs.IsGone(site.Id)) continue;
+
+            used = Mark(used, new Vector3(site.Position.x, 0f, site.Position.y), col, span * siteSize);
         }
+
+        // ── 런타임에 생긴 것 — 레지스트리가 답한다 ──────────────────────────
+        //
+        // **저작 격자를 안 훑는다**(2026-08-27). 채집기지·정착지는 **플레이 중에 생기는 것**이라
+        // 저작물에 있을 이유가 없었는데, `OutpostManager.Build`가 실제로 격자를 고치고 있었다.
+        // 내 거점은 아래에서 `DungeonCore.All`로 이미 그리므로 여기서는 채집기지만 본다.
+        var outposts = OutpostManager.Instance;
+        if (outposts != null)
+            foreach (var o in outposts.All)
+                used = Mark(used, new Vector3(o.Position.x, 0f, o.Position.y), outpostColor, span * siteSize);
 
         // **지금 보는 곳이 맨 먼저다** — 표식이 겹치면 나중에 그린 것이 위로 오는데,
         // 그중 하나만 늘 보여야 한다면 그건 *내가 어디 있나*다. …라서 오히려 **맨 뒤에** 그린다.

@@ -50,6 +50,21 @@ public class Equipment : MonoBehaviour
         if (_unitData == null) _unitData = brain.Data;
     }
 
+    // **이 폰이 장비를 낄 수 있나 — 종족이 답한다**(`UnitData.CanEquip`).
+    //
+    // 골렘에게 검을 쥐여 주는 것이 이상해서 넣었다(2026-08-28, 사용자 지적). 막는 자리는
+    // **`Wear*` 셋** — 배낭 경로(`Equip`)만 막으면 밖에서 건너오는 길(상자·시체·다른 폰의
+    // 장비칸)이 그대로 열려 있다. 이 저장소가 `OffHandLocked`를 두고 이미 배운 것과 같은
+    // 자리다: **판단은 `Wear*` 한 곳에.**
+    public bool CanEquip
+    {
+        get
+        {
+            Bind();
+            return _unitData == null || _unitData.CanEquip;
+        }
+    }
+
     // ── 인스턴스 직접 장착 ───────────────────────────────────────────────────
     //
     // **배낭을 안 거친다.** 밖(상자·시체·다른 폰의 장비칸)에서 건너온 것은 내 배낭에 자리가
@@ -61,6 +76,7 @@ public class Equipment : MonoBehaviour
 
     public bool WearMainHand(ItemInstance inst)
     {
+        if (!CanEquip) return false;
         if (inst?.Data is not WeaponData weapon) return false;
 
         // **방패는 주손에 들지 않는다.** 주손 칸에 떨어뜨려도 보조손으로 보낸다 —
@@ -118,6 +134,7 @@ public class Equipment : MonoBehaviour
 
     public bool WearOffHand(ItemInstance inst)
     {
+        if (!CanEquip) return false;
         if (inst?.Data is not WeaponData item) return false;
 
         Bind();
@@ -139,6 +156,7 @@ public class Equipment : MonoBehaviour
 
     public bool WearArmor(ItemInstance inst)
     {
+        if (!CanEquip) return false;
         if (inst?.Data is not ArmorData armor) return false;
 
         Bind();

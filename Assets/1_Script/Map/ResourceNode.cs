@@ -89,6 +89,14 @@ public class ResourceNode : MonoBehaviour, IHaulSource
     // 나무를 베러 떠난다 — 그건 자동화가 아니라 통제를 잃는 것이다. 심은 광맥은 영역 안에만
     // 설 수 있으므로(건설이 핵 union을 요구한다) 이 한 줄이 *"내 거점의 것만"*을 뜻한다.
     // 밖의 것은 지금처럼 손으로 붙인다.
+    //
+    // **핵이 없으면 자율 배정도 없다**(2026-08-28). 전에는 `core != null &&`로 걸러서
+    // **핵이 없을 때 조건이 통째로 사라졌다** — 08-27에 판이 열릴 때 핵을 안 주기로 한
+    // 뒤로 그 상태가 판의 처음이 됐고, 그래서 거점을 세우기도 전에 폰들이 **세계 아무
+    // 데서나 나무를 베기 시작한다.** 캔 것을 넣을 창고도 없는데.
+    //
+    // *"영역이 없으면 전부 허용"*은 게이트를 **없는 것으로** 만든다. 영역이 없다는 것은
+    // 곧 **내 것이 하나도 없다**는 뜻이므로 아무것도 안 잡는 쪽이 맞다.
     public static ResourceNode ClaimFreeFor(UnitBrain unit)
     {
         if (unit == null) return null;
@@ -110,7 +118,7 @@ public class ResourceNode : MonoBehaviour, IHaulSource
             if (!work.IsEnabled(need) || work.IsBlocked(need)) continue;
 
             var at = node.transform.position;
-            if (core != null && !core.IsWithinAnyRangeWorld(at)) continue;
+            if (core == null || !core.IsWithinAnyRangeWorld(at)) continue;
 
             float d = (at - from).sqrMagnitude;
             if (d < bestDist) { bestDist = d; best = node; }

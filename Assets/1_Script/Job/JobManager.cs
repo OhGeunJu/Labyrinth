@@ -49,6 +49,13 @@ public class JobManager : MonoBehaviour
     // 작업 요청 — 방랑자·하수인 공통.
     // 폰이 그 작업을 하는지 여부는 개체별 WorkSettings(on/off), 무엇을 먼저 할지는
     // JobCategoryInfo.QueueOrder(전역 고정 순서)가 정한다.
+    // 직선이 막혔을 때 거리에 곱하는 벌점(제곱거리라 1.5² = 2.25 = 실제 1.5배).
+    const float DetourPenalty = 2.25f;
+
+    // 그 직선을 몇 칸까지 훑나. 이보다 먼 것은 안 본다 — 거리로 이미 갈리고,
+    // 요청마다 도는 것이라 **한도가 없으면 그것이 곧 값이다.**
+    const int DetourProbe = 24;
+
     public JobBase RequestJob(UnitBrain unit)
     {
         // **용병은 싸우러 온 것이지 일하러 온 것이 아니다.**
@@ -92,8 +99,15 @@ public class JobManager : MonoBehaviour
             // 안 보였다. 절차 지형이 꺼진 씬에서는 안 걸린다(`SimLocality.Active`).
             //
             // 일감의 자리는 **폰이 서는 칸**(`TileCoord`)이다 — 건물 자기 칸이 아니라.
-            if (SimLocality.JobTooFar(from, new Vector3(job.TileCoord.x + 0.5f, from.y,
-                                                        job.TileCoord.y + 0.5f))) continue;
+            //
+            // **칸을 월드로 옮기는 일은 `TileToWorld`가 한다** — 손으로 `+0.5`를 더하면
+            // 격자 위상(08-27)이 빠져 한 칸 어긋난다. 여기서는 거리 컷오프라 티가 안 나지만,
+            // 같은 계산이 네 곳에서 조용히 틀렸던 자리다.
+            var map = MapManager.Instance;
+            var jobPos = map != null ? map.TileToWorld(job.TileCoord)
+                                     : new Vector3(job.TileCoord.x + 0.5f, 0f, job.TileCoord.y + 0.5f);
+            jobPos.y = from.y;
+            if (SimLocality.JobTooFar(from, jobPos)) continue;
 
             // 큐 밖 카테고리(채굴·벌목 등 직접 배정)는 애초에 여기서 배정되지 않는다.
             int weight = JobCategoryInfo.Weight(job.Category);
@@ -103,9 +117,16 @@ public class JobManager : MonoBehaviour
             if (!job.CanAssignTo(unit)) continue;   // 지정 제작자 / 만들던 사람만 이어받는 장비
 
             int   score = weight * 100 + job.Priority;
-            float dist  = MapManager.Instance != null
-                        ? Vector3.SqrMagnitude(MapManager.Instance.TileToWorld(job.TileCoord) - from)
-                        : 0f;
+            float dist  = map != null ? Vector3.SqrMagnitude(map.TileToWorld(job.TileCoord) - from) : 0f;
+
+            // **벽 뒤의 일감은 보이는 것보다 멀다.** 직선거리만 보면 벽 하나 너머 3m가
+            // 돌아서 40m인데도 *가장 가까운 일감*으로 뽑힌다 — 멀리 가는 것은 아니지만
+            // 같은 점수의 더 나은 후보를 진다.
+            //
+            // **경로를 재지는 않는다**(후보마다 A*를 굴리면 값이 너무 크다). 직선이
+            // 막혔는지만 보고 벌점을 준다 — 어림값이지만 이 물음에는 그만큼이면 된다.
+            if (map != null && !map.LineIsClear(map.WorldToTile(from), job.TileCoord, DetourProbe))
+                dist *= DetourPenalty;
 
             if (score > bestScore || (score == bestScore && dist < bestDist))
             {

@@ -199,6 +199,19 @@ public class WorldMap : MonoBehaviour
     // 다른 지형을 조각하고**, 구운 델타가 통째로 어긋난다(그 함정은 연구 재료에서 이미 겪었다).
     // 저작한 지도의 한 변 — `TerrainGrid.RegionsPerAxis`가 이걸 읽는다.
     // **지역의 크기는 세계가 아니라 저작한 해상도가 정한다.**
+    // 저작한 시작 칸 — 바이옴·너비와 같은 이유로 **인스턴스 없이도 읽힌다**(도구가 쓴다).
+    // 자동 배치가 *"시작 둘레는 비워 둔다"*를 지키려면 에디터에서도 이걸 알아야 한다.
+    public static Vector2Int AuthoredStart
+    {
+        get
+        {
+            var inst = Instance;
+            var src  = inst != null ? inst.mapData
+                     : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
+            return src != null ? src.StartNode : Vector2Int.zero;
+        }
+    }
+
     public static int AuthoredWidth
     {
         get
@@ -224,6 +237,14 @@ public class WorldMap : MonoBehaviour
         if (src != null && src.IsSized && src.InBounds(x, y)) return src.Get(x, y).Content;
 
         return WorldNodeContent.Empty;
+    }
+
+    // **월드 좌표의 바이옴.** 장소가 칸이 아니라 좌표가 되면서 묻는 곳이 셋이 됐다
+    // (소굴·시장·모집). 각자 지역을 계산하면 반 칸 밀리는 실수가 세 번 난다.
+    public static Biome BiomeAtWorld(Vector2 worldXZ)
+    {
+        var r = TerrainGrid.RegionAt(worldXZ.x, worldXZ.y);
+        return AuthoredBiome(r.x, r.y);
     }
 
     public static Biome AuthoredBiome(int x, int y)

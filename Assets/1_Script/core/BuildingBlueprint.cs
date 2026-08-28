@@ -32,8 +32,8 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
     // 완성되면 막을 칸들 — 계산은 `PlacedBuilding`과 같은 것을 쓴다(답이 두 벌이면 어긋난다).
     // 칸을 안 막는 건물(`OccupiesTile` false)은 발자국도 비운다 — 그 위에 서도 갇히지 않는다.
     public IEnumerable<Vector2Int> Footprint =>
-        _data != null && _data.OccupiesTile
-            ? PlacedBuilding.FootprintAt(transform.position, _data.Size, transform.rotation)
+        _data != null
+            ? PlacedBuilding.BlockingAt(transform.position, _data, transform.rotation)
             : System.Array.Empty<Vector2Int>();
 
     // **커서로 집을 수 있는 칸들 — `Footprint`와 다른 축이다.** 발자국은 "완성되면 막을 칸"이라

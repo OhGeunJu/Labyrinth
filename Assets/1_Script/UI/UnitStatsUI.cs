@@ -185,7 +185,9 @@ public class UnitStatsUI : MonoBehaviour
         if (nameText != null)
         {
             string race = brain.Data != null ? brain.Data.RaceName : pawn.name;
-            string tag  = stats.IsLocked ? "  <color=#888>[고정]</color>" : "";
+            // **`[고정]`은 무엇이 고정인지 안 알려 준다**(2026-08-28, 사용자 지적 —
+            // *"스탯 고정을 말하는 건가?"*). 잠긴 것은 값이 아니라 **성장**이다.
+            string tag  = stats.IsLocked ? "  <color=#888>[안 자람]</color>" : "";
             nameText.text = $"<b>{brain.UnitName}</b>  <size=85%><color=#E8C566>{race}</color></size>{tag}";
         }
 

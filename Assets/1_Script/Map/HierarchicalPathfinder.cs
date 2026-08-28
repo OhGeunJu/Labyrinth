@@ -90,9 +90,7 @@ public class HierarchicalPathfinder : MonoBehaviour
         // 로컬 윈도우 패스파인더
         _l1 = new LocalGridManager();
         _l1.Initialize(obstacleLayer);
-        var corePos = DungeonCore.Instance != null
-            ? DungeonCore.Instance.transform.position
-            : Vector3.zero;
+        var corePos = Anchor();
 
         // 메소 격자 (베이스 주변 중간 해상도)
         BuildMeso(corePos);
@@ -143,28 +141,45 @@ public class HierarchicalPathfinder : MonoBehaviour
         }
         else grid.SetCost(x, y, 1f);
 
-        if (floorGate && !AnyFlooredInCell(worldCenter, tileSize))
+        // ── 셀이 타일보다 조금 클 때(메소 2m)는 **타일이 답한다** ──────────────
+        //
+        // 여기서 콜라이더로 재면 **한 칸짜리 문이 코스 단계에서 사라진다**(2026-08-28).
+        // 2m 셀에 벽이 한 조각만 닿아도 셀 전체가 막히는데, 7×6 오두막은 3.5×3셀이라
+        // **안쪽까지 통째로 막혔다** — 그 안에 선 폰은 코스 경로가 아예 안 나오고,
+        // 조향 목표가 최종 목적지로 떨어져 **벽을 향해 곧장 걸었다.**
+        //
+        // 원칙은 이미 적혀 있었다(*"정밀 차단은 L1 몫"*) — 점유 판정만 관대하고
+        // 콜라이더 판정이 그 원칙을 도로 깨고 있었다. **코스는 복도 안내다.**
+        if (floorGate)
         {
-            grid.SetWalkable(x, y, false);
+            if (!AnyFlooredInCell(worldCenter, tileSize)) { grid.SetWalkable(x, y, false); return; }
+
+            // 하나라도 지날 수 있으면 열어 둔다. 좁은 문은 L1(1m)이 정확히 찾는다.
+            grid.SetWalkable(x, y, AnyPassableInCell(worldCenter, tileSize));
             return;
         }
 
-        // 건물 점유 — 셀이 덮는 타일이 **전부** 막혔을 때만 차단(관대한 판정).
-        // 부분 점유는 L1(1m 윈도우)이 정밀하게 처리한다. 얇은 벽까지 여기서 막으면
-        // 한 칸짜리 통로가 코스 단계에서 사라져 경로 자체를 못 찾는다.
-        if (floorGate && AllOccupiedInCell(worldCenter, tileSize))
-        {
-            grid.SetWalkable(x, y, false);
-            return;
-        }
-
-        // 셀 범위 안의 장애물만 본다. 반경 부풀림은 **셀 반쪽보다 큰 에이전트**에만 적용 —
-        // 코스 단계에서 벽 주변까지 통째로 막으면 좁은 통로가 사라져 경로 자체가 안 나온다
-        // (정밀 차단은 L1 몫이라는 기존 원칙과 같은 방향).
+        // 타일을 훑기엔 너무 큰 셀(L2 100m) — 콜라이더로 어림잡는다. 반경 부풀림은
+        // **셀 반쪽보다 큰 에이전트**에만 적용한다.
         float half = tileSize * 0.45f + Mathf.Max(0f, agentRadius - tileSize * 0.5f);
         var halfBox = new Vector3(half, 2f, half);
         bool blocked = Physics.CheckBox(worldCenter, halfBox, Quaternion.identity, obstacleLayer);
         grid.SetWalkable(x, y, !blocked);
+    }
+
+    // 셀이 덮는 타일 범위. **`WorldToTile`이 답한다** — 월드 좌표를 바로 `Floor`하면
+    // 격자 위상(08-27에 첫 조작이 정하게 됐다)을 빠뜨려 한 칸씩 어긋난 범위를 훑는다.
+    // 모서리에서 반 칸 안으로 들어와 묻는다(경계에 정확히 걸린 값이 옆 칸에 떨어지지 않게).
+    static bool CellTiles(Vector3 c, float tileSize, out Vector2Int lo, out Vector2Int hi)
+    {
+        var map = MapManager.Instance;
+        lo = hi = default;
+        if (map == null) return false;
+
+        float h = tileSize * 0.5f;
+        lo = map.WorldToTile(new Vector3(c.x - h + 0.5f, 0f, c.z - h + 0.5f));
+        hi = map.WorldToTile(new Vector3(c.x + h - 0.5f, 0f, c.z + h - 0.5f));
+        return true;
     }
 
     // 셀 범위와 겹치는 맵 타일 중 바닥이 하나라도 있는가. FloorRequired가 아니면 항상 통과.
@@ -172,31 +187,25 @@ public class HierarchicalPathfinder : MonoBehaviour
     {
         var map = MapManager.Instance;
         if (map == null || !map.FloorRequired) return true;
+        if (!CellTiles(cellCenter, tileSize, out var lo, out var hi)) return true;
 
-        int x0 = Mathf.FloorToInt(cellCenter.x - tileSize * 0.5f);
-        int z0 = Mathf.FloorToInt(cellCenter.z - tileSize * 0.5f);
-        int x1 = Mathf.CeilToInt (cellCenter.x + tileSize * 0.5f) - 1;
-        int z1 = Mathf.CeilToInt (cellCenter.z + tileSize * 0.5f) - 1;
-        for (int tx = x0; tx <= x1; tx++)
-        for (int tz = z0; tz <= z1; tz++)
+        for (int tx = lo.x; tx <= hi.x; tx++)
+        for (int tz = lo.y; tz <= hi.y; tz++)
             if (map.IsFloored(new Vector2Int(tx, tz))) return true;
         return false;
     }
 
-    // 셀 범위와 겹치는 맵 타일이 전부 건물에 점유돼 있는가.
-    static bool AllOccupiedInCell(Vector3 cellCenter, float tileSize)
+    // 셀 범위에 지나갈 수 있는 타일이 하나라도 있는가 — **코스 단계의 관대한 판정**이다.
+    static bool AnyPassableInCell(Vector3 cellCenter, float tileSize)
     {
         var map = MapManager.Instance;
-        if (map == null) return false;
+        if (map == null) return true;
+        if (!CellTiles(cellCenter, tileSize, out var lo, out var hi)) return true;
 
-        int x0 = Mathf.FloorToInt(cellCenter.x - tileSize * 0.5f);
-        int z0 = Mathf.FloorToInt(cellCenter.z - tileSize * 0.5f);
-        int x1 = Mathf.CeilToInt (cellCenter.x + tileSize * 0.5f) - 1;
-        int z1 = Mathf.CeilToInt (cellCenter.z + tileSize * 0.5f) - 1;
-        for (int tx = x0; tx <= x1; tx++)
-        for (int tz = z0; tz <= z1; tz++)
-            if (map.GetTile(tx, tz).IsPassable) return false;
-        return true;
+        for (int tx = lo.x; tx <= hi.x; tx++)
+        for (int tz = lo.y; tz <= hi.y; tz++)
+            if (map.GetTile(tx, tz).IsPassable) return true;
+        return false;
     }
 
     // ── 공개 길찾기 API ────────────────────────────────────────────────
@@ -287,19 +296,41 @@ public class HierarchicalPathfinder : MonoBehaviour
         RebakeObstacleAt(worldPos);
     }
 
-    // 코어 이동 시 메소 재중심 (베이스가 코어 주변을 따라가게).
+    // 코어 이동 시 메소 재중심 (베이스가 따라가게).
     IEnumerator MesoRecenterLoop()
     {
         while (true)
         {
             yield return new WaitForSeconds(MesoRecenterInterval);
 
-            if (DungeonCore.Instance != null)
-            {
-                var corePos = DungeonCore.Instance.transform.position;
-                if ((corePos - _mesoCenter).sqrMagnitude > (mesoAreaSize * 0.25f) * (mesoAreaSize * 0.25f))
-                    BuildMeso(corePos);
-            }
+            var anchor = Anchor();
+            if ((anchor - _mesoCenter).sqrMagnitude > (mesoAreaSize * 0.25f) * (mesoAreaSize * 0.25f))
+                BuildMeso(anchor);
         }
+    }
+
+    // **메소 격자의 중심은 무엇인가**(2026-08-27). 원래는 핵이었다 — 거점 둘레가 곧 폰이
+    // 오가는 데였으니까. 그런데 **판이 열릴 때 핵을 안 주기로 하면서**(사용자 결정) 핵이
+    // 없는 시간이 생겼고, 그때 중심이 원점으로 떨어졌다. 세계가 8km인데 폰은 아무 데나
+    // 있으므로, **중간 해상도 격자가 폰이 없는 데에 서고 이동이 통째로 로컬로 떨어진다.**
+    //
+    // 그래서 **핵이 없으면 내 폰들이 중심이다.** 평균을 쓴다 — 하나만 짚으면 그 폰이
+    // 죽거나 꺼질 때마다 중심이 튄다.
+    static Vector3 Anchor()
+    {
+        var core = DungeonCore.Instance;
+        if (core != null) return core.transform.position;
+
+        var all = Faction.All;
+        Vector3 sum = Vector3.zero;
+        int n = 0;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var f = all[i];
+            if (f == null || !f.IsPlayer) continue;
+            sum += f.transform.position;
+            n++;
+        }
+        return n > 0 ? sum / n : Vector3.zero;
     }
 }

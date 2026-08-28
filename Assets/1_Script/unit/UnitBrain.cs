@@ -238,6 +238,7 @@ public partial class UnitBrain : MonoBehaviour
         if (Work == null) return;
 
         Work.ClearBlocked();
+        BlockFromRace();
         BlockFrom(Childhood);
         BlockFrom(Adulthood);
     }
@@ -246,6 +247,19 @@ public partial class UnitBrain : MonoBehaviour
     {
         if (b?.DisabledJobs == null) return;
         foreach (var c in b.DisabledJobs) Work.SetBlocked(c, true);
+    }
+
+    // **종족도 못 하는 일을 든다**(2026-08-28) — 골렘에게 요리·연구·의술은 *"서툴다"*가
+    // 아니라 **못 하는 것**이다.
+    //
+    // 등급을 F−로 깔아 두는 것만으로는 부족하다: 그건 *"아주 못한다"*여서 **다른 폰이
+    // 없으면 그 폰이 간다.** 화면에도 켤 수 있는 칸으로 뜨고. 성장 배경의 무능력과 **같은
+    // 물음**이라 답도 같은 자리에 둔다(`WorkSettings.SetBlocked` — 칸에 `×`로 뜨고 사람이
+    // 못 켠다).
+    void BlockFromRace()
+    {
+        if (unitData?.DisabledJobs == null) return;
+        foreach (var c in unitData.DisabledJobs) Work.SetBlocked(c, true);
     }
 
     // ── 특성 ──────────────────────────────────────────────────────────────────
@@ -394,6 +408,14 @@ public partial class UnitBrain : MonoBehaviour
             Work = gameObject.AddComponent<WorkSettings>();
             if (unitData is MinionData minionData)
                 Work.InitFromAllowed(minionData.AllowedJobs);
+
+            // **여기서 다시 새긴다**(2026-08-28). `SetBackstories`는 `Awake`의 앞쪽
+            // (`ApplySpec`)에서 도는데 `Work`는 여기서 생긴다 — 그래서 `ApplyJobBlocks`가
+            // `Work == null`로 조용히 빠져나갔고, **화면에는 "무능력: 운반"이라고 적혀
+            // 있는데 폰은 운반을 했다.** 이 함수의 주석이 이미 그 위험을 적어 뒀는데
+            // (*"`Work`는 나중에 생길 수 있어서 따로 부를 수 있게 뒀다"*) 정작 부르는
+            // 곳이 `SetBackstories` 하나뿐이었다.
+            ApplyJobBlocks();
         }
 
         HookUnloadSignals();
@@ -827,6 +849,10 @@ public partial class UnitBrain : MonoBehaviour
         // (`SetData`). 컴포넌트를 다시 만드는 길은 여기 하나뿐이라 여기서 챙긴다.
         _bb.Faction = faction;
 
+        // 레이어도 새 세력을 따라간다 — `ChangeFaction`과 같은 줄이다. 일으켜 세운 것은
+        // 대개 남이 되므로, 안 옮기면 **일어난 마을 사람이 내 폰을 그대로 통과한다.**
+        PawnMover.ApplyLayer(gameObject, !UsesEnemyAi);
+
         // 죽기 전에 들고 있던 것을 끊는다 — `ChangeFaction`과 같은 줄이다.
         _bb.Target       = null;
         _bb.FinishTarget = null;
@@ -1106,6 +1132,11 @@ public partial class UnitBrain : MonoBehaviour
 
         // ① BT — `UsesEnemyAi`가 세력을 보므로 다시 지으면 알아서 갈린다.
         _root = BuildTree();
+
+        // ①-b 레이어 — **몸이 누구를 통과하는지**가 여기서 갈린다(`PawnMover.ApplyLayer`).
+        // 안 옮기면 회유해 온 사람이 내 폰과 부딪히고, 길찾기는 같은 레이어라 서로를
+        // 못 봐서 **밀고 선다.** 세력을 바꾸는 문이 여기 하나이므로 여기서 같이 옮긴다.
+        PawnMover.ApplyLayer(gameObject, !UsesEnemyAi);
 
         // ② 성장 잠금 — `Awake`와 **같은 식**이어야 한다(답이 두 벌이면 어긋난다).
         Stats.IsLocked = unitData is MinionData && !UsesEnemyAi;

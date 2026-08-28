@@ -55,12 +55,54 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         if (data == null || !data.OccupiesTile) return;
         if (MapManager.Instance == null) return;
 
-        OccupyTiles(FootprintAt(transform.position, data.Size, transform.rotation));
+        OccupyTiles(BlockingAt(transform.position, data, transform.rotation));
     }
 
-    // 이 건물이 깔고 앉는 칸들 (`IFootprintSite`) — 폰이 서는 자리를 고를 때 후보에서 빠진다.
+    // ── 발자국과 "막는 칸"은 다른 물음이다 ──────────────────────────────────
+    //
+    // **발자국** = 이 건물이 깔고 앉은 칸 전부(겹쳐 짓지 못하게 하는 축).
+    // **막는 칸** = 그중 길을 막는 칸(길찾기가 보는 축).
+    //
+    // 여태 둘이 같았다 — `OccupiesTile` 하나가 사각형 전체에 걸렸으니까. 걸어 들어가는
+    // 건물에서는 갈린다: **벽은 막고 안쪽과 문간은 튼다.** 마스크가 없으면 옛날 그대로다.
+    public static IEnumerable<Vector2Int> BlockingAt(Vector3 center, BuildingData data, Quaternion rot)
+    {
+        if (data == null || !data.OccupiesTile) yield break;
+
+        int W = Mathf.Max(1, data.Size.x);
+        int H = Mathf.Max(1, data.Size.y);
+
+        int quarter = Mathf.RoundToInt(rot.eulerAngles.y / 90f) & 3;
+        int w = W, h = H;
+        if (quarter % 2 == 1) (w, h) = (h, w);
+
+        var lo = LowerLeftTile(center, w, h);
+
+        for (int x = 0; x < w; x++)
+        for (int z = 0; z < h; z++)
+        {
+            // 세계 칸 → 회전 전 칸. **90°와 270°는 서로의 역이다** — 한쪽 식을 베껴
+            // 부호만 바꾸면 문이 반대편에 뚫린다.
+            int lx, lz;
+            switch (quarter)
+            {
+                case 1:  lx = W - 1 - z; lz = x;             break;
+                case 2:  lx = W - 1 - x; lz = H - 1 - z;     break;
+                case 3:  lx = z;         lz = H - 1 - x;     break;
+                default: lx = x;         lz = z;             break;
+            }
+
+            if (data.BlocksLocal(lx, lz)) yield return new Vector2Int(lo.x + x, lo.y + z);
+        }
+    }
+
+    // 폰이 서는 자리를 고를 때 후보에서 빠지는 칸 (`IFootprintSite`).
+    //
+    // **깔고 앉은 칸이 아니라 막는 칸이다** — 걸어 들어가는 건물의 안쪽은 트여 있고,
+    // 거기가 곧 침대·작업대 앞에 서는 자리다. 발자국 전체를 빼면 **제 건물 안에서
+    // 일할 자리가 없어진다.**
     public IEnumerable<Vector2Int> Footprint =>
-        data != null ? FootprintAt(transform.position, data.Size, transform.rotation)
+        data != null ? BlockingAt(transform.position, data, transform.rotation)
                      : System.Array.Empty<Vector2Int>();
 
     // 중심에서 크기만큼 펼친 칸들. `BuildModeManager.GetFootprint`가 만드는 것과 같은 칸이
@@ -74,12 +116,32 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         int quarter = Mathf.RoundToInt(rot.eulerAngles.y / 90f) & 3;
         if (quarter % 2 == 1) (w, h) = (h, w);
 
-        int x0 = Mathf.RoundToInt(center.x - w * 0.5f);
-        int z0 = Mathf.RoundToInt(center.z - h * 0.5f);
+        var lo = LowerLeftTile(center, w, h);
 
         for (int x = 0; x < w; x++)
         for (int z = 0; z < h; z++)
-            yield return new Vector2Int(x0 + x, z0 + z);
+            yield return new Vector2Int(lo.x + x, lo.y + z);
+    }
+
+    // 발자국의 좌하단 **칸**. 월드 좌표를 칸으로 바꾸는 일은 `MapManager.WorldToTile` 하나가
+    // 답한다 — **여기서 반올림으로 직접 구하면 안 된다.**
+    //
+    // 반올림은 격자가 세계 원점에 박혀 있을 때만 맞는 계산이다. 08-27에 위상이 첫 조작으로
+    // 옮겨 간 뒤로 위상이 0이 아니게 됐고, 그때부터 **발자국이 통째로 한 칸 밀렸다.**
+    // 1×1에서는 티가 안 났지만(옆 칸을 막을 뿐) 5×4 오두막에서 드러났다 — **문간이 한 칸
+    // 옆으로 등록돼 폰이 벽으로 걸어갔고**, 안쪽도 한 줄이 잘려 침대를 놓을 자리가
+    // 여섯 칸에서 두 칸으로 줄었다.
+    //
+    // 중심에서 반 칸 물러난 **좌하단 칸의 한복판**을 물어본다(모서리를 물으면 부동소수
+    // 오차로 옆 칸에 떨어진다).
+    static Vector2Int LowerLeftTile(Vector3 center, int w, int h)
+    {
+        var map = MapManager.Instance;
+        var probe = new Vector3(center.x - w * 0.5f + 0.5f, 0f, center.z - h * 0.5f + 0.5f);
+
+        return map != null
+            ? map.WorldToTile(probe)
+            : new Vector2Int(Mathf.FloorToInt(probe.x), Mathf.FloorToInt(probe.z));
     }
 
     // 배치 시 부착 + BuildingData 연결.

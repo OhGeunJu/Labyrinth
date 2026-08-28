@@ -101,6 +101,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: b41c07d92f3ea6c4d8b1e5a70c962432, type: 2}
+  refundRatio: 1
 --- !u!1 &4200000000000002913
 GameObject:
   m_ObjectHideFlags: 0
@@ -1511,9 +1512,23 @@ Transform:
   m_LocalPosition: {x: -0.5, y: 0, z: -1.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 4200000000000066028}
   m_Father: {fileID: 4200000000000001942}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4200000000000068941
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4200000000000063115}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 17a9ba38e5231884b848b9b664a0e31f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorkSpot
+  marker: {fileID: 4200000000000065057}
 --- !u!1 &4200000000000065057
 GameObject:
   m_ObjectHideFlags: 0
@@ -1604,16 +1619,3 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &4200000000000068941
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4200000000000063115}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 17a9ba38e5231884b848b9b664a0e31f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WorkSpot
-  marker: {fileID: 4200000000000065057}

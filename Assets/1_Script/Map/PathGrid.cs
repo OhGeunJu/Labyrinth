@@ -15,6 +15,121 @@ public class PathGrid
     readonly float[] _cost;       // 이동 비용 배율 (1.0 = 기본)
     readonly bool[]  _walkable;
 
+    // -- 오르막 턱 -----------------------------------------------------------
+    //
+    // **높이차만으로는 비탈과 턱을 구별할 수 없다.** 20도 비탈도 1m당 0.36m라 기단 옆면과
+    // 숫자가 같은데, 폰은 비탈은 걸어 오르고(`CharacterController.slopeLimit` 45도) 수직인
+    // 턱은 `stepOffset`(0.3m)까지만 오른다. 그래서 **칸마다 "여기로 올라설 때 허용되는
+    // 높이"를 따로 굽는다** — 바닥이 깔린 칸은 옆면이 수직이라 `stepOffset`, 자연 지형은
+    // 비탈이라 훨씬 넉넉하다.
+    //
+    // 안 재면 폰이 기단 가장자리를 향해 걸어가 **벽에 부딪힌 채 영영 밀고 있는다**
+    // (길찾기는 높이를 안 보므로 경로는 태연히 기단 위로 난다).
+    //
+    // **오르는 것과 내려가는 것은 다른 축이다**(2026-08-28). 사람은 무릎까지밖에 못
+    // 올라가도 제 키만큼은 뛰어내린다.
+    //
+    // 두 번 헤맸다. 처음엔 내려가는 것을 **아예 열어** 뒀는데, 그러면 경로가 지형을
+    // 무시하고 곧장 나서(*"여기서 뛰어내리면 된다"*) 폰이 그 직선 위의 벽을 밀고 섰다.
+    // 그래서 **아예 막았더니** 이번엔 턱 하나 때문에 기단을 통째로 돌아 나갔다.
+    //
+    // 답은 비대칭이다 — 올라가는 한도는 칸이 들고(`_climb`), 내려가는 한도는 폰이 든다
+    // (`MaxDrop`). 자잘한 턱은 그냥 내려가고 진짜 벼랑에서만 계단을 찾는다.
+    readonly float[] _height;     // 그 칸의 딛는 면 높이(m)
+    readonly float[] _climb;      // 그 칸으로 올라설 때 허용되는 높이차(m)
+
+    public bool UsesHeight;       // 안 구우면 안 잰다(옛 평면 맵)
+    public float MaxDrop;         // 뛰어내릴 수 있는 높이(m). 0이면 내려가는 것을 안 막는다
+
+    // ── 지름길은 몸통 두께를 안다 ──────────────────────────────────────────
+    //
+    // Theta*는 부모에서 곧장 이을 수 있으면 잇는다(any-angle). 그런데 그 판정
+    // (`LineOfSight`)은 **선이 지나는 칸만** 본다 — 선이 막힌 칸의 **모서리를 1cm 옆으로
+    // 스쳐도** 통과다. 칸으로는 맞지만 **몸은 반지름만큼 두껍다.**
+    //
+    // 그래서 벽을 끼고 도는 길에서 경로가 모서리에 딱 붙어 꺾이고, 폰은 그 선을 따라가다
+    // **모서리에 부딪혀 옆으로 삐져나온다.** 칸은 멀쩡히 이어져 있으니 길찾기 그림에는
+    // 안 나오고, 벽을 아무리 얇게 만들어도 안 없어진다(선이 붙어 있는 한 늘 스친다).
+    //
+    // **부풀림은 지름길에만 건다** — 격자 간선(칸 중심을 따라가는 길)에는 안 건다.
+    // 거기까지 부풀리면 **한 칸짜리 통로가 통째로 막힌다.** 벽 옆에서는 지름길을 포기하고
+    // 칸을 따라 돌면 되고, 칸 중심은 벽 면에서 이미 반 칸 떨어져 있다.
+    bool[] _tight;   // 이 칸이나 맞닿은 칸이 막혔나 — 지름길이 지나가면 안 되는 자리
+
+    // 굽기가 끝난 뒤 한 번 부른다.
+    public void BuildClearance()
+    {
+        _tight ??= new bool[Width * Height];
+
+        for (int y = 0; y < Height; y++)
+        for (int x = 0; x < Width;  x++)
+            _tight[y * Width + x] =
+                !_walkable[y * Width + x] ||
+                !IsWalkable(x + 1, y) || !IsWalkable(x - 1, y) ||
+                !IsWalkable(x, y + 1) || !IsWalkable(x, y - 1);
+    }
+
+    // 지름길이 지나도 되는 칸인가. 부풀림을 안 구웠으면 옛 판정 그대로.
+    bool LosOpen(int x, int y)
+    {
+        if (!InBounds(x, y)) return false;
+        return _tight == null ? _walkable[y * Width + x] : !_tight[y * Width + x];
+    }
+
+    // 계단 한 단은 **한도와 정확히 같게** 저작된다(`PawnMover.StepUp`) — 부동소수 오차로
+    // 그 한 단이 막히면 계단이 통째로 못 쓰는 물건이 된다.
+    const float ClimbSlack = 0.005f;
+
+    // **벼랑 옆 칸은 비싸게 매긴다.**
+    //
+    // 폰의 캡슐 반경이 0.5인데 칸 중심에서 옆면까지도 0.5다 — 벽 옆 칸에 서면 몸이 정확히
+    // 면에 닿아, 조향이 조금만 흔들려도 벽을 문지르며 느려진다. **막을 일은 아니다**(한 칸
+    // 폭 통로는 지날 수 있어야 한다) — 다른 길이 있으면 그쪽으로 가게 **값만 올린다.**
+    //
+    // **오를 수 있는 턱은 벼랑이 아니다** — 계단 한 단은 정확히 한도만큼이라 여기 안 걸린다
+    // (걸리면 계단이 통째로 비싸져서 폰이 계단을 피한다). 자연 비탈도 마찬가지다.
+    //
+    // **값은 매번 전부 다시 쓴다** — 격자를 자리만 옮겨 재사용하므로(`Rebase`), 안 쓰면
+    // 지난번 자리의 벼랑이 여기 남는다.
+    public void PenalizeLedges(float mult)
+    {
+        for (int y = 0; y < Height; y++)
+        for (int x = 0; x < Width;  x++)
+        {
+            int i = y * Width + x;
+            _cost[i] = UsesHeight && IsLedge(x, y, i) ? mult : 1f;
+        }
+    }
+
+    bool IsLedge(int x, int y, int i)
+    {
+        return Face(i, x + 1, y) || Face(i, x - 1, y) || Face(i, x, y + 1) || Face(i, x, y - 1);
+    }
+
+    // 이 경계에 **넘을 수 없는 수직 면**이 있나 — 올려다보든 내려다보든.
+    bool Face(int i, int nx, int ny)
+    {
+        if (!InBounds(nx, ny)) return false;
+        int j = ny * Width + nx;
+        return _height[j] - _height[i] > _climb[j] + ClimbSlack
+            || _height[i] - _height[j] > _climb[i] + ClimbSlack;
+    }
+
+    // `from`에서 `to`로 한 걸음 들어갈 수 있는가 — 막힘과 오르막을 **한 자리에서** 묻는다.
+    // 이 물음이 두 군데로 갈리면 대각선 모서리 검사만 옛 규칙으로 남는다.
+    bool Enterable(int from, int to)
+    {
+        if (!_walkable[to]) return false;
+        if (!UsesHeight) return true;
+
+        // 올라갈 때는 **가는 칸**의 한도, 내려갈 때는 **떠나는 칸**의 한도(되돌아 올라올
+        // 수 있어야 한다). `MapManager.SameLevel`과 같은 식이다 — 갈리면 *"경로는 있는데
+        // 서 있을 자리가 없다"*가 된다.
+        float d = _height[to] - _height[from];
+        if (d > 0f) return  d <= _climb[to] + ClimbSlack;          // 오른다 — 칸이 정한다
+        return MaxDrop <= 0f || -d <= MaxDrop + ClimbSlack;        // 내려간다 — 폰이 정한다
+    }
+
     // 경로 계산 시 재사용 버퍼 (GC 절약)
     float[] _g, _f;
     int[]   _parent;
@@ -37,6 +152,8 @@ public class PathGrid
         int n    = width * height;
         _cost    = new float[n];
         _walkable = new bool[n];
+        _height  = new float[n];
+        _climb   = new float[n];
         _g       = new float[n];
         _f       = new float[n];
         _parent  = new int[n];
@@ -57,6 +174,13 @@ public class PathGrid
             Origin.z + (c.y + 0.5f) * TileSize);
 
     public bool InBounds(int x, int y) => x >= 0 && x < Width && y >= 0 && y < Height;
+
+    public void SetSurface(int x, int y, float height, float climb)
+    {
+        int i = y * Width + x;
+        _height[i] = height;
+        _climb[i]  = climb;
+    }
 
     public bool InWorldBounds(Vector3 w) =>
         w.x >= Origin.x && w.x < Origin.x + Width  * TileSize &&
@@ -102,6 +226,15 @@ public class PathGrid
         int si = start.y * Width + start.x;
         int ei = end.y   * Width + end.x;
 
+        // **못 닿으면 가장 가까이까지라도 간다.**
+        //
+        // 전에는 `null`을 돌려줬고, 부르는 쪽(`PawnMover.ReplanLocal`)이 그걸 받으면
+        // **조향 목표로 직선 폴백**을 했다 — 길이 없는데 곧장 걸어가는 것이라, 기단 위를
+        // 클릭하면 폰이 **옆면에 붙어 영영 벽을 밀고 있었다.** 갈 수 있는 데까지 가서
+        // 서는 편이 언제나 낫다(계단 앞까지는 간다).
+        int best  = si;
+        float bestH = Heuristic(start, end);
+
         _g[si]      = 0f;
         _f[si]      = Heuristic(start, end);
         _parent[si] = si;            // 시작점의 부모는 자기 자신
@@ -114,6 +247,9 @@ public class PathGrid
 
             if (cur == ei) return BuildPath(ei, toWorld);
 
+            float h = Heuristic(new Vector2Int(cur % Width, cur / Width), end);
+            if (h < bestH) { bestH = h; best = cur; }
+
             int cx = cur % Width, cy = cur / Width;
 
             foreach (var (dx, dy) in Dirs8)
@@ -121,12 +257,30 @@ public class PathGrid
                 int nx = cx + dx, ny = cy + dy;
                 if (!InBounds(nx, ny)) continue;
                 int ni = ny * Width + nx;
-                if (!_walkable[ni] || _inClose[ni]) continue;
+                if (_inClose[ni] || !Enterable(cur, ni)) continue;
+
+                // **대각선은 두 직교 이웃이 다 열려 있을 때만 간다.**
+                //
+                // 안 그러면 격자에서는 통과인데 **몸은 두 면 사이에 낀다.** 기단 옆면과
+                // 계단이 만나는 사거리가 딱 그 자리다 — 옆에서 계단으로 붙을 때 폰이
+                // 모서리에 걸려 엉거주춤한 것이 이것이었다. 벽은 반경 부풀림(`clearance`)이
+                // 막아 주지만 **높이로 막은 면은 부풀림이 없어** 여기서 걸러야 한다.
+                if (dx != 0 && dy != 0)
+                {
+                    int side1 = cy * Width + (cx + dx);
+                    int side2 = (cy + dy) * Width + cx;
+                    if (!Enterable(cur, side1) || !Enterable(cur, side2)) continue;
+                }
 
                 UpdateVertex(cur, ni, nx, ny, end);
             }
         }
-        return null;
+
+        // 다 뒤졌는데 못 닿았다 — 가장 가까이 간 자리까지의 경로를 준다.
+        // **시작 자리면 아무것도 안 준다**(그건 한 발짝도 못 간다는 뜻이고, 그때
+        // 직선 폴백으로 흘려보내면 다시 벽을 민다).
+        return best != si ? BuildPath(best, CellToWorld(new Vector2Int(best % Width, best / Width)))
+                          : null;
     }
 
     // Theta* 정점 완화. cur의 부모에서 ni가 보이면 부모를 직접 연결(Path 2),
@@ -140,7 +294,7 @@ public class PathGrid
         int   nparent;
 
         // Path 2: 부모 → ni 직선 가시선 확보 시
-        if (LineOfSight(px, py, nx, ny))
+        if (LineOfSight(px, py, nx, ny) && ClimbOk(px, py, nx, ny))
         {
             ng      = _g[par] + EuclidWorld(px, py, nx, ny) * _cost[ni];
             nparent = par;
@@ -231,6 +385,40 @@ public class PathGrid
 
     // Bresenham 기반 가시선 검사. 두 셀을 잇는 선이 통과하는 모든 셀이
     // 이동 가능하면 true. (Theta* 표준 LineOfSight)
+    // 선분이 오르막 턱을 넘지 않는가. **`LineOfSight`와 따로 훑는다** — 저쪽은 슈퍼커버라
+    // 이웃 칸을 겹쳐 보는데, 높이는 **지나가는 순서**가 있어야 잰다.
+    //
+    // 여기서 막히면 지름길만 없어지고 표준 A* 간선으로 떨어진다 — 그쪽이 칸 단위로 같은
+    // 규칙을 다시 재므로 **보수적으로 굴어도 길을 잃지 않는다.**
+    bool ClimbOk(int x0, int y0, int x1, int y1)
+    {
+        if (!UsesHeight) return true;
+
+        // **한 축씩 밟는다**(맨해튼) — 대각선으로 건너뛰면 모서리 칸을 안 보고 지나가서,
+        // 격자 간선에서 막은 그 사거리를 **지름길이 그대로 통과해 버린다.**
+        int steps = Mathf.Abs(x1 - x0) + Mathf.Abs(y1 - y0);
+        if (steps == 0) return true;
+
+        float prev = _height[y0 * Width + x0];
+        for (int i = 1; i <= steps; i++)
+        {
+            float t = i / (float)steps;
+            int cx = Mathf.RoundToInt(Mathf.Lerp(x0, x1, t));
+            int cy = Mathf.RoundToInt(Mathf.Lerp(y0, y1, t));
+            int ci = cy * Width + cx;
+
+            float d = _height[ci] - prev;
+            if (d > 0f)
+            {
+                if (d > _climb[ci] + ClimbSlack) return false;
+            }
+            else if (MaxDrop > 0f && -d > MaxDrop + ClimbSlack) return false;
+
+            prev = _height[ci];
+        }
+        return true;
+    }
+
     bool LineOfSight(int x0, int y0, int x1, int y1)
     {
         int dx = x1 - x0, dy = y1 - y0;
@@ -248,12 +436,12 @@ public class PathGrid
                 f += dy;
                 if (f >= dx)
                 {
-                    if (!IsWalkable(x0 + ox, y0 + oy)) return false;
+                    if (!LosOpen(x0 + ox, y0 + oy)) return false;
                     y0 += sy;
                     f  -= dx;
                 }
-                if (f != 0 && !IsWalkable(x0 + ox, y0 + oy)) return false;
-                if (dy == 0 && !IsWalkable(x0 + ox, y0) && !IsWalkable(x0 + ox, y0 - 1)) return false;
+                if (f != 0 && !LosOpen(x0 + ox, y0 + oy)) return false;
+                if (dy == 0 && !LosOpen(x0 + ox, y0) && !LosOpen(x0 + ox, y0 - 1)) return false;
                 x0 += sx;
             }
         }
@@ -264,12 +452,12 @@ public class PathGrid
                 f += dx;
                 if (f >= dy)
                 {
-                    if (!IsWalkable(x0 + ox, y0 + oy)) return false;
+                    if (!LosOpen(x0 + ox, y0 + oy)) return false;
                     x0 += sx;
                     f  -= dy;
                 }
-                if (f != 0 && !IsWalkable(x0 + ox, y0 + oy)) return false;
-                if (dx == 0 && !IsWalkable(x0, y0 + oy) && !IsWalkable(x0 - 1, y0 + oy)) return false;
+                if (f != 0 && !LosOpen(x0 + ox, y0 + oy)) return false;
+                if (dx == 0 && !LosOpen(x0, y0 + oy) && !LosOpen(x0 - 1, y0 + oy)) return false;
                 y0 += sy;
             }
         }
@@ -287,7 +475,7 @@ public class PathGrid
             for (int dy = -r; dy <= r; dy++)
             {
                 if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;   // 링 껍질만
-                if (!IsWalkable(c.x + dx, c.y + dy)) continue;
+                if (!LosOpen(c.x + dx, c.y + dy)) continue;
                 int d = dx * dx + dy * dy;
                 if (d < bestD) { bestD = d; best = new Vector2Int(c.x + dx, c.y + dy); }
             }

@@ -1,0 +1,95 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2dfb15221461804ea86578b96004b13, type: 3}
+  m_Name: Golem_Lava
+  m_EditorClassIdentifier: Assembly-CSharp::MinionData
+  Id: 
+  RaceName: "\uC6A9\uC554 \uACE8\uB818"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uC2DD\uC9C0 \uC54A\uB294 \uAC83"
+  - "\uBD89\uC740 \uC18D"
+  - "\uD0C0\uB294 \uC5B4\uAE68"
+  - "\uC7AC\uB97C \uD758\uB9AC\uB294 \uAC83"
+  - "\uBD88\uC528"
+  MaxHP: 130
+  MoveSpeed: 3.1
+  AttackDamage: 24
+  AttackRange: 1.8
+  DetectRange: 12
+  NightVision: 0.6
+  IsUndead: 0
+  Resistances:
+  - Type: 3
+    Amount: 0.9
+  - Type: 4
+    Amount: -0.6
+  - Type: 0
+    Amount: 0.4
+  - Type: 1
+    Amount: 0.4
+  UsesBackstory: 0
+  DefaultMinGrade: 0
+  DefaultMaxGrade: 0
+  StatGrades:
+  - Stat: 0
+    Min: 18
+    Max: 18
+  - Stat: 1
+    Min: 14
+    Max: 14
+  - Stat: 4
+    Min: 16
+    Max: 16
+  - Stat: 24
+    Min: 16
+    Max: 16
+  - Stat: 5
+    Min: 6
+    Max: 6
+  - Stat: 25
+    Min: 3
+    Max: 3
+  - Stat: 26
+    Min: 8
+    Max: 8
+  - Stat: 28
+    Min: 14
+    Max: 14
+  - Stat: 29
+    Min: 10
+    Max: 10
+  - Stat: 40
+    Min: 8
+    Max: 8
+  - Stat: 31
+    Min: 8
+    Max: 8
+  - Stat: 2
+    Min: 2
+    Max: 2
+  - Stat: 3
+    Min: 2
+    Max: 2
+  StatGrowthRates: []
+  ButcherYield: []
+  BoneYield: []
+  RollStats: 0
+  CanEquip: 0
+  DisabledJobs: 07000000080000000a000000030000000c0000000b000000
+  Prefab: {fileID: 4740565967915643856, guid: 7bed522fea3d83f4da57365079273d5c, type: 3}
+  SortOrder: 20
+  SummonCostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+  SummonCostAmount: 80
+  RequiredResearch: {fileID: 0}
+  AllowedJobs: 
+  CanProvideWater: 0

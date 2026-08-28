@@ -1,0 +1,95 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2dfb15221461804ea86578b96004b13, type: 3}
+  m_Name: Golem_Stone
+  m_EditorClassIdentifier: Assembly-CSharp::MinionData
+  Id: 
+  RaceName: "\uB3CC \uACE8\uB818"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uBB34\uB978 \uBC14\uC704"
+  - "\uC774\uB07C \uB080 \uAC83"
+  - "\uC624\uB798 \uC120 \uAC83"
+  - "\uB9D0 \uC5C6\uB294 \uBCBD"
+  - "\uAD73\uC740 \uD759"
+  MaxHP: 180
+  MoveSpeed: 2.6
+  AttackDamage: 17
+  AttackRange: 1.8
+  DetectRange: 12
+  NightVision: 0.6
+  IsUndead: 0
+  Resistances:
+  - Type: 0
+    Amount: 0.6
+  - Type: 1
+    Amount: 0.5
+  - Type: 2
+    Amount: -0.3
+  - Type: 5
+    Amount: 0.5
+  UsesBackstory: 0
+  DefaultMinGrade: 0
+  DefaultMaxGrade: 0
+  StatGrades:
+  - Stat: 0
+    Min: 20
+    Max: 20
+  - Stat: 1
+    Min: 22
+    Max: 22
+  - Stat: 4
+    Min: 12
+    Max: 12
+  - Stat: 24
+    Min: 14
+    Max: 14
+  - Stat: 5
+    Min: 6
+    Max: 6
+  - Stat: 25
+    Min: 1
+    Max: 1
+  - Stat: 26
+    Min: 8
+    Max: 8
+  - Stat: 28
+    Min: 14
+    Max: 14
+  - Stat: 29
+    Min: 16
+    Max: 16
+  - Stat: 40
+    Min: 12
+    Max: 12
+  - Stat: 31
+    Min: 8
+    Max: 8
+  - Stat: 2
+    Min: 2
+    Max: 2
+  - Stat: 3
+    Min: 2
+    Max: 2
+  StatGrowthRates: []
+  ButcherYield: []
+  BoneYield: []
+  RollStats: 0
+  CanEquip: 0
+  DisabledJobs: 07000000080000000a000000030000000c0000000b000000
+  Prefab: {fileID: 8045379371042171537, guid: 6b30c88c8083aa0449b8b363de6960b4, type: 3}
+  SortOrder: 20
+  SummonCostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+  SummonCostAmount: 60
+  RequiredResearch: {fileID: 0}
+  AllowedJobs: 
+  CanProvideWater: 0

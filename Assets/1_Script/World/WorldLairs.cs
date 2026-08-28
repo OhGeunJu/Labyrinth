@@ -7,7 +7,15 @@ using UnityEngine;
 // 시각을 이 객체가 들고, 지도에 서는 것은 `WorldMapGrid`가 그리는 표식뿐이다.
 public class WorldLair
 {
-    public Vector2Int Node;
+    // **신원은 저작한 장소의 `Id`다**(2026-08-27). 전에는 칸 좌표가 주소였는데, 그러면
+    // **소굴을 200m 옮기는 것만으로 사는 놀이와 병력이 통째로 달라졌다**(좌표를 해시해 굴렸다).
+    // 이제 자리를 다듬어도 그 소굴은 그 소굴다.
+    public string  Id;
+    public Vector2 Position;     // 월드 XZ
+
+    // **칸은 자리에서 나온다 — 따로 들지 않는다.** 둘을 각자 들면 소굴을 옮겼을 때 한쪽만
+    // 따라온다. 옛 화면(`WorldMapView`)이 아직 칸으로 물어서 남겨 둔다.
+    public Vector2Int Node => TerrainGrid.RegionAt(Position.x, Position.y);
     public BiomeContentData.LairEntry Entry;
 
     public int Strength;        // 남은 병력. 무리를 내보내면 줄고, 다 떨어지면 소굴이 사라진다.
@@ -54,31 +62,43 @@ public class WorldLair
 // 상태**다 — 매일 다시 굴리면 어제 친 소굴이 오늘 멀쩡해진다.
 public static class WorldLairs
 {
-    static readonly Dictionary<Vector2Int, WorldLair> _byNode = new();
+    static readonly Dictionary<string, WorldLair> _byId = new();
 
-    public static IEnumerable<WorldLair> All => _byNode.Values;
+    // **친 소굴은 런타임 상태다.** 전에는 저작 격자를 고쳤는데(`SetContent(Empty)`), 자리가
+    // 굽힌 에셋으로 오면서 그럴 수 없게 됐다 — **저작물에 플레이 중의 일을 쓰면 안 된다.**
+    // 신원만 기억한다 — 지도도 이걸 보고 친 소굴을 안 그린다.
+    static readonly HashSet<string> _gone = new();
+
+    public static IEnumerable<WorldLair> All => _byId.Values;
+
+    public static bool IsGone(string id) => !string.IsNullOrEmpty(id) && _gone.Contains(id);
 
     // 그 칸의 소굴. 소굴 칸이 아니거나 바이옴에 소굴 풀이 없으면 null.
-    public static WorldLair At(Vector2Int node)
+    // 그 장소의 소굴. 바이옴에 소굴 풀이 없거나 이미 친 소굴이면 null.
+    public static WorldLair At(string id)
     {
-        var wm = WorldMap.Instance;
-        if (wm == null) return null;
+        if (string.IsNullOrEmpty(id) || _gone.Contains(id)) return null;
+        if (_byId.TryGetValue(id, out var lair)) return lair;
 
-        var tile = wm.GetTile(node);
-        if (tile.Content != WorldNodeContent.EnemyLair) return null;
+        var site = WorldSites.ById(id);
+        if (!site.IsValid || site.Kind != WorldNodeContent.EnemyLair) return null;
 
-        if (_byNode.TryGetValue(node, out var lair)) return lair;
-
-        lair = Build(node, tile, wm.DepositSeed);
+        lair = Build(site, Seed());
         if (lair == null) return null;
 
-        _byNode[node] = lair;
+        _byId[id] = lair;
         return lair;
     }
 
+    // **옛 화면용 다리** — `WorldMapView`가 아직 칸으로 묻는다. 그 지역의 소굴을 찾는다.
+    public static WorldLair At(Vector2Int node) =>
+        At(WorldSites.InRegion(WorldNodeContent.EnemyLair, node).Id);
+
+    static int Seed() => WorldMap.Instance != null ? WorldMap.Instance.DepositSeed : 0;
+
     // 씬을 다시 시작해도 static은 살아남는다(도메인 리로드를 끈 경우).
     // 지도를 새로 지으면 옛 좌표의 소굴이 엉뚱한 칸에 붙으므로 비운다.
-    public static void Clear() => _byNode.Clear();
+    public static void Clear() { _byId.Clear(); _gone.Clear(); }
 
     // 지도에 저작된 소굴 칸을 전부 깨워 둔다. **미리 만들어 두는 이유**: 소굴은
     // 플레이어가 들여다볼 때가 아니라 **저 혼자 무리를 내보낼 때** 살아 있어야 한다.
@@ -86,12 +106,7 @@ public static class WorldLairs
     // 아무도 안 내보낸다.
     public static void BuildAll()
     {
-        var wm = WorldMap.Instance;
-        if (wm == null) return;
-
-        for (int x = 0; x < wm.Width;  x++)
-        for (int y = 0; y < wm.Height; y++)
-            At(new Vector2Int(x, y));
+        foreach (var site in WorldSites.Of(WorldNodeContent.EnemyLair)) At(site.Id);
     }
 
     // 소굴을 없앤다 — 병력이 다 떨어졌거나 습격으로 쓸어버렸을 때.
@@ -116,8 +131,8 @@ public static class WorldLairs
                 $"{lair.Name}이(가) 무너지며 갇혀 있던 {freed.Count}명이 풀려났습니다.");
         }
 
-        _byNode.Remove(lair.Node);
-        WorldMap.Instance?.SetContent(lair.Node, WorldNodeContent.Empty);
+        _byId.Remove(lair.Id);
+        _gone.Add(lair.Id);   // 저작물은 그대로 두고 **신원만 기억한다**
     }
 
     // 하루가 지나면 조금씩 다시 찬다. **회복은 상한까지만** — 넘어가면 안 친 소굴이 시간이
@@ -125,7 +140,7 @@ public static class WorldLairs
     public static void RegenAll()
     {
         int today = GameTimeManager.CurrentDay;
-        foreach (var lair in _byNode.Values)
+        foreach (var lair in _byId.Values)
         {
             if (lair.Entry == null || lair.LastRegenDay == today) continue;
             lair.LastRegenDay = today;
@@ -133,9 +148,9 @@ public static class WorldLairs
         }
     }
 
-    static WorldLair Build(Vector2Int node, WorldTile tile, int seed)
+    static WorldLair Build(WorldSites.Site site, int seed)
     {
-        var data = BiomeContent.Get(tile.Biome);
+        var data = BiomeContent.Get(WorldMap.BiomeAtWorld(site.Position));
         if (data == null || data.Lairs == null || data.Lairs.Count == 0) return null;
 
         // 쓸 수 없는 항목은 먼저 거른다 — 빈 칸이 뽑히면 "아무도 안 나오는 소굴"이
@@ -147,7 +162,7 @@ public static class WorldLairs
 
         // `TownMarket`·`TownRecruits`와 **다른 상수**를 쓴다: 같은 열을 쓰면 매장이 두터운
         // 칸에 늘 같은 소굴이 서는 식으로 값들이 붙어 다닌다.
-        var rng   = new System.Random(Hash(node, seed));
+        var rng   = new System.Random(Hash(site.Id, seed));
         var entry = PickWeighted(pool, rng);
 
         int lo = Mathf.Min(entry.MinStrength, entry.MaxStrength);
@@ -155,7 +170,8 @@ public static class WorldLairs
 
         return new WorldLair
         {
-            Node        = node,
+            Id          = site.Id,
+            Position    = site.Position,
             Entry       = entry,
             Strength    = lo + rng.Next(hi - lo + 1),
             MaxStrength = hi,
@@ -185,14 +201,16 @@ public static class WorldLairs
         return pool[pool.Count - 1];
     }
 
-    static int Hash(Vector2Int node, int seed)
+    // **신원을 섬는다 — 좌표가 아니라.** 좌표를 쓰면 소굴을 조금 옮긴 것만으로 사는 놀이와
+    // 병력이 통째로 달라진다. **`string.GetHashCode`는 실행마다 달라져 못 쓴다** —
+    // `PawnSpecData`가 먼저 겪은 함정이다. 직접 섬는다.
+    static int Hash(string id, int seed)
     {
         unchecked
         {
             int h = 67;
-            h = h * 31 + node.x * 83492791;
-            h = h * 31 + node.y * 19349663;
-            h = h * 31 + seed   * 374761393;
+            if (id != null) foreach (char c in id) h = h * 31 + c;
+            h = h * 31 + seed * 374761393;
             return h;
         }
     }

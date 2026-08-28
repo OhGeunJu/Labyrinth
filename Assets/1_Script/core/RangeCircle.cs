@@ -105,15 +105,29 @@ public sealed class RangeCircle
         var cols  = new Color[Segments];
         var idx   = new int[Segments * 2];
 
+        // **점마다 지면을 잰다**(2026-08-28) — 부르는 쪽이 넘기는 Y(`Lift`)는 **평지 y=0
+        // 시절의 값**이라, 지형이 y ≈ 87인 세계에서는 원이 **87m 땅속에** 그려졌다.
+        // 격자가 먼저 겪은 것과 같은 함정이고 고치는 법도 같다(`GridOverlay`).
+        //
+        // **지면만 본다**(바닥·기단은 안 본다) — 원은 *"핵의 영역이 여기까지"*를 땅에
+        // 그리는 것이고, 그 위에 무엇을 지었든 영역은 그대로다. 그리고 이 재질은 깊이
+        // 판정이 꺼져 있어(`OverlayMaterial`) 기단 밑에 깔려도 안 사라진다.
+        var map = MapManager.Instance;
+        float minY = float.MaxValue, maxY = float.MinValue;
+
         // **부모 기준 좌표로 넣는다** — 자식 오브젝트라 월드 좌표를 그대로 넣으면 부모가
         // 움직인 만큼 두 번 밀린다(핵 이전 미리보기가 정확히 그 경로다).
         for (int i = 0; i < Segments; i++)
         {
             float a = i * Mathf.PI * 2f / Segments;
-            var world = new Vector3(_builtCenter.x + Mathf.Cos(a) * _builtRadius,
-                                    _builtCenter.y,
-                                    _builtCenter.z + Mathf.Sin(a) * _builtRadius);
-            verts[i] = _go.transform.InverseTransformPoint(world);
+            float wx = _builtCenter.x + Mathf.Cos(a) * _builtRadius;
+            float wz = _builtCenter.z + Mathf.Sin(a) * _builtRadius;
+            float wy = map != null ? map.SampleGroundHeight(wx, wz) + Lift : _builtCenter.y;
+
+            if (wy < minY) minY = wy;
+            if (wy > maxY) maxY = wy;
+
+            verts[i] = _go.transform.InverseTransformPoint(new Vector3(wx, wy, wz));
             cols[i]  = _builtColor;
 
             idx[i * 2]     = i;
@@ -126,9 +140,12 @@ public sealed class RangeCircle
         _mesh.SetIndices(idx, MeshTopology.Lines, 0);
 
         // **경계를 손으로 잡는다** — 선은 얇아 자동 경계가 카메라 밖으로 판정되면 통째로
-        // 사라진다(`GridOverlay`가 같은 자리에서 겪었다).
-        _mesh.bounds = new Bounds(_go.transform.InverseTransformPoint(_builtCenter),
-                                  new Vector3(_builtRadius * 2f, 1f, _builtRadius * 2f));
+        // 사라진다(`GridOverlay`가 같은 자리에서 겪었다). **높이도 실제 범위로 잡는다** —
+        // 1m로 두면 비탈에 걸친 원이 통째로 컬링된다.
+        float midY = minY < maxY ? (minY + maxY) * 0.5f : _builtCenter.y;
+        _mesh.bounds = new Bounds(
+            _go.transform.InverseTransformPoint(new Vector3(_builtCenter.x, midY, _builtCenter.z)),
+            new Vector3(_builtRadius * 2f, Mathf.Max(maxY - minY, 1f), _builtRadius * 2f));
     }
 
     static bool Approximately(Vector3 a, Vector3 b) =>

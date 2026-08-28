@@ -30,6 +30,11 @@ public class BandMaterializer : MonoBehaviour
     [Tooltip("한 프레임에 세우는 무리 수. 여럿이 한꺼번에 들어오면 프레임이 튄다.")]
     [SerializeField, Range(1, 4)] int perFrame = 1;
 
+    [Tooltip("한 프레임에 거두는 무리 수. **거두는 것도 공짜가 아니다** — 무리 하나가 폰 여럿이라 " +
+             "카메라를 멀리 옮기면 서 있던 것이 **한 프레임에 통째로 파괴된다**. " +
+             "걸어 다닐 때는 하나씩이라 이 값이 뭐든 티가 안 나고, 순간이동할 때만 갈린다.")]
+    [SerializeField, Range(1, 4)] int reapPerFrame = 2;
+
     // 실체가 된 무리 — 토큰 ↔ 그 폰들.
     readonly Dictionary<WorldBand, List<UnitBrain>> _live = new();
     readonly List<WorldBand> _stale = new();
@@ -44,17 +49,28 @@ public class BandMaterializer : MonoBehaviour
         Vector3 center = SimLocality.Center;
 
         // ① 실체를 거둔다 — **먼저 거둔다.** 나중에 하면 잠깐 둘 다 서 있다.
+        //
+        // **여기도 한 프레임에 몇씩이다**(2026-08-27) — 무리 하나가 폰 여럿이라, 순간이동하면
+        // 서 있던 것이 한꺼번에 파괴돼 프레임이 튄다. 남은 것은 다음 프레임에 다시 걸린다.
+        //
+        // **자리 동기화는 예산과 무관하게 전부 돈다** — 그건 파괴가 아니라 값 하나 쓰는
+        // 일이고, 건너뛰면 그 프레임에 거둬진 무리가 **원래 자리로 순간이동**한다.
         _stale.Clear();
         foreach (var kv in _live)
         {
             var band = kv.Key;
-            if (band == null || !band.IsAlive) { _stale.Add(band); continue; }
+            if (band == null || !band.IsAlive)
+            {
+                if (_stale.Count < reapPerFrame) _stale.Add(band);
+                continue;
+            }
 
             // **토큰의 자리를 폰이 정한다** — 실체인 동안 무리가 실제로 움직였으니, 안 옮기면
             // 거둘 때 **원래 자리로 순간이동**한다.
             SyncTokenPosition(band, kv.Value);
 
-            if (Far(band.Position, center, Radius + hysteresis)) _stale.Add(band);
+            if (Far(band.Position, center, Radius + hysteresis) && _stale.Count < reapPerFrame)
+                _stale.Add(band);
         }
         foreach (var b in _stale) Dematerialize(b);
 

@@ -39,41 +39,42 @@ public static class TownRecruits
     const int MinPerTown = 1;
     const int MaxPerTown = 3;
 
-    static readonly Dictionary<Vector2Int, List<TownRecruit>> _byNode = new();
-    static readonly Dictionary<Vector2Int, int>               _rolledDay = new();
+    static readonly Dictionary<string, List<TownRecruit>> _byId = new();
+    static readonly Dictionary<string, int>               _rolledDay = new();
 
-    public static IReadOnlyList<TownRecruit> At(Vector2Int node)
+    public static IReadOnlyList<TownRecruit> At(string siteId)
     {
-        var wm = WorldMap.Instance;
-        if (wm == null) return System.Array.Empty<TownRecruit>();
-
-        var tile = wm.GetTile(node);
-        if (tile.Content != WorldNodeContent.Town) return System.Array.Empty<TownRecruit>();
+        var site = WorldSites.ById(siteId);
+        if (!site.IsValid || site.Kind != WorldNodeContent.Town) return System.Array.Empty<TownRecruit>();
 
         int today = GameTimeManager.CurrentDay;
-        if (_byNode.TryGetValue(node, out var cached) &&
-            _rolledDay.TryGetValue(node, out int day) && day == today)
+        if (_byId.TryGetValue(siteId, out var cached) &&
+            _rolledDay.TryGetValue(siteId, out int day) && day == today)
             return cached;
 
-        var rolled = Roll(node, tile, wm.DepositSeed, today);
-        _byNode[node]    = rolled;
-        _rolledDay[node] = today;
+        var rolled = Roll(site, WorldMap.Instance != null ? WorldMap.Instance.DepositSeed : 0, today);
+        _byId[siteId]      = rolled;
+        _rolledDay[siteId] = today;
         return rolled;
     }
+
+    // **옛 화면용 다리** — `WorldMapView`가 아직 칸으로 묻는다.
+    public static IReadOnlyList<TownRecruit> At(Vector2Int node) =>
+        At(WorldSites.InRegion(WorldNodeContent.Town, node).Id);
 
     // 씬을 다시 시작해도 static은 살아남는다(도메인 리로드를 끈 경우).
     // 지도를 새로 지으면 옛 좌표의 사람이 엉뚱한 마을에 서 있게 되므로 비운다.
     public static void Clear()
     {
-        _byNode.Clear();
+        _byId.Clear();
         _rolledDay.Clear();
     }
 
-    static List<TownRecruit> Roll(Vector2Int node, WorldTile tile, int seed, int day)
+    static List<TownRecruit> Roll(WorldSites.Site site, int seed, int day)
     {
         var result = new List<TownRecruit>();
 
-        var pool = PoolFor(tile.Biome);
+        var pool = PoolFor(WorldMap.BiomeAtWorld(site.Position));
         if (pool.Count == 0) return result;
 
         // **날짜를 섞는다** — 안 섞으면 그 마을엔 영원히 같은 사람이 서 있다.
@@ -81,7 +82,7 @@ public static class TownRecruits
         // 인원은 후보 **종류 수와 무관하다**. 전엔 뽑은 후보를 풀에서 빼서 "같은 종류가 둘"을
         // 막았는데, 그러면 종족이 하나뿐인 지금은 마을마다 영원히 한 명이다. 같은 종족 셋이
         // 서 있는 건 이상하지 않다 — **사람을 가르는 건 종족이 아니라 이름**이다.
-        var rng   = new System.Random(Hash(node, seed, day));
+        var rng   = new System.Random(Hash(site.Id, seed, day));
         int count = Mathf.Clamp(1 + rng.Next(MaxPerTown), MinPerTown, MaxPerTown);
 
         var usedNames = new HashSet<string>();
@@ -99,7 +100,7 @@ public static class TownRecruits
             if (name == null) break;   // 이름 풀이 동난 마을 — 있는 만큼만 세운다
 
             // **개체 시드**는 마을·날짜·자리에서 나온다 → 같은 날 다시 열어도 같은 사람이다.
-            var spec = PawnSpec.Roll(unit, Hash(node, seed, day * 97 + i),
+            var spec = PawnSpec.Roll(unit, Hash(site.Id, seed, day * 97 + i),
                                      picked.MinGrade, picked.MaxGrade, new[] { name });
 
             result.Add(new TownRecruit
@@ -202,13 +203,14 @@ public static class TownRecruits
     // 좌표·시드·날짜를 섞어 안정적인 정수 하나로. unchecked — 넘침은 해시에서 정상이다.
     // `TownMarket`·`WorldDeposits`와 다른 상수를 쓴다: 같은 열을 쓰면 매장이 두터운 칸에 늘
     // 같은 사람이 서는 식으로 값들이 붙어 다닌다.
-    static int Hash(Vector2Int node, int seed, int day)
+    // **신원을 섬는다 — 좌표가 아니라**(2026-08-27). 자리를 다듬었다고 마을의 사람이
+    // 통째로 바뀌면, 저작하는 손이 결과를 예측할 수 없게 된다.
+    static int Hash(string id, int seed, int day)
     {
         unchecked
         {
             int h = 41;
-            h = h * 31 + node.x * 6151;
-            h = h * 31 + node.y * 31469;
+            if (id != null) foreach (char c in id) h = h * 31 + c * 6151;
             h = h * 31 + seed   * 1572869;
             h = h * 31 + day    * 12289;
             return h;

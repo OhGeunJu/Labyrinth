@@ -6,7 +6,12 @@ using UnityEngine;
 // **사람이 살지 않는다** — 거점(정착지)과 달리 들어가서 지내는 곳이 아니라, 매일 알아서 캐서 쌓아두는 곳이다.
 public class WorldOutpost
 {
-    public Vector2Int Node;
+    // **자리가 답이다**(2026-08-27). 전에는 칸 좌표였는데, 세계가 이어지면서 한 지역(256m)에
+    // 하나라는 제한이 붙고 **자리를 다듬을 수가 없었다.**
+    public Vector2 Position;
+
+    // 칸은 자리에서 나온다 — 따로 들지 않는다. 옛 화면(`WorldMapView`)이 칸으로 묻는다.
+    public Vector2Int Node => TerrainGrid.RegionAt(Position.x, Position.y);
 
     // 아직 땅에 남은 것. 다 캐면 고갈된다.
     public readonly List<WorldDeposit> Remaining = new();
@@ -64,6 +69,10 @@ public class OutpostManager : MonoBehaviour
 
     readonly List<WorldOutpost> _outposts = new();
 
+    // **세운 것 전부.** 무리가 노릴 곳을 찾고 지도가 표식을 그리는 데 쓴다 —
+    // 전에는 저작 격자를 훑었는데, 그건 **플레이 중에 생긴 것을 저작물에 적어 둔** 탓이었다.
+    public IReadOnlyList<WorldOutpost> All => _outposts;
+
     public static event Action OnChanged;
 
     public IReadOnlyList<CostEntry> BuildCost => buildCost;
@@ -79,6 +88,16 @@ public class OutpostManager : MonoBehaviour
     void OnEnable()  => GameTimeManager.OnDayChanged += MineAll;
     void OnDisable() => GameTimeManager.OnDayChanged -= MineAll;
 
+    // 그 자리의 채집기지. **한 지역에 하나라는 제한이 없으므로 거리로 찾는다.**
+    public WorldOutpost At(Vector2 pos, float radius = 120f)
+    {
+        float sqr = radius * radius;
+        foreach (var o in _outposts)
+            if ((o.Position - pos).sqrMagnitude <= sqr) return o;
+        return null;
+    }
+
+    // **옛 화면용 다리** — `WorldMapView`가 아직 칸으로 묻는다.
     public WorldOutpost At(Vector2Int node)
     {
         foreach (var o in _outposts) if (o.Node == node) return o;
@@ -119,10 +138,17 @@ public class OutpostManager : MonoBehaviour
     }
 
     // 그 칸에 채집기지를 세운다. 매장량을 실어 두고 지도 내용물을 바꾼다.
+    // **옛 화면용 다리** — 칸 가운데에 세운다.
     public WorldOutpost Build(Vector2Int node)
     {
+        var c = TerrainGrid.RegionCenter(node);
+        return Build(new Vector2(c.x, c.z));
+    }
+
+    public WorldOutpost Build(Vector2 pos)
+    {
         var wm = WorldMap.Instance;
-        if (wm == null || At(node) != null) return null;
+        if (wm == null || At(pos) != null) return null;
 
         if (!CanAfford(out var missing))
         {
@@ -136,14 +162,17 @@ public class OutpostManager : MonoBehaviour
             Storage.ConsumeByItem(c.Item, c.Amount, MaterialPool.Focus);
         }
 
-        var outpost = new WorldOutpost { Node = node };
-        outpost.Remaining.AddRange(wm.DepositsAt(node));
+        var outpost = new WorldOutpost { Position = pos };
+        outpost.Remaining.AddRange(wm.DepositsAt(TerrainGrid.RegionAt(pos.x, pos.y)));
         _outposts.Add(outpost);
 
-        // 지도에 표시 — `SetContent`가 `OnNodeChanged`를 쏴서 마커가 새로 선다.
-        wm.SetContent(node, WorldNodeContent.Outpost);
+        // **저작 격자를 안 고친다**(2026-08-27). 전에는 `SetContent(node, Outpost)`로 지도에
+        // 표시했는데, 그건 **플레이 중에 생긴 것을 저작물에 쓰는 일**이다 — 자리가 굽힌 에셋으로
+        // 오면서 성립하지 않게 됐고, 애초에 세이브와 저작이 섞이는 자리였다.
+        // 지도는 이제 `All`을 보고 그린다.
 
-        Debug.Log($"[채집기지] ({node.x},{node.y})에 세웠습니다 — 매장 {outpost.RemainingCount}");
+        Debug.Log($"[채집기지] ({Mathf.RoundToInt(pos.x)},{Mathf.RoundToInt(pos.y)})에 세웠습니다 — " +
+                  $"매장 {outpost.RemainingCount}");
         OnChanged?.Invoke();
         return outpost;
     }
@@ -184,7 +213,7 @@ public class OutpostManager : MonoBehaviour
             }
 
             if (o.IsDepleted)
-                Debug.Log($"[채집기지] ({o.Node.x},{o.Node.y}) 매장이 고갈됐습니다.");
+                Debug.Log($"[채집기지] ({Mathf.RoundToInt(o.Position.x)},{Mathf.RoundToInt(o.Position.y)}) 매장이 고갈됐습니다.");
         }
 
         if (changed) OnChanged?.Invoke();

@@ -15,8 +15,13 @@ public class WorldContentStreamer : MonoBehaviour
     [Header("뿌리는 것 — 나무 · 바위")]
     [SerializeField] ScatterRule[] scatter = System.Array.Empty<ScatterRule>();
 
-    [Header("저작한 장소 — 마을 · 주둔지")]
+    // **옛 목록 — 이행 대기.** 아무도 안 읽는다(`DungeonColony → World → 1. Migrate Sites`가
+    // 청크 에셋으로 옮기고 여기를 비운다). **두 벌을 남기지 않으려고** 읽는 쪽을 아예 끊었다 —
+    // 남겨 두면 *어느 쪽이 이기는가*가 또 규칙이 되고, 그 규칙은 반드시 어긋난다.
+    [Header("옛 목록 — 이행 대기 (Migrate 실행 후 비워진다)")]
     [SerializeField] WorldSite[] sites = System.Array.Empty<WorldSite>();
+
+    public WorldSite[] LegacySites => sites;   // 이행 도구만 읽는다
 
     // ── 저작한 지도에서 세울 것들 ───────────────────────────────────────────
     //
@@ -68,8 +73,29 @@ public class WorldContentStreamer : MonoBehaviour
 
     static readonly List<Vector2Int> _placed = new();   // 간격 검사용 임시
 
+    // **정적 캐시는 판이 열릴 때 비운다.**
+    //
+    // 이 프로젝트는 "Enter Play Mode Options"가 켜져 있다(`m_EnterPlayModeOptionsEnabled: 1`).
+    // 지금은 아무 옵션도 안 골라 둬서(`0`) 도메인 리로드가 그대로 돌지만, **거기서 리로드를
+    // 끄는 순간 이 값들이 지난 판의 것을 그대로 들고 시작한다** — `_placedUp`이 남아 있으면
+    // 안 내리는 마을이 **두 번째 판부터 아예 안 선다**(이미 세웠다고 기억하므로). 체크박스
+    // 하나에 조용히 깨지는 것을 남겨 둘 이유가 없다.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics()
+    {
+        _placedUp.Clear();
+        _content.Clear();
+        _taken.Clear();
+    }
+
     void OnEnable()
     {
+        // **조용히 안 세우는 것이 가장 나쁘다** — 옛 목록이 남아 있으면 마을이 통째로
+        // 사라진 것처럼 보이는데, 원인이 "안 옮겼다"라는 것을 알 길이 없다.
+        if (sites != null && sites.Length > 0)
+            Debug.LogError($"[월드콘텐츠] 옛 목록에 {sites.Length}개가 남아 있다 — 아무도 안 읽는다. " +
+                           "`DungeonColony → World → 1. Migrate Sites To Chunk Assets`를 실행할 것.");
+
         TerrainStreamer.ChunkLoaded   += Load;
         TerrainStreamer.ChunkUnloaded += Unload;
 
@@ -94,7 +120,7 @@ public class WorldContentStreamer : MonoBehaviour
         _live[chunk] = spawned;
 
         Scatter(chunk, spawned);
-        Sites(chunk, spawned);
+        Placed(chunk, spawned);
     }
 
     void Unload(Vector2Int chunk)
@@ -186,25 +212,66 @@ public class WorldContentStreamer : MonoBehaviour
 
     // ── 저작한 장소 ─────────────────────────────────────────────────────────
 
-    static readonly HashSet<int> _sitesUp = new();   // Persistent인 것은 한 번만 세운다
+    // **`Id`가 키다 — 인덱스가 아니다.** 전에는 배열 순번이었는데, 저작으로 배열이 재정렬되면
+    // 그 순번이 가리키던 곳이 달라졌다. 신원은 저작이 바뀌어도 안 변하는 것이어야 한다.
+    static readonly HashSet<string> _placedUp = new();   // Persistent인 것은 한 번만 세운다
 
-    void Sites(Vector2Int chunk, List<GameObject> into)
+    // **청크 단위로 게으르게 읽는다** — 대부분의 청크에는 에셋이 없다. `Resources.LoadAll`로
+    // 통째로 읽으면 없는 것까지 훑으므로, 물어볼 때 하나씩 읽고 **없다는 사실도 기억한다**
+    // (안 그러면 빈 청크를 밟을 때마다 다시 찾는다 — `TerrainHeight.DeltaOf`와 같은 자리).
+    static readonly Dictionary<Vector2Int, WorldChunkContent> _content = new();
+
+    static WorldChunkContent ContentOf(Vector2Int chunk)
     {
-        for (int i = 0; i < sites.Length; i++)
+        if (_content.TryGetValue(chunk, out var c)) return c;
+        c = Resources.Load<WorldChunkContent>(WorldChunkContent.ResourcePathOf(chunk));
+        _content[chunk] = c;    // **null도 넣는다** — "없음"을 기억하는 것이 요점이다
+        return c;
+    }
+
+    // 저작 도구가 에셋을 다시 구운 뒤 부른다. 안 비우면 **에디터가 옛 목록을 계속 쓴다.**
+    public static void ForgetContent() => _content.Clear();
+
+    void Placed(Vector2Int chunk, List<GameObject> into)
+    {
+        var content = ContentOf(chunk);
+        if (content == null || content.Objects == null) return;
+
+        foreach (var o in content.Objects)
         {
-            var s = sites[i];
-            if (s == null || s.Prefab == null) continue;
-            if (TerrainGrid.ChunkAt(s.Position.x, s.Position.y) != chunk) continue;
-            if (s.Persistent && _sitesUp.Contains(i)) continue;
+            if (o == null || o.Prefab == null) continue;
 
-            float h = TerrainHeight.At(s.Position.x, s.Position.y) + s.YOffset;
-            var go = Instantiate(s.Prefab,
-                                 new Vector3(s.Position.x, h, s.Position.y),
-                                 Quaternion.Euler(0f, s.Rotation, 0f),
-                                 s.Persistent ? null : Root);
-            go.name = s.Prefab.name + " (" + s.Name + ")";
+            // 신원이 없으면 자리로 대신한다 — **없는 채로 두면 `Persistent` 추적이
+            // 통째로 어긋나** 마을이 청크를 밟을 때마다 하나씩 더 선다.
+            string id = string.IsNullOrEmpty(o.Id)
+                      ? TerrainGrid.KeyOf(chunk) + ":" + o.Position.x + "," + o.Position.y
+                      : o.Id;
 
-            if (s.Persistent) _sitesUp.Add(i);   // 안 내린다 — 안의 상태가 처음으로 돌아가면 안 된다
+            if (o.Persistent && _placedUp.Contains(id)) continue;
+
+            float h = TerrainHeight.At(o.Position.x, o.Position.y) + o.YOffset;
+            var go = Instantiate(o.Prefab,
+                                 new Vector3(o.Position.x, h, o.Position.y),
+                                 Quaternion.Euler(0f, o.Yaw, 0f),
+                                 o.Persistent ? null : Root);
+            go.name = o.Prefab.name + " (" + o.Name + ")";
+
+            // **없으면 안 건드린다** — 프리팹이 든 크기를 그대로 쓴다(`WorldObject.Scale` 참고).
+            if (o.Scale != Vector3.zero) go.transform.localScale = o.Scale;
+
+            // **저작한 명세가 있으면 덮는다**(2026-08-27, 월드 에디터 4단계).
+            //
+            // `Instantiate`가 `Awake`를 그 자리에서 돌리므로 이 시점에는 **프리팹에 적어 둔
+            // 명세가 이미 얹혀 있다**(`UnitBrain.ApplyAuthoredSpec`). 그 위에 덮는 것이
+            // 맞다 — **저작(프리팹) < 주입(그 자리)** 이 이 저장소의 우선순위다(상인 상품과
+            // 같은 규칙). 그래서 *"같은 산적 프리팹인데 이 소굴의 두목만 특정 인물"*이 된다.
+            if (o.Spec != null)
+            {
+                var brain = go.GetComponent<UnitBrain>();
+                if (brain != null) brain.ApplySpec(o.Spec.Build(brain.Data));
+            }
+
+            if (o.Persistent) _placedUp.Add(id);   // 안 내린다 — 안의 상태가 처음으로 돌아가면 안 된다
             else into.Add(go);
         }
     }

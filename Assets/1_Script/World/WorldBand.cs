@@ -25,15 +25,20 @@ public class WorldBand
     public WorldBandData Data;
     public readonly List<BandMember> Members = new();
 
-    // 어디서 나왔나. 순찰대가 도는 중심이자, 약탈대가 소굴을 잃으면 갈 곳을 잃는 근거.
-    public Vector2Int Home;
+    // 어디서 나왔나 — **월드 좌표와 신원 둘 다**(2026-08-27).
+    // 자리는 순찰대가 도는 중심이고, 신원은 *"그 소굴"*을 다시 찾을 때 쓴다
+    // (`WorldLairs.At(HomeId)`). 칸 좌표로 두면 소굴을 옮긴 순간 집을 잃는다.
+    public Vector2 Home;
+    public string  HomeId;
 
-    // 지금 향하는 칸. 도착하면 행동별로 다음 일이 벌어진다.
-    public Vector2Int Goal;
+    // 지금 향하는 자리(월드). 닿으면 행동별로 다음 일이 벌어진다.
+    public Vector3 Goal;
 
     // 지도 위 위치(월드 좌표). 격자에 매이지 않는다 — 플레이어 원정대와 같은 규칙이다.
     public Vector3    Position;
-    public Vector2Int Node;
+
+    // **칸은 자리에서 나온다 — 따로 들지 않는다.** 옛 화면(`WorldMapView`)이 칸으로 묻는다.
+    public Vector2Int Node => TerrainGrid.RegionAt(Position.x, Position.z);
 
     // 쫓는 중이면 그 지점. 목적지(`Goal`)와 별개다 — 추격을 접으면 원래 가던 곳으로 돌아간다.
     public Vector3 ChaseAt;
@@ -90,8 +95,7 @@ public class WorldBand
             // **어디서 나온 무리인가가 전력을 가른다**(2026-08-23) — 같은 고블린이라도
             // 용암지대에서 나온 것은 다르다. 근거지(`Home`)의 바이옴 티어를 곱한다.
             // 무리 에셋을 티어마다 복제하면 바이옴 × 무리의 곱셈이 된다.
-            var map = WorldMap.Instance;
-            if (map != null) sum *= BiomeTier.PowerMultOf(map.GetTile(Home).Biome);
+            sum *= BiomeTier.PowerMultOf(WorldMap.BiomeAtWorld(Home));
 
             return sum;
         }
@@ -102,11 +106,22 @@ public class WorldBand
     // 명세에서 무리 하나를 뽑는다. **시드 하나에서 전부 나온다** — 같은 시드면 같은 무리다
     // (마을 후보·매장 자원과 같은 규칙). 무리는 지도에 오래 남지 않으므로 결정성이 화면에
     // 드러날 일은 적지만, 이 저장소의 굴림은 전부 시드에서 나온다는 규약을 깨지 않는다.
+    // **옛 화면용 다리** — `WorldMapView`가 아직 칸으로 부른다. 지역 가운데를 쓴다.
     public static WorldBand Roll(WorldBandData data, Vector2Int home, int seed)
+    {
+        var c = TerrainGrid.RegionCenter(home);
+        return Roll(data, new Vector2(c.x, c.z), null, seed);
+    }
+
+    public static WorldBand Roll(WorldBandData data, Vector2 home, string homeId, int seed)
     {
         if (data == null || !data.IsUsable) return null;
 
-        var band = new WorldBand { Data = data, Home = home, Goal = home };
+        var band = new WorldBand
+        {
+            Data = data, Home = home, HomeId = homeId,
+            Goal = new Vector3(home.x, 0f, home.y),
+        };
         var rng  = new System.Random(seed);
 
         int i = 0;

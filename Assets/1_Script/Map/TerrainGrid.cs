@@ -40,12 +40,21 @@ public static class TerrainGrid
     // **바이옴 배치**가 낸다(16×16 저작이 그대로 산다).
     //
     //   청크  세계        면적     지역     가로지르기(4m/s)
-    //     32   8,192m     67km²    512m     1.1 게임일
+    //     16   4,096m     17km²    256m     0.6 게임일
+    //   → 32   8,192m     67km²    512m     1.1
     //     48  12,288m    151km²    768m     1.7
-    //   → 64  16,384m    268km²  1,024m     2.3
+    //     64  16,384m    268km²  1,024m     2.3
     //     80  20,480m    419km²  1,280m     2.8
     //    112  28,672m    822km²  1,792m     4.0   ← 켄시(~870km²)
-    public const int ChunksPerAxis = 64;    // 세계 한 변의 청크 수 (16의 배수)
+    //
+    // **이 값을 바꾸면 구운 것이 전부 어긋난다**(2026-08-27). 높이맵·색조는 세계 한 변을
+    // 0~1로 재서 뽑으므로 줄이면 **그림이 가로로 지발려** 산이 가파른지고, 장소는 절대
+    // 좌표라 **새 범위 밖의 것이 통째로 사라진다.** 순서가 있다:
+    // `B. Bake Eroded Heightmap` → `5. Populate World` → `6. Resnap` → `5. Bake World` → `C. Bake World Color Map`.
+    //
+    // **2026-08-27에 64→32로 줄였다**(사용자 결정) — 아직 테스트만 하는데 268km²를
+    // 들고 다니면 굽는 것도 걸어 다니는 것도 네 배가 비싸다. **다시 키우는 것은 이 상수 하나다.**
+    public const int ChunksPerAxis = 32;    // 세계 한 변의 청크 수 (16의 배수)
 
     // **129 = 128 + 1.** 마지막 정점은 이웃 청크의 첫 정점과 **같은 자리**다 — 가장자리를
     // 공유하지 않으면 부동소수 오차로 **틈이 벌어져 하늘이 보인다.** 공유하는 대신 그 줄을
@@ -53,7 +62,7 @@ public static class TerrainGrid
     // 이유이기도 하다).
     public const int VertsPerAxis = ChunkSize / VertexSpacing + 1;   // 129
 
-    public const int WorldSize = ChunkSize * ChunksPerAxis;          // 16,384m
+    public const int WorldSize = ChunkSize * ChunksPerAxis;          // 8,192m
 
     // ── 지역 — 저작한 월드맵의 한 칸 ────────────────────────────────────────
     //

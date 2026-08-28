@@ -16,7 +16,6 @@ using UnityEngine;
 // 등록된 것은 `FromMap`이 꺼져 있어 **`5번`을 다시 돌려도 안 지워진다.**
 public static class WorldSiteAuthoring
 {
-    const string PreviewRoot = "__TerrainPreview";
     const string SiteDir     = "Assets/3_Prefab/Site";
 
     // ── 1. 땅을 띄운다 ──────────────────────────────────────────────────────
@@ -24,21 +23,14 @@ public static class WorldSiteAuthoring
     [MenuItem("DungeonColony/Terrain/A. Show Terrain Here (3x3)")]
     static void ShowHere()
     {
-        var streamer = Object.FindFirstObjectByType<TerrainStreamer>();
-        if (streamer != null)
-        {
-            TerrainHeight.Profile  = streamer.Profile;
-            TerrainHeight.Features = streamer.Features;
-        }
-        TerrainHeight.ForgetDeltas();
-        TerrainHeight.ForgetBiomes();
+        TerrainAuthoring.SyncFromScene();
 
         var view = SceneView.lastActiveSceneView;
         Vector3 look = view != null ? view.pivot : Vector3.zero;
         var center = TerrainGrid.ChunkAt(look);
 
         HideHere();
-        var root = new GameObject(PreviewRoot);
+        var root = new GameObject(TerrainAuthoring.PreviewRoot);
         Undo.RegisterCreatedObjectUndo(root, "지형 띄우기");
 
         int res = TerrainGrid.VertsPerAxis;
@@ -56,13 +48,7 @@ public static class WorldSiteAuthoring
                 size = new Vector3(TerrainGrid.ChunkSize, TerrainStreamer.HeightRange, TerrainGrid.ChunkSize),
             };
 
-            var hs = new float[res, res];
-            for (int vz = 0; vz < res; vz++)
-            for (int vx = 0; vx < res; vx++)
-                hs[vz, vx] = Mathf.Clamp01(
-                    (TerrainHeight.VertexHeight(c, vx, vz) - TerrainStreamer.MinHeight)
-                    / TerrainStreamer.HeightRange);
-            data.SetHeights(0, 0, hs);
+            TerrainAuthoring.Fill(data, c);
 
             var go = new GameObject("Preview_" + TerrainGrid.KeyOf(c));
             go.transform.SetParent(root.transform, false);
@@ -83,7 +69,7 @@ public static class WorldSiteAuthoring
     [MenuItem("DungeonColony/Terrain/C. Hide Terrain")]
     static void HideHere()
     {
-        var root = GameObject.Find(PreviewRoot);
+        var root = GameObject.Find(TerrainAuthoring.PreviewRoot);
         if (root != null) Object.DestroyImmediate(root);
     }
 
@@ -94,12 +80,9 @@ public static class WorldSiteAuthoring
     {
         var sel = Selection.activeGameObject;
         if (sel == null) { Debug.LogWarning("[장소] 씬에서 도시의 루트 오브젝트를 고를 것."); return; }
-        if (sel.transform.IsChildOf(GameObject.Find(PreviewRoot)?.transform ?? sel.transform.root)
+        if (sel.transform.IsChildOf(GameObject.Find(TerrainAuthoring.PreviewRoot)?.transform ?? sel.transform.root)
             && sel.GetComponent<Terrain>() != null)
         { Debug.LogWarning("[장소] 지형 미리보기는 장소가 아니다."); return; }
-
-        var content = Object.FindFirstObjectByType<WorldContentStreamer>();
-        if (content == null) { Debug.LogWarning("[장소] 씬에 WorldContentStreamer가 없다."); return; }
 
         System.IO.Directory.CreateDirectory(SiteDir);
 
@@ -115,48 +98,64 @@ public static class WorldSiteAuthoring
         sel.transform.position = Vector3.zero;
         sel.transform.rotation = Quaternion.identity;
 
+        // **굽고 나서 고른 것 자체를 그 프리팹의 인스턴스로 만든다**(`AndConnect`).
+        //
+        // 이게 요점이다. 그냥 저장하면 씬에 남는 것은 **프리팹이 아닌 덩어리**이고,
+        // `5. Bake World`는 되짚을 원본이 없어 **굽지 못한다**(굽기가 "프리팹 인스턴스가
+        // 아닌 것"으로 세어 경고만 하고 지나간다). 연결해 두면 그 자리에서 바로 왕복에 든다.
         string path = SiteDir + "/" + sel.name + ".prefab";
-        var prefab = PrefabUtility.SaveAsPrefabAsset(sel, path);
+        var prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(sel, path, InteractionMode.AutomatedAction);
 
         sel.transform.position = at;
         sel.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+
+        if (prefab == null)
+        {
+            Undo.CollapseUndoOperations(undoGroup);
+            Debug.LogWarning("[장소] 프리팹 저장 실패 — " + path);
+            return;
+        }
+
+        Adopt(sel, at);
         Undo.CollapseUndoOperations(undoGroup);
 
-        if (prefab == null) { Debug.LogWarning("[장소] 프리팹 저장 실패 — " + path); return; }
-
-        Register(content, prefab, at, yaw, sel.name);
-
-        Debug.Log("[장소] `" + sel.name + "`을(를) 구워 등록했다 → " + path + "\n" +
+        Debug.Log("[장소] `" + sel.name + "`을(를) 구웠다 → " + path + "\n" +
                   "자리 (" + Mathf.RoundToInt(at.x) + ", " + Mathf.RoundToInt(at.z) + ") · " +
                   "지역 " + TerrainGrid.RegionAt(at) + ". " +
-                  "**손으로 놓은 것이라 `5. Place Sites`를 다시 돌려도 안 지워진다.**");
+                  "**손으로 놓은 것이라 `5. Place Sites`를 다시 돌려도 안 지워진다.**\n" +
+                  "**아직 안 구웠다** — `World → 5. Bake World`. 씬 저장도 잊지 말 것.");
     }
 
-    static void Register(WorldContentStreamer content, GameObject prefab,
-                         Vector3 at, float yaw, string name)
+    // **저작 씬에 들인다** — 청크 에셋에 직접 쓰지 않는다.
+    //
+    // 쓰는 문은 `5. Bake World` 하나여야 한다. 여기서 에셋에 바로 쓰면 **저작 씬이 모르는
+    // 물건**이 되고, 다음 굽기가 *"씬에 없으니 지워진 것"*으로 보아 **없애 버린다**
+    // (굽기는 지우기까지 한다).
+    static void Adopt(GameObject go, Vector3 at)
     {
-        var so  = new SerializedObject(content);
-        var arr = so.FindProperty("sites");
+        if (!TerrainGrid.InWorld(TerrainGrid.ChunkAt(at.x, at.z)))
+            Debug.LogWarning("[장소] 세계 밖이다 — 굽기가 건너뛴다. " + TerrainGrid.ChunkAt(at.x, at.z));
 
-        // 같은 프리팹이 같은 자리에 이미 있으면 덮어쓴다 — 두 번 구웠다고 둘이 서면 안 된다.
-        int slot = -1;
-        for (int i = 0; i < arr.arraySize; i++)
+        var root = WorldAuthoringScene.FindRoot();
+        if (root == null)
         {
-            var e = arr.GetArrayElementAtIndex(i);
-            if (e.FindPropertyRelative("Prefab").objectReferenceValue == prefab) { slot = i; break; }
+            Debug.LogWarning("[장소] 저작 씬이 안 열려 있다 — 프리팹만 만들었다. " +
+                             "`World → 3. Open Authoring Scene`을 열고 이 오브젝트를 그 아래로 옮길 것 " +
+                             "(안 옮기면 굽기가 못 본다).");
+            return;
         }
-        if (slot < 0) { slot = arr.arraySize; arr.arraySize = slot + 1; }
 
-        var s = arr.GetArrayElementAtIndex(slot);
-        s.FindPropertyRelative("Name").stringValue            = name;
-        s.FindPropertyRelative("Prefab").objectReferenceValue = prefab;
-        s.FindPropertyRelative("Position").vector2Value       = new Vector2(at.x, at.z);
-        s.FindPropertyRelative("YOffset").floatValue          = 0f;
-        s.FindPropertyRelative("Rotation").floatValue         = yaw;
-        s.FindPropertyRelative("Persistent").boolValue        = true;
-        s.FindPropertyRelative("FromMap").boolValue           = false;   // 손으로 놓은 것
+        // **월드 자리를 지키며 옮긴다** — 굽기가 `transform.position`을 읽으므로 자리가
+        // 곧 데이터다.
+        if (!go.transform.IsChildOf(root.transform))
+            Undo.SetTransformParent(go.transform, root.transform, "저작 씬에 들이기");
 
-        so.ApplyModifiedPropertiesWithoutUndo();
-        EditorUtility.SetDirty(content);
+        var tag = go.GetComponent<WorldObjectTag>();
+        if (tag == null) tag = Undo.AddComponent<WorldObjectTag>(go);
+
+        if (string.IsNullOrEmpty(tag.Id)) tag.Id = WorldContentAssets.NewId();
+        tag.Persistent = true;
+        tag.Generated  = false;    // 손으로 놓은 것 — `5. Place Sites`가 안 건드린다
+        EditorUtility.SetDirty(tag);
     }
 }

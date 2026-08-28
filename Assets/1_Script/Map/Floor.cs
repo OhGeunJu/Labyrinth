@@ -15,6 +15,13 @@ public class Floor : MonoBehaviour
     readonly List<Vector2Int> _tiles = new();
     MapManager _zone;
 
+    // **손으로 놓은 바닥은 제 메시가 있다.** `FloorRenderer`가 `_floored`를 통째로 그리므로,
+    // 여기 등록한 칸까지 그리면 슬래브가 두 장 겹쳐 z-파이팅이 난다. 어느 칸이 저작물인지는
+    // 이 집합 하나가 답한다 — 그리는 쪽이 씬을 뒤지게 하면 안 된다.
+    static readonly HashSet<Vector2Int> _authored = new();
+
+    public static bool IsAuthored(Vector2Int tile) => _authored.Contains(tile);
+
     void OnEnable()
     {
         _zone = MapManager.GetForPosition(transform.position);
@@ -25,7 +32,7 @@ public class Floor : MonoBehaviour
     public void Refresh()
     {
         if (_zone == null) return;
-        foreach (var t in _tiles) _zone.UnregisterFloor(t);
+        foreach (var t in _tiles) { _authored.Remove(t); _zone.UnregisterFloor(t); }
         _tiles.Clear();
         Register();
     }
@@ -35,7 +42,7 @@ public class Floor : MonoBehaviour
         if (_zone == null) return;
         ComputeTiles();
         float surfaceY = ComputeSurfaceY();
-        foreach (var t in _tiles) _zone.RegisterFloor(t, surfaceY);
+        foreach (var t in _tiles) { _authored.Add(t); _zone.RegisterFloor(t, surfaceY); }
     }
 
     // 바닥 윗면 월드 Y — 건물이 이 위에 얹힌다. 렌더러가 있으면 바운드 상단(슬래브 두께 반영),
@@ -48,8 +55,11 @@ public class Floor : MonoBehaviour
 
     void OnDisable()
     {
-        if (_zone != null)
-            foreach (var t in _tiles) _zone.UnregisterFloor(t);
+        foreach (var t in _tiles)
+        {
+            _authored.Remove(t);
+            if (_zone != null) _zone.UnregisterFloor(t);
+        }
         _tiles.Clear();
     }
 
@@ -60,10 +70,19 @@ public class Floor : MonoBehaviour
         if (autoFromRenderer && TryGetComponent<Renderer>(out var r))
         {
             var b = r.bounds;
-            int x0 = Mathf.FloorToInt(b.min.x), x1 = Mathf.CeilToInt(b.max.x) - 1;
-            int z0 = Mathf.FloorToInt(b.min.z), z1 = Mathf.CeilToInt(b.max.z) - 1;
-            for (int x = x0; x <= x1; x++)
-            for (int z = z0; z <= z1; z++)
+
+            // **칸을 묻는 것은 `WorldToTile` 하나다**(2026-08-28). 전에는 월드 좌표를
+            // 그대로 `Floor`/`Ceil`했는데, 그것은 **격자가 세계 원점에 박혀 있을 때만**
+            // 맞는 계산이다. 08-27에 위상이 첫 핵으로 옮겨 간 뒤로 1×1 슬래브 하나가
+            // **네 칸을 등록했고**(위상이 0이 아니면 `Ceil(x+1+위상)-1 = x+1`), 그래서
+            // 면을 드래그로 깔면 **한 칸 건너 하나씩만** 깔렸다(나머지는 "이미 바닥").
+            //
+            // 모서리에서 반 칸 안으로 들어와 묻는다 — 경계에 정확히 걸린 값이 부동소수
+            // 오차로 옆 칸에 떨어지는 것도 같이 막는다.
+            var lo = _zone.WorldToTile(new Vector3(b.min.x + 0.5f, 0f, b.min.z + 0.5f));
+            var hi = _zone.WorldToTile(new Vector3(b.max.x - 0.5f, 0f, b.max.z - 0.5f));
+            for (int x = lo.x; x <= hi.x; x++)
+            for (int z = lo.y; z <= hi.y; z++)
                 _tiles.Add(new Vector2Int(x, z));
             return;
         }

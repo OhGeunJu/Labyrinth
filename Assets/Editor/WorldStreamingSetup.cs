@@ -15,7 +15,19 @@ public static class WorldStreamingSetup
     [MenuItem("DungeonColony/Terrain/0. Setup World Streaming")]
     static void Setup()
     {
-        var go = GameObject.Find(RootName);
+        // **이미 붙어 있는 것을 먼저 찾는다** — 이름으로만 찾으면 저작 씬의 루트를 집을 수
+        // 있고(거기에 스트리머가 붙으면 판이 열릴 때 그 오브젝트가 통째로 꺼져 **세계가 안 선다**),
+        // 이름을 바꿔 둔 씬에서는 두 번째 루트를 만든다.
+        var existing = Object.FindFirstObjectByType<TerrainStreamer>(FindObjectsInactive.Include);
+        var go = existing != null ? existing.gameObject : GameObject.Find(RootName);
+
+        if (go != null && go.GetComponent<WorldAuthoringRoot>() != null)
+        {
+            Debug.LogWarning("[월드] `" + go.name + "`은 저작 씬의 루트다 — 스트리밍을 여기 붙이면 " +
+                             "판이 열릴 때 통째로 꺼진다. 게임 씬에 새로 세운다.");
+            go = null;
+        }
+
         if (go == null)
         {
             go = new GameObject(RootName);
@@ -28,6 +40,11 @@ public static class WorldStreamingSetup
 
         var terrain = go.GetComponent<TerrainStreamer>() ?? Undo.AddComponent<TerrainStreamer>(go);
         var content = go.GetComponent<WorldContentStreamer>() ?? Undo.AddComponent<WorldContentStreamer>(go);
+
+        // **무리를 실체로 세우는 쪽**(2026-08-27). 이게 없으면 `WorldBandManager`가 토큰만 굴리고
+        // **지도 위의 무리가 영영 실제 폰이 되지 않는다** — 습격이 예고돼도 아무도 안 온다.
+        // 값은 전부 기본값으로 뜻이 서 있어(반경은 `SimLocality`를 따라간다) 저작할 것이 없다.
+        if (go.GetComponent<BandMaterializer>() == null) Undo.AddComponent<BandMaterializer>(go);
 
         int layer = LayerMask.NameToLayer("Ground");
         if (layer < 0) { layer = 0; Debug.LogWarning("[월드] 레이어 'Ground'가 없다 — Default로 둔다."); }
@@ -44,7 +61,7 @@ public static class WorldStreamingSetup
         EditorUtility.SetDirty(go);
         Selection.activeGameObject = go;
 
-        Debug.Log($"[월드] 배선 완료 — {RootName}에 TerrainStreamer + WorldContentStreamer. " +
+        Debug.Log($"[월드] 배선 완료 — {go.name}에 TerrainStreamer + WorldContentStreamer + BandMaterializer. " +
                   $"레이어 '{LayerMask.LayerToName(layer)}' · 옛 Terrain {slept}개 · " +
                   $"옛 월드맵 화면 {screens}개 재움." + "\n" +
                   $"세계 {TerrainGrid.WorldSize}m · 청크 {TerrainGrid.ChunkSize}m · " +

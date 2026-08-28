@@ -83,9 +83,49 @@ public class PawnMover : MonoBehaviour
     [Tooltip("짐을 지고 걸을 때 근력 성장 속도. 한도 대비 적재 비율이 곱해진다.")]
     [SerializeField] float strengthGrowthRate = 0.003f;
 
+    // **폰이 걸어 오를 수 있는 수직 턱(m).** `CharacterController.stepOffset`이 그 값인데,
+    // 길찾기도 같은 값을 알아야 한다(모르면 못 오를 기단 위로 경로를 낸다). **프리팹이 각자
+    // 들면 반드시 갈린다** — 그래서 여기 상수가 이기고 `Awake`가 컨트롤러에 밀어 넣는다.
+    //
+    // **이 값이 곧 계단의 기울기다**(`BuildModeManager` 계단이 한 칸에 이만큼 내려간다).
+    // 컨트롤러 기본값 0.3으로 뒀더니 2m 기단에 **계단이 일곱 칸**이었다 — 오르기는 하는데
+    // 마당보다 계단이 길다. 사람 무릎 높이(0.5m)면 한 칸에 한 단이 그럴듯하고 2m가 넉 칸이다.
+    // 캡슐 높이(1.8m)에 견주면 여전히 한참 낮아 컨트롤러가 싫어할 값도 아니다.
+    public const float StepUp = 0.5f;
+
+    // 자연 지형에서 한 칸(1m) 오를 때 허용되는 높이차(m). 비탈은 턱이 아니라서
+    // `slopeLimit`(45도)가 판단한다 — 1m당 1m가 그 각이다.
+    public const float SlopeRise = 1.0f;
+
+    // **폰의 몸통 반경(m).** 프리팹에는 0.5로 저작돼 있었는데, 그러면 **지름이 정확히 한 칸**이라
+    // **한 칸짜리 틈은 어디도 못 지나간다** — 오두막 문간이 딱 그 자리였다(틈 1.04m, 몸 1.00m).
+    // 복도든 건물 사이든 한 칸 틈은 타일 격자에서 가장 흔한 모양이라, 그게 안 되면
+    // *"왜 여기로 안 가지"*가 끝없이 나온다.
+    //
+    // 0.35면 한 칸 틈에 양쪽 0.15씩 남아 조향이 흔들려도 빠져나간다. **길찾기가 이미
+    // "폰은 타일 안에 들어간다"를 전제하고 있었다**(`LocalGridManager.BakeGrid`가 반경
+    // 부풀림을 타일보다 큰 에이전트에만 쓴다) — 몸만 그 전제를 안 지키고 있었다.
+    public const float BodyRadius = 0.35f;
+
+    // **뛰어내릴 수 있는 높이(m).** 오를 수 있는 높이(`StepUp`)와 **다른 축이다** —
+    // 사람은 무릎 높이까지밖에 못 올라가도 제 키만큼은 뛰어내린다.
+    //
+    // 한동안 이 둘을 같은 값으로 뒀다가, *"내려갈 때도 이어진 길로"*로 바꾸면서 아예
+    // 막아 봤다. 그러면 **턱 하나 때문에 기단을 통째로 돌아 나간다** — 무릎 높이를
+    // 못 내려가서 스무 칸을 도는 것은 보기에도 틀렸다.
+    //
+    // 비대칭이 답이다: **내려가는 것은 너그럽게, 올라오는 것은 계단으로.** 그러면
+    // 자잘한 턱은 그냥 내려가고 진짜 벼랑에서만 계단을 찾는다.
+    //
+    // **이 값이 계단의 뜻을 정한다** — 크게 잡을수록 계단 없이도 잘 다니고, 작게
+    // 잡을수록 어디로 오르내릴지를 플레이어가 짓게 된다.
+    public const float DropDown = 1.2f;
+
     void Awake()
     {
         _cc = GetComponent<CharacterController>();
+        _cc.stepOffset = StepUp;
+        _cc.radius     = BodyRadius;
         _currentTarget = transform.position;
         _lastGroundedPos = transform.position;
         _baseMoveSpeed = moveSpeed;
@@ -98,14 +138,50 @@ public class PawnMover : MonoBehaviour
     // 폰 지름이 타일 한 칸과 같아서, 아군이 몸으로 길을 막으면 옆으로 비킬 여유가 없다 —
     // ㄷ자 포위·정면 교착이 여기서 나온다. 통과시키면 그 부류가 원인 채로 사라진다.
     // 적(다른 레이어)과는 그대로 충돌하므로 몸으로 라인을 막는 전술은 살아 있다.
-    void ApplyPawnCollisionRule()
+    // ── 어느 레이어에 서야 하나 ───────────────────────────────────────────
+    //
+    // **레이어가 곧 "누구를 통과하는가"다**(같은 레이어끼리 통과, 다른 레이어와 충돌).
+    // 그래서 **세력이 바뀌면 레이어도 같이 옮겨야 한다** — 회유해 온 산적을 그대로 두면
+    // 내 폰과 몸이 부딪히고(같은 편인데) 적끼리는 통과한다(남이 됐는데).
+    //
+    // 갈리는 축은 **내 편인가** 하나다. 세력이 아홉인데 레이어는 둘이라 더 잘게 나눌 수
+    // 없고, 나눌 이유도 없다 — 통과 여부를 정하는 물음이 그것 하나다.
+    //
+    // **자식까지 옮긴다.** 콜라이더가 자식에 달린 프리팹이 있고, 루트만 옮기면 그 콜라이더가
+    // 옛 레이어에 남아 **몸의 절반만 규칙을 따른다.**
+    public static void ApplyLayer(GameObject go, bool mine)
+    {
+        int want = LayerMask.NameToLayer(mine ? "Player" : "Enemy");
+        if (want < 0 || go == null) return;
+
+        int from = go.layer;
+        if (from == want) return;
+
+        foreach (var t in go.GetComponentsInChildren<Transform>(true))
+            if (t.gameObject.layer == from) t.gameObject.layer = want;   // 초상화 등 딴 레이어는 둔다
+
+        go.GetComponent<PawnMover>()?.ApplyPawnCollisionRule();
+    }
+
+    public void ApplyPawnCollisionRule()
     {
         if (_cc == null) return;
 
         // Default(0)에는 지면·잡오브젝트가 섞여 있어 제외하면 바닥을 뚫는다.
         // 유닛은 반드시 전용 레이어(Player/Enemy 등)에 둘 것.
+        //
+        // **말없이 넘어가면 안 된다**(2026-08-28). 여기서 조용히 빠져나가면 그 폰은
+        // *"아무와도 안 통과"*가 되고, 더 나쁘게는 `IsBlockedBy`가 레이어 비교라
+        // **같은 Default끼리는 그래프에서 서로를 못 본다** — 몸은 부딪히는데 길찾기는
+        // 모르는 상태다(폰이 서로를 밀고 선다). 화면에는 "왜 안 비켜"로만 보인다.
         int layer = gameObject.layer;
-        if (layer == 0) return;
+        if (layer == 0)
+        {
+            Debug.LogWarning($"[이동] `{name}`이 `Default` 레이어에 있다 — 폰 통과 규칙이 " +
+                             "통째로 안 걸린다(같은 레이어끼리 그래프에서 서로를 못 본다). " +
+                             "전용 레이어(Player/Enemy 등)로 옮길 것.");
+            return;
+        }
 
         _cc.excludeLayers = 1 << layer;
     }
@@ -293,10 +369,12 @@ public class PawnMover : MonoBehaviour
         }
         else
         {
-            // 로컬 경로 실패 — 조향 목표로 직선 폴백
+            // **한 발짝도 못 가는 경우다.** 여기까지 오면 `PathGrid`가 부분 경로조차
+            // 못 낸 것이라(시작 자리가 곧 가장 가까운 자리), 직선으로 밀어붙일 이유가 없다 —
+            // 그 직선이 곧 **벽을 미는 동작**이었다. 제자리에 두고 포기 진단이 처리하게 한다.
             _localPath  = null;
             _localIndex = 0;
-            _currentTarget = WithY(steer);
+            _currentTarget = WithY(pos);
         }
     }
 
@@ -794,8 +872,73 @@ public class PawnMover : MonoBehaviour
     Vector3 WithY(Vector3 v) => new Vector3(v.x, transform.position.y, v.z);
 
 #if UNITY_EDITOR
+    [Header("진단")]
+    [Tooltip("고르면 **이 폰이 실제로 닿을 수 있는 칸**을 초록으로 그린다. " +
+             "문이 막혔는지 · 계단이 이어졌는지가 한눈에 보인다.")]
+    [SerializeField] bool showReach = false;
+    [Tooltip("그 범위(칸).")]
+    [SerializeField] int reachRadius = 20;
+
+    // **닿을 수 있는 칸을 칠한다 — 추측을 그림으로 바꾼다.**
+    //
+    // *"왜 저기로 안 가지"*는 원인이 넷이다: 칸이 막혔거나(건물) · 몸이 안 들어가거나
+    // (콜라이더) · 턱이 높거나(오르막) · 애초에 끊겼거나(문·계단이 없다). 로그로는 넷을
+    // 못 가른다. **폰이 선 자리에서 실제 규칙대로 물을 채워 보면** 넷이 한 그림에 나온다 —
+    // 초록이 문을 통과하지 못하면 문이 문제고, 기단 위에서만 초록이면 계단이 문제다.
+    //
+    // 굽기(`LocalGridManager.BakeGrid`)와 **같은 것을 본다**: 점유 · 장애물 상자 · 오르막.
+    // 다른 것을 보면 그림이 거짓말을 하고, 그건 진단이 아니라 혼란이다.
+    void DrawReach()
+    {
+        var map = MapManager.Instance;
+        if (map == null) return;
+
+        int r = Mathf.Clamp(reachRadius, 2, 40);
+        var start = map.WorldToTile(transform.position);
+
+        var seen  = new HashSet<Vector2Int>();
+        var queue = new Queue<Vector2Int>();
+        seen.Add(start);
+        queue.Enqueue(start);
+
+        var half = new Vector3(0.45f, 1f, 0.45f);
+        int mask = Pathfinder.ObstacleLayer;
+
+        bool Open(Vector2Int t)
+        {
+            if (Mathf.Abs(t.x - start.x) > r || Mathf.Abs(t.y - start.y) > r) return false;
+            if (!map.IsWorkable(t)) return false;
+            var g = map.TileToGround(t);
+            return mask == 0 || !Physics.CheckBox(g + Vector3.up, half, Quaternion.identity, mask);
+        }
+
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            foreach (var d in new[] { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down })
+            {
+                var n = cur + d;
+                if (seen.Contains(n) || !Open(n) || !map.SameLevel(cur, n)) continue;
+                seen.Add(n);
+                queue.Enqueue(n);
+            }
+        }
+
+        // 닿는 칸은 초록, 범위 안인데 못 닿는 칸은 붉게 — **못 닿는 쪽이 답을 준다.**
+        for (int dx = -r; dx <= r; dx++)
+        for (int dz = -r; dz <= r; dz++)
+        {
+            var t = new Vector2Int(start.x + dx, start.y + dz);
+            bool ok = seen.Contains(t);
+            Gizmos.color = ok ? new Color(0.2f, 1f, 0.3f, 0.35f) : new Color(1f, 0.2f, 0.2f, 0.12f);
+            Gizmos.DrawCube(map.TileToGround(t) + Vector3.up * 0.06f, new Vector3(0.85f, 0.02f, 0.85f));
+        }
+    }
+
     void OnDrawGizmosSelected()
     {
+        if (showReach) DrawReach();
+
         // 코스 라우트(L2) — 노랑
         if (_coarseRoute != null)
         {

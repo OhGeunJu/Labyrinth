@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a117b242ebfe6e43bf2ac52b3e9b31d, type: 3}
+  m_Name: TerrainPalette
+  m_EditorClassIdentifier: Assembly-CSharp::TerrainPalette
+  Biomes:
+  - Biome: 1
+    Ground: {fileID: 8574412962073106934, guid: d28d95aee3356c644ba938cb1c075efb, type: 2}
+    Variant: {fileID: 8574412962073106934, guid: 468addf07eafc1344bc4fe870a51df1a, type: 2}
+    Cliff: {fileID: 8574412962073106934, guid: a5db7c53765da3948bea950cdcb35071, type: 2}
+  - Biome: 2
+    Ground: {fileID: 8574412962073106934, guid: 598edfb9c5d721043b03b666dab2127e, type: 2}
+    Variant: {fileID: 8574412962073106934, guid: 336b7d822aab90e40bb064776d2d8048, type: 2}
+    Cliff: {fileID: 8574412962073106934, guid: a5db7c53765da3948bea950cdcb35071, type: 2}
+  - Biome: 3
+    Ground: {fileID: 8574412962073106934, guid: 4884364cd76c48e4782de102b9feac24, type: 2}
+    Variant: {fileID: 8574412962073106934, guid: 9ff9e0fb2ba42034abcceea75a1aa562, type: 2}
+    Cliff: {fileID: 8574412962073106934, guid: a56ee368291e1784cab42c1f47bf25d0, type: 2}
+  - Biome: 4
+    Ground: {fileID: 8574412962073106934, guid: 16ed849f01ad85443887b5d4aafe8610, type: 2}
+    Variant: {fileID: 8574412962073106934, guid: a61e8ab0b96f9c1409b96de75d63bf43, type: 2}
+    Cliff: {fileID: 8574412962073106934, guid: ec77cd1b1fd2ed940ae66dd757375c12, type: 2}
+  - Biome: 7
+    Ground: {fileID: 8574412962073106934, guid: 42a477ea1196a674087b6ed632eb4437, type: 2}
+    Variant: {fileID: 8574412962073106934, guid: 44d4449544c027643820f0e09fa5cfaa, type: 2}
+    Cliff: {fileID: 8574412962073106934, guid: a5db7c53765da3948bea950cdcb35071, type: 2}
+  - Biome: 6
+    Ground: {fileID: 8574412962073106934, guid: b41eaf17b7cb8dc4d8cd2a291b56eb5b, type: 2}
+    Variant: {fileID: 0}
+    Cliff: {fileID: 8574412962073106934, guid: a56ee368291e1784cab42c1f47bf25d0, type: 2}
+  - Biome: 5
+    Ground: {fileID: 8574412962073106934, guid: 0f6bdb445338ab04abb11400a5ee1018, type: 2}
+    Variant: {fileID: 8574412962073106934, guid: 664a7c4b6388d0b4db51125fd8e21650, type: 2}
+    Cliff: {fileID: 8574412962073106934, guid: a56ee368291e1784cab42c1f47bf25d0, type: 2}
+  - Biome: 0
+    Ground: {fileID: 8574412962073106934, guid: d28d95aee3356c644ba938cb1c075efb, type: 2}
+    Variant: {fileID: 8574412962073106934, guid: 468addf07eafc1344bc4fe870a51df1a, type: 2}
+    Cliff: {fileID: 8574412962073106934, guid: a5db7c53765da3948bea950cdcb35071, type: 2}
+  Cliff: {fileID: 8574412962073106934, guid: a5db7c53765da3948bea950cdcb35071, type: 2}
+  CliffAngle: 30
+  CliffBlend: 12
+  VariantPeriod: 420
+  VariantAmount: 0.5
+  VariantWarp: 0.35
+  EdgeNoise: 0.12
+  EdgePeriod: 26
+  WearToRock: 0.55
+  DepositToVariant: 0.7
+  MacroStrength: 0.3
+  MacroPeriodBig: 340
+  MacroPeriodMid: 62
+  MacroTint: 0.35
+  FarStart: 70
+  FarEnd: 350
+  FarScale: 0.17
+  TriplanarStrength: 1
+  TriplanarStart: 0.8
+  TriplanarFull: 0.45
+  WorldColor: {fileID: 2800000, guid: 137e013011f1679449acc91325dfe40f, type: 3}
+  WorldColorStrength: 0.7

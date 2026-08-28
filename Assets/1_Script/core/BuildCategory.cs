@@ -22,7 +22,12 @@ public enum BuildCategory
 {
     Resource,   // 자원 — 밭·우물·나무·돌 + 광맥
     Defense,    // 방어 — 벽·울타리·바리케이드
-    Living,     // 거주 — 침대·화톳불 (옛 `Building`. 값 2를 그대로 물려받는다)
+    // **건물** — 걸어 들어가는 껍데기(오두막·작업장·감옥…)와 침대·화톳불.
+    // 2026-08-28에 표시명을 `거주` → `건물`로 바꿨다(사용자 결정): 껍데기가 여럿이 되면서
+    // 거주용이냐 작업용이냐로 갈라 놓으니 **같은 물건이 두 칸에 흩어졌다** — 어느 칸을
+    // 열지 정하려면 그 안에 무엇을 놓을지를 먼저 정해야 하는 꼴이라 순서가 거꾸로다.
+    // 짓는 사람에게 이것들은 전부 *"들어가는 집"* 하나다. **값은 2 그대로**(옛 `Building`).
+    Living,
     Misc,       // 기타 — 어디에도 안 붙는 것(서브코어·무덤·화장터)
 
     // ── 아래는 2026-08-22에 붙였다. **반드시 꼬리에** ──────────────────────
@@ -47,7 +52,7 @@ public static class BuildCategoryExt
     {
         BuildCategory.Resource   => "자원",
         BuildCategory.Defense    => "방어",
-        BuildCategory.Living     => "거주",
+        BuildCategory.Living     => "건물",
         BuildCategory.Misc       => "기타",
         BuildCategory.Floor      => "바닥",
         BuildCategory.Storage    => "보관",

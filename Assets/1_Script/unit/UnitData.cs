@@ -138,9 +138,47 @@ public class UnitData : ScriptableObject
         return (DefaultMinGrade, DefaultMaxGrade);
     }
 
+    // **만든 것은 굴리지 않는다**(2026-08-28, 사용자 결정).
+    //
+    // 하수인은 태어나는 것이 아니라 **핵이 만드는 것**이다. 그런데 소환할 때마다 스탯이
+    // 굴려지면 *"마음에 드는 놈이 나올 때까지 다시 소환한다"*가 성립한다 — 그건 결정이
+    // 아니라 **뽑기**이고, 이 저장소가 저작을 두고 이미 한 번 내린 판단과 같다
+    // (*"원하는 조합이 나올 때까지 숫자를 바꿔 돌리는 건 저작이 아니라 뽑기다"*).
+    //
+    // 게다가 하수인은 **성장도 안 한다**(`UnitStats.IsLocked`). 굴린 값이 영영 그 값이니,
+    // 나쁘게 나온 골렘은 재료만 버린 것이 된다. **굴림은 자라는 것에게만 뜻이 있다.**
+    //
+    // 그래서 꺼 두면 **범위의 한가운데**를 쓴다. 저작한 범위를 그대로 두고도 값이 하나로
+    // 정해지므로, 종족 에셋을 다시 적을 필요가 없다(그리고 범위는 여전히 *"이 종족은
+    // 이쯤이다"*를 적어 두는 자리로 남는다).
+    [Tooltip("태어날 때 스탯을 범위 안에서 굴리는가. 끄면 **범위의 한가운데**로 고정된다 — " +
+             "하수인처럼 만들어 내는 것은 끄는 쪽이다(소환이 뽑기가 되지 않게).")]
+    public bool RollStats = true;
+
     public StatGrade RollGrade(StatName stat)
     {
         var (min, max) = GetGradeRange(stat);
-        return StatGradeExt.RandomBetween(min, max);
+        if (RollStats) return StatGradeExt.RandomBetween(min, max);
+
+        return (StatGrade)(((int)min + (int)max) / 2);
     }
+
+    // **장비를 낄 수 있는가.** 골렘·짐승처럼 손이 없거나 만든 것에게는 검을 쥐여 줄 수
+    // 없어야 한다 — 낄 수 있으면 화면에 칸이 뜨고, 칸이 뜨면 언젠가 무엇이 들어간다.
+    //
+    // 종족이 답한다(개체가 아니라) — *"이 종족은 도구를 쓰는가"*는 타고난 것이다.
+    [Tooltip("장비를 낄 수 있는가. 끄면 장비칸이 뜨지 않고 어떤 길로도 안 끼워진다 " +
+             "(골렘·짐승). 맨몸 피해는 그대로 `AttackDamage`가 든다.")]
+    public bool CanEquip = true;
+
+    // **이 종족이 아예 못 하는 일.** 성장 배경의 무능력과 **같은 물음**이라 같은 자리로
+    // 흘러간다(`UnitBrain.ApplyJobBlocks` → `WorkSettings.SetBlocked`) — 칸에 `×`로 뜨고
+    // 사람이 못 켠다.
+    //
+    // **등급을 바닥에 깔아 두는 것과 다르다.** F−는 *"아주 못한다"*라서 다른 폰이 없으면
+    // 그 폰이 가고, 화면에도 켤 수 있는 칸으로 뜬다. 골렘에게 요리는 서툰 것이 아니라
+    // **못 하는 것**이다.
+    [Tooltip("이 종족이 아예 못 하는 작업. 성장 배경의 무능력과 같은 곳으로 들어간다 " +
+             "(칸에 ×로 뜨고 켤 수 없다).")]
+    public List<JobCategory> DisabledJobs = new();
 }

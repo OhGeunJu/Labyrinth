@@ -75,6 +75,30 @@ public class BuildingData : ScriptableObject
     public bool             UsesBlueprint = false;
     [Tooltip("바닥(floor) substrate. 코어 무관·공허에 배치 가능(바닥 요구 우회), 휴면/장애물 처리 안 함. 프리팹에 Floor 컴포넌트 필요.")]
     public bool             IsFloor = false;
+
+    // **경사를 따르는 포장 ↔ 경사를 무시하는 기단.** 두 물음이 다르다 —
+    // 포장은 *"이 땅을 딛기 좋게 한다"*이고 기단은 *"여기에 평평한 자리를 만든다"*다.
+    // 절차 지형에서는 뒤엣것이 없으면 **건물을 세울 평평한 자리가 거의 없다**(평탄 판정을
+    // 기울기로 바꾼 뒤에도 그렇다). 이어 붙은 기단은 **높이가 하나**이므로 그 위에서는
+    // 평탄 검사가 저절로 통과한다.
+    [Tooltip("평탄 기단 — 지면 경사를 안 따르고 **이어 붙은 바닥이 모두 같은 높이**로 깔린다. " +
+             "`IsFloor`가 켜져 있을 때만 뜻이 있다. 끄면 지금까지처럼 칸마다 지면 높이를 따른다.")]
+    public bool             LevelFloor = false;
+
+    // **0이 기본이고 0은 한도 없음이다.** 처음엔 3m로 막아 뒀는데, 그건 *"경사와 상관없이
+    // 평평한 자리를 만든다"*는 이 물건의 뜻을 절반만 지킨 것이었다 — 비탈을 조금만 내려가도
+    // 안 깔려서, 정작 기단이 필요한 자리에서 거절당한다. 공중 다리가 걱정이면 **막는 것이
+    // 아니라 값을 치르게 하는 쪽**이 맞고(치마가 길어질수록 자재가 는다), 그건 나중 일이다.
+    [Tooltip("기단이 지면에서 이만큼까지 뜰 수 있다(m). **0이면 한도 없음.** " +
+             "값을 넣으면 더 내려가야 하는 칸에는 안 깔린다.")]
+    public float            LevelMaxStep = 0f;
+
+    // **계단은 기단의 특수한 경우다** — 같은 바닥 데이터인데 칸마다 한 단씩 낮아질 뿐이다.
+    // 따로 만들면 배치·미리보기·철거를 두 벌 갖게 되고, 무엇보다 **폰이 딛는 면이 두 종류**가
+    // 된다(그러면 길찾기의 오르막 판정도 둘로 갈린다).
+    [Tooltip("계단 — 그은 방향으로 한 칸에 한 단씩 낮아진다. `LevelFloor`가 켜져 있어야 한다. " +
+             "한 단 높이는 `BuildModeManager.levelStep`이고 **폰의 `StepUp`보다 낮아야** 걸어 오른다.")]
+    public bool             Stairs = false;
     [Tooltip("타일 점유: 배치 시 footprint 타일을 통행 불가로 등록(유닛이 못 지나감). " +
              "벽·작업대·자원 노드·창고처럼 **몸이 부딪히는 것**은 true. " +
              "침대·농지는 false — 폰이 그 위에 눕고 그 위에서 일해야 한다. " +
@@ -89,4 +113,78 @@ public class BuildingData : ScriptableObject
              "막을지 말지는 이 값 하나로 정한다(길). " +
              "\n\n철거 시 자동 해제. 중복 배치는 이 값과 무관하게 금지됨.")]
     public bool             OccupiesTile = false;
+
+    // ── 칸마다 다르게 막기 ────────────────────────────────────────────────
+    //
+    // **걸어 들어가는 건물은 발자국 전체를 막을 수도, 전부 틀 수도 없다.** 전부 막으면
+    // 폰이 못 들어가고(그 안의 침대·작업대는 영영 못 쓴다), 전부 트면 벽을 통과한다.
+    // `OccupiesTile` 하나로는 답이 없는 물음이라 **칸마다 적는다.**
+    //
+    // 비워 두면 지금까지처럼 `OccupiesTile`이 발자국 전체에 걸린다 — **기존 건물은
+    // 아무것도 안 바뀐다.**
+    //
+    // 한 줄이 한 행이고 `#`가 막는 칸, 그 밖(`.`·공백)이 트인 칸이다:
+    //
+    //     "#####"      ← BlockMask[0]  = 가장 **뒤**(+Z) 줄
+    //     "#...#"
+    //     "#...#"
+    //     "##.##"      ← BlockMask[3]  = 가장 **앞**(−Z) 줄, 가운데가 문간
+    //
+    // **위에서 내려다본 그림 그대로 적는다**(첫 줄이 위, 왼쪽이 −X) — 반대로 잡으면
+    // 문이 뒤로 가고, 그건 놓아 보기 전에는 안 보인다. 회전은 배치할 때 알아서 돈다.
+    //
+    // 줄 수가 `Size.y`와, 줄 길이가 `Size.x`와 다르면 **무시하고 경고한다** —
+    // 조용히 절반만 맞춰 주면 "왜 여기가 막히지"를 영영 못 찾는다.
+    [Tooltip("칸마다 길을 막는지. 한 줄이 한 행, `#`가 막는 칸. 첫 줄이 가장 뒤(+Z), 왼쪽이 −X. " +
+             "비우면 `OccupiesTile`이 발자국 전체에 걸린다.")]
+    public string[]         BlockMask;
+
+    // 마스크가 쓸 만한가. 한 번 재고 결과를 든다 — 배치마다 다시 재면 경고가 쏟아진다.
+    bool _maskChecked;
+    bool _maskValid;
+
+    public bool HasBlockMask
+    {
+        get
+        {
+            if (_maskChecked) return _maskValid;
+            _maskChecked = true;
+            _maskValid   = false;
+
+            if (BlockMask == null || BlockMask.Length == 0) return false;
+
+            if (BlockMask.Length != Mathf.Max(1, Size.y))
+            {
+                Debug.LogWarning($"[건물] `{name}`의 `BlockMask`가 {BlockMask.Length}줄인데 " +
+                                 $"크기는 {Size.x}×{Size.y}다 — 무시한다.");
+                return false;
+            }
+            foreach (var row in BlockMask)
+                if (row == null || row.Length != Mathf.Max(1, Size.x))
+                {
+                    Debug.LogWarning($"[건물] `{name}`의 `BlockMask` 한 줄이 " +
+                                     $"{row?.Length ?? 0}칸인데 크기는 {Size.x}×{Size.y}다 — 무시한다.");
+                    return false;
+                }
+
+            _maskValid = true;
+            return true;
+        }
+    }
+
+    // 회전 전 좌표계에서 그 칸이 길을 막는가. `lz`는 0이 **앞**(−Z)이다 — 마스크는 첫 줄이
+    // 뒤라서 뒤집어 읽는다(그림대로 적을 수 있어야 저작이 성립한다).
+    public bool BlocksLocal(int lx, int lz)
+    {
+        if (!HasBlockMask) return OccupiesTile;
+
+        int row = Mathf.Max(1, Size.y) - 1 - lz;
+        if (row < 0 || row >= BlockMask.Length) return OccupiesTile;
+
+        var line = BlockMask[row];
+        if (lx < 0 || lx >= line.Length) return OccupiesTile;
+        return line[lx] == '#';
+    }
+
+    void OnValidate() { _maskChecked = false; }
 }
