@@ -1,3 +1,4 @@
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -100,6 +101,8 @@ public class CameraController : MonoBehaviour
     // 휠 줌(`HandleZoom`)이 이미 하는 동작 그대로다 — 잡아 주기와 줌이 같은 규칙을 쓴다.
     public void FocusOn(Vector3 worldPoint)
     {
+        Vector3 from = transform.position;
+
         // 카메라가 기울어 있으므로 지금 화면 한가운데가 가리키는 지면과의 **차이**만큼 민다.
         // 그래야 대상이 화면 정중앙에 온다(그냥 대상 좌표로 가면 화면 위쪽에 걸린다).
         Vector3 look = GroundUnderCenter(worldPoint.y);
@@ -107,7 +110,28 @@ public class CameraController : MonoBehaviour
         transform.position += delta;
 
         DollyIn(worldPoint);
+
+        // ── 순간이동이 아니라 미끄러져 간다 (2026-08-29) ────────────────────
+        //
+        // **셈은 그대로 두고 결과만 트윈으로 옮긴다.** 도착점을 먼저 실제로 계산해 두고
+        // (위의 두 줄과 `DollyIn`이 하던 그대로) 자리를 되돌린 뒤 거기까지 미끄러진다 —
+        // 그러면 잡아 주기의 규칙(화면 정중앙 · 시선을 따라 다가감 · 지면에서 멈춤)을
+        // **한 줄도 안 건드린다.**
+        //
+        // 순간이동하면 **어디로 갔는지를 눈이 못 좇는다** — 명부에서 폰을 눌렀을 때 화면이
+        // 통째로 갈리면 그 폰이 화면 가운데 있다는 것을 다시 찾아 확인해야 한다.
+        Vector3 to = transform.position;
+        transform.position = from;
+
+        DOTween.Kill(transform);
+        transform.DOMove(to, focusTime)
+                 .SetEase(Ease.OutCubic)
+                 .SetUpdate(true)        // `GameTimeManager`가 `timeScale`을 만진다 — `Dt`와 같은 이유
+                 .SetLink(gameObject);
     }
+
+    [Tooltip("잡아 주기가 미끄러지는 시간(초). 배속과 무관한 실제 시간.")]
+    [SerializeField] float focusTime = 0.35f;
 
     // **멀면 시선을 따라 다가간다** — 대상이 화면 한가운데에 그대로 있으므로 커지기만 한다.
     //
@@ -193,7 +217,13 @@ public class CameraController : MonoBehaviour
         dir.y = 0f;
 
         if (dir != Vector3.zero)
+        {
+            // **손이 이긴다**(2026-08-29). 잡아 주기가 미끄러지는 중에 WASD를 누르면 트윈이
+            // 매 프레임 자리를 도로 끌어당겨 **카메라가 안 움직이거나 부들거린다.** 조작이
+            // 들어온 순간 연출은 포기한다 — 보여 주는 일이 조종을 이길 수는 없다.
+            DOTween.Kill(transform);
             transform.position += dir.normalized * ScaledMoveSpeed * Dt;
+        }
 
         ClampToWorld();
 
@@ -267,6 +297,22 @@ public class CameraController : MonoBehaviour
         ClampToWorld();
         ClampHeight();
     }
+
+    // **밖에서 시점을 바꾸는 문**(2026-08-29). 채굴 지정이 이걸 쓴다 — 눕힌 시점에서는
+    // 화면 사각형이 지면에서 **사다리꼴**이 되어, 무엇이 찍힐지를 눈으로 못 잰다.
+    //
+    // **PageUp이 하던 일을 그대로 부른다** — 새 경로를 만들면 *"버튼으로 눕힌 것과 키로 눕힌
+    // 것"*이 다른 상태가 된다. 돌아올 각도는 부르는 쪽이 기억한다(여기서 들면 두 곳이
+    // 겹쳐 눌렀을 때 어느 것으로 돌아갈지가 규칙이 된다).
+    public float Pitch => _pitch;
+
+    public void LerpToPitch(float pitch)
+    {
+        _targetPitch    = pitch;
+        _lerpingToPitch = true;
+    }
+
+    public float TopDownPitch => topDownPitch;
 
     void HandleAnglePreset()
     {

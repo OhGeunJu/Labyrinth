@@ -267,7 +267,7 @@ public class PawnContextMenuUI : MonoBehaviour
 
     public void Close()
     {
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
 
         // **닫을 때 툴팁도 거둔다.** 줄이 사라지면 `OnPointerExit`는 **오지 않는다** —
         // 커서를 올린 채 고르면 창은 닫히는데 설명만 화면에 남는다(`ItemInfoUI`가 격자

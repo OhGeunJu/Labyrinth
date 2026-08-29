@@ -62,7 +62,15 @@ public class Campfire : MonoBehaviour, IWorldClickable
         Apply();
     }
 
-    void Apply() => lightSource?.SetLit(_wanted && Vision.Factor < 1f);
+    // **지하에서는 시계를 안 본다**(2026-08-29, 기획이 바뀌었다).
+    //
+    // 지상에서는 *"어두워지면 켠다"*가 맞았다 — 낮에는 불이 필요 없으니까. 지하는 **늘
+    // 어둡다.** 시계에 매달아 두면 아침에 저절로 꺼져서, 플레이어가 켜 둔 불이 **영문
+    // 모르게 사라진다.**
+    //
+    // 그래서 지하에서는 **사람이 켜고 끈 그대로**다. 지상 씬에서는 옛 규칙이 그대로 산다 —
+    // 축을 지우는 것이 아니라 **지하에서만 시계를 뺀다.**
+    void Apply() => lightSource?.SetLit(_wanted && (RockMap.Enabled || Vision.Factor < 1f));
 
     // **좌클릭에 열 창이 없다**(침대와 같은 자리). 상태는 `InspectPanel`이 적고, 조작은
     // 켜고 끄는 것 하나뿐이라 우클릭 줄로 족하다 — 그것 하나를 위해 창을 지으면 `BedUI`를

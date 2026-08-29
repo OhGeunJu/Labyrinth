@@ -33,7 +33,7 @@ public class HaulDesignator : MonoBehaviour
     static void Bootstrap()
     {
         var go = new GameObject("HaulDesignator");
-        go.AddComponent<HaulDesignator>();
+        _instance = go.AddComponent<HaulDesignator>();
         DontDestroyOnLoad(go);
     }
 
@@ -100,7 +100,10 @@ public class HaulDesignator : MonoBehaviour
         }
     }
 
-    void Toggle() => SetActive(!IsActive);
+    // **버튼도 이 문으로 온다**(`ModeBarUI`) — 키로 켠 것과 같은 상태여야 한다.
+    public static void Toggle() { if (_instance != null) _instance.SetActive(!IsActive); }
+
+    static HaulDesignator _instance;
 
     void SetActive(bool on)
     {

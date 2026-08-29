@@ -73,7 +73,7 @@ public class DungeonCoreUI : MonoBehaviour
     {
         _core?.Deselect();
         _core = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void RefreshInfo()

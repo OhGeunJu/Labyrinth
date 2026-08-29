@@ -107,6 +107,17 @@ public class PawnMover : MonoBehaviour
     // 부풀림을 타일보다 큰 에이전트에만 쓴다) — 몸만 그 전제를 안 지키고 있었다.
     public const float BodyRadius = 0.35f;
 
+    // **폰의 키(m) — 머리 위로 이만큼은 비어 있어야 지나간다**(2026-08-29).
+    //
+    // `BodyRadius`가 *"한 칸 틈을 지나갈 수 있나"*에 답하듯 이쪽은 *"낮은 굴을 지나갈 수
+    // 있나"*에 답한다. **길찾기의 전제라 여기 한 곳에 둔다** — 종족마다 몸집이 다르지만
+    // (`PawnPlacement.CenterOffset`), 격자는 폰마다 다시 구울 수 없으므로 **격자가 쓰는 키는
+    // 한 벌**이어야 한다. 캡슐 높이(1.8m)를 그대로 쓴다.
+    //
+    // 안 재면 **여유 0.3m짜리 틈으로 경로가 나고 폰이 천장에 머리를 박은 채 벽을 민다** —
+    // 기단에서 겪은 것과 같은 사고이고, 그때는 발밑이었고 이번엔 머리 위다.
+    public const float BodyHeight = 1.8f;
+
     // **뛰어내릴 수 있는 높이(m).** 오를 수 있는 높이(`StepUp`)와 **다른 축이다** —
     // 사람은 무릎 높이까지밖에 못 올라가도 제 키만큼은 뛰어내린다.
     //
@@ -653,6 +664,50 @@ public class PawnMover : MonoBehaviour
         return dx * dx + dz * dz;
     }
 
+    // ── 바위에 갇히면 빠져나온다 (2026-08-29) ──────────────────────────────
+    //
+    // 지하는 사방이 바위라 **한 번 안으로 들어가면 나올 길이 없다** — 콜라이더에 갇혀 조향이
+    // 아무 데도 못 가고, 길찾기는 출발 칸이 막힌 것을 안 풀어 준다. 화면에는 **폰이 벽 속에
+    // 서 있는 것**으로만 보인다.
+    //
+    // 들어가는 길은 막았지만(코스 길찾기가 이제 바위를 본다), **막는 것과 꺼내 주는 것은
+    // 다른 일이다** — 새 구멍이 하나만 생겨도 그 폰은 영영 갇힌다. `PlacedBuilding`이 제
+    // 발자국에 선 폰을 밖으로 내보내는 것과 같은 자리다.
+    //
+    // **자주 안 잰다.** 정상일 때는 아무 일도 안 일어나는 검사라 반 초에 한 번이면 넉넉하다.
+    const float RockCheckInterval = 0.5f;
+    float _nextRockCheck;
+
+    void EscapeRock()
+    {
+        if (!RockMap.Enabled) return;
+        if (Time.time < _nextRockCheck) return;
+        _nextRockCheck = Time.time + RockCheckInterval;
+
+        var map = MapManager.Instance;
+        if (map == null) return;
+
+        var here = map.WorldToTile(transform.position);
+        if (!RockMap.IsRock(here)) return;
+
+        // **가장 가까운 설 수 있는 칸으로 옮긴다.** 못 찾으면 그냥 둔다 — 아무 데나 던지면
+        // 세계 반대편에 나타나는 것보다 갇혀 있는 편이 낫다(적어도 어디 있는지는 안다).
+        var out_ = map.FindWorkableNear(here);
+        if (out_ == here) return;
+
+        var to = map.TileToGround(out_);
+        to.y += PawnPlacement.CenterOffset(gameObject);
+
+        // **컨트롤러를 껐다 켠다** — 켠 채로 자리를 옮기면 콜라이더가 원래 자리로 되민다
+        // (업기·가두기가 이미 쓰는 방식).
+        bool was = _cc.enabled;
+        _cc.enabled = false;
+        transform.position = to;
+        _cc.enabled = was;
+
+        Debug.LogWarning($"[이동] {name}이(가) 바위 {here} 안에 있어 {out_}(으)로 꺼냈다.");
+    }
+
     void Update()
     {
         // 누워 있는 동안은 중력·조향 모두 정지 (위치는 SetSleeping이 고정해뒀다)
@@ -666,6 +721,8 @@ public class PawnMover : MonoBehaviour
         // 갇힌 폰도 같은 이유로 뺀다 — `Imprisonment.Hold`가 자리를 잡아 주려고 컨트롤러를
         // 잠깐 껐다 켜는데, 그 사이 프레임에 걸리면 같은 경고가 난다.
         if (_cc == null || !_cc.enabled) return;
+
+        EscapeRock();
 
         if (_cc.isGrounded)
         {

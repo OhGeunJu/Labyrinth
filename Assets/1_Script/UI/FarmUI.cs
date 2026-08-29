@@ -86,7 +86,7 @@ public class FarmUI : MonoBehaviour
     public void Close()
     {
         _current = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void Refresh()

@@ -41,6 +41,29 @@ public class TerrainStreamer : MonoBehaviour
              "`Terrain → B. Bake Eroded Heightmap`이 굽는다.")]
     [SerializeField] TerrainHeightmap heightmap;
 
+    // ── 천장 — 지하로 내려가는 축 ───────────────────────────────────────────
+    //
+    // **프로필을 여기 두는 이유는 지형과 같다** — `TerrainCeiling`이 static이라 어디선가 한 번
+    // 넣어 줘야 하고, 그 자리를 코드에 두면 저작할 수가 없다. **바닥과 천장을 한 컴포넌트가
+    // 드는 것이 요점이다**: 둘은 여유(천장 − 바닥)로 맞물려 있어서 따로 저작하면 어느 씬은
+    // 바닥만 있고 어느 씬은 천장만 있는 상태가 생긴다.
+    [Header("천장 (지하)")]
+    [Tooltip("켜면 세계에 천장이 덮이고 **머리 위 여유가 없는 칸은 못 지나간다.** " +
+             "끄면 지상 그대로다 — 판정이 한 줄도 안 바뀐다.\n\n" +
+             "**높이맵을 같이 떼는 것을 잊지 말 것**: 저작된 높이맵은 지상 침식이라 " +
+             "200m 산이 서 있고, 거기에 천장을 덮으면 굴이 아니라 **산을 감싼 비닐**이 된다.")]
+    [SerializeField] bool ceiling = true;
+
+    [SerializeField] TerrainCeilingProfile ceilingProfile = TerrainCeilingProfile.Default;
+
+    [Tooltip("저작한 방(+)과 기둥(−). 지형 특징과 **같은 타입**이라 같은 도구로 놓는다 — " +
+             "다만 여기서 얹는 값은 높이가 아니라 **여유**다.")]
+    [SerializeField] TerrainFeature[] ceilingFeatures = System.Array.Empty<TerrainFeature>();
+
+    public bool                   CeilingOn       => ceiling;
+    public TerrainCeilingProfile  CeilingProfile  => ceilingProfile;
+    public TerrainFeature[]       CeilingFeatures => ceilingFeatures;
+
     public TerrainProfile   Profile  => profile;
     public TerrainFeature[] Features => features;
     public TerrainPalette   Palette  => palette;
@@ -66,6 +89,12 @@ public class TerrainStreamer : MonoBehaviour
         if (palette != null) palette.PushToShader();
         TerrainHeight.ForgetDeltas();
         TerrainHeight.ForgetBiomes();   // 지역 격자도 다시 읽는다
+
+        TerrainCeiling.Enabled  = ceiling;
+        TerrainCeiling.Profile  = ceilingProfile;
+        TerrainCeiling.Features = ceilingFeatures ?? System.Array.Empty<TerrainFeature>();
+        TerrainCeiling.ForgetDeltas();
+
         SimLocality.MaxJobDistance = maxJobDistance;
     }
 
@@ -311,5 +340,12 @@ public class TerrainStreamer : MonoBehaviour
         var all = FindObjectsByType<TerrainStreamer>(FindObjectsSortMode.None);
         if (all.Length > 1)
             Debug.LogWarning($"[TerrainStreamer] 씬에 {all.Length}개 있다 — 하나만 두어야 한다.");
+
+        // **천장을 켰는데 그리는 쪽이 없으면 지하가 안 보인다** — 통행은 막히는데 화면은
+        // 지상 그대로라, 증상이 *"천장이 왜 안 뜨지"*로만 나타나고 원인은 씬 배선에 있다.
+        if (ceiling && FindFirstObjectByType<RockRenderer>(FindObjectsInactive.Include) == null)
+            Debug.LogWarning("[TerrainStreamer] 지하가 켜져 있는데 씬에 `RockRenderer`가 없다 — " +
+                             "통행은 막히는데 **화면에는 벽이 안 보인다.** " +
+                             "`DungeonColony → Terrain → 0. Setup World Streaming`을 돌릴 것.");
     }
 }

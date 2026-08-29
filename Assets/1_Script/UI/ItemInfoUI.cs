@@ -84,18 +84,24 @@ public class ItemInfoUI : MonoBehaviour
         Instance.ShowInternal(item, quality, price, priceLabel, locked);
     }
 
+    // **당장 안 끈다 — 프레임 끝에 판정한다**(2026-08-29). 근거는 `HoverHold`에 있다:
+    // 격자에서 옆 칸으로 곧장 옮기면 Enter와 Exit이 같은 프레임에 오는데 순서가 보장되지
+    // 않아, 즉시 끄면 **방금 띄운 옆 칸의 툴팁을 지나온 칸이 꺼 버린다.**
     public static void Hide()
     {
         if (Instance == null) return;
         Instance._owner = null;
-        if (Instance.panel != null) Instance.panel.SetActive(false);
+        Instance._hold.HideAsked();
     }
+
+    HoverHold _hold;
 
     void ShowInternal(ItemData item, ItemQuality quality, int price, string priceLabel, bool locked)
     {
         if (item == null || panel == null) return;
 
         WindowRaiser.Open(panel);
+        _hold.Shown();
 
         if (icon)
         {
@@ -184,6 +190,10 @@ public class ItemInfoUI : MonoBehaviour
 
     void LateUpdate()
     {
+        // **끄는 판정이 먼저다** — 아래의 조기 반환 뒤에 두면 창이 꺼져 있을 때 밀린 요청이
+        // 영영 안 소모되어, 다음에 띄운 툴팁이 **뜨자마자 꺼진다.**
+        if (_hold.ShouldHide()) { WindowRaiser.Close(panel); return; }
+
         if (panel == null || !panel.activeSelf) return;
 
         // 띄운 놈이 파괴됐거나(유니티 null) 꺼졌으면 거둔다.

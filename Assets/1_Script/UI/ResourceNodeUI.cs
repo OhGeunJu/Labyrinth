@@ -116,7 +116,7 @@ public class ResourceNodeUI : MonoBehaviour
     {
         Unsubscribe();
         _current = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void OnNodeSelected(ResourceNode node)

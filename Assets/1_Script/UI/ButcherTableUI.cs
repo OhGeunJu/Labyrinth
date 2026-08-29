@@ -97,7 +97,7 @@ public class ButcherTableUI : MonoBehaviour
         _table = null;
         // 닫힌 창이 남의 인벤토리를 붙들지 않게(작업대 창과 같은 규약).
         _grid?.Bind(null);
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     [SerializeField] float refreshInterval = 0.2f;

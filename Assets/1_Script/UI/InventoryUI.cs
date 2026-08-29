@@ -167,7 +167,7 @@ public class InventoryUI : MonoBehaviour
     {
         bool open = !panel.activeSelf;
         if (open) WindowRaiser.Open(panel);
-        else      panel.SetActive(false);
+        else      WindowRaiser.Close(panel);
 
         // **닫으면 남의 배낭에서 손을 뗀다.** 포로 소지품처럼 밖에서 지정해 연 것은
         // **한 번 보는 것**이라, 안 풀면 다음에 I를 눌렀을 때 내 폰 대신 그 포로의 배낭이

@@ -30,6 +30,16 @@ public class SelectionBox : MonoBehaviour
 
         if (selectionManager != null && selectionManager.PressOverUI) { _drawing = false; return; }
 
+        // **지정 모드에서는 안 그린다**(2026-08-29). 채굴·운반은 드래그로 *칸을 찍는* 것이라
+        // 미리보기가 이미 있다(찍힌 칸이 물든다). 거기에 초록 선택 상자가 겹치면 **둘이
+        // 다른 범위를 가리켜** 무엇이 찍히는지 알 수가 없다 — 실제로 그것 때문에 겨눈 곳과
+        // 찍히는 곳이 다르다는 신고가 나왔다.
+        if (MineDesignator.IsActive || HaulDesignator.IsActive || BuildModeManager.IsActive)
+        {
+            _drawing = false;
+            return;
+        }
+
         if (Mouse.current.leftButton.isPressed)
         {
             Vector2 cur = Mouse.current.position.ReadValue();

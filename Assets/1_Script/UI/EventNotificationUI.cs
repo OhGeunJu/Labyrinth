@@ -118,8 +118,12 @@ public class EventNotificationUI : MonoBehaviour
 
     void Update()
     {
-        if (panel != null && panel.activeSelf && Time.unscaledTime >= _closeAt)
-            panel.SetActive(false);
+        if (panel == null || !panel.activeSelf || Time.unscaledTime < _closeAt) return;
+
+        // **닫기를 한 번만 건다.** 흐려지는 동안 `panel`은 아직 켜져 있어서, 안 막으면 매
+        // 프레임 새 페이드가 시작되어 **알파가 제자리걸음하며 영영 안 닫힌다.**
+        _closeAt = float.PositiveInfinity;
+        WindowRaiser.Close(panel);
     }
 
     public void Close()
@@ -127,6 +131,7 @@ public class EventNotificationUI : MonoBehaviour
         _pending      = null;
         _pendingText  = null;
         _pendingTitle = null;
-        if (panel != null) panel.SetActive(false);
+        _closeAt      = float.PositiveInfinity;
+        WindowRaiser.Close(panel);
     }
 }

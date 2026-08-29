@@ -26,13 +26,29 @@ public static class Vision
     public const float NightFactor   = 0.4f;
 
     // 지금 이 순간의 배율.
-    public static float Factor => GameTimeManager.Phase switch
+    //
+    // **지하에서는 다른 표를 쓴다**(2026-08-29). 위의 값은 *"해가 얼마나 남았나"*인데
+    // 지하에는 해가 없다 — 그대로 두면 **화면은 캄캄한데 폰은 대낮처럼 보고**, 그러면
+    // 화톳불이 *"켜도 아무것도 안 달라지는 장식"*이 된다.
+    //
+    // **`UnderworldLighting`이 답한다** — 화면의 어둡기를 정하는 바로 그 값이다. 여기서 따로
+    // 표를 들면 *"어두워 보이는데 잘 보인다"*가 생기고, 그건 어느 쪽도 못 믿게 만든다.
+    // 지상의 밤 조명이 이미 못 박은 규칙이다: **시계는 하나, 답도 하나.**
+    public static float Factor
     {
-        TimePhase.Evening => EveningFactor,
-        TimePhase.Dawn    => DawnFactor,
-        TimePhase.Night   => NightFactor,
-        _                 => DayFactor,
-    };
+        get
+        {
+            if (UnderworldLighting.Active) return UnderworldLighting.Tide;
+
+            return GameTimeManager.Phase switch
+            {
+                TimePhase.Evening => EveningFactor,
+                TimePhase.Dawn    => DawnFactor,
+                TimePhase.Night   => NightFactor,
+                _                 => DayFactor,
+            };
+        }
+    }
 
     // **이 자리에서의 배율 — 불빛이 닿으면 그만큼 걷힌다**(`LightSource`).
     //
@@ -42,6 +58,9 @@ public static class Vision
     //
     // **낮에는 불을 아예 안 훑는다.** 탐지는 폰마다 0.1초에 한 번 도는 자리고 하루의 3분의 2는
     // 밝다 — 이 한 줄이 그 시간 동안의 레지스트리 순회를 통째로 없앤다.
+    //
+    // **지하에서는 그 지름길이 없다**(배율이 1이 되는 때가 없다). 대신 거기서는 불빛이
+    // *늘* 뜻을 가지므로 훑을 값을 한다 — 지상에서 밤에만 훑던 것이 지하에서는 하루 종일이다.
     public static float FactorAt(Vector3 at)
     {
         float f = Factor;

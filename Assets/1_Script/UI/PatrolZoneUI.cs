@@ -63,7 +63,7 @@ public class PatrolZoneUI : MonoBehaviour
     public void Close()
     {
         _current = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void SetMode(PatrolMode mode)

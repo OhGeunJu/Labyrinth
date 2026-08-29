@@ -65,10 +65,20 @@ public class WindowRaiser : MonoBehaviour
     {
         if (panel == null) return;
 
-        panel.SetActive(true);
+        // **뜨는 모양도 여기 하나가 정한다**(2026-08-29). 여는 길이 이미 하나이므로 `SetActive`를
+        // `UiTween.PopIn`으로 바꾸는 것만으로 **창 전부가 따라온다** — 창마다 적으면 그중 하나는
+        // 반드시 `SetUpdate(true)`를 빠뜨리고, 그 창만 일시정지 중에 안 열린다.
+        UiTween.PopIn(panel);
         ToFront(panel.transform);
         KeepOverlaysOnTop();
     }
+
+    // **창을 닫는 문.** 여는 쪽과 짝이다 — 흐려진 뒤 꺼진다.
+    //
+    // **`SetActive(false)`를 전부 이걸로 바꾸지는 않는다.** 모드 전환(`GameModeManager`)처럼
+    // *상태를 갈아 끼우는* 자리는 즉시 꺼져야 한다 — 거기서 0.1초를 끌면 필드 UI가 월드맵
+    // 위에 잠깐 겹쳐 보인다. **사람이 닫는 것만** 이 문으로 온다.
+    public static void Close(GameObject panel) => UiTween.FadeOut(panel);
 
     static Transform WindowOf(Transform t)
     {

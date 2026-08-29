@@ -13,7 +13,14 @@
 // 묶음을 enum으로 남긴 이유: 이건 콘텐츠가 아니라 **화면을 나누는 축**이다. 여섯 칸은
 // 창고 패널의 버튼 여섯 개와 같은 것이고, 모드가 여기에 일곱 번째를 더할 이유가 없다.
 // 모드는 `"resourceGroup": "Ore"` 한 줄로 기존 칸에 들어온다.
-public enum ResourceGroup { Stone, Ore, Gem, Ingot, Wood, Currency }
+// **값은 반드시 꼬리에 붙일 것** — 정수로 직렬화되므로 중간에 끼우면 저작한 아이템 에셋이
+// 통째로 밀린다(돌이 원석이 되고 원석이 보석이 된다).
+//
+// `Bone`을 뒤에 더했다(2026-08-29). 그전에는 뼈가 **석재 묶음**에 있었는데 — 단단한 것이라
+// 그렇게 뒀던 모양이지만 — 그러면 **돌 창고에 뼈가 섞이고**, 무엇보다 *"돌 묶음의 아무거나"*를
+// 집는 코드가 **뼈를 돌로 안다**(벽을 팠는데 뼈가 나왔다). 묶음은 화면을 나누는 축이라
+// **눈으로 봤을 때 같은 칸에 있어야 할 것**끼리 묶여야 한다.
+public enum ResourceGroup { Stone, Ore, Gem, Ingot, Wood, Currency, Bone }
 
 public static class ResourceGroupExt
 {
@@ -21,6 +28,7 @@ public static class ResourceGroupExt
     {
         ResourceGroup.Stone, ResourceGroup.Ore, ResourceGroup.Gem,
         ResourceGroup.Ingot, ResourceGroup.Wood, ResourceGroup.Currency,
+        ResourceGroup.Bone,
     };
 
     public static string DisplayName(this ResourceGroup g) => g switch
@@ -31,6 +39,7 @@ public static class ResourceGroupExt
         ResourceGroup.Ingot    => "주괴",
         ResourceGroup.Wood     => "목재",
         ResourceGroup.Currency => "화폐",
+        ResourceGroup.Bone     => "뼈",
         _                      => g.ToString(),
     };
 

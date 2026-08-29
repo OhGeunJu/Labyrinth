@@ -93,7 +93,7 @@ public class ExpeditionUI : MonoBehaviour
         Rebuild();
     }
 
-    void Close() { if (panel != null) panel.SetActive(false); }
+    void Close() { WindowRaiser.Close(panel); }
 
     // ── 목록 ─────────────────────────────────────────────────────────────────
 

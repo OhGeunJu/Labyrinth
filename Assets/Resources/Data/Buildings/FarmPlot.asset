@@ -12,12 +12,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 264124504a13cf24fb13f7056c4416b9, type: 3}
   m_Name: FarmPlot
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
+  Id: 
   BuildingName: "\uBC2D"
-  Description: "\uC528\uC557\uC744 \uC2EC\uC5B4 \uC791\uBB3C\uC744 \uAE30\uB978\uB2E4. \uBB3C\uC744 \uB300\uC57C \uC790\uB77C\uACE0, \uB2E4 \uC790\uB77C\uBA74 \uD3F0\uC774 \uAC70\uB454\uB2E4."
+  Description: "\uC528\uC557\uC744 \uC2EC\uC5B4 \uC791\uBB3C\uC744 \uAE30\uB978\uB2E4.
+    \uBB3C\uC744 \uB300\uC57C \uC790\uB77C\uACE0, \uB2E4 \uC790\uB77C\uBA74 \uD3F0\uC774
+    \uAC70\uB454\uB2E4."
   Category: 0
   SortOrder: 10
-  CostItem: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
-  CostAmount: 5
+  Size: {x: 1, y: 1}
+  CostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+  CostAmount: 1
+  DragBuild: 0
+  RequiredResearch: {fileID: 0}
   Prefab: {fileID: 2276845459903854475, guid: 89bfac101e6d49e44a388b4c30b8f475, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
+  OccupiesTile: 0
+  BlockMask: []

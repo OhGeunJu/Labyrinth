@@ -237,6 +237,16 @@ public class InspectPanelUI : MonoBehaviour
         Refresh();
     }
 
+    // **살펴보기 창은 앞으로 안 올린다**(2026-08-29).
+    //
+    // 08-29에 여는 자리를 `WindowRaiser.Open`으로 바꿨는데, 그건 **켜고 + 맨 앞으로 올리는**
+    // 문이다. 이 창은 사람이 여는 창이 아니라 **선택이 바뀔 때마다 저절로 갱신되는 상시
+    // HUD**라, 갱신될 때마다 형제 맨 뒤로 가서 **밑에 있는 패널(모드 바 등)을 덮었다.**
+    //
+    // 뜨는 모양(흐려지며 나타나기)은 그대로 두고 **순서만 안 건드린다** — `UiTween`이
+    // 그 둘을 갈라 놓은 덕에 한 줄로 갈린다.
+    void Show() => UiTween.PopIn(panel);
+
     void Refresh()
     {
         // 운반 스위치는 **바닥 물건을 골랐을 때만** 뜬다 — 여기서 한 번 내리고
@@ -271,7 +281,7 @@ public class InspectPanelUI : MonoBehaviour
         }
 
         if (brain == null) { panel?.SetActive(false); return; }   // 선택 없음 / 파괴된 유닛
-        panel?.SetActive(true);
+        Show();
 
         SetPawnActions(brain);
 
@@ -399,7 +409,7 @@ public class InspectPanelUI : MonoBehaviour
     // 것은 할 일이 다르다 — 앞은 캐 오거나 사 오는 일이고, 뒤는 작업 설정을 켜는 일이다.
     void ShowBlueprint(BuildingBlueprint bp)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
         var sb   = new StringBuilder();
@@ -450,7 +460,7 @@ public class InspectPanelUI : MonoBehaviour
     // 건물은 이것만 뜬다(전에는 눌러도 아무 일도 안 일어났다).
     void ShowBuilding(PlacedBuilding pb)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
         var data = pb.Data;
@@ -608,7 +618,7 @@ public class InspectPanelUI : MonoBehaviour
     // 격자 위에서만 도므로, 바닥의 물건에는 볼 자리가 아예 없었다.
     void ShowItems()
     {
-        panel?.SetActive(true);
+        Show();
         SetActions(null);   // 스위치는 **오른쪽 위 버튼**이다 — 아래 동작 줄은 안 쓴다
         if (infoText == null) return;
 
@@ -686,7 +696,7 @@ public class InspectPanelUI : MonoBehaviour
 
     void ShowNode(ResourceNode node)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
         var d  = node.Data;
@@ -786,7 +796,7 @@ public class InspectPanelUI : MonoBehaviour
     // 환불도 없다.** 그래도 "무엇이고 무엇을 할 수 있는가"는 다른 건물과 같은 자리에서 답한다.
     void ShowCore(DungeonCore core)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
         var sb = new StringBuilder();

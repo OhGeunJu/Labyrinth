@@ -1,4 +1,4 @@
-using System.Collections;
+using DG.Tweening;
 using UnityEngine;
 using TMPro;
 
@@ -15,7 +15,7 @@ public class GradeUpNotificationUI : MonoBehaviour
     public static void Popup(Transform follow, string text, Color color)
     {
         if (_instance == null || follow == null || string.IsNullOrEmpty(text)) return;
-        _instance.StartCoroutine(_instance.Animate(_instance.CreatePopup(follow, text, color)));
+        _instance.Animate(_instance.CreatePopup(follow, text, color));
     }
 
     static GradeUpNotificationUI _instance;
@@ -46,8 +46,7 @@ public class GradeUpNotificationUI : MonoBehaviour
         if (stats.Owner == null) return;
 
         string text = $"{StatDisplayName(stat)} {newGrade.ToDisplay()} ↑";
-        var popup = CreatePopup(stats.Owner.transform, text, newGrade.GetColor());
-        StartCoroutine(Animate(popup));
+        Animate(CreatePopup(stats.Owner.transform, text, newGrade.GetColor()));
     }
 
     GameObject CreatePopup(Transform follow, string text, Color color)
@@ -87,31 +86,49 @@ public class GradeUpNotificationUI : MonoBehaviour
         return go;
     }
 
-    IEnumerator Animate(GameObject popup)
+    // **떠오르는 것과 옅어지는 것을 따로 건다**(2026-08-29, 코루틴에서 DOTween으로).
+    //
+    // 둘의 곡선이 다르기 때문이다 — 글자는 **고르게** 오르는데 사라지는 것은 뒤로 갈수록
+    // 빨라진다(옛 코루틴의 `1 − t²`가 그 모양이었다). 한 트윈에 묶으면 곡선을 하나밖에 못 준다.
+    //
+    // **`SetUpdate(true)` — 배속을 안 탄다.** 옛 코루틴은 `Time.deltaTime`이라 10배속에서
+    // 0.25초 만에 지나가 읽을 수가 없었다. 이건 화면의 것이지 시뮬의 것이 아니다.
+    void Animate(GameObject popup)
     {
         var tmp = popup.GetComponentInChildren<TextMeshProUGUI>();
+        if (tmp == null) { Destroy(popup); return; }
+
         Color baseColor = tmp.color;
-        Vector3 startPos = popup.transform.position;
-        float elapsed = 0f;
+        float startY    = popup.transform.position.y;
 
-        while (popup != null && elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            float t = elapsed / duration;
+        popup.transform.DOMoveY(startY + floatDistance, duration)
+             .SetEase(Ease.Linear)
+             .SetUpdate(true)
+             .SetLink(popup)
+             .OnUpdate(() => FaceCamera(popup.transform))
+             .OnComplete(() => Destroy(popup));
 
-            popup.transform.position = startPos + Vector3.up * (floatDistance * t);
+        // **`DOFade`(TMP 모듈)를 안 쓴다.** 그건 DOTween Pro의 TextMeshPro 모듈을 켜야 도는데,
+        // 유틸리티 패널의 체크박스 하나에 컴파일이 걸리게 만들 이유가 없다. `DOTween.To`는
+        // 어느 모듈도 안 탄다.
+        float alpha = 1f;
+        DOTween.To(() => alpha, a =>
+                 {
+                     alpha = a;
+                     tmp.color = new Color(baseColor.r, baseColor.g, baseColor.b, a);
+                 }, 0f, duration)
+               .SetEase(Ease.InQuad)
+               .SetUpdate(true)
+               .SetLink(popup);
+    }
 
-            float alpha = 1f - Mathf.Pow(t, 2f);
-            tmp.color = new Color(baseColor.r, baseColor.g, baseColor.b, alpha);
-
-            if (_cam == null) _cam = Camera.main;
-            if (_cam != null)
-                popup.transform.rotation = Quaternion.LookRotation(popup.transform.position - _cam.transform.position);
-
-            yield return null;
-        }
-
-        if (popup != null) Destroy(popup);
+    // 늘 카메라를 본다. **`Camera.main`을 다시 잡는다** — 씬 전환이나 카메라 교체 뒤에도
+    // 글자가 옆을 보고 서 있지 않게.
+    void FaceCamera(Transform popup)
+    {
+        if (_cam == null) _cam = Camera.main;
+        if (_cam != null)
+            popup.rotation = Quaternion.LookRotation(popup.position - _cam.transform.position);
     }
 
     // 표시명은 `StatNameExt.ToDisplay` 하나뿐이다 — 특성 요약도 같은 것을 쓴다.

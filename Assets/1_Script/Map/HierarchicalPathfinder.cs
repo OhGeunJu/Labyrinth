@@ -202,9 +202,18 @@ public class HierarchicalPathfinder : MonoBehaviour
         if (map == null) return true;
         if (!CellTiles(cellCenter, tileSize, out var lo, out var hi)) return true;
 
+        // **`IsWorkable`이다 — `IsPassable`이 아니다**(2026-08-29).
+        //
+        // `IsPassable`은 **점유(`_occupied`)만** 본다. 지하로 오면서 통행을 막는 것이 하나 더
+        // 생겼는데(바위) 그건 `IsStandable`이 든다 — 여기서 안 보면 **코스 경로가 통짜 바위를
+        // 가로질러 난다.** 그러면 폰은 그 복도 안내를 따라 벽으로 걸어가고, 로컬 경로가 안
+        // 나와 **직선 폴백으로 벽을 밀다가 안으로 처박힌다.**
+        //
+        // `IsWorkable` = 통행 가능 + 설 수 있음. **둘을 여기서 다시 조합하지 않는다** —
+        // 조합하는 자리가 둘이면 언젠가 한쪽만 고친다.
         for (int tx = lo.x; tx <= hi.x; tx++)
         for (int tz = lo.y; tz <= hi.y; tz++)
-            if (map.GetTile(tx, tz).IsPassable) return true;
+            if (map.IsWorkable(new Vector2Int(tx, tz))) return true;
         return false;
     }
 

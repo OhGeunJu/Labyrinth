@@ -352,8 +352,14 @@ public static class ColonyColumns
             if (c != JobCategory.Unload) list.Add(c);
 
         // 맨 뒤 — 자율 배정이 큐를 다 비운 뒤에 돌므로 우선순위도 실제로 여기다.
-        list.Add(JobCategory.Mining);
-        list.Add(JobCategory.Logging);
+        //
+        // **큐에 이미 있으면 안 더한다**(2026-08-29). 채굴이 지하로 오면서 **큐에도 들어갔는데**
+        // (칸을 찍어 파는 `MineJob`) 여기서 무조건 더하고 있어서 **열이 두 개**가 됐다 —
+        // 하나를 끄면 다른 하나가 켜져 보이는, 설명할 수 없는 화면이었다.
+        //
+        // 자율 배정만 하는 것(벌목)은 그대로 뒤에 붙는다.
+        if (!JobCategoryInfo.IsQueued(JobCategory.Mining))  list.Add(JobCategory.Mining);
+        if (!JobCategoryInfo.IsQueued(JobCategory.Logging)) list.Add(JobCategory.Logging);
         return list.ToArray();
     }
 

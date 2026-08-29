@@ -12,13 +12,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 264124504a13cf24fb13f7056c4416b9, type: 3}
   m_Name: TreeBuilding
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
+  Id: 
   BuildingName: "\uB098\uBB34 \uC2EC\uAE30"
-  Description: "\uB098\uBB34\uB97C \uC2EC\uB294\uB2E4. \uC790\uB77C\uBA74 \uBC8C\uBAA9\uD574 \uC6D0\uBAA9\uC744 \uC5BB\uB294\uB2E4."
+  Description: "\uB098\uBB34\uB97C \uC2EC\uB294\uB2E4. \uC790\uB77C\uBA74 \uBC8C\uBAA9\uD574
+    \uC6D0\uBAA9\uC744 \uC5BB\uB294\uB2E4."
   Category: 0
   SortOrder: 30
-  CostItem: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
-  CostAmount: 5
+  Size: {x: 1, y: 1}
+  CostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+  CostAmount: 1
+  DragBuild: 0
+  RequiredResearch: {fileID: 0}
   Prefab: {fileID: 4185958040884079187, guid: 596c6a2609d89c94bbefebb73577d31b, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 1
+  BlockMask: []

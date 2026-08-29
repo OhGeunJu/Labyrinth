@@ -604,6 +604,12 @@ public class DraggableItem : MonoBehaviour,
         drag.Init(inst, returnGrid);
         drag._canvas = canvas;
         drag.CarryInstead(inst, returnGrid);
+
+        // **집힌 것이 손에 들렸다는 신호**(2026-08-29). 집기·놓기는 드래그가 아니라 **한 번 눌러
+        // 집고 한 번 눌러 놓는** 조작이라, 집힌 순간에 아무 변화가 없으면 *"눌렸나?"*가 된다 —
+        // 격자에서 아이콘이 사라지는 것만으로는 커서 밑을 안 보고 있으면 놓친다.
+        UiTween.Pop(go.transform);
+
         _actionFrame = Time.frameCount;     // 집은 그 클릭이 곧바로 놓지 않게
         return drag;
     }

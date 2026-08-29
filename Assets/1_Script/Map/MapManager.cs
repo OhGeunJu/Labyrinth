@@ -264,7 +264,22 @@ public class MapManager : MonoBehaviour
 
     // 유닛이 설 수 있는 타일인가 — 공허 게이트. 던전형 맵(FloorRequired)에서만 바닥을 요구하고
     // 필드/지형 맵은 항상 true. 점유(IsPassable)와는 별개 축이므로 필요 시 둘 다 검사할 것.
-    public bool IsStandable(Vector2Int tile) => !FloorRequired || _floored.ContainsKey(tile);
+    //
+    // **머리 위도 여기서 본다**(2026-08-29). 지하에서 *"설 수 있나"*는 발밑과 머리 위 **둘 다**의
+    // 물음이다 — 여유가 폰 키보다 작으면 바위 속이다. 묻는 자리를 여기 하나로 두면 길찾기도
+    // 건설도 일감 고르기도 **같은 답**을 쓴다(`IsWorkable`이 이걸 부르고 `LocalGridManager`도
+    // 이걸 본다). 갈라 두면 *"경로는 있는데 서 있을 자리가 없다"*가 생긴다.
+    //
+    // **천장이 꺼져 있으면 언제나 참이라 지상 판정은 한 줄도 안 바뀐다.**
+    public bool IsStandable(Vector2Int tile) =>
+        (!FloorRequired || _floored.ContainsKey(tile)) && HasHeadroom(tile);
+
+    // 그 칸을 지나갈 수 있나 — **지하에서는 곧 "바위가 아닌가"다**(2026-08-29).
+    //
+    // 처음엔 천장 높이를 직접 쟀는데, 바위를 **캘 수 있게** 만들면서 답이 한 겹 더 생겼다:
+    // 판 칸은 천장 함수로는 여전히 바위다(함수는 판 것을 모른다). **`RockMap`이 그 둘을
+    // 합쳐 답하므로** 여기서 다시 재면 갈린다 — 판 자리를 폰이 계속 벽으로 본다.
+    public bool HasHeadroom(Vector2Int tile) => !RockMap.IsRock(tile);
     public bool IsStandable(Vector3 world)   => IsStandable(WorldToTile(world));
 
     // 폰이 **실제로 설 수 있는** 칸인가 — 통행 가능 + 바닥 있음.
@@ -522,6 +537,10 @@ public class MapManager : MonoBehaviour
             if (!IsInBuildZone(pos)) return "빌드존 밖 — 핵에서 너무 멀다";
             if (floorRequired && !_floored.ContainsKey(pos)) return "바닥이 없다";
             if (!GetTile(pos).IsPassable) return "무언가 자리를 막고 있다";
+
+            // **파야 지을 수 있다.** *"못 짓는다"*가 아니라 **무엇을 하면 되는지**를 말한다 —
+            // 지하에서는 자리가 없는 것이 아니라 아직 안 판 것이다.
+            if (RockMap.IsRock(pos)) return "바위다 — 먼저 파야 한다 (K)";
         }
         return WhyNotFlat(footprint);
     }

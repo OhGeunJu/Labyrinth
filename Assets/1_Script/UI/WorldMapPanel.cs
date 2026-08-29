@@ -93,7 +93,7 @@ public class WorldMapPanel : MonoBehaviour
     public void Toggle()
     {
         if (panel == null) return;
-        if (IsOpen) { panel.SetActive(false); return; }
+        if (IsOpen) { WindowRaiser.Close(panel); return; }
 
         Bake();
         WindowRaiser.Open(panel);
@@ -250,7 +250,7 @@ public class WorldMapPanel : MonoBehaviour
         float z = normalized.y * TerrainGrid.WorldSize;
         cam.FocusOn(new Vector3(x, TerrainHeight.At(x, z), z));
 
-        if (panel != null) panel.SetActive(false);
+        if (panel != null) WindowRaiser.Close(panel);
     }
 
     void OnDestroy() { if (_tex != null) Destroy(_tex); }

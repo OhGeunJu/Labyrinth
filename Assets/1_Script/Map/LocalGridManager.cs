@@ -121,6 +121,9 @@ public class LocalGridManager
         var  map      = MapManager.Instance;
         bool voidGate = map != null && map.FloorRequired;
 
+        // 천장이 꺼져 있으면 재지도 않는다 — 지상 씬에서 칸마다 여유를 뽑을 이유가 없다.
+        bool ceilingGate = map != null && TerrainCeiling.Enabled;
+
         // 셀(1m) 안에 장애물이 있는지만 본다 — **타일 단위 판정**.
         // 예전엔 여기에 에이전트 반경을 통째로 더해(0.45+0.5=0.95) 벽에 직교로 붙은 셀이
         // 전부 막혔다. 그러면 걸을 수 있는 한 줄을 얻으려고 복도를 3타일로 파야 한다.
@@ -141,6 +144,19 @@ public class LocalGridManager
             {
                 var here = map.WorldToTile(worldPos);
                 grid.SetSurface(x, y, map.SurfaceHeight(here), map.ClimbLimitAt(here));
+
+                // **머리 위가 막힌 칸은 못 지나간다**(2026-08-29). 지하에서 바위는 따로 세운
+                // 벽이 아니라 **천장이 내려앉은 자리**라, 격자가 그것을 안 보면 경로는 태연히
+                // 바위 속으로 난다 — 폰은 그 직선을 따라 걷다 천장에 머리를 박고 밀고 선다.
+                // 기단에서 겪은 것과 같은 사고이고, 그때는 발밑이었고 이번엔 머리 위다.
+                //
+                // **답은 `MapManager.HasHeadroom` 하나를 쓴다** — 건설 판정도 같은 것을 보므로
+                // *"경로는 있는데 지을 수는 없다"*(또는 그 반대)가 안 생긴다.
+                if (ceilingGate && !map.HasHeadroom(here))
+                {
+                    grid.SetWalkable(x, y, false);
+                    continue;
+                }
             }
 
             if (voidGate && !map.IsFloored(worldPos))

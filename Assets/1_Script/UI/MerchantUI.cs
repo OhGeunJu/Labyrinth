@@ -533,7 +533,7 @@ public class MerchantUI : MonoBehaviour
         if (PawnContextMenuUI.Instance != null && PawnContextMenuUI.Instance.IsOpen)
             PawnContextMenuUI.Instance.Close();
 
-        if (panel) panel.SetActive(false);
+        WindowRaiser.Close(panel);
         inventoryPanel?.ClearSellMode();
         inventoryPanel?.ClearPawnCycle();
         if (_didForceOpenInventory) inventoryPanel?.ForceClose();

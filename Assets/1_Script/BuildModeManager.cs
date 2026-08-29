@@ -148,6 +148,9 @@ public class BuildModeManager : MonoBehaviour
     public static bool GridAvailable =>
         MapManager.Instance == null || MapManager.Instance.HasGrid;
 
+    // **버튼도 이 문으로 온다**(`ModeBarUI`).
+    public void ToggleBuildMode() => ToggleMode();
+
     void ToggleMode()
     {
         if (!GridAvailable)

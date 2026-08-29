@@ -54,3 +54,34 @@ public static class CursorTooltip
         panel.anchoredPosition = pos;
     }
 }
+
+// **툴팁이 언제 사라지나 — 이것도 답이 한 벌이어야 한다**(2026-08-29).
+//
+// 커서를 A에서 B로 **곧장** 옮기면 유니티는 `OnPointerEnter(B)`와 `OnPointerExit(A)`를 같은
+// 프레임에 보내는데 **순서를 보장하지 않는다.** Exit이 나중에 오면 방금 띄운 B의 툴팁을
+// A가 꺼 버린다 — 화면에는 *"빈 곳을 거쳐 가면 둘 다 보이는데, 곧장 옮기면 안 보인다"*로
+// 나타난다(스탯 창에서 근접공격 → 방어로 바로 옮길 때 실제로 그랬다).
+//
+// **그래서 끄는 것을 프레임 끝까지 미룬다.** 그 프레임에 누가 띄웠으면 안 끈다 — 순서를 안
+// 봐도 되고, **띄운 주인을 인자로 넘기게 하지 않아도 된다**(부르는 곳이 여섯이라 인자를 하나
+// 늘리면 그중 하나는 반드시 안 넘기고, 그 경로에서만 툴팁이 남는다).
+//
+// **커서 툴팁 둘이 같은 모양이라 같은 버그를 갖고 있었다**(`ItemInfoUI`·`HoverTooltipUI`) —
+// 자리 계산(`CursorTooltip.Place`)을 여기 모은 것과 같은 이유로 이 판정도 여기 둔다.
+public struct HoverHold
+{
+    // **0이 "없음"이다.** 구조체 기본값이 0이고 `Time.frameCount`는 UI가 도는 시점엔
+    // 이미 0보다 크므로, 따로 초기화할 자리가 없어도 된다.
+    int _shown, _hide;
+
+    public void Shown()     => _shown = Time.frameCount;
+    public void HideAsked() => _hide  = Time.frameCount;
+
+    // 이번 프레임에 정말 감출 것인가. **묻는 순간 소모된다** — 프레임마다 한 번만 참이다.
+    public bool ShouldHide()
+    {
+        bool hide = _hide != 0 && _shown < _hide;
+        _hide = 0;
+        return hide;
+    }
+}

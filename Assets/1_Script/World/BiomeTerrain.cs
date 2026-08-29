@@ -18,11 +18,33 @@ public static class BiomeTerrain
         Biome.Forest => new BiomeTerrainProfile { Base =  0.3f, Amplitude = 1.8f, Roughness = 1.0f },
         Biome.Desert => new BiomeTerrainProfile { Base = -0.2f, Amplitude = 1.2f, Roughness = 0.5f },
         Biome.Tundra => new BiomeTerrainProfile { Base =  0.5f, Amplitude = 2.2f, Roughness = 0.8f },
-        Biome.Lava   => new BiomeTerrainProfile { Base =  0.4f, Amplitude = 4.5f, Roughness = 1.8f },
-        Biome.Cavern => new BiomeTerrainProfile { Base =  1.0f, Amplitude = 7.0f, Roughness = 2.2f },  // 산악
+        Biome.Lava   => Flat,
         Biome.Swamp  => new BiomeTerrainProfile { Base = -0.8f, Amplitude = 0.4f, Roughness = 1.3f },
+
+        // ── 지하는 완전 평지다 (2026-08-29, 사용자 결정) ─────────────────
+        //
+        // 처음엔 *"조금 노이즈가 있게"*로 잡았다가 **완전 평지**로 다시 정했다. 참고로 삼은
+        // 화면들이 전부 그렇다 — 파낸 바닥이 **한 장의 평면**이고, 높이의 뜻은 오직
+        // *"파였나 안 파였나"*뿐이다. 바닥이 조금이라도 물결치면 벽 높이가 칸마다 달라져
+        // **파낸 방이 울퉁불퉁한 웅덩이**처럼 보인다.
+        //
+        // **기복은 바닥이 아니라 바위가 만든다.** 그러니 여기서 흔들 이유가 없다 —
+        // 바이옴은 이제 *무엇이 깔리고 무엇이 나오는가*만 답한다.
+        //
+        // **`Base`도 0이다** — 25를 곱하는 값이라 0.1만 달라도 바이옴 경계가 2.5m 비탈이 된다.
+        Biome.Cavern    => Flat,
+        Biome.Limestone => Flat,
+        Biome.Fungal    => Flat,
+        Biome.Flooded   => Flat,
+        Biome.Crystal   => Flat,
+        Biome.Mine      => Flat,
+        Biome.Abyss     => Flat,
+
         _            => new BiomeTerrainProfile { Base =  0.0f, Amplitude = 0.0f, Roughness = 1.0f },  // 미지정 = 평평
     };
+
+    // 지하의 기본 — 완전 평지.
+    static BiomeTerrainProfile Flat => new() { Base = 0f, Amplitude = 0f, Roughness = 0f };
 
     // 프랙탈 노이즈(fBm) — 옥타브를 겹쳐 자연스러운 능선을 만든다.
     // `Mathf.PerlinNoise`는 결정적이라 같은 좌표·시드면 항상 같은 지형이 나온다.

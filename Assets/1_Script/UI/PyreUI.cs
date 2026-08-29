@@ -54,7 +54,7 @@ public class PyreUI : MonoBehaviour
     public void Close()
     {
         _pyre = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void OnEject()

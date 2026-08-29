@@ -47,7 +47,7 @@ public class GraveUI : MonoBehaviour
     public void Close()
     {
         _grave = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void OnExhume()

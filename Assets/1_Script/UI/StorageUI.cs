@@ -95,7 +95,7 @@ public class StorageUI : MonoBehaviour
             _gridUI.ReceiveFilter = null;
             _gridUI.Bind(null);
         }
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     // ── 용량 ─────────────────────────────────────────────────────────────────

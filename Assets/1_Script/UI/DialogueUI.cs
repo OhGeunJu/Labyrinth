@@ -108,7 +108,7 @@ public class DialogueUI : MonoBehaviour
 
     public void Close()
     {
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
 
         // 줄이 사라지면 `OnPointerExit`가 안 온다 — 커서를 올린 채 고르면 설명만 남는다
         // (`ItemInfoUI`가 겪은 그것).

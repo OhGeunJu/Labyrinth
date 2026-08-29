@@ -240,7 +240,7 @@ public class ResearchTableUI : MonoBehaviour
     public void Close()
     {
         _currentTable = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     // **노드를 놓고 선을 긋는다.** 자리는 `ResearchGraphLayout`이 한 번 계산하고
@@ -469,7 +469,7 @@ public class ResearchTableUI : MonoBehaviour
 
     void ShowDetail(ResearchData data)
     {
-        if (detailPanel != null) detailPanel.SetActive(true);
+        WindowRaiser.Open(detailPanel);
 
         if (titleText        != null) titleText.text        = data.ResearchName;
         if (researchTimeText != null) researchTimeText.text = $"연구 시간: {data.ResearchTime}초";

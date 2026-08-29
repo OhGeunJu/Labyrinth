@@ -106,7 +106,7 @@ public class CorpseInventoryUI : MonoBehaviour
         _gridUI?.Bind(null);
         BindEquipSlots(null);
         SetEquipColumnVisible(true);   // 다음에 시체를 열 때 장비 열이 사라져 있으면 안 된다
-        if (panel) panel.SetActive(false);
+        WindowRaiser.Close(panel);
         playerInventoryPanel?.ClearActionMode();
         if (_didForceOpenInventory) playerInventoryPanel?.ForceClose();
         _didForceOpenInventory = false;

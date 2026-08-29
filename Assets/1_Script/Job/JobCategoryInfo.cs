@@ -22,6 +22,15 @@ public static class JobCategoryInfo
         // 시간이 정한다) — 자리에 넣는 일이 늦으면 붙잡은 것 자체가 없던 일이 된다.
         // 설득 회차도 여기 있다: 게이지가 도중에 줄지는 않지만, 우리 한 칸이 그동안 묶여 있다.
         JobCategory.Warden,
+        // **채굴이 건설보다 먼저다**(2026-08-29, 지하로 엎으면서). 지하에서는 **팔 때까지
+        // 지을 자리 자체가 없다** — 청사진을 놓아도 그 칸이 바위면 폰이 갈 수가 없다.
+        // 파는 일이 밀리면 그 뒤의 모든 일이 같이 밀린다.
+        //
+        // **채굴이 큐에 들어온 것이 이번 변화다.** 전에는 `DirectAssign`에만 있었고
+        // (자원 노드에 폰을 콕 집어 붙인다), 일감을 안 만들었다. 이제 **칸을 찍어 파는 길**이
+        // 생기면서 둘 다가 됐다 — 노드는 여전히 직접 배정, 칸은 큐다. **큐에 안 넣으면
+        // `Weight`가 0이라 찍어 놓고 아무도 안 간다**(찍기는 되는데 아무 일도 안 일어난다).
+        JobCategory.Mining,
         JobCategory.Construction,
         JobCategory.Farming,
         JobCategory.Crafting,
@@ -40,6 +49,10 @@ public static class JobCategoryInfo
     };
 
     // 큐를 타지 않고 플레이어가 대상에 폰을 직접 붙이는 카테고리.
+    //
+    // **채굴은 둘 다다**(2026-08-29) — 자원 노드는 여기(폰을 콕 집어 붙인다), **칸을 찍어
+    // 파는 것은 큐**다(`MineJob`). 지하에서 파는 칸은 수백이라 하나씩 붙일 수가 없다.
+    // 한쪽만 남기면 다른 쪽이 통째로 죽으므로 **두 목록에 다 있는 것이 맞다.**
     public static readonly JobCategory[] DirectAssign =
     {
         JobCategory.Mining,

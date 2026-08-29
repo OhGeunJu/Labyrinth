@@ -152,7 +152,11 @@ public class SelectionManager : MonoBehaviour
         // 건설·핵 이전·운반 지정 중에는 클릭이 그쪽 전용 (선택으로 새어나가지 않게).
         // **지정 모드를 빠뜨렸었다** — 드래그로 물건을 찍으면 같은 드래그가 사각 선택으로도
         // 들어가, 찍는 도중에 선택이 갈아치워지고 정보 패널이 튀어나왔다.
-        if (BuildModeManager.IsActive || CoreRelocator.IsActive || HaulDesignator.IsActive) return;
+        // **지정 모드 중에는 사각 선택을 안 한다**(2026-08-29에 채굴을 더했다) — 안 막으면
+        // 드래그 한 번에 **초록 선택 상자와 채굴 지정이 같이 뜨고**, 무엇이 찍히는지
+        // 알 수가 없다. 모드를 하나 더 만들 때마다 여기에 더해야 한다.
+        if (BuildModeManager.IsActive || CoreRelocator.IsActive ||
+            HaulDesignator.IsActive || MineDesignator.IsActive) return;
 
         // **UI에서 시작한 클릭은 놓는 순간까지 통째로 무시한다.**
         // 예전엔 누를 때만 UI를 보고 걸렀는데, 그러면 배낭에서 바닥으로 **드래그해 물건을

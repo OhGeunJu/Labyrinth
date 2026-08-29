@@ -30,7 +30,7 @@ public static class BiomeMapGenerator
         if (!data.IsSized) { Debug.LogWarning("[바이옴] mapData의 배열이 Width x Height와 어긋난다."); return; }
 
         int w = data.Width, h = data.Height;
-        if (w < 8)
+        if (w < 4)
         {
             Debug.LogWarning("[바이옴] 지도가 " + w + "x" + h + "라 뿌릴 자리가 없다 — " +
                              "`7. Resize World Map`으로 키운 뒤에 돌릴 것.");
@@ -40,10 +40,14 @@ public static class BiomeMapGenerator
         Undo.RecordObject(data, "바이옴 배치 생성");
 
         // 덩어리 하나가 대략 여덟 칸이 되게 — 64x64면 지역 여덟 개(2km)짜리 숲·사막이 생긴다.
-        float period = Mathf.Max(4f, w / 8f);
+        // **작은 지도에서도 덩어리가 갈리게.** 4로 박아 두면 4x4 지도에서 온 세계가
+        // 한 덩어리가 되어 바이옴이 하나만 깔린다.
+        float period = Mathf.Max(1.5f, w / 6f);
         float seed   = (w * 131 + h * 17) % 997;
 
-        var count = new int[8];
+        // **enum 전체 길이로 잡는다.** 8로 박아 두고 `% 8`로 접었더니, 지하 바이옴을 여섯
+        // 더한 순간 **석회굴이 평원 칸에 세어지는** 꼴이 됐다(로그만 틀리는 것이라 더 나쁘다).
+        var count = new int[System.Enum.GetValues(typeof(Biome)).Length];
         for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
         {
@@ -55,7 +59,7 @@ public static class BiomeMapGenerator
             var n = data.Get(x, y);
             n.Biome = b;              // **`Content`는 그대로 둔다** — 마을·소굴은 저작물이다
             data.Set(x, y, n);
-            count[(int)b % 8]++;
+            count[(int)b]++;
         }
 
         EditorUtility.SetDirty(data);
@@ -64,24 +68,53 @@ public static class BiomeMapGenerator
         TerrainGrid.ForgetRegions();
         TerrainHeight.ForgetBiomes();
 
-        Debug.Log("[바이옴] " + w + "x" + h + " 배치를 깔았다 (Content는 그대로).\n" +
-                  "평원 " + count[(int)Biome.Plains % 8] + " · 숲 " + count[(int)Biome.Forest % 8] +
-                  " · 사막 " + count[(int)Biome.Desert % 8] + " · 설원 " + count[(int)Biome.Tundra % 8] +
-                  " · 늪 " + count[(int)Biome.Swamp % 8] + " · 산악 " + count[(int)Biome.Cavern % 8] +
-                  " · 용암 " + count[(int)Biome.Lava % 8] + "\n" +
+        // **나온 것만 적는다** — 안 나온 바이옴까지 0으로 늘어놓으면 정작 무엇이 얼마나
+        // 깔렸는지가 안 읽힌다(지상 값이 아홉 개 섞여 있다).
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < count.Length; i++)
+        {
+            if (count[i] == 0) continue;
+            if (sb.Length > 0) sb.Append(" · ");
+            sb.Append(((Biome)i).DisplayName()).Append(' ').Append(count[i]);
+        }
+
+        Debug.Log("[바이옴] " + w + "x" + h + " 지하 배치를 깔았다 (Content는 그대로).\n" +
+                  sb + "\n" +
                   "`World Map Editor`로 다듬고, `5. Place Sites From World Map`을 다시 돌릴 것.");
     }
 
-    // 온도 x 습도 x 고도 -> 바이옴. **순서가 곧 규칙**이다 — 위에 있는 것이 이긴다.
+    // 열 x 물 x 깊이 -> 바이옴. **순서가 곧 규칙**이다 — 위에 있는 것이 이긴다.
+    //
+    // ── 지하로 갈아엎었다 (2026-08-29) ──────────────────────────────────────
+    //
+    // 축 셋은 그대로 쓰되 뜻이 바뀐다. 지하에는 해가 없으므로 **온도는 위에서 오는 것이
+    // 아니라 아래에서 온다** — 깊을수록 뜨겁고, 그래서 용암층과 심연이 같은 구석에 몰린다.
+    // 습도는 **물길**이고(수몰층·균사림), 고도는 **깊이**다.
+    //
+    // **지상 바이옴은 하나도 안 뽑는다.** 값은 enum에 남아 있지만(지우면 저작 에셋이 밀린다)
+    // 배치가 안 하므로 세계에 안 나타난다.
     static Biome Pick(float t, float m, float e)
     {
-        if (e > 0.80f && t > 0.72f) return Biome.Lava;    // 높고 뜨거운 곳 — 드물다
-        if (e > 0.70f)              return Biome.Cavern;  // 산악
-        if (t < 0.30f)              return Biome.Tundra;  // 추운 곳
-        if (t > 0.68f && m < 0.38f) return Biome.Desert;  // 덥고 마른 곳
-        if (m > 0.70f)              return t > 0.55f ? Biome.Swamp : Biome.Forest;
-        if (m > 0.48f)              return Biome.Forest;
-        return Biome.Plains;
+        // 깊고 뜨거운 구석 — 드물다. 이 둘이 세계에서 가장 험한 곳이다.
+        if (e > 0.82f && t > 0.70f) return Biome.Lava;
+        if (e > 0.78f)              return Biome.Abyss;
+
+        // 물이 고인 곳. **깊이보다 물이 먼저다** — 얕은 데서도 물은 고인다.
+        if (m > 0.74f)              return Biome.Flooded;
+
+        // 물기가 있고 안 뜨거우면 균사가 자란다 — **지하의 숲이고 농사·목재가 여기서 나온다.**
+        if (m > 0.55f && t < 0.62f) return Biome.Fungal;
+
+        // 차고 마른 곳에 결정이 자란다.
+        if (t < 0.32f && m < 0.45f) return Biome.Crystal;
+
+        // 사람이 팠던 자리 — 얕은 데 몰린다(깊이 파고들 만큼 오래 못 버텼다).
+        if (e < 0.30f && m < 0.50f) return Biome.Mine;
+
+        // 물이 깎은 넓고 완만한 방 — **시작 지역**이다.
+        if (m > 0.40f)              return Biome.Limestone;
+
+        return Biome.Cavern;   // 그 밖의 평범한 굴
     }
 
     // 0~1. 두 옥타브를 겹쳐 덩어리 가장자리가 밋밋하지 않게.

@@ -94,7 +94,7 @@ public class WorldMenuUI : MonoBehaviour
     {
         bool wasOpen = IsOpen;
         IsOpen = false;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
 
         // `Closed` 구독자가 다시 Close를 부를 수 있으므로(월드맵 쪽 정리 경로) 열려 있었을 때만 알린다.
         if (wasOpen) Closed?.Invoke();

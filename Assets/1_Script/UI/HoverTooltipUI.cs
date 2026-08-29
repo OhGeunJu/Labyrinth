@@ -53,10 +53,15 @@ public class HoverTooltipUI : MonoBehaviour
         if (Instance != null) Instance.ShowInternal(title, body);
     }
 
+    // **당장 안 끈다 — 프레임 끝에 판정한다**(2026-08-29). 근거는 `HoverHold`에 있다:
+    // 곧장 옆 줄로 옮기면 Enter와 Exit이 같은 프레임에 오는데 순서가 보장되지 않아, 즉시
+    // 끄면 **방금 띄운 옆 줄의 툴팁을 지나온 줄이 꺼 버린다.**
     public static void Hide()
     {
-        if (Instance != null && Instance.panel != null) Instance.panel.SetActive(false);
+        if (Instance != null) Instance._hold.HideAsked();
     }
+
+    HoverHold _hold;
 
     void ShowInternal(string title, string body)
     {
@@ -75,11 +80,16 @@ public class HoverTooltipUI : MonoBehaviour
         }
 
         WindowRaiser.Open(panel);
+        _hold.Shown();
         FollowCursor();
     }
 
     void LateUpdate()
     {
+        // **끄는 판정은 여기 한 번뿐이다** — 포인터 이벤트는 이 시점보다 먼저 다 왔으므로,
+        // 이번 프레임에 띄운 적이 있는지를 그때 알 수 있다.
+        if (_hold.ShouldHide()) WindowRaiser.Close(panel);
+
         if (panel != null && panel.activeSelf) FollowCursor();
     }
 

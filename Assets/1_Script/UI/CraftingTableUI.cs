@@ -208,7 +208,7 @@ public class CraftingTableUI : MonoBehaviour
         CloseCrafterPicker();
         _currentTable = null;
         if (_outputGrid != null) _outputGrid.Bind(null);   // 닫힌 패널이 남의 인벤토리를 붙들지 않게
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     // ── 연료 ──────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ public class CraftingTableUI : MonoBehaviour
                           current == pawn, pawn);
         }
 
-        crafterPickerPanel.SetActive(true);
+        WindowRaiser.Open(crafterPickerPanel);
     }
 
     void AddCrafterRow(string label, bool selected, UnitBrain pawn)
@@ -342,7 +342,7 @@ public class CraftingTableUI : MonoBehaviour
 
     void CloseCrafterPicker()
     {
-        if (crafterPickerPanel != null) crafterPickerPanel.SetActive(false);
+        WindowRaiser.Close(crafterPickerPanel);
     }
 
     void RefreshCrafter()
@@ -415,7 +415,7 @@ public class CraftingTableUI : MonoBehaviour
 
     void ShowDetail(RecipeData recipe)
     {
-        if (detailPanel != null) detailPanel.SetActive(true);
+        WindowRaiser.Open(detailPanel);
 
         if (resultIcon != null)
         {

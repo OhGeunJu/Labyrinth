@@ -23,7 +23,9 @@ public class MoveController : MonoBehaviour
 
         // 운반 지정 모드에서 우클릭은 **지정을 지우는 것**이다 — 안 막으면 그 클릭이 월드로
         // 새어 이동 명령까지 나간다(지우려 눌렀는데 폰이 그리로 걸어간다).
-        if (HaulDesignator.IsActive) return;
+        // 지정 모드 중에는 우클릭이 **무르기**다 — 이동 명령으로 새면 찍은 것을 지우려다
+        // 폰이 벽으로 걸어간다.
+        if (HaulDesignator.IsActive || MineDesignator.IsActive) return;
 
         // **UI 위에서 누른 우클릭은 월드로 새지 않는다.** 창을 열어 둔 채 그 위를 우클릭하면
         // 뒤의 땅으로 이동 명령이 나가거나 뒤에 선 것을 겨눴다 — 배낭·상점을 다루는 내내

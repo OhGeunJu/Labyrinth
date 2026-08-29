@@ -235,7 +235,10 @@ public static class TerrainHeight
 
     // −1 ~ +1. **펄린이 0~1을 주므로 가운데를 0으로 옮긴다** — 안 옮기면 층을 더할수록
     // 지형이 통째로 위로 밀려 `BaseHeight`가 뜻을 잃는다.
-    static float Octave(float x, float z, float offset, float period)
+    //
+    // **`TerrainCeiling`도 이걸 쓴다**(2026-08-29) — 사본을 만들면 가운데를 옮기는 저 규칙이
+    // 두 벌이 되고, 한쪽만 고치는 날 **천장만 통째로 위로 밀린다.**
+    public static float Octave(float x, float z, float offset, float period)
     {
         if (period <= 0.01f) return 0f;
         float u = (x + offset) / period;
