@@ -1851,9 +1851,8 @@ public class WorldMapView : MonoBehaviour
 
     static Material UnlitMat()
     {
-        var sh = Shader.Find("Universal Render Pipeline/Unlit")
-                 ?? Shader.Find("Unlit/Texture")
-                 ?? Shader.Find("Sprites/Default");
+        var sh = RuntimeShaders.Find(RuntimeShaders.Unlit, RuntimeShaders.UnlitTexture,
+                                     RuntimeShaders.SpritesDefault);
         return new Material(sh);
     }
 

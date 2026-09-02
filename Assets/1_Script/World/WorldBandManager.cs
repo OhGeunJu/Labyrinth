@@ -262,7 +262,22 @@ public class WorldBandManager : MonoBehaviour
 
     // 자리 하나를 지면에 올린다. **지형은 함수다** — 예전에는 옛 지도 격자의 메시를 짚었는데,
     // 그러면 그 화면이 없을 때 무리가 서지를 못한다.
-    static Vector3 Surface(Vector2 xz) => new(xz.x, TerrainHeight.At(xz.x, xz.y), xz.y);
+    // **무리가 서는 자리는 굴 안이다**(2026-08-30).
+    //
+    // 무리는 길찾기 없이 목표를 향해 **직선으로** 걷는다. 지하에서 목표가 바위 속이면 거기
+    // 도착해 멈추고, 그 자리에서 실체화하면 **폰이 벽에 낀다**(`EscapeRock`이 매 초 경고만
+    // 찍는다 — 그 반경으로는 못 빠져나온다). 그러면 습격이 예고돼도 아무도 안 온다.
+    //
+    // **가는 길까지 굴로 잡아 주지는 못한다** — 그건 세계 규모의 길찾기이고 지금 없는 물건이다.
+    // 토큰이 바위를 가로질러 걷는 것은 지도에서 안 보이므로 **서는 자리만** 지킨다.
+    // **목표를 정하는 곳이 여섯이라** 여기 하나에서 접는다.
+    static Vector3 Surface(Vector2 xz)
+    {
+        if (RockMap.TryNearestOpen(new Vector3(xz.x, 0f, xz.y), 40f, out var open))
+            xz = new Vector2(open.x, open.z);
+
+        return new(xz.x, TerrainHeight.At(xz.x, xz.y), xz.y);
+    }
 
     void TrySorties()
     {
@@ -786,9 +801,17 @@ public class WorldBandManager : MonoBehaviour
         var outpost = OutpostManager.Instance?.At(at);
         var node    = TerrainGrid.RegionAt(at.x, at.y);
 
+        // **내 거점인가**와 **지금 그 자리가 도는가**는 다른 물음이다(2026-08-31).
+        // 전에는 앞의 것만 물어서, 카메라가 멀리 있어도 적을 실체로 세웠다 — 그러면
+        // `SimLocality.ShouldTick`이 거짓이라 **적의 BT가 안 돈다.** 내 폰은 `IsPlayer`라
+        // 거리를 안 보고 계속 도므로, 문 앞에 선 석상을 우리 폰들만 두들기게 된다.
+        bool mine    = active != null && active.WorldNode == node;
+        var  target  = new Vector3(at.x, 0f, at.y);
+        bool watched = SimLocality.IsSimulated(target);
+
         // ① **지금 보고 있는 거점** — 진짜 적이 필드맵에 선다. 여기가 이 기능의 요점이다:
         //    예고됐던 것이 실제로 문 앞에 나타난다.
-        if (active != null && active.WorldNode == node && EventManager.Instance != null &&
+        if (mine && watched && EventManager.Instance != null &&
             EventManager.Instance.SpawnArrivingBand(band, out var edge))
         {
             string dir  = EventManager.CompassFromCore(edge);
@@ -803,7 +826,18 @@ public class WorldBandManager : MonoBehaviour
         {
             RaidOutpost(band, outpost);
         }
-        // ③ 지금 안 보는 다른 정착지 — 필드맵이 안 돌고 있으므로 알림만 남긴다.
+        // ③ **내 거점인데 아무도 안 보고 있다** — 추상으로 푼다(사용자 결정).
+        //    폰도 창고도 진짜라, 다치는 것도 털리는 것도 진짜다. 다만 **그림이 없다.**
+        //    스폰할 자리를 못 찾은 경우(사방이 바위)도 여기로 떨어진다 — 습격이 증발하는
+        //    것보다 결과가 나오는 편이 낫다.
+        else if (mine)
+        {
+            var r = WorldBattle.ResolveRaid(band, target);
+            EventNotificationUI.Notify(band.Name,
+                $"{band.Count + r.BandLosses}명이 거점을 덮쳤습니다.\n{r.Summary}",
+                holdWhenHidden: true);
+        }
+        // ④ 지금 안 보는 다른 정착지 — 필드맵이 안 돌고 있으므로 알림만 남긴다.
         //    (오프라인 정착지 피해는 별도 축이라 여기서 지어내지 않는다.)
         else
         {
@@ -983,9 +1017,8 @@ public class WorldBandManager : MonoBehaviour
 
     static Material UnlitMat(Color c)
     {
-        var sh = Shader.Find("Universal Render Pipeline/Unlit")
-                 ?? Shader.Find("Unlit/Color")
-                 ?? Shader.Find("Sprites/Default");
+        var sh = RuntimeShaders.Find(RuntimeShaders.Unlit, RuntimeShaders.UnlitColor,
+                                     RuntimeShaders.SpritesDefault);
         var m = new Material(sh);
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
         if (m.HasProperty("_Color"))     m.SetColor("_Color", c);

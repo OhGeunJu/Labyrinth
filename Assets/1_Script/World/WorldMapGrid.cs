@@ -379,9 +379,8 @@ public class WorldMapGrid : MonoBehaviour
 
     Material LineMat(Color c)
     {
-        var sh = Shader.Find("Universal Render Pipeline/Unlit")
-                 ?? Shader.Find("Unlit/Color")
-                 ?? Shader.Find("Sprites/Default");
+        var sh = RuntimeShaders.Find(RuntimeShaders.Unlit, RuntimeShaders.UnlitColor,
+                                     RuntimeShaders.SpritesDefault);
         var m = new Material(sh);
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
         if (m.HasProperty("_Color"))     m.SetColor("_Color", c);
@@ -393,9 +392,8 @@ public class WorldMapGrid : MonoBehaviour
     {
         if (_matCache.TryGetValue(c, out var cached) && cached != null) return cached;
 
-        var sh = Shader.Find("Universal Render Pipeline/Lit")
-                 ?? Shader.Find("Standard")
-                 ?? Shader.Find("Universal Render Pipeline/Unlit");
+        var sh = RuntimeShaders.Find(RuntimeShaders.Lit, RuntimeShaders.Standard,
+                                     RuntimeShaders.Unlit);
         var m = new Material(sh);
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
         if (m.HasProperty("_Color"))     m.SetColor("_Color", c);

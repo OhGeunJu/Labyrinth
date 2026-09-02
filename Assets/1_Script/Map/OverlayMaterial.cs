@@ -24,7 +24,7 @@ public static class OverlayMaterial
     {
         // **`Hidden/Internal-Colored`가 먼저다** — 그쪽만 `_ZTest`를 노출하고, 그게 이 파일의
         // 전부다. `Sprites/Default`는 그 속성이 없어 깊이 판정을 못 끈다(폴백으로만 둔다).
-        var shader = Shader.Find("Hidden/Internal-Colored") ?? Shader.Find("Sprites/Default");
+        var shader = RuntimeShaders.Find(RuntimeShaders.InternalColored, RuntimeShaders.SpritesDefault);
         var mat = new Material(shader)
         {
             hideFlags   = HideFlags.HideAndDontSave,

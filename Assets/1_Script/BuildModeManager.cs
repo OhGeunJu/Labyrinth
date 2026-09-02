@@ -149,7 +149,15 @@ public class BuildModeManager : MonoBehaviour
         MapManager.Instance == null || MapManager.Instance.HasGrid;
 
     // **버튼도 이 문으로 온다**(`ModeBarUI`).
-    public void ToggleBuildMode() => ToggleMode();
+    // **이름이 물음에 답해야 한다**(2026-09-02). `ToggleBuildMode`는 이름만 보면
+    // *"건설 모드를 켜고 끈다"*인데 실제로는 **격자/자유 배치를 뒤집는다** — 그래서
+    // `ModeBarUI`의 `건설` 버튼이 이걸 불렀고, **눌러도 아무 일도 안 일어났다**
+    // (게다가 `GridAvailable`이 아니면 그대로 돌아간다). 이름을 물음에 맞춘다.
+    public void TogglePlacementMode() => ToggleMode();
+
+    // 건설 모드를 켜고 끈다 — **`B`가 하는 그것**(`Update`의 `bKey`와 같은 문).
+    // 버튼과 키가 같은 상태를 만져야 *"버튼으로는 켜지는데 키로는 안 꺼진다"*가 안 생긴다.
+    public void ToggleBuildMode() => SetActive(!_active);
 
     void ToggleMode()
     {
@@ -413,12 +421,47 @@ public class BuildModeManager : MonoBehaviour
         GUI.Label(new Rect(10, 10, 1100, 24),
             $"[건설] {SelectedDisplayName} ({_selectedIndex + 1}/{TotalCount})  모드: {modeLabel}  Tab=모드 Q/E=회전 X=철거{levelInfo}{capInfo}");
 
-        // **거절한 이유를 바로 밑에 띄운다.** 빨간 격자만으로는 손잡이를 어디로 돌릴지 모른다.
+        DrawCursorHint();
+    }
+
+    // ── 값과 거절 이유는 **커서 옆에** 띄운다 ────────────────────────────────
+    //
+    // 화면 왼쪽 위에 적어 두었는데, **눈은 커서에 가 있다**(사용자: 림월드는 커서 쪽에
+    // 빨갛게 뜬다). 놓을 자리를 고르는 내내 시선이 지도 한복판인데 답은 구석에 있으면,
+    // 있어도 못 읽는 안내다.
+    //
+    // **타일 색을 바꾸지 않는다** — 목록의 아이콘은 *무엇인가*를 말하는 자리다. 거기에
+    // *지금 살 수 있나*까지 얹으면 진짜 아이콘 그림이 들어오는 날 그림에 색이 곱해지고,
+    // 무엇보다 **커서에서 눈을 떼야 알 수 있다.**
+    void DrawCursorHint()
+    {
+        var bd = SelectedBuilding;
+        if (bd == null || Event.current == null) return;
+
+        var at = Event.current.mousePosition + new Vector2(20f, 18f);
+
+        // 값 — 모자라면 빨갛게. **얼마나 있는지도 같이 적는다**(모자란 줄만 알면 얼마를
+        // 더 모아야 하는지를 또 찾아야 한다).
+        if (bd.CostAmount > 0 && bd.CostItem != null)
+        {
+            int have  = MaterialPool.AvailableHere(bd.CostItem);
+            bool poor = have < bd.CostAmount;
+
+            var was = GUI.color;
+            GUI.color = poor ? new Color(1f, 0.35f, 0.30f) : new Color(0.92f, 0.92f, 0.92f);
+            GUI.Label(new Rect(at.x, at.y, 420f, 22f),
+                      $"{bd.CostItem.ItemName} {bd.CostAmount}" +
+                      (poor ? $" (재료가 충분하지 않음 — {have})" : ""));
+            GUI.color = was;
+            at.y += 18f;
+        }
+
+        // **거절한 이유도 같은 자리다.** 빨간 격자만으로는 손잡이를 어디로 돌릴지 모른다.
         if (_whyNot != null)
         {
             var was = GUI.color;
             GUI.color = new Color(1f, 0.55f, 0.45f);
-            GUI.Label(new Rect(10, 30, 900, 24), $"못 짓는다: {_whyNot}");
+            GUI.Label(new Rect(at.x, at.y, 520f, 22f), $"못 짓는다: {_whyNot}");
             GUI.color = was;
         }
     }
@@ -444,9 +487,17 @@ public class BuildModeManager : MonoBehaviour
         if (_active) SetActive(false);
     }
 
+    // **한 번에 하나다** — 근거는 `ExclusiveMode`. 건설도 드래그의 뜻을 바꾸는 상태라
+    // 채굴·운반·구역과 같은 자리에 선다.
+    void OnEnable()  => ExclusiveMode.Claimed += OnOtherClaimed;
+    void OnDisable() => ExclusiveMode.Claimed -= OnOtherClaimed;
+
+    void OnOtherClaimed(object who) { if (!ReferenceEquals(who, this) && _active) SetActive(false); }
+
     void SetActive(bool active)
     {
         _active = active;
+        if (active) ExclusiveMode.Claim(this);
         OnActiveChanged?.Invoke(active);
         gridOverlay.SetVisible(active);
         if (!active)
@@ -689,10 +740,22 @@ public class BuildModeManager : MonoBehaviour
         if (_cam == null) return false;
 
         Ray ray = _cam.ScreenPointToRay(screenPos);
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask))
+
+        // **바위는 건너뛴다**(2026-09-02). 바위 콜라이더는 `Ground` 레이어이고(커서가 짚어야
+        // 캘 자리를 고른다) 높이가 9.6m다 — 비스듬히 보면 **커서와 바닥 사이의 벽 윗면에
+        // 레이가 먼저 맞아**, 눈에는 빈 바닥을 가리키는데 찍히는 칸은 그 벽이 된다
+        // (사용자: *"내가 찍는 곳이 정확히 안 찍히고 좀 느리달까"* — 칸이 멀리 튀니 느리게도
+        // 보인다). **바위 위에는 어차피 못 짓는다** — 여기서 알고 싶은 것은 *바닥*이다.
+        var hits = Physics.RaycastAll(ray, 500f, groundMask, QueryTriggerInteraction.Ignore);
+        if (hits.Length > 0)
         {
-            point = hit.point;
-            return true;
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (RockRenderer.IsRockCollider(hits[i].collider)) continue;
+                point = hits[i].point;
+                return true;
+            }
         }
 
         // 공허(던전 씬): 콜라이더가 없어도 y=0 평면 교차로 조준 — 바닥을 공허에 깔 수 있어야 함.
@@ -763,10 +826,13 @@ public class BuildModeManager : MonoBehaviour
                       && SelectedBuilding.DragBuild
                       && SelectedBuilding.Size.x == 1 && SelectedBuilding.Size.y == 1;
 
-    // 바닥은 면, 그 밖(벽·목책·바리케이드)은 줄.
-    // 바닥은 면, 그 밖(벽·목책·바리케이드)은 줄. **계단도 줄이다** — 계단은 방향이 있는
+    // 바닥·밭은 면, 그 밖(벽·목책·바리케이드)은 줄. **계단도 줄이다** — 계단은 방향이 있는
     // 물건이라 면으로 그으면 한 줄이 통째로 같은 단이 되어 뜻이 없다.
-    bool RectDrag => SelectedBuilding != null && SelectedBuilding.IsFloor && !SelectedBuilding.Stairs;
+    //
+    // **`IsFloor`가 이 물음을 겸하고 있었다**(2026-09-02에 갈랐다) — 그건 *"바닥 데이터로
+    // 깔리는가"*라는 다른 물음이다. 밭은 바닥이 아니지만 면으로 깐다(`AreaDrag`).
+    bool RectDrag => SelectedBuilding != null && !SelectedBuilding.Stairs
+                  && (SelectedBuilding.IsFloor || SelectedBuilding.AreaDrag);
 
     // ── 평탄 기단의 높이 ──────────────────────────────────────────────────────
     //
@@ -1370,7 +1436,7 @@ public class BuildModeManager : MonoBehaviour
             placed.OccupyTiles(footprint != null
                 ? footprint.ToArray()
                 : new[] { MapManager.Instance.WorldToTile(pos) });
-        // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
+        // 벽 등 장애물이면 코스 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
         Debug.Log($"[Build] 배치 완료 — {data.BuildingName}");
     }

@@ -3,7 +3,7 @@ using UnityEngine;
 
 // 런타임 배치된 건물의 메타(원본 BuildingData)를 보관하고 철거를 담당.
 // 배치 시 BuildingDormancy.Ensure처럼 자동 부착(BuildModeManager.Place / BuildingBlueprint.Complete).
-// 철거: 점유 해제 + 메소 재베이크 + 건설비 75% 환불(또는 코어 아이템 드랍, step C) + 파괴.
+// 철거: 점유 해제 + 코스 재베이크 + 건설비 75% 환불(또는 코어 아이템 드랍, step C) + 파괴.
 [DisallowMultipleComponent]
 public class PlacedBuilding : MonoBehaviour, IFootprintSite
 {
@@ -193,7 +193,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
 
             // 목표만 있고 경로가 없으면 걷는 게 아니라 **막혀 선 것**이다 — 그건 내보낸다.
             var mover = brain.GetComponent<PawnMover>();
-            if (mover != null && mover.HasTarget() && mover.HasLocalPath) continue;
+            if (mover != null && mover.HasTarget() && (mover.HasLocalPath || mover.RoutePending)) continue;
 
             var to = map.FindWorkableNear(from, 4, blocked);
             if (blocked.Contains(to)) continue;   // 나갈 데가 없으면 그대로 둔다 — 옮기는 시늉만 하면 더 나쁘다
@@ -231,7 +231,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         ReleaseTiles();
         Destroy(gameObject);
 
-        // 벽 등 철거 후 메소 격자 복구
+        // 벽 등 철거 후 코스 격자 복구
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
     }
 

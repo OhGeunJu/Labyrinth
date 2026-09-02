@@ -202,9 +202,13 @@ public class EventManager : MonoBehaviour
         }
 
         OnEventTriggered?.Invoke(data);
+
+        // **실체로 섰나** — 안 보는 곳의 습격은 그 자리에서 추상으로 끝나므로 방향을 알릴
+        // 것이 없다(*"서쪽에 나타났습니다"* 해 놓고 아무것도 없으면 찾으러 가게 된다).
+        bool stood = true;
         switch (data.EventType)
         {
-            case GameEventType.Raid:          SpawnRaid(data, edge);          break;
+            case GameEventType.Raid:          stood = SpawnRaid(data, edge);  break;
             case GameEventType.Merchant:      SpawnMerchant(data, edge);      break;
             case GameEventType.Reinforcement: SpawnReinforcement(data, edge); break;
             case GameEventType.Discovery:     SpawnDiscovery(data);           break;
@@ -214,7 +218,7 @@ public class EventManager : MonoBehaviour
         // 훑어 찾아야 한다 — 습격은 어느 쪽을 막을지가 곧 대응이다.
         // `Notify`는 같은 창을 다시 쓰므로 위에서 뜬 설명 위에 방향까지 얹힌다
         // (`SpawnDiscovery`가 얻은 물건을 알리는 것과 같은 길).
-        if (needsSpawn) NotifyDirection(data, edge);
+        if (needsSpawn && stood) NotifyDirection(data, edge);
     }
 
     void NotifyDirection(GameEventData data, Vector3 edge)
@@ -255,9 +259,11 @@ public class EventManager : MonoBehaviour
 
     // ── 침공 ─────────────────────────────────────────────────────────────────
 
-    void SpawnRaid(GameEventData data, Vector3 edge)
+    // **참을 돌려주면 진짜로 섰다는 뜻이다.** 거짓이면 그 자리에서 추상으로 끝났다 —
+    // 부르는 쪽이 방향 알림을 건너뛴다.
+    bool SpawnRaid(GameEventData data, Vector3 edge)
     {
-        if (data.EnemyPrefabs == null || data.EnemyPrefabs.Count == 0) return;
+        if (data.EnemyPrefabs == null || data.EnemyPrefabs.Count == 0) return false;
 
         var core     = DungeonCore.Instance;
         var used     = new HashSet<Vector2Int>();   // 한 칸에 둘을 낳지 않는다
@@ -278,11 +284,42 @@ public class EventManager : MonoBehaviour
             if (mover != null && core != null) mover.SetMoveTarget(ScatterNear(core.transform.position, 5f));
         }
 
+        // **아무도 안 보고 있으면 여기서 끝낸다**(2026-08-31, 사용자 결정: 추상으로 푼다).
+        //
+        // 카메라가 멀면 `SimLocality.ShouldTick`이 거짓이라 **적의 BT가 안 돈다** — 그런데
+        // 내 폰은 `IsPlayer`라 거리를 안 보고 계속 도니, 그대로 두면 문 앞에 선 석상을
+        // 우리 폰들만 두들기는 반쪽 시뮬이 된다. 지도에서 걸어온 습격
+        // (`WorldBandManager.DeliverRaid`)과 **같은 문**으로 결과를 낸다.
+        //
+        // **세운 뒤에 묻는 이유는 전력 때문이다** — 스탯은 `Awake`에서 굴려지므로
+        // 프리팹만으로는 얼마나 센 무리인지 잴 방법이 없다.
+        //
+        // **구원군도 시체 일으키기도 안 붙인다** — 둘 다 *현장에서 벌어지는 일*이라
+        // 아무도 안 보는 판정에 얹으면 결과에 안 나타나고 알림만 늘어난다.
+        var home = core != null ? core.transform.position : edge;
+        if (!SimLocality.IsSimulated(home))
+        {
+            var brains = new List<UnitBrain>();
+            foreach (var go in arrivals)
+            {
+                var b = go != null ? go.GetComponent<UnitBrain>() : null;
+                if (b != null) brains.Add(b);
+            }
+
+            var r = WorldBattle.ResolveRaid(brains, home);
+            foreach (var go in arrivals) if (go != null) Destroy(go);
+
+            EventNotificationUI.Notify(data.EventName,
+                $"{brains.Count}명이 거점을 덮쳤습니다.\n{r.Summary}", holdWhenHidden: true);
+            return false;
+        }
+
         // **치우지 않은 시체가 여기서 값을 치른다** — 교단·망자가 왔으면 맵에 남은 시체가
         // 그 자리에서 일어난다(`Necromancy`). 습격이 가장자리가 아니라 **안쪽에서** 시작된다.
         Necromancy.OnRaidArrived(arrivals);
 
         TryScheduleRescue();
+        return true;
     }
 
     // ── 지도에서 걸어온 무리 ──────────────────────────────────────────────────
@@ -562,12 +599,34 @@ public class EventManager : MonoBehaviour
             ? core.transform.position
             : map.TileToGround(map.ZoneOriginTile + new Vector2Int(map.Width / 2, map.Height / 2));
 
+        // **굴을 따라 가장 먼 곳을 먼저 본다**(2026-08-30).
+        //
+        // 아래의 방향 굴리기는 **직선**으로 걸어 가장자리를 찾는다 — 지상에서는 어느 방향이든
+        // 뚫려 있어 맞았지만 지하에서는 **모퉁이를 못 돌아** 대부분의 방향이 몇 m 앞에서
+        // 끝난다. 그래서 상인이 기지 코앞의 벽에서 나왔다.
+        //
+        // 폰이 실제로 걷는 격자를 따라 **갈 수 있는 가장 먼 칸**을 찾는다 — 그것이 지하에서의
+        // *"맵 가장자리"*다. **못 찾으면 직선 방식으로 떨어진다**(지상 씬·격자 밖·좁은 던전).
+        var hp = HierarchicalPathfinder.Instance;
+        if (hp != null && hp.FarthestReachable(origin, maxSpawnRadius, out var far))
+        {
+            var t = map.WorldToTile(far);
+            if (map.IsWorkable(t) &&
+                Vector3.Distance(new Vector3(origin.x, 0f, origin.z), new Vector3(far.x, 0f, far.z))
+                    >= minSpawnDistance)
+            {
+                spawn = map.TileToGround(t);
+                return true;
+            }
+        }
+
         // 방향을 고르게 나눠 굴린다 — 한쪽이 막혀도 반대쪽엔 길이 있다.
         int tries = Mathf.Max(1, spawnDirections);
         float baseAngle = Random.value * 360f;
 
         Vector2Int fallback = default;
-        bool hasFallback = false;
+        bool  hasFallback  = false;
+        float bestDist     = -1f;
 
         for (int i = 0; i < tries; i++)
         {
@@ -576,10 +635,16 @@ public class EventManager : MonoBehaviour
             if (!WalkToEdge(map, origin, dir, out var tile, out float dist)) continue;
 
             if (dist >= minSpawnDistance) { spawn = map.TileToGround(tile); return true; }
-            if (!hasFallback) { fallback = tile; hasFallback = true; }
+
+            // **가장 멀리 걸은 방향을 남긴다**(2026-08-30). 전에는 *처음* 찾은 것을 붙들었는데,
+            // 지하에서는 대부분의 방향이 몇 m 앞에서 바위에 막혀 **상인과 습격이 기지 코앞의
+            // 벽에서 튀어나왔다.** 지상에서는 어느 방향이든 가장자리까지 뚫려 있어 티가 안 났다.
+            // **길이 이어진 것만 후보다**(`WalkToEdge`가 막히면 멈춘다) — 그래서 가장 먼 것을
+            // 골라도 걸어올 수 있는 자리다: 지하에서 가장자리는 **가장 긴 굴의 끝**이다.
+            if (dist > bestDist) { bestDist = dist; fallback = tile; hasFallback = true; }
         }
 
-        // 최소 거리를 채우는 방향이 하나도 없으면(좁은 던전) 찾아 둔 칸이라도 쓴다 —
+        // 최소 거리를 채우는 방향이 하나도 없으면(좁은 던전·사방이 바위) 가장 먼 칸이라도 쓴다 —
         // 여기서 포기하면 작은 맵에서는 습격이 영영 일어나지 않는다.
         if (hasFallback) { spawn = map.TileToGround(fallback); return true; }
         return false;

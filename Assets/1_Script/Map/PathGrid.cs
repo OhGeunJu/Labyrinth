@@ -101,6 +101,38 @@ public class PathGrid
         }
     }
 
+    // **벽에 몸을 문지르며 걷지 않게 한다**(2026-08-30).
+    //
+    // 지하에서는 길의 거의 전부가 벽에 닿아 있어서, 격자가 *벽 옆 칸*과 *한 칸 안쪽*을
+    // 똑같이 치면 경로가 **모서리에 딱 붙어 꺾인다.** 폰은 그 선을 따라 걷다 ㄷ자 안쪽
+    // 모서리에서 **면 사이로 끼어 들어간다**(바위 콜라이더는 드러난 면만 있는 속 빈
+    // 껍데기라, 한 번 들어가면 밀어내는 힘이 없다 — `EscapeRock`이 꺼내도 같은 길로 다시
+    // 들어가 무한히 되풀이된다).
+    //
+    // **막지 않고 값만 올린다** — 막으면 **한 칸짜리 통로를 못 지난다**(지름길 부풀림을
+    // 격자 간선에 안 거는 것과 같은 이유). 그리고 좁은 굴에서는 **모든 칸이 벽에 닿아
+    // 배율이 고르게 걸리므로 그 안의 선택은 하나도 안 바뀐다** — 넓은 데서만 안쪽으로 붙는다.
+    //
+    // **작게 잡는다** — 크게 잡으면 *"한 칸이라도 안쪽으로"*가 쌓여 경로가 통째로 부푼다
+    // (`LedgeCost`를 1.6에서 1.15로 내린 그 사고).
+    public void PenalizeWalls(float mult)
+    {
+        for (int y = 0; y < Height; y++)
+        for (int x = 0; x < Width;  x++)
+        {
+            int i = y * Width + x;
+            if (!_walkable[i]) continue;
+            if (Open(x + 1, y) && Open(x - 1, y) && Open(x, y + 1) && Open(x, y - 1)) continue;
+
+            // **곱한다** — 벼랑 값을 덮어쓰면 벼랑이면서 벽인 칸이 둘 중 하나만 반영된다.
+            _cost[i] *= mult;
+        }
+    }
+
+    // 격자 밖은 **열린 것으로 친다** — 창 가장자리를 벽으로 치면 로컬 격자의 테두리가
+    // 통째로 비싸져서, 창을 옮길 때마다 경로가 흔들린다.
+    bool Open(int x, int y) => !InBounds(x, y) || _walkable[y * Width + x];
+
     bool IsLedge(int x, int y, int i)
     {
         return Face(i, x + 1, y) || Face(i, x - 1, y) || Face(i, x, y + 1) || Face(i, x, y - 1);
@@ -117,9 +149,60 @@ public class PathGrid
 
     // `from`에서 `to`로 한 걸음 들어갈 수 있는가 — 막힘과 오르막을 **한 자리에서** 묻는다.
     // 이 물음이 두 군데로 갈리면 대각선 모서리 검사만 옛 규칙으로 남는다.
+    // ── 칸과 칸 **사이** — 이어져 있나 ─────────────────────────────────────
+    //
+    // **벽은 칸 안이 아니라 칸 사이에 선다**(2026-08-31). 칸 하나의 열림만 구우면 A\*는
+    // *"이웃한 열린 칸은 이어져 있다"*고 가정하는데, 셀이 크면 그 가정이 자주 거짓이다 —
+    // 두 셀이 다 열려 있어도 **맞닿은 경계가 통째로 벽**일 수 있다.
+    //
+    // HPA\*에서 이걸 **entrance(transition)**라고 부른다: 클러스터마다 이웃과 맞닿은
+    // 경계에서 *열린 구간*을 찾아 잇는 것이 알고리즘의 절반이다. 그 절반이 빠져 있었다.
+    //
+    // **안 구우면 예전 그대로다** — 로컬·코스 격자는 칸이 1~2m라 이 문제가 거의 없어서
+    // 지금은 광역만 굽는다.
+    bool[] _linkE;   // (x,y) ↔ (x+1,y)
+    bool[] _linkN;   // (x,y) ↔ (x,y+1)
+
+    public void EnsureLinks()
+    {
+        int n = Width * Height;
+        if (_linkE == null || _linkE.Length != n) { _linkE = new bool[n]; _linkN = new bool[n]; }
+    }
+
+    public void SetLinkEast (int x, int y, bool open) { if (_linkE != null && InBounds(x, y)) _linkE[y * Width + x] = open; }
+    public void SetLinkNorth(int x, int y, bool open) { if (_linkN != null && InBounds(x, y)) _linkN[y * Width + x] = open; }
+
+    public bool LinkEast (int x, int y) => _linkE != null && InBounds(x, y) && _linkE[y * Width + x];
+    public bool LinkNorth(int x, int y) => _linkN != null && InBounds(x, y) && _linkN[y * Width + x];
+
+    // **대각선은 여기서 안 본다** — `FindPath`가 직교 두 이웃(`side1`·`side2`)을 따로
+    // 검사하므로, 직교만 막아 두면 대각선도 따라 막힌다.
+    // **간선을 무시하고 한 번 더 풀 수 있다**(2026-08-31). 간선 판정은 *더 정확한 답*이지만
+    // **완벽하지는 않다** — 틀리면 갈 수 있는 길이 끊긴 것으로 보이고, 그건 라우트가 조금
+    // 나쁜 것보다 훨씬 나쁘다(폰이 아예 못 간다). 그래서 **끊긴 답이 나오면 무시하고 다시
+    // 풀어 본다**: 정확한 답을 먼저 쓰되, 그것이 세계를 끊으면 이어 두고 **폰이 걸어가며
+    // 배우게 한다**(`ReportUnreachable`).
+    public bool IgnoreLinks;
+
+    bool Linked(int from, int to)
+    {
+        if (_linkE == null || IgnoreLinks) return true;
+
+        int fx = from % Width, fy = from / Width;
+        int tx = to   % Width, ty = to   / Width;
+        int dx = tx - fx,      dy = ty - fy;
+
+        if (dy == 0 && dx ==  1) return _linkE[from];
+        if (dy == 0 && dx == -1) return _linkE[to];
+        if (dx == 0 && dy ==  1) return _linkN[from];
+        if (dx == 0 && dy == -1) return _linkN[to];
+        return true;
+    }
+
     bool Enterable(int from, int to)
     {
         if (!_walkable[to]) return false;
+        if (!Linked(from, to)) return false;
         if (!UsesHeight) return true;
 
         // 올라갈 때는 **가는 칸**의 한도, 내려갈 때는 **떠나는 칸**의 한도(되돌아 올라올
@@ -203,14 +286,30 @@ public class PathGrid
         if (start == end) return new List<Vector3> { toWorld };
         // 시작 셀이 막혀도(반경 부풀림으로 벽에 붙은 경우 등) 탈출은 허용. 도착 셀만 검사.
         // 도착 셀이 막힘(공허/벽 부풀림) — 근처 walkable 셀로 스냅해 접근 경로를 만든다.
-        // 메소 웨이포인트(2m 셀 중심)가 좁은 바닥 다리 옆 공허 타일에 앉는 경우가 대표 사례.
+        // 코스 웨이포인트(2m 셀 중심)가 좁은 바닥 다리 옆 공허 타일에 앉는 경우가 대표 사례.
         if (!IsWalkable(end.x, end.y))
         {
             var snapped = FindNearestWalkable(end, 4);
-            if (snapped == null) return null;
-            end     = snapped.Value;
-            toWorld = CellToWorld(end);
-            if (start == end) return new List<Vector3> { toWorld };
+            if (snapped != null)
+            {
+                end     = snapped.Value;
+                toWorld = CellToWorld(end);
+                if (start == end) return new List<Vector3> { toWorld };
+            }
+            // **못 찾아도 여기서 포기하지 않는다**(2026-08-31). 전에는 `null`이었고, 그것이
+            // **08-28에 세운 규칙("길이 없으면 가장 가까이까지라도 간다 — `null`은 한 발짝도
+            // 못 갈 때만")을 어기고 남아 있던 자리**다.
+            //
+            // 어떻게 드러났나: 로컬 윈도우(40m)는 **먼 목표를 창 가장자리로 접어서**
+            // 겨눈다(`ClampInsideGrid`). 지하에서 그 직선 투영은 **거의 늘 바위 속**이고,
+            // 둘레 네 칸도 바위면 여기서 `null`이 나왔다. 그러면 `ReplanLocal`이
+            // **조향 목표를 제자리로** 두고 `AdvanceWaypoint`가 조용히 멈춘다 —
+            // 화면에는 *"길이 뻔히 있는데 가다 말고 서고, 다시 찍어도 꿈쩍 안 하고,
+            // 포기 메시지도 안 뜬다"*로만 보인다(노란 공이 떴다가 그 프레임에 사라진다).
+            //
+            // 못 걷는 칸을 그대로 목표로 두면 `ei`는 영영 안 뽑히고, 탐색이 끝난 뒤
+            // **가장 가까이 닿은 칸까지의 부분 경로**가 나온다. 값은 격자를 한 번 다 뒤지는
+            // 것인데, 그건 *갈 수 없는 곳을 겨눴을 때만* 치른다.
         }
 
         int n = Width * Height;
@@ -465,6 +564,11 @@ public class PathGrid
     }
 
     // 막힌 셀 주변을 링(체비쇼프 거리)으로 확장하며 가장 가까운 walkable 셀 탐색.
+    //
+    // **부풀림(`LosOpen`)이 아니라 `IsWalkable`로 고른다**(2026-08-31에 바로잡았다).
+    // 부풀림은 **지름길이 지나도 되는가**에 답하는 값이고, 이 함수가 묻는 것은 **거기 설 수
+    // 있는가**다. 부풀림으로 고르면 **벽 옆 칸이 전부 후보에서 빠져** 한 칸짜리 통로 안의
+    // 목적지를 영영 못 잡는다 — *"격자 간선에는 부풀림을 절대 안 건다"*는 규칙과 같은 자리다.
     Vector2Int? FindNearestWalkable(Vector2Int c, int maxRadius)
     {
         for (int r = 1; r <= maxRadius; r++)
@@ -475,7 +579,7 @@ public class PathGrid
             for (int dy = -r; dy <= r; dy++)
             {
                 if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;   // 링 껍질만
-                if (!LosOpen(c.x + dx, c.y + dy)) continue;
+                if (!IsWalkable(c.x + dx, c.y + dy)) continue;
                 int d = dx * dx + dy * dy;
                 if (d < bestD) { bestD = d; best = new Vector2Int(c.x + dx, c.y + dy); }
             }

@@ -24,20 +24,70 @@ public static class TerrainSplat
     // 4m면 눈에 거슬리지 않는다.
     public const int Resolution = 64;
 
+    // 청크마다 다시 쓰는 알파맵 버퍼 — 근거는 `Apply` 안에 적어 두었다.
+    static float[,,] _weights;
+
+    static bool _warnedNoPalette;
+
     // `heights`는 `TerrainAuthoring.Fill`이 이미 채운 정규화 높이(0~1)다.
     // **거기서 경사를 낸다 — 노이즈를 다시 부르지 않는다.** 다시 부르면 청크당 16,000번이
     // 더해져 세우는 비용이 두 배가 된다.
     public static void Apply(TerrainData data, Vector2Int chunk, float[,] heights)
     {
         var pal = Palette;
-        if (data == null || pal == null || !pal.IsUsable) return;
+        if (data == null) return;
+
+        // **조용히 돌아가지 않는다**(2026-09-02). 팔레트가 없거나 레이어가 비면 여기서 그냥
+        // 나갔는데, 그러면 지형에 **텍스처가 한 장도 안 깔린 채** 서고 화면은 **검은 판**이다 —
+        // *왜* 검은지가 어디에도 안 적혀 있어서, 빌드에서만 검게 나왔을 때 짚을 데가 없었다.
+        // **한 번만 알린다**(청크마다 부르는 자리다).
+        if (pal == null || !pal.IsUsable)
+        {
+            if (!_warnedNoPalette)
+            {
+                _warnedNoPalette = true;
+                Debug.LogError(pal == null
+                    ? "[지형] 팔레트가 없다 — 지형이 **검게** 나온다. 씬의 `TerrainStreamer.palette`를 볼 것."
+                    : "[지형] 팔레트에 레이어가 하나도 없다 — 지형이 **검게** 나온다. " +
+                      "`TerrainPalette.Biomes`의 `Ground`가 비었나?");
+            }
+            return;
+        }
 
         int n = pal.Layers.Length;
-        data.terrainLayers = pal.Layers;   // **레이어를 먼저** — 알파맵이 이 길이에 맞춰진다
-        data.alphamapResolution = Resolution;
+
+        // **레이어를 먼저** — 알파맵이 이 길이에 맞춰진다.
+        //
+        // **다만 같은 것을 다시 넣지 않는다**(2026-09-02). `TerrainStreamer`가 청크 그릇을
+        // 돌려 쓰게 된 뒤로 이 함수는 **이미 쓰던 `TerrainData`**에 다시 불린다 — 레이어나
+        // 해상도를 그대로 다시 대입하면 유니티가 **알파맵 텍스처를 새로 만들어** 돌려 쓰는
+        // 뜻이 사라진다. 팔레트가 진짜로 바뀐 때만 갈아 끼운다(저작 중에는 바뀐다).
+        var cur = data.terrainLayers;
+        bool same = cur != null && cur.Length == n;
+        if (same)
+            for (int i = 0; i < n; i++)
+                if (cur[i] != pal.Layers[i]) { same = false; break; }
+
+        if (!same) data.terrainLayers = pal.Layers;
+        if (data.alphamapResolution != Resolution) data.alphamapResolution = Resolution;
 
         int hRes = heights.GetLength(0);              // 129
-        var w = new float[Resolution, Resolution, n];
+
+        // **알파맵 배열을 다시 쓴다**(2026-09-02). `64×64×16`은 **262KB**이고, 청크를
+        // 세울 때마다 새로 만들면 그만큼이 통째로 쓰레기가 된다 — 걸어 다니는 내내 쌓이다가
+        // **10초쯤마다 GC가 16ms를 먹는다**(프로파일러의 `GarbageCollector.CollectIncremental`
+        // 10.9ms + `GC.Collect` 6.0ms짜리 프레임이 그것이다. **할당한 프레임이 아니라 엉뚱한
+        // 프레임이 값을 치른다** — 그래서 원인을 찾기가 어렵다).
+        //
+        // `SetAlphamaps`가 값을 복사해 가므로 다시 써도 된다. **다만 반드시 비운다** —
+        // `AddBiome`이 **더하기**라, 안 비우면 지난 청크의 가중치가 남아 **팔레트에 없는
+        // 채널이 살아 있는 것처럼 보이고** 마지막 정규화가 그걸 나눠 담는다.
+        if (_weights == null || _weights.GetLength(2) != n)
+            _weights = new float[Resolution, Resolution, n];
+        else
+            System.Array.Clear(_weights, 0, _weights.Length);
+
+        var w = _weights;
 
         var hm = TerrainHeight.Heightmap;
 

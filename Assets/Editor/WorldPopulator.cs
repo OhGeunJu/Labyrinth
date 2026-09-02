@@ -60,18 +60,48 @@ public class WorldPopulator : EditorWindow
     int   _lairs         = -1;
     int   _resources     = -1;
 
-    float _townSpacing   = 1800f;   // 마을끼리 (m)
-    float _lairSpacing   = 700f;    // 소굴끼리
-    float _nearTown      = 450f;    // 마을 코앞에는 아무것도 안 선다
-    float _safeRadius    = 1500f;   // 시작 자리 둘레 — 소굴 없음
+    // **간격도 넓이에서 낸다**(2026-08-30). 절대값(1,800m·700m·450m·1,500m)으로 박혀 있었는데,
+    // 세계를 256m로 줄이고 나니 **넷 다 세계보다 크다** — 그러면 조건이 뜻을 잃는 정도가
+    // 아니라 **아무것도 못 놓는다**: 시작 둘레 1,500m를 비우라는 규칙 하나로 **세계 전체가
+    // 금지 구역**이 되어 소굴이 0개가 됐다. 개수를 밀도로 적은 것과 **같은 자리**다.
+    float _townSpacing   = -1f;
+    float _lairSpacing   = -1f;
+    float _nearTown      = -1f;
+    float _safeRadius    = -1f;
 
     float _maxSlope      = 6f;      // 발자국 안에서 이만큼(m) 넘게 기울면 버린다
 
-    void OnEnable()
+    void OnEnable() => Defaults();
+
+    // **간격은 평균 간격에서 낸다** — `세계 한 변 / √개수`가 평균 간격이고, 그보다 작게 잡아야
+    // 조건이 *"뭉치지 마라"*로 읽힌다. 크게 잡으면 *"놓지 마라"*가 된다.
+    static float Spread(int n, float frac) =>
+        TerrainGrid.WorldSize / Mathf.Sqrt(Mathf.Max(1, n)) * frac;
+
+    void Defaults()
     {
         if (_towns     < 0) _towns     = ByArea(TownsPer100);
         if (_lairs     < 0) _lairs     = ByArea(LairsPer100);
         if (_resources < 0) _resources = ByArea(NodesPer100);
+
+        if (_townSpacing < 0f) _townSpacing = Spread(_towns, 0.55f);
+        if (_lairSpacing < 0f) _lairSpacing = Spread(_lairs, 0.55f);
+        if (_nearTown    < 0f) _nearTown    = _townSpacing * 0.25f;
+        if (_safeRadius  < 0f) _safeRadius  = TerrainGrid.WorldSize * 0.18f;
+    }
+
+    // **한 번에 다시 세우기가 부르는 문**(2026-08-30). 메뉴 항목은 *창을 여는 것*이라
+    // `ExecuteMenuItem`으로 부르면 **창만 뜨고 아무것도 안 놓인다** — 그런데 참을 돌려주므로
+    // 묶음 도구는 성공한 줄 알고 다음으로 넘어갔다. 마을이 하나도 안 서 있던 원인이 이거다.
+    public static void RunHeadless()
+    {
+        var w = ScriptableObject.CreateInstance<WorldPopulator>();
+        try
+        {
+            w.Defaults();
+            w.Populate();
+        }
+        finally { Object.DestroyImmediate(w); }
     }
 
     [MenuItem("DungeonColony/Terrain/5. Populate World (자동 배치)")]
@@ -165,6 +195,7 @@ public class WorldPopulator : EditorWindow
 
         // ── ② 뿌린다 ────────────────────────────────────────────────────────
         var placed = new List<(Vector2 pos, WorldNodeContent kind)>();
+        var rooms  = new List<TerrainFeature>();
         var rng    = new System.Random(_seed);
         int made   = 0;
 
@@ -172,11 +203,13 @@ public class WorldPopulator : EditorWindow
         {
             // **마을을 먼저 놓는다.** 소굴이 자리를 다 차지한 뒤에 마을을 끼우면, 사람 사는
             // 데가 남는 자투리로 밀린다 — 순서가 곧 우선순위다.
-            made += Scatter(root, content, placed, rng, WorldNodeContent.Town,         _towns,     0f);
-            made += Scatter(root, content, placed, rng, WorldNodeContent.EnemyLair,    _lairs,     _safeRadius);
-            made += Scatter(root, content, placed, rng, WorldNodeContent.ResourceSite, _resources, 0f);
+            made += Scatter(root, content, placed, rooms, rng, WorldNodeContent.Town,         _towns,     0f);
+            made += Scatter(root, content, placed, rooms, rng, WorldNodeContent.EnemyLair,    _lairs,     _safeRadius);
+            made += Scatter(root, content, placed, rooms, rng, WorldNodeContent.ResourceSite, _resources, 0f);
         }
         finally { EditorUtility.ClearProgressBar(); }
+
+        WriteRooms(rooms);
 
         Undo.SetCurrentGroupName("세계 채우기");
         Undo.CollapseUndoOperations(group);
@@ -198,10 +231,18 @@ public class WorldPopulator : EditorWindow
     }
 
     int Scatter(WorldAuthoringRoot root, WorldContentStreamer content,
-                List<(Vector2 pos, WorldNodeContent kind)> placed, System.Random rng,
-                WorldNodeContent kind, int target, float safeRadius)
+                List<(Vector2 pos, WorldNodeContent kind)> placed, List<TerrainFeature> rooms,
+                System.Random rng, WorldNodeContent kind, int target, float safeRadius)
     {
         var prefab = PrefabFor(kind, content);
+
+        // **조용히 0을 돌려주지 않는다.** 프리팹이 안 물려 있으면 그 종류가 통째로 안 서는데,
+        // 화면에는 *"마을이 없다"*로만 보이고 원인이 배치 도구인지 굽기인지 스트리밍인지
+        // 가릴 수가 없다 — 이 저장소가 여러 번 겪은 자리다.
+        if (prefab == null && target > 0)
+            Debug.LogWarning($"[배치] `WorldContentStreamer`에 {kind.DisplayName()} 프리팹이 안 물려 있다 — " +
+                             $"{target}개를 통째로 못 놓는다.");
+
         if (prefab == null || target <= 0) return 0;
 
         float world = TerrainGrid.WorldSize;
@@ -236,13 +277,123 @@ public class WorldPopulator : EditorWindow
             p = Flattest(p, foot, rng);
             if (Slope(p, foot) > _maxSlope) continue;
 
+            // **굴 위로 미끄러뜨린다**(2026-08-30). 지하는 세계의 3분의 2가 바위인데 여기는
+            // 그걸 하나도 안 보고 있었다 — 마을 열에 일곱이 **통짜 바위 속**에 섰고, 화면에는
+            // *"마을이 아예 없다"*로만 보인다(벽에 가려 보이지도, 갈 수도 없다).
+            //
+            // **가장 가까운 굴로 옮긴다** — 자리를 버리지 않는 이유는 개수 때문이다: 바위면
+            // 버리게 두면 요청한 수의 3분의 1만 서고 **"바란 만큼 다 못 놓았다"**가 상수가 된다.
+            // 그리고 굴 위에 서야 **길이 이어진다**(열린 넓이의 9할이 한 그물이다).
+            if (!RockMap.TryNearestOpen(new Vector3(p.x, 0f, p.y), 30f, out var open)) continue;
+            p = new Vector2(open.x, open.z);
+            if (Slope(p, foot) > _maxSlope) continue;   // 옮겼으니 다시 잰다
+
             if (TooClose(placed, p, kind, mine)) continue;
 
             Create(root, prefab, kind, p, made, rng);
             placed.Add((p, kind));
+            rooms.Add(Room(kind, p, made));
             made++;
         }
         return made;
+    }
+
+    // ── 장소는 제 방을 판다 ────────────────────────────────────────────────
+    //
+    // 굴 위에 세우는 것만으로는 모자란다 — **통로는 9m인데 마을 발자국은 20m다.** 그대로
+    // 두면 마을의 바깥 절반이 벽에 박힌다.
+    //
+    // **방을 파는 물건은 이미 있다: 천장 특징**(`TerrainCeiling.Features` — *"저작한 방(+)과
+    // 기둥(−)"*). 새 표를 만들지 않는 이유가 셋이다: **함수라 저장할 것이 없고**(캔 칸처럼
+    // 좌표를 쌓지 않는다) · **미리보기와 길찾기와 건설이 이미 그걸 본다** · 그리고 굽는 쪽이
+    // 특징을 *"손댄 것"*으로 안 세므로 **델타가 안 불어난다.**
+    //
+    // **높이는 저작하지 않고 파생시킨다** — 기준 여유가 바뀌면 방도 같이 깊어져야 한다.
+    // 따로 적으면 언젠가 기준보다 얕아지고, 그때 **방을 팠는데 여전히 바위**가 된다.
+    static TerrainFeature Room(WorldNodeContent kind, Vector2 center, int index)
+    {
+        float foot = Footprint(kind);
+        var   p    = TerrainCeiling.Effective;
+
+        return new TerrainFeature
+        {
+            Name   = $"{RoomPrefix}{kind}_{index}",
+            Center = center,
+
+            // 가장자리는 부드럽게 닫히므로 **뚫리는 반지름은 반경의 4분의 3쯤**이다 —
+            // 발자국이 그 안에 들어가야 해서 넉넉히 잡는다.
+            Radius = foot * 1.4f,
+            Plateau = 0.6f,
+
+            // 바위(기준 여유)에서 폰 키보다 넉넉히 위로. **여유 있게 올린다** — 딱 맞추면
+            // 요철 한 번에 천장이 문턱 아래로 내려가 **방 한가운데가 막힌다.**
+            Height = PawnMover.BodyHeight + 4f - p.BaseClearance,
+        };
+    }
+
+    // 도구가 판 방인지 이름으로 가른다 — **손으로 저작한 방은 안 건드린다**(물건에 `Generated`가
+    // 있는 것과 같은 규칙). 안 가르면 다시 돌릴 때마다 방이 쌓여 **세계가 통째로 뚫린다.**
+    const string RoomPrefix = "site:";
+
+    static void WriteRooms(List<TerrainFeature> rooms)
+    {
+        var st = Object.FindFirstObjectByType<TerrainStreamer>(FindObjectsInactive.Include);
+        if (st == null)
+        {
+            Debug.LogWarning("[배치] 씬에 `TerrainStreamer`가 없어 장소의 방을 못 팠다 — " +
+                             "마을이 바위에 박힌 채로 남는다.");
+            return;
+        }
+
+        var so    = new SerializedObject(st);
+        var arr   = so.FindProperty("ceilingFeatures");
+        if (arr == null)
+        {
+            Debug.LogError("[배치] `ceilingFeatures`를 못 찾았다 — 필드 이름이 바뀌었나? **방을 안 팠다.**");
+            return;
+        }
+
+        // 손으로 저작한 것만 남긴다.
+        var kept = new List<TerrainFeature>();
+        for (int i = 0; i < arr.arraySize; i++)
+        {
+            var e = arr.GetArrayElementAtIndex(i);
+            string name = e.FindPropertyRelative("Name")?.stringValue ?? "";
+            if (name.StartsWith(RoomPrefix)) continue;
+
+            kept.Add(new TerrainFeature
+            {
+                Name        = name,
+                Center      = e.FindPropertyRelative("Center").vector2Value,
+                Radius      = e.FindPropertyRelative("Radius").floatValue,
+                Height      = e.FindPropertyRelative("Height").floatValue,
+                Plateau     = e.FindPropertyRelative("Plateau").floatValue,
+                Ridge       = e.FindPropertyRelative("Ridge").floatValue,
+                RidgePeriod = e.FindPropertyRelative("RidgePeriod").floatValue,
+            });
+        }
+
+        kept.AddRange(rooms);
+        arr.arraySize = kept.Count;
+        for (int i = 0; i < kept.Count; i++)
+        {
+            var e = arr.GetArrayElementAtIndex(i);
+            e.FindPropertyRelative("Name").stringValue         = kept[i].Name;
+            e.FindPropertyRelative("Center").vector2Value      = kept[i].Center;
+            e.FindPropertyRelative("Radius").floatValue        = kept[i].Radius;
+            e.FindPropertyRelative("Height").floatValue        = kept[i].Height;
+            e.FindPropertyRelative("Plateau").floatValue       = kept[i].Plateau;
+            e.FindPropertyRelative("Ridge").floatValue         = kept[i].Ridge;
+            e.FindPropertyRelative("RidgePeriod").floatValue   = kept[i].RidgePeriod;
+        }
+        so.ApplyModifiedProperties();
+
+        // **static에도 즉시 밀어 넣는다** — 안 밀면 다음에 도구가 재는 여유가 옛 것이라
+        // *"방을 팠는데 미리보기에는 없다"*가 된다.
+        TerrainAuthoring.SyncValues();
+
+        Debug.Log($"[배치] 장소의 방 {rooms.Count}개를 천장에 팠다(손으로 저작한 {kept.Count - rooms.Count}개는 그대로). " +
+                  "**씬을 저장할 것** — 방은 씬의 `ceilingFeatures`에 들어간다.");
     }
 
     // ── 규칙 ────────────────────────────────────────────────────────────────

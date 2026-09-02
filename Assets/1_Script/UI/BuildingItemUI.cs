@@ -31,8 +31,16 @@ public class BuildingItemUI : MonoBehaviour, IPointerEnterHandler, IPointerExitH
 
     // **설명은 글자가 아니라 함수로 받는다.** 거기엔 *지금 가진 재료*가 들어가는데, 목록을
     // 지을 때 한 번 구워 두면 창고가 바뀌어도 안 따라온다 — 올릴 때마다 새로 짓는다.
+    // **지금 무슨 이름인가** — 같은 것을 매 프레임 다시 걸지 않으려고 부르는 쪽이 본다.
+    // `Setup`은 툴팁 델리게이트까지 새로 거는 자리라 값이 싸지 않다.
+    public string CurrentName { get; private set; }
+
+    // 이름은 같은데 **누를 때 부르는 곳이 달라졌을 때** 쓴다(모드 전환).
+    public void ForgetName() => CurrentName = null;
+
     public void Setup(string name, System.Func<string> tooltip, System.Action onClick)
     {
+        CurrentName = name;
         if (nameLabel != null) nameLabel.text = name;
 
         _tipTitle = name;
@@ -52,6 +60,13 @@ public class BuildingItemUI : MonoBehaviour, IPointerEnterHandler, IPointerExitH
         // `interactable = false`로 막지 않는 이유: 버튼의 색 전환이 배경을 덮어써
         // `SetColor`로 칠한 잠김 색이 안 보이게 된다. 안 눌리는 것으로 충분하다.
         if (onClick != null) btn.onClick.AddListener(() => onClick());
+    }
+
+    // **이름 글자색.** 배경이 꺼진 타일에서 *지금 고른 것*을 말할 유일한 자리다 —
+    // 아이콘을 물들이면 나중에 진짜 그림이 들어왔을 때 그 그림에 색이 곱해진다.
+    public void SetLabelColor(Color color)
+    {
+        if (nameLabel != null) nameLabel.color = color;
     }
 
     // BuildModeUI가 매 프레임 색을 직접 설정

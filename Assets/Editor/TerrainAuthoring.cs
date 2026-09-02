@@ -13,6 +13,13 @@ public static class TerrainAuthoring
     // **미리보기 지형의 루트 이름은 여기 하나다.** 이름을 아는 곳이 둘이면 한쪽이 못 찾는다.
     public const string PreviewRoot = "__TerrainPreview";
 
+    // 마지막으로 밀어 넣은 값 — 바뀐 것을 알아채려고만 든다(위 `SyncValues` 참고).
+    static TerrainProfile        _lastProfile;
+    static TerrainCeilingProfile _lastCeiling;
+    static TerrainFeature[]      _lastFeatures;
+    static TerrainFeature[]      _lastCeilingFeatures;
+    static TerrainHeightmap      _lastHeightmap;
+
     // ── 씬에서 값을 읽어 온다 ───────────────────────────────────────────────
 
     // **값만 — 매 프레임 불러도 싼 것.** 핸들을 그리는 자리(`OnSceneGUI`)가 쓴다.
@@ -26,6 +33,34 @@ public static class TerrainAuthoring
         TerrainHeight.Heightmap = s.Heightmap;
         TerrainSplat.Palette   = s.Palette;
         if (s.Palette != null) s.Palette.PushToShader();   // **산까지 같이** — 빠뜨리면 산 전체가 델타로 구워진다
+
+        // **천장도 같이 읽는다** — 안 읽으면 도구가 코드 기본값으로 굴을 그리고 게임은 씬
+        // 값으로 판정해서, *"그림에는 길이 있는데 폰은 벽을 민다"*가 된다. 바닥 프로필을
+        // 여기 모아 둔 것과 같은 이유다.
+        TerrainCeiling.Enabled  = s.CeilingOn;
+        TerrainCeiling.Profile  = s.CeilingProfile;
+        TerrainCeiling.Features = s.CeilingFeatures ?? System.Array.Empty<TerrainFeature>();
+
+        // **값이 바뀌었으면 기억한 정점을 버린다.** `TerrainHeight`/`TerrainCeiling`은 정점
+        // 하나를 한 번만 세고 담아 두는데, 여기는 **캐시를 안 비우기로 한 자리**라(프레임마다
+        // 도는 손잡이 그리기) 그대로 두면 *"손잡이는 움직이는데 지형은 그대로"*가 된다.
+        // 인스펙터 편집은 `OnValidate → Apply`가 이미 버리므로 여기서 잡는 것은 **그 밖의
+        // 경로**(도구가 다른 씬의 값을 밀어 넣는 경우)다. 안 바뀌었으면 아무 일도 안 한다.
+        bool changed = !_lastProfile.Equals(s.Profile)
+                    || !_lastCeiling.Equals(s.CeilingProfile)
+                    || !ReferenceEquals(_lastFeatures, s.Features)
+                    || !ReferenceEquals(_lastCeilingFeatures, s.CeilingFeatures)
+                    || _lastHeightmap != s.Heightmap;
+        if (changed)
+        {
+            _lastProfile         = s.Profile;
+            _lastCeiling         = s.CeilingProfile;
+            _lastFeatures        = s.Features;
+            _lastCeilingFeatures = s.CeilingFeatures;
+            _lastHeightmap       = s.Heightmap;
+            TerrainHeight.ForgetVertices();
+            TerrainCeiling.ForgetVertices();
+        }
         return s;
     }
 

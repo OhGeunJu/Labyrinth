@@ -48,7 +48,14 @@ public class BuildModeUI : MonoBehaviour
 
     void Rebuild()
     {
-        if (panel != null && panel.activeSelf) ShowCategory(_selectedCat);
+        if (panel == null || !panel.activeSelf) return;
+
+        // **갈래까지 다시 짓는다**(2026-09-02). 잠긴 것을 안 띄우게 된 뒤로 **연구 하나가
+        // 갈래를 통째로 열 수 있다** — 목록만 다시 지으면 그 갈래 버튼이 안 나타나서,
+        // 방금 연구한 건물을 **고를 길이 없다.**
+        _catBtns.Clear();
+        WireCategories();
+        ShowCategory(_selectedCat);
     }
 
     void OnActiveChanged(bool active)
@@ -134,10 +141,12 @@ public class BuildModeUI : MonoBehaviour
         var mgr = BuildModeManager.Instance;
         if (mgr == null) return true;   // 아직 안 섰다 — 숨기는 쪽으로 넘겨짚지 않는다
 
+        // **잠긴 것만 있는 갈래는 빈 갈래다** — 목록이 잠긴 것을 안 띄우므로, 여기서 같은
+        // 눈으로 안 세면 **눌러도 아무것도 안 나오는 갈래 버튼**이 남는다.
         for (int i = 0; i < mgr.TotalBuildingCount; i++)
         {
             var bd = mgr.GetBuilding(i);
-            if (bd != null && bd.Category == cat) return true;
+            if (bd != null && bd.Category == cat && bd.IsUnlocked) return true;
         }
         return false;
     }
@@ -160,9 +169,16 @@ public class BuildModeUI : MonoBehaviour
             var bd = mgr.GetBuilding(i);
             if (bd == null || bd.Category != cat) continue;
 
-            // **잠긴 건물도 목록에 남긴다.** 안 보이면 "이 게임에 제재소가 있긴 한가"를 알 수 없고,
-            // 무엇을 목표로 연구할지도 정할 수 없다. 대신 **무엇을 뚫어야 하는지**를 설명에 적는다.
-            bool locked = !bd.IsUnlocked;
+            // **잠긴 건물은 안 띄운다**(2026-09-02, 사용자 결정 — 림월드가 그렇다).
+            //
+            // 한동안 반대로 뒀다: *"안 보이면 이 게임에 제재소가 있긴 한가를 알 수 없고,
+            // 무엇을 목표로 연구할지도 정할 수 없다."* **그 전제가 이제 충족된다** —
+            // 연구 화면이 노드마다 `해금 —` 블록으로 열리는 건물과 레시피를 나열한다
+            // (`ResearchTableUI` · `GetUnlockedBuildings`). **물음마다 답하는 화면이 하나씩**이면
+            // 목록은 *지금 지을 수 있는 것*만 들면 된다.
+            //
+            // 55개 중 상당수가 잠겨 있어서, 남겨 두면 **고를 것을 가리는 쪽**이 더 컸다.
+            if (!bd.IsUnlocked) continue;
 
             int captured = i;
             var data     = bd;
@@ -170,8 +186,7 @@ public class BuildModeUI : MonoBehaviour
 
             // 잠긴 것은 눌러도 아무 일도 안 일어난다 — `BuildModeManager`가 배치도 막지만,
             // 여기서 막아야 "골랐는데 고스트가 안 뜨는" 상태가 안 생긴다.
-            item.Setup(bd.BuildingName, () => Describe(data),
-                       locked ? (System.Action)null : () => mgr.SelectBuilding(captured));
+            item.Setup(bd.BuildingName, () => Describe(data), () => mgr.SelectBuilding(captured));
             _itemBtns.Add((item, i));
         }
     }

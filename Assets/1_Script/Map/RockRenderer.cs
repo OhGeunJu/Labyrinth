@@ -56,9 +56,11 @@ public class RockRenderer : MonoBehaviour
 
     class Chunk
     {
-        public GameObject   Go;
-        public Mesh         Mesh;
-        public MeshCollider Col;
+        public GameObject Go;
+        public Mesh       Mesh;
+
+        // **박스로 막는다 — 메시가 아니다**(2026-08-30). 근거는 `FitBoxes` 위에 적었다.
+        public readonly List<BoxCollider> Boxes = new();
     }
 
     readonly Dictionary<Vector2Int, Chunk> _chunks = new();
@@ -85,6 +87,15 @@ public class RockRenderer : MonoBehaviour
              "걸을 수도, 핵을 놓을 수도, 캘 자리를 고를 수도 없다.")]
     [SerializeField, Range(0f, 40f)] float startClearing = 12f;
 
+    [Tooltip("시작 공터에서 **가장 가까운 자연 굴까지** 길을 뚫는다(m). 굴이 그물로 나 있어도 " +
+             "공터가 바위 한복판에 떨어지면 첫 화면이 여전히 웅덩이 하나라, 어느 쪽에 길이 " +
+             "있는지를 알 방법이 없다. **0이면 안 뚫는다.**")]
+    [SerializeField, Range(0f, 200f)] float pathToCave = 90f;
+
+    [Tooltip("그 길의 폭(m). **좁게 둔다** — 넓으면 저작한 굴과 구별이 안 되고, 시작부터 " +
+             "파낼 것이 줄어든다.")]
+    [SerializeField, Range(1f, 8f)] float pathWidth = 3f;
+
     // **판이 열릴 때 내 폰 둘레를 연다.** `Start`에서 한다 — `OnEnable`은 폰이 아직 다 서기
     // 전일 수 있고(실행 순서), 그러면 아무도 못 찾아 **아무 데도 안 열린다.**
     void Start()
@@ -98,13 +109,23 @@ public class RockRenderer : MonoBehaviour
             if (f == null || !f.IsPlayer) continue;
 
             RockMap.OpenAround(brain.transform.position, startClearing);
+
+            // **첫 한 자리만 굴에 잇는다** — 폰마다 이으면 진입로가 여럿이라 어디로 가야
+            // 할지가 다시 흐려지고, 무엇보다 시작 공터끼리 이어져 마당이 통째로 열린다.
+            if (opened == 0 && pathToCave > 0f)
+                RockMap.OpenPathToCave(brain.transform.position, pathToCave, pathWidth);
+
             opened++;
         }
 
         // **아무도 못 찾으면 카메라 앞을 연다** — 폰이 나중에 오는 판(이벤트로 합류)에서도
         // 최소한 볼 것과 누를 것이 있어야 한다.
         if (opened == 0)
-            RockMap.OpenAround(ViewerXZ(), startClearing);
+        {
+            var p = ViewerXZ();
+            RockMap.OpenAround(p, startClearing);
+            if (pathToCave > 0f) RockMap.OpenPathToCave(p, pathToCave, pathWidth);
+        }
     }
 
     Vector3 ViewerXZ()
@@ -168,7 +189,11 @@ public class RockRenderer : MonoBehaviour
 
         for (int y = 0; y < per; y++)
         for (int x = 0; x < per; x++)
-            _dirty.Add(new Vector2Int(baseTile.x / ChunkTiles + x, baseTile.y / ChunkTiles + y));
+        {
+            var c = new Vector2Int(baseTile.x / ChunkTiles + x, baseTile.y / ChunkTiles + y);
+            _live.Add(c);
+            _dirty.Add(c);
+        }
     }
 
     void OnTerrainGone(Vector2Int terrainChunk)
@@ -180,17 +205,40 @@ public class RockRenderer : MonoBehaviour
 
         for (int y = 0; y < per; y++)
         for (int x = 0; x < per; x++)
-            Drop(new Vector2Int(baseTile.x / ChunkTiles + x, baseTile.y / ChunkTiles + y));
+        {
+            var c = new Vector2Int(baseTile.x / ChunkTiles + x, baseTile.y / ChunkTiles + y);
+            _live.Remove(c);
+            _dirty.Remove(c);      // **예약도 거둔다** — 안 거두면 내린 청크가 다음 프레임에 되살아난다
+            Drop(c);
+        }
     }
+
+    // **지형이 서 있는 자리만 그린다**(2026-08-30). 바위 청크가 있는 자리를 정하는 것은
+    // `OnTerrainChunk` 하나여야 하는데, 아래 `OnRockChanged`가 그걸 건너뛰고 **아무 칸이나
+    // 더럽힐 수 있었다.**
+    //
+    // 증상: *"처음에는 안 보이는데 땅 없는 곳에 채굴을 대 보면 벽이 갑자기 계속 생긴다"*
+    // (사용자). 채굴 지정은 미리보기로 칸을 **찍었다 무르며** `OnChanged`를 터뜨리는데,
+    // 그 칸이 **아직 지형이 안 선 자리**여도 그대로 구워졌다 — 그래서 **땅도 없는 허공에
+    // 벽만 서고**, 커서를 쓸면 그 벽이 계속 늘어난다.
+    //
+    // 드래그 박스는 콜라이더가 아니라 **평면**과 교차해 칸을 모으므로(귀퉁이가 허공이어도
+    // 답이 나와야 한다) 지형 밖까지 닿는다 — 거기서 막지 말고 **그리는 쪽에서** 막는다.
+    readonly HashSet<Vector2Int> _live = new();
 
     // **맞닿은 넷까지 더럽힌다** — 파내면 이웃 바위의 옆면이 새로 드러난다.
     void OnRockChanged(Vector2Int tile)
     {
-        _dirty.Add(ChunkOf(tile));
-        _dirty.Add(ChunkOf(tile + Vector2Int.right));
-        _dirty.Add(ChunkOf(tile + Vector2Int.left));
-        _dirty.Add(ChunkOf(tile + Vector2Int.up));
-        _dirty.Add(ChunkOf(tile + Vector2Int.down));
+        Dirty(ChunkOf(tile));
+        Dirty(ChunkOf(tile + Vector2Int.right));
+        Dirty(ChunkOf(tile + Vector2Int.left));
+        Dirty(ChunkOf(tile + Vector2Int.up));
+        Dirty(ChunkOf(tile + Vector2Int.down));
+    }
+
+    void Dirty(Vector2Int chunk)
+    {
+        if (_live.Contains(chunk)) _dirty.Add(chunk);
     }
 
     static Vector2Int ChunkOf(Vector2Int tile) => new(
@@ -219,11 +267,20 @@ public class RockRenderer : MonoBehaviour
         var map = MapManager.Instance;
         int x0 = chunk.x * ChunkTiles, y0 = chunk.y * ChunkTiles;
 
+        // **도는 김에 콜라이더 쪽이 쓸 것까지 채운다**(2026-09-02). `FitBoxes`가 같은 256칸을
+        // 한 번 더 돌며 `IsRock`과 `SurfaceHeight`를 **다시** 물었었다 — 답이 안 바뀌는 물음을
+        // 청크 한 장마다 두 벌 낸 셈이다. 여기서 채워 넘기면 그 한 바퀴가 통째로 사라진다.
+        float lowest = float.MaxValue, highest = float.MinValue;
+
         for (int ty = 0; ty < ChunkTiles; ty++)
         for (int tx = 0; tx < ChunkTiles; tx++)
         {
             var tile = new Vector2Int(x0 + tx, y0 + ty);
-            if (!RockMap.IsRock(tile)) continue;
+
+            bool solid = RockMap.IsRock(tile);
+            _solid[tx, ty] = solid;
+            _taken[tx, ty] = false;
+            if (!solid) continue;
 
             // **찍힌 칸은 윗면·옆면을 가리지 않고 한 벌로 간다** — 찍혔다는 것이 그 칸의
             // 전부이므로, 거기서 또 갈라 봐야 색만 늘고 읽히지는 않는다.
@@ -231,6 +288,9 @@ public class RockRenderer : MonoBehaviour
 
             float floor = map != null ? map.SurfaceHeight(tile) : 0f;
             float top   = floor + RockMap.Height;
+
+            if (floor < lowest)  lowest  = floor;
+            if (floor > highest) highest = floor;
 
             // 칸의 네 모서리(월드). **격자 위상을 얹는다** — 안 얹으면 벽이 반 칸 어긋난다.
             Vector3 c = map != null ? map.TileToWorld(tile)
@@ -270,8 +330,94 @@ public class RockRenderer : MonoBehaviour
 
         // **콜라이더를 단다** — 커서가 바위를 짚어야 캘 자리를 고를 수 있고, 몸도 막아야 한다.
         // (천장에 안 다는 것과 정반대다 — 저쪽은 위에 있어서 짚으면 안 되고, 이쪽은 짚어야 한다.)
-        ch.Col.sharedMesh = null;
-        ch.Col.sharedMesh = mesh;
+        FitBoxes(ch, chunk, lowest, highest);
+    }
+
+    // ── 막는 것은 박스다 ────────────────────────────────────────────────────
+    //
+    // **콜라이더로 이 메시를 쓰면 안 된다**(2026-08-30). 이 메시는 *드러난 면만* 굽는다 —
+    // 즉 **속이 빈 껍데기**다. 캡슐이 어쩌다 한 번 안으로 새면 **밀어낼 면이 안에 없어서**
+    // 그대로 벽 속에 선다. ㄷ자 안쪽처럼 두 면에 동시에 눌리는 자리, 순간이동으로 자리를
+    // 옮긴 직후, 프레임이 튄 순간 — 새어 들어가는 길이 여럿이고 **하나씩 막는 방식으로는
+    // 안 끝난다.**
+    //
+    // **박스는 속이 찼다.** 유니티가 겹침을 풀 때 언제나 바깥으로 밀어내므로 *"들어간 채로
+    // 서 있는"* 상태 자체가 안 생긴다.
+    //
+    // **칸마다 하나씩 달면 안 된다** — 청크 하나가 256개다. 이어진 바위를 **직사각형으로
+    // 묶는다**(탐욕적으로 오른쪽 → 아래로 넓힌다). 통짜 바위 청크는 박스 **하나**가 되고,
+    // 굴이 난 곳도 대개 열 몇 개다. `FloorRenderer`가 면을 묶는 것과 같은 결의 최적화다.
+    //
+    // **높이는 넉넉히 잡는다** — 바닥이 칸마다 조금씩 다르므로 가장 낮은 데서 가장 높은
+    // 데까지 덮는다. 넘치는 쪽은 땅속이라 아무도 안 만난다.
+    static readonly bool[,] _solid = new bool[ChunkTiles, ChunkTiles];
+    static readonly bool[,] _taken = new bool[ChunkTiles, ChunkTiles];
+
+    // `_solid`·`_taken`·최저/최고는 **`Rebuild`가 채워 넘긴다** — 같은 256칸을 두 번 돌지
+    // 않으려는 것이고, 그래서 **`Rebuild` 말고 다른 데서 부르면 안 된다**(빈 배열로 돈다).
+    void FitBoxes(Chunk ch, Vector2Int chunk, float lowest, float highest)
+    {
+        var map = MapManager.Instance;
+        int x0 = chunk.x * ChunkTiles, y0 = chunk.y * ChunkTiles;
+
+        if (lowest > highest) { SetBoxCount(ch, 0); return; }   // 바위가 없다
+
+        float bottom = lowest - 2f;                 // 조금 파묻는다 — 발밑으로 새지 않게
+
+        float top    = highest + RockMap.Height;
+        float cy     = (bottom + top) * 0.5f;
+        float sy     = top - bottom;
+
+        int used = 0;
+        for (int ty = 0; ty < ChunkTiles; ty++)
+        for (int tx = 0; tx < ChunkTiles; tx++)
+        {
+            if (!_solid[tx, ty] || _taken[tx, ty]) continue;
+
+            // 오른쪽으로 최대한.
+            int w = 1;
+            while (tx + w < ChunkTiles && _solid[tx + w, ty] && !_taken[tx + w, ty]) w++;
+
+            // 그 폭 그대로 아래로 최대한.
+            int h = 1;
+            while (ty + h < ChunkTiles)
+            {
+                bool ok = true;
+                for (int k = 0; k < w; k++)
+                    if (!_solid[tx + k, ty + h] || _taken[tx + k, ty + h]) { ok = false; break; }
+                if (!ok) break;
+                h++;
+            }
+
+            for (int j = 0; j < h; j++)
+            for (int k = 0; k < w; k++) _taken[tx + k, ty + j] = true;
+
+            // 칸 범위 → 월드. **격자 위상을 얹는다**(그리는 쪽과 같은 식이어야 한다).
+            Vector3 a = map != null ? map.TileToWorld(new Vector2Int(x0 + tx, y0 + ty))
+                                    : new Vector3(x0 + tx + 0.5f, 0f, y0 + ty + 0.5f);
+
+            var box = BoxAt(ch, used++);
+            box.center = new Vector3(a.x - 0.5f + w * 0.5f, cy, a.z - 0.5f + h * 0.5f);
+            box.size   = new Vector3(w, sy, h);
+        }
+
+        SetBoxCount(ch, used);
+    }
+
+    // **박스를 지웠다 다시 만들지 않는다** — 청크는 파낼 때마다 다시 구워지므로, 그때마다
+    // 컴포넌트를 붙였다 떼면 물리 엔진이 매번 브로드페이즈를 다시 짠다. 남는 것은 꺼 둔다.
+    BoxCollider BoxAt(Chunk ch, int i)
+    {
+        while (ch.Boxes.Count <= i) ch.Boxes.Add(ch.Go.AddComponent<BoxCollider>());
+        var b = ch.Boxes[i];
+        b.enabled = true;
+        return b;
+    }
+
+    static void SetBoxCount(Chunk ch, int used)
+    {
+        for (int i = used; i < ch.Boxes.Count; i++)
+            if (ch.Boxes[i] != null) ch.Boxes[i].enabled = false;
     }
 
     void Side(List<int> list, Vector2Int neighbor,
@@ -319,6 +465,13 @@ public class RockRenderer : MonoBehaviour
 
     // ── 그릇 ────────────────────────────────────────────────────────────────
 
+    // **바위 청크의 부모.** 커서 레이가 *"이건 바위다"*를 물을 자리다 — 바위는 `Ground`
+    // 레이어라(짚어야 캘 수 있다) 레이어로는 바닥과 못 가른다.
+    public static Transform ChunkRoot { get; private set; }
+
+    public static bool IsRockCollider(Component c) =>
+        c != null && ChunkRoot != null && c.transform.parent == ChunkRoot;
+
     Chunk Ensure(Vector2Int chunk)
     {
         if (_chunks.TryGetValue(chunk, out var c) && c.Go != null) return c;
@@ -327,6 +480,7 @@ public class RockRenderer : MonoBehaviour
         {
             _root = new GameObject("RockChunks").transform;
             _root.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            ChunkRoot = _root;
         }
 
         var go = new GameObject($"Rock_{chunk.x}_{chunk.y}");
@@ -339,7 +493,7 @@ public class RockRenderer : MonoBehaviour
         var mr = go.AddComponent<MeshRenderer>();
         mr.sharedMaterials = new[] { TopMat(), SideMat(), MarkMat() };
 
-        c = new Chunk { Go = go, Mesh = mesh, Col = go.AddComponent<MeshCollider>() };
+        c = new Chunk { Go = go, Mesh = mesh };
         _chunks[chunk] = c;
         return c;
     }
@@ -393,7 +547,7 @@ public class RockRenderer : MonoBehaviour
 
     static Material Lit(string name, Color color)
     {
-        var sh = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        var sh = RuntimeShaders.Find(RuntimeShaders.Lit, RuntimeShaders.Standard);
         var m = new Material(sh) { name = name };
         m.SetColor("_BaseColor", color);
         m.SetColor("_Color",     color);   // 빌트인으로 떨어졌을 때

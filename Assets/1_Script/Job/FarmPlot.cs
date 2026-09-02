@@ -62,23 +62,26 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
         ? MapManager.Instance.WorldToTile(transform.position)
         : Vector2Int.zero;
 
-    void OnEnable()  => All.Add(this);
-    void OnDisable() => All.Remove(this);
+    void OnEnable()  { All.Add(this); JoinNeighborGroup(); FarmZones.MarkDirty(); }
+    void OnDisable() { All.Remove(this); FarmZones.MarkDirty(); }
 
-    void Update()
-    {
-        UpdateGrowth();
-
-        _jobCheckTimer -= Time.deltaTime;
-        if (_jobCheckTimer <= 0f)
-        {
-            _jobCheckTimer = JobCheckInterval;
-            TryRegisterJobs();
-        }
-    }
+    // **면을 칠하지 않는다 — 테두리로 그린다**(`FarmZoneOverlay`, 2026-09-02).
+    //
+    // 처음엔 흙 색에 구역 색을 곱했는데 **애매했다**(사용자). 어두운 굴에서 옅은 곱셈은
+    // *"저 밭이 좀 누런가"* 정도로만 보이고, 무엇보다 **어디서 끊기는지가 안 보인다** —
+    // 구역을 표시하는 목적의 절반이 *경계*인데 면을 칠하면 경계가 제일 안 보이는 것이 된다.
 
     // SelectionManager의 단일 레이캐스트가 이 농지를 클릭 판정 시 호출.
-    public void OnWorldClick() => OnSelected?.Invoke(this);
+    // **구역을 그리는 중에는 창을 안 연다**(2026-09-02, 사용자). 그 모드의 클릭은 *구역을
+    // 긋는 조작*이라, 같은 클릭에 창까지 뜨면 **긋는 내내 창이 깜빡이고** 화면을 가린다.
+    //
+    // 창을 여는 쪽에서 막는다 — 지정기가 클릭을 삼키게 하면 **선택 해제 같은 다른 일까지
+    // 같이 막힌다**(클릭 하나가 하는 일이 여럿이다).
+    public void OnWorldClick()
+    {
+        if (FarmZoneDesignator.IsActive) return;
+        OnSelected?.Invoke(this);
+    }
 
     void UpdateGrowth()
     {
@@ -129,19 +132,91 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
         }
     }
 
+    // ── 구역 ────────────────────────────────────────────────────────────────
+    //
+    // **어느 밭들이 한 덩어리인가는 `FarmZones`가 답한다** — 규칙(번호 우선, 없으면 맞닿음)과
+    // 색을 한 곳에 두려는 것이다. 여기서 또 세면 **패널이 세는 구역과 밭이 칠하는 색이
+    // 갈린다.**
+
+    // 손으로 묶은 번호. **0이면 자동**(맞닿은 것끼리) — 대부분은 여기 머문다.
+    [SerializeField] int groupId;
+
+    public int GroupId => groupId;
+
+    public void SetGroup(int id)
+    {
+        if (groupId == id) return;
+        groupId = id;
+        FarmZones.MarkDirty();
+    }
+
+    // ── 놓는 순간 이웃의 번호를 물려받는다 ──────────────────────────────────
+    //
+    // 구역은 **번호가 정하고 맞닿았다고 합쳐지지 않는다**(`FarmZones`). 그대로 두면
+    // **한 번의 드래그로 깐 밭 스물다섯 장이 구역 스물다섯 개**가 되어 씨앗을 스물다섯 번
+    // 골라야 한다 — 갈라 놓을 수 있게 만든 규칙이 정작 처음 놓는 일을 못 쓰게 만든다.
+    //
+    // 그래서 **놓일 때 한 번만** 이웃을 본다: 붙어 있는 밭이 있으면 그 번호를, 없으면 새 번호.
+    // **그 뒤로는 안 본다** — 도구로 가른 두 구역은 붙어 있어도 그대로 남는다.
+    static readonly Vector2Int[] Around =
+        { Vector2Int.left, Vector2Int.right, Vector2Int.up, Vector2Int.down };
+
+    void JoinNeighborGroup()
+    {
+        if (groupId != 0) return;
+
+        var here = TileCoord;
+        for (int i = 0; i < Around.Length; i++)
+        {
+            var t = here + Around[i];
+            foreach (var p in All)
+            {
+                if (p == null || p == this || p.groupId == 0) continue;
+                if (p.TileCoord != t) continue;
+                groupId = p.groupId;
+                return;
+            }
+        }
+
+        int max = 0;
+        foreach (var p in All) if (p != null && p.groupId > max) max = p.groupId;
+        groupId = max + 1;
+    }
+
+    public IReadOnlyList<FarmPlot> Zone() => FarmZones.Of(this);
+
+    // ── 씨앗 ────────────────────────────────────────────────────────────────
+
+    // **구역 전체에 건다.** 밭 하나를 눌러도 이어진 밭이 다 따라온다 — 그게 구역의 뜻이다.
     public void SetSeed(SeedData seed)
     {
-        if (State != FarmState.Empty) return;
-        SelectedSeed    = seed;
-        _seedJobPending = false;
+        foreach (var p in Zone()) p.SetSeedHere(seed);
     }
 
     public void ClearSeed()
     {
-        if (State != FarmState.Empty) return;
-        SelectedSeed    = null;
-        _seedJobPending = false;
+        foreach (var p in Zone()) p.SetSeedHere(null);
     }
+
+    // 이 칸 하나에만. **자라는 중이면 지금 것을 뽑지 않는다** — 다 키운 작물을 씨앗을
+    // 바꿨다는 이유로 버리면, 바꾸는 것 자체가 값이 큰 조작이 된다. **다음 사이클부터** 바꾼다
+    // (`OnHarvested`가 물려받는다). 그래서 *"바꿨는데 왜 아직 밀이지"*가 안 생기게 패널이
+    // 그 상태를 같이 띄운다(`NextSeed`).
+    void SetSeedHere(SeedData seed)
+    {
+        if (State == FarmState.Empty)
+        {
+            SelectedSeed    = seed;
+            NextSeed        = null;
+            _seedJobPending = false;
+            return;
+        }
+
+        NextSeed = seed;
+    }
+
+    // 지금 자라는 것을 거둔 뒤에 바뀔 씨앗. 없으면 그대로 간다.
+    public SeedData NextSeed { get; private set; }
 
     // ── Job 콜백 ─────────────────────────────────────────────────────────────
 
@@ -169,7 +244,14 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
         GrowthProgress     = 0f;
         Moisture           = 0f;
         _harvestJobPending = false;
-        // SelectedSeed 유지 → 다음 사이클 자동 시작
+
+        // **바꿔 둔 것이 있으면 이제 바뀐다** — 자라는 중에 구역의 씨앗을 바꿔도 다 큰 작물을
+        // 버리지 않고, 거두고 나서 갈아탄다. 없으면 `SelectedSeed` 유지 → 다음 사이클 자동 시작.
+        if (NextSeed != null)
+        {
+            SelectedSeed = NextSeed;
+            NextSeed     = null;
+        }
     }
 
     public void OnHarvestJobCancelled() => _harvestJobPending = false;

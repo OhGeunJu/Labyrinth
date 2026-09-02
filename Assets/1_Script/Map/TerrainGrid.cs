@@ -66,11 +66,22 @@ public static class TerrainGrid
     // **2026-08-29에 32→16으로 다시 줄였다**(지하로 엎으면서). 층을 다섯 벌 손으로 저작해야
     // 하므로 층당 8km는 너무 크다 — 16이면 층 하나가 4,096m·17km²이고 **다섯을 합쳐 85km²**로
     // 지상 한 장(67km²)보다 오히려 넓다. 16은 지역 수 16의 배수라 **지역이 정확히 1청크**(256m)다.
-    // **2026-08-29에 다시 4로 줄였다**(사용자: *"테스트하는데 너무 커"*).
-    // 한 변 1,024m · 1.0km² · 가로지르는 데 256초(0.14 게임일). **지역도 같이 줄여야
-    // 한다** — `ChunksPerAxis`는 지역 수의 배수여야 하고, `UnderworldSetup.FitWorldMap`이
-    // 지도를 이 값에 맞춘다. 키울 때는 이 상수 하나만 올리고 `1. Rebuild Underworld`.
-    public const int ChunksPerAxis = 4;     // 세계 한 변의 청크 수
+    // **2026-08-29에 다시 4로 줄였다**(사용자: *"테스트하는데 너무 커"*) — 한 변 256m.
+    //
+    // **2026-08-31에 16으로 키웠다**(사용자 결정 — 한 변 4배, 넓이 16배). 한 변 **1,024m** ·
+    // 1.05km² · 가로지르는 데 256초(0.14 게임일)이고, **지역이 정확히 1청크(64m)**다
+    // (`UnderworldSetup.FitWorldMap`이 지도를 16×16으로 맞춘다 — `ChunksPerAxis`는 지역
+    // 수의 배수여야 한다).
+    //
+    // **`ChunkSize`는 안 건드린다** — 그쪽을 키우면 스트리밍 단위가 같이 커져서
+    // `radius: 2`가 세계를 통째로 올린다(스트리밍이 있는 이유가 사라진다).
+    //
+    // **굴의 주기는 같이 안 키운다**(`WorldStreamingSetup.WriteUnderworldProfiles` 참고).
+    // 키우고 줄일 때 따라와야 하는 것은 **셀 수로 재는 값**(광역 격자)이지 **미터로 재는
+    // 값**(통로 폭·간격)이 아니다 — 후자는 폰의 눈금이라 세계가 넓어져도 그대로다.
+    //
+    // 키울 때는 이 상수 하나만 올리고 `1. Rebuild Underworld`.
+    public const int ChunksPerAxis = 16;    // 세계 한 변의 청크 수
 
     // **129 = 128 + 1.** 마지막 정점은 이웃 청크의 첫 정점과 **같은 자리**다 — 가장자리를
     // 공유하지 않으면 부동소수 오차로 **틈이 벌어져 하늘이 보인다.** 공유하는 대신 그 줄을
@@ -78,7 +89,7 @@ public static class TerrainGrid
     // 이유이기도 하다).
     public const int VertsPerAxis = ChunkSize / VertexSpacing + 1;   // 129
 
-    public const int WorldSize = ChunkSize * ChunksPerAxis;          // 8,192m
+    public const int WorldSize = ChunkSize * ChunksPerAxis;          // 1,024m
 
     // ── 지역 — 저작한 월드맵의 한 칸 ────────────────────────────────────────
     //

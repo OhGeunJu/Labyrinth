@@ -19,6 +19,11 @@ public static class MovementDiagnostics
     static int _stage3;   // 차단 기억 + 전역 재계획
     static int _stage4;   // 포기(정지)
 
+    // 포기 상세 로그의 간격(초, 실시간). 억눌린 것은 요약에 숫자로 남는다.
+    const float GiveUpLogInterval = 1f;
+    static float _lastGiveUpLog = -999f;
+    static int   _giveUpSuppressed;
+
     static int _blockMemoryHits;   // 베이크에서 PathBlockMemory 때문에 막힌 셀 수
     static int _pawnBakeBlocks;    // 베이크에서 다른 폰 때문에 막힌 셀 수
     static int _occupiedBlocks;    // 베이크에서 건물 점유 타일 때문에 막힌 셀 수
@@ -27,7 +32,23 @@ public static class MovementDiagnostics
     static float _nextSummary;
     static float _nextHeartbeat;
 
-    public static void RecordStage(int stage, string pawnName, Vector3 pos, ref float lastLogTime)
+    // **떠 있나 — 숫자로 찍는다**(2026-08-30). 화면으로는 *"떠 있다/닿아 있다"*를 두고 서로
+    // 다르게 볼 수 있고, 실제로 그렇게 한 번 어긋났다. 지면에서 몇 m인지와 `isGrounded`를
+    // 같이 내면 다툴 것이 없다. **`SampleGroundHeight`로 잰다** — 콜라이더가 아니라 함수라
+    // *"무엇에 올라서 있나"*와 무관하게 **진짜 지면**을 답한다.
+    public static string DescribeFooting(Vector3 pos, CharacterController cc)
+    {
+        var map = MapManager.GetForPosition(pos);
+        if (map == null) return "";
+
+        float ground = map.SampleGroundHeight(pos);
+        float above  = pos.y - ground;
+        string g = cc != null ? (cc.isGrounded ? "접지" : "**공중**") : "?";
+        return $" · 지면 {above:+0.00;-0.00}m/{g}";
+    }
+
+    public static void RecordStage(int stage, string pawnName, Vector3 pos, ref float lastLogTime,
+                                   CharacterController cc = null)
     {
         if (!Enabled) return;
 
@@ -45,7 +66,7 @@ public static class MovementDiagnostics
         lastLogTime = Time.time;
 
         Debug.Log($"[이동진단] {pawnName} 막힘 {Mathf.Min(stage, 4)}단계({StageName(stage)}) " +
-                  $"@ ({pos.x:F1}, {pos.z:F1})");
+                  $"@ ({pos.x:F1}, {pos.z:F1}){DescribeFooting(pos, cc)}");
     }
 
     // 포기(4단계)만 상세 진단 — 왜 못 갔는지는 여기서 갈린다.
@@ -53,16 +74,39 @@ public static class MovementDiagnostics
     // `self` — 자기 콜라이더를 걸러내는 기준. 이름으로 거르면 같은 이름의 **다른 폰**이
     // 막고 있을 때 그게 지워져 진짜 범인이 사라진다.
     public static void LogGiveUp(string pawnName, Vector3 pos, Vector3 goal, bool hasLocalPath,
-                                 GameObject self = null)
+                                 GameObject self = null, CharacterController cc = null,
+                                 int routePoints = -1, Vector3? steer = null)
     {
         if (!Enabled || !LogEvents) return;
 
+        // **한 줄 찍는 값이 싸지 않다** — 이 아래에서 `OverlapSphere`를 쏘고, 칸 열둘의 바위·점유를
+        // 되묻고, 스택 트레이스가 붙은 경고를 낸다. 포기는 원래 드문 일이라 그래도 됐는데,
+        // **여럿이 같은 벽 앞에서 동시에 포기하면** 그 프레임이 통째로 진단에 먹힌다(막힘의
+        // 증상을 재려던 것이 막힘의 원인이 된다). **한 번에 하나만 자세히 찍고 나머지는 센다** —
+        // 같은 프레임의 포기 열셋은 서로 다른 사연이 아니다.
+        if (Time.unscaledTime - _lastGiveUpLog < GiveUpLogInterval) { _giveUpSuppressed++; return; }
+        _lastGiveUpLog = Time.unscaledTime;
+
         float dist = Vector3.Distance(new Vector3(pos.x, 0f, pos.z), new Vector3(goal.x, 0f, goal.z));
+
+        // **조향 목표를 같이 적는다**(2026-08-31). *"선 자리 통행가능 · 앞을 막은 것 없음 ·
+        // 로컬경로 없음"*이라는 **모순처럼 읽히는 세 줄**이 나왔을 때 빠져 있던 조각이
+        // 정확히 이것이었다 — 조향 목표가 **로컬 창(40m) 밖**이면 창 가장자리로 접힌
+        // 직선 투영을 겨누게 되고, 지하에서 그건 거의 늘 바위 속이다. 최종 목적지와
+        // **다른 값**이라 따로 적어야 보인다.
+        string route = routePoints < 0 ? "" :
+            $" · 라우트 {routePoints}점" +
+            (steer.HasValue
+                ? $", 조향 ({steer.Value.x:F1}, {steer.Value.z:F1}) " +
+                  $"{Vector3.Distance(new Vector3(pos.x, 0f, pos.z), new Vector3(steer.Value.x, 0f, steer.Value.z)):F1}m " +
+                  $"{DescribeTile(steer.Value)}"
+                : "");
 
         Debug.LogWarning($"[이동진단] {pawnName} 포기 @ ({pos.x:F1}, {pos.z:F1}) → " +
                          $"목표 ({goal.x:F1}, {goal.z:F1}) 거리 {dist:F1}m · " +
-                         $"로컬경로 {(hasLocalPath ? "있음" : "없음(직선폴백)")} · " +
+                         $"로컬경로 {(hasLocalPath ? "있음" : "없음")}{route} · " +
                          $"목표칸 {DescribeTile(goal)}\n" +
+                         $"  선 자리: {DescribeTile(pos)}{DescribeFooting(pos, cc)}\n" +
                          $"  앞을 막은 것: {DescribeBlocker(pos, goal, self)}\n" +
                          $"  가는 길 칸: {DescribePathTiles(pos, goal)}");
     }
@@ -112,7 +156,14 @@ public static class MovementDiagnostics
             var tile = new Vector2Int(Mathf.RoundToInt(Mathf.Lerp(from.x, to.x, t)),
                                       Mathf.RoundToInt(Mathf.Lerp(from.y, to.y, t)));
             if (sb.Length > 0) sb.Append(' ');
-            sb.Append($"[{tile.x},{tile.y}]{(map.GetTile(tile.x, tile.y).IsPassable ? "통행" : "**점유**")}");
+
+            // **바위를 같이 찍는다**(2026-08-30). `IsPassable`은 점유(건물)만 답하므로
+            // 지하에서는 **통짜 바위도 "통행"으로 찍혔다** — 세계의 4분의 3이 바위인데
+            // 진단이 그걸 한 번도 말하지 않으니, 벽에 막힌 것이 죄다 *"조향 문제"*로 보였다.
+            string state = !map.GetTile(tile.x, tile.y).IsPassable ? "**점유**"
+                         : RockMap.IsRock(tile)                    ? "**바위**"
+                         : "통행";
+            sb.Append($"[{tile.x},{tile.y}]{state}");
         }
         return sb.ToString();
     }
@@ -127,6 +178,7 @@ public static class MovementDiagnostics
         return $"[{tile.x},{tile.y}] " +
                $"{(map.GetTile(tile.x, tile.y).IsPassable ? "통행가능" : "점유됨")}/" +
                $"{(map.IsStandable(tile) ? "바닥있음" : "바닥없음")}" +
+               $"{(RockMap.IsRock(tile) ? "/**바위속**" : "")}" +
                $"{(PathBlockMemory.IsBlocked(tile) ? "/차단기억됨" : "")}";
     }
 
@@ -166,7 +218,8 @@ public static class MovementDiagnostics
                   $"(비켜서기 {_stage1} / 로컬재계획 {_stage2} / 전역재계획 {_stage3} / 포기 {_stage4}) · " +
                   $"베이크 {_bakes}회, 회당 차단 셀: 점유 {_occupiedBlocks * per:F1}, " +
                   $"차단기억 {_blockMemoryHits * per:F1}, 폰 {_pawnBakeBlocks * per:F1} · " +
-                  $"폰 {PawnMover.All.Count}");
+                  $"폰 {PawnMover.All.Count}" +
+                  (_giveUpSuppressed > 0 ? $" · 포기 상세 생략 {_giveUpSuppressed}건" : ""));
 
         Reset();
     }
@@ -175,6 +228,7 @@ public static class MovementDiagnostics
     {
         _stage1 = _stage2 = _stage3 = _stage4 = 0;
         _blockMemoryHits = _pawnBakeBlocks = _occupiedBlocks = _bakes = 0;
+        _giveUpSuppressed = 0;
     }
 
     // 플레이 시작 시 카운터 초기화 + 요약 티커 설치 (도메인 리로드를 꺼둔 프로젝트 대비).

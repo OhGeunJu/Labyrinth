@@ -25,6 +25,14 @@ public class PawnMover : MonoBehaviour
     List<Vector3> _localPath;
     int           _localIndex;
     Vector3       _replanAnchor;
+
+    // 목적지는 정해졌는데 길은 아직 안 낸 상태. **`_hasTarget`과 다른 축이다** —
+    // 목표는 있고(명령은 먹었다) 따라갈 것이 없을 뿐이라, 그동안은 제자리에 선다.
+    bool          _routePending;
+
+    // **한 목적지에 한 번만 알린다** — 알리는 것은 광역 셀을 잠시 닫는 일이라,
+    // 매 틱 부르면 벽 앞에서 셀을 줄줄이 닫아 **세계가 조금씩 좁아진다**.
+    bool          _reportedUnreachable;
     float         _replanDriftSqr;
 
     Vector3 _currentTarget;
@@ -246,10 +254,23 @@ public class PawnMover : MonoBehaviour
         if (_hasTarget && HorizDistSqr(worldPoint, _finalGoal) < goalEpsilon * goalEpsilon)
             return;
 
-        _finalGoal   = worldPoint;
-        _coarseRoute = Pathfinder.ComputeCoarseRoute(transform.position, worldPoint);
-        _coarseIndex = 0;
-        _hasTarget   = true;
+        // **여기서 길을 내지 않는다**(2026-09-02). 명령은 지금 먹고, 길은 `Update`가 예산이
+        // 나는 대로 낸다 — 근거는 위 `MaxBakesPerFrame` 설명. **옛 로컬 경로는 지운다**:
+        // 안 지우면 길이 나기 전 한두 프레임 동안 **지난 명령의 웨이포인트를 따라 걷는다**
+        // (새 목적지와 반대 방향일 수 있다).
+        _finalGoal    = worldPoint;
+        _hasTarget    = true;
+        _routePending = true;
+        _localPath    = null;
+        _localIndex   = 0;
+    }
+
+    // 미뤄 둔 길을 실제로 낸다. **예산을 얻은 프레임에만 불린다.**
+    void BuildRoute()
+    {
+        _routePending = false;
+        _coarseRoute  = Pathfinder.ComputeCoarseRoute(transform.position, _finalGoal);
+        _coarseIndex  = 0;
         ResetProgress();
         ReplanLocal();
     }
@@ -285,9 +306,10 @@ public class PawnMover : MonoBehaviour
 
     public void StopMovement()
     {
-        _hasTarget   = false;
-        _coarseRoute = null;
-        _localPath   = null;
+        _hasTarget    = false;
+        _routePending = false;
+        _coarseRoute  = null;
+        _localPath    = null;
     }
 
     // ── 눕기(침대 휴식) ──────────────────────────────────────────────
@@ -363,6 +385,44 @@ public class PawnMover : MonoBehaviour
         }
     }
 
+    // ── 한 프레임에 굽는 창의 수를 묶는다 ──────────────────────────────────
+    //
+    // **로컬 재계획은 폰마다 40×40 = 1,600칸을 다시 굽는 일이다**(지형·바위·점유·물리를
+    // 칸마다 묻는다). 한 폰이 낼 때는 티가 안 나지만, **여럿이 같은 프레임에 겹치면**
+    // 그 프레임만 통째로 무너진다 — 프로파일러에서 `PawnMover.Update` 하나가 104ms로
+    // 찍힌 자리가 그것이다(중앙값은 2.7ms인데 최대가 128ms였다. **평균이 아니라 겹침이
+    // 문제다**).
+    //
+    // 그래서 **예산을 둔다.** 못 얻은 폰은 이번 프레임에 걷던 대로 걷고 다음 프레임에 다시
+    // 온다 — 재계획은 *지금 당장*이어야 하는 일이 아니다(창이 40m라 몇 프레임 늦어도 창
+    // 밖으로 못 나간다).
+    //
+    // **막혔을 때의 재계획은 여기 안 걸린다** — 그쪽은 드물고, 미루면 폰이 벽 앞에 선 채로
+    // 한 프레임이 아니라 *포기 시계가 다 찰 때까지* 서 있게 된다. 묶는 것은 **평소의 세
+    // 자리**(창 밖으로 흘러 재계획 · 로컬 경로를 다 쓴 뒤 다음 창 · **새 명령의 첫 길 내기**)다.
+    //
+    // **명령도 여기 걸린다**(2026-09-02). 열넷을 골라 놓고 우클릭 한 번을 하면 그 프레임에
+    // **광역 A\*가 열넷**(막히면 셋씩 다시) + 로컬 베이크 열넷이 한꺼번에 돈다 — 프로파일러에서
+    // `MoveController.Update` 하나가 **32ms**로 찍힌 자리가 그것이다. **명령은 즉시 먹혀야 하지만
+    // 길까지 그 프레임에 나올 이유는 없다** — 목적지만 붙들어 두고 길은 예산이 나는 대로 낸다.
+    // 열넷이면 세 프레임(50ms)에 나뉘는데, 32ms짜리 뚝 끊김보다 훨씬 낫다.
+    public static int MaxBakesPerFrame = 6;
+
+    static int _bakeFrame = -1;
+    static int _bakesLeft;
+
+    static bool TakeBakeBudget()
+    {
+        if (_bakeFrame != Time.frameCount)
+        {
+            _bakeFrame = Time.frameCount;
+            _bakesLeft = Mathf.Max(1, MaxBakesPerFrame);
+        }
+        if (_bakesLeft <= 0) return false;
+        _bakesLeft--;
+        return true;
+    }
+
     // 유닛 위치 중심 윈도우를 즉석 베이크해 조향 목표까지 로컬 정밀 경로 생성.
     void ReplanLocal()
     {
@@ -407,7 +467,7 @@ public class PawnMover : MonoBehaviour
 
         // **마지막 구간은 코스 웨이포인트가 아니라 진짜 목적지를 향한다.**
         //
-        // 코스 라우트는 메소(4m)·L2(100m) **셀 중심**들의 나열이라, 마지막 점이 목적지와
+        // 코스 라우트는 코스(4m)·L2(100m) **셀 중심**들의 나열이라, 마지막 점이 목적지와
         // 최대 셀 반쪽만큼 어긋난다. 그걸 그대로 조향 목표로 쓰면 폰은 **셀 중심에 서서 멈추고**,
         // `AdvanceWaypoint`가 다시 계획해도 같은 셀 중심이 나와 제자리를 맴돈다 —
         // 그래서 목적지를 2~3m 앞에 두고 영영 못 좁혔다(연구대에 2.6m 앞에서 멈추던 것,
@@ -440,17 +500,53 @@ public class PawnMover : MonoBehaviour
             return;
         }
 
-        // 아직 멀다 — 다음 윈도우로 재계획
+        // 아직 멀다 — 다음 윈도우로 재계획.
+        // **예산을 못 얻었으면 이번 프레임은 여기까지다.** 목표가 그대로라 다음 프레임에
+        // 다시 이 자리로 들어온다(막힘 판정은 `dist > stopDistance`일 때만 도므로, 웨이포인트
+        // 위에 서서 기다리는 이 한두 프레임은 정체로 안 잡힌다).
+        if (!TakeBakeBudget()) return;
+
         ReplanLocal();
         if (!IsStuck(pos)) return;
 
-        // 로컬이 막힘 — 전역 재계획(현재 위치 기준 코스 라우트 갱신: 메소 벽 지식 반영)
+        // 로컬이 막힘 — 전역 재계획(현재 위치 기준 코스 라우트 갱신: 코스 벽 지식 반영)
         _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
         _coarseIndex = 0;
         ReplanLocal();
 
-        // 그래도 제자리면 정지 (제자리 떨림/무한 루프 방지)
-        if (IsStuck(pos)) StopMovement();
+        // 그래도 제자리면 정지 (제자리 떨림/무한 루프 방지).
+        //
+        // **말하고 멈춘다**(2026-08-31). 포기하는 자리가 셋인데(`OnBlocked` 마지막 ·
+        // `TrackGoalGain` · 여기) **여기만 조용했다** — 그래서 이 경로에 걸리면 화면에
+        // 아무 단서도 안 남고 *"가다 말고 서는데 포기 메시지도 없다"*로만 보였다.
+        // 진단이 있는데 한 자리만 빠져 있으면, 그 자리에 걸린 날은 진단이 없는 것과 같다.
+        if (!IsStuck(pos)) return;
+
+        // **광역에게 거짓말이었다고 알린다**(2026-08-31).
+        //
+        // 여기까지 온 것은 *조향 목표까지 한 발짝도 못 간다*는 뜻이다. 그 목표는 광역이
+        // 낸 라우트 위의 점이므로, 그냥 포기하면 **다음 명령도 같은 라우트를 받아 같은 벽
+        // 앞에 선다**(사용자가 본 그것 — 다시 찍어도 꿈쩍 안 한다). 광역 셀은 3×3로 성기게
+        // 찍어 *하나라도 지나갈 수 있으면 열어 두므로*, **6.4m 셀 안의 1m짜리 구석 하나**가
+        // 라우트를 만들 수 있다. 그 사실을 배우는 길이 이때까지 없었다.
+        //
+        // 알리고 **한 번만 더 해 본다** — 그래도 안 되면 그때 포기한다(무한 재시도는
+        // 이 자리에서 프레임을 먹는다).
+        var steer = SelectSteeringTarget(pos);
+        if (!_reportedUnreachable && CanReportSteer(steer))
+        {
+            _reportedUnreachable = true;
+            Pathfinder.ReportUnreachable(steer);
+            _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
+            _coarseIndex = 0;
+            ReplanLocal();
+            if (!IsStuck(pos)) return;
+        }
+
+        MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
+                                      pos, _finalGoal, _localPath != null, gameObject, _cc,
+                                      _coarseRoute != null ? _coarseRoute.Count : 0, steer);
+        StopMovement();
     }
 
     // 던전형 맵(FloorRequired)에서 다음 스텝이 바닥 밖이면 true.
@@ -461,6 +557,13 @@ public class PawnMover : MonoBehaviour
         if (map == null || !map.FloorRequired) return false;
         return map.IsFloored(pos) && !map.IsFloored(pos + dir * ledgeLookahead);
     }
+
+    // **목적지 자신은 못 막는다**(2026-08-31). `ReportUnreachable`은 광역 셀을 잠시 닫는
+    // 일이라, 조향 목표가 **최종 목적지 그 자체일 때**(마지막 구간) 부르면 **목적지가 든
+    // 셀을 닫는다** — 그러면 다음 라우트가 아예 안 나오고(`라우트 1점`), 폰은 도착 근처에서
+    // 통째로 못 움직이게 된다. 돌아갈 길을 찾자고 도착지를 지우는 꼴이다.
+    bool CanReportSteer(Vector3 steer) =>
+        HorizDistSqr(steer, _finalGoal) > goalEpsilon * goalEpsilon;
 
     bool IsStuck(Vector3 pos)
     {
@@ -576,24 +679,84 @@ public class PawnMover : MonoBehaviour
     // 정직한 우회도 한동안은 안 가까워진다.**
     const float GoalGainEpsilon = 0.25f;
 
+    // **재는 것은 직선 거리가 아니라 "남은 길"이다**(2026-08-30).
+    //
+    // 지상에서는 둘이 거의 같았다 — 길이 대체로 곧아서 걸으면 목적지가 가까워진다. **지하는
+    // 반대다**: 굴은 굽이치고 세계의 4분의 3이 바위라, **목적지에서 멀어지는 방향으로 30m를
+    // 걷고 나서야 꺾이는** 길이 흔하다. 그동안 직선 거리는 한 번도 안 줄어들므로, 폰은
+    // **멀쩡한 길을 정직하게 걷다가 포기한다**(사용자가 본 그것 — 포기한 자리도 목표도 굴
+    // 한복판이었고 앞을 막은 것도 없었다).
+    //
+    // 코스 라우트는 *어느 복도로 갈 것인가*의 계획이고, **거기 남은 길이는 우회를 포함한다** —
+    // 그래서 우회를 도는 동안에도 줄어든다. 계획이 없으면(도달 불가라 라우트가 안 나온 경우)
+    // 예전처럼 직선으로 재고, 그때는 **원래 잡으려던 것**(못 가는 데를 겨눈 채 건물 둘레를
+    // 도는 폰)이 그대로 걸린다.
+    float RemainingRouteDistance(Vector3 pos)
+    {
+        if (_coarseRoute == null || _coarseRoute.Count == 0)
+            return Mathf.Sqrt(HorizDistSqr(pos, _finalGoal));
+
+        int i = Mathf.Clamp(_coarseIndex, 0, _coarseRoute.Count - 1);
+
+        float d = Mathf.Sqrt(HorizDistSqr(pos, _coarseRoute[i]));
+        for (; i < _coarseRoute.Count - 1; i++)
+            d += Mathf.Sqrt(HorizDistSqr(_coarseRoute[i], _coarseRoute[i + 1]));
+
+        // **마지막 칸에서 목적지까지도 더한다** — 라우트가 목적지 근처에서 끝나므로, 안 더하면
+        // 도달 불가한 자리를 겨눴을 때 **남은 길이 0으로 보여** 그물이 통째로 풀린다.
+        return d + Mathf.Sqrt(HorizDistSqr(_coarseRoute[_coarseRoute.Count - 1], _finalGoal));
+    }
+
     void TrackGoalGain(Vector3 pos, float elapsed)
     {
-        float dist = Mathf.Sqrt(HorizDistSqr(pos, _finalGoal));
+        float dist = RemainingRouteDistance(pos);
 
         if (dist < _bestGoalDist - GoalGainEpsilon)
         {
             _bestGoalDist = dist;
             _noGainTimer  = 0f;
+
+            // **다시 나아가기 시작했으면 또 한 번 알릴 자격을 얻는다.** 라우트가 한 번만
+            // 거짓말하란 법이 없다 — 목적지마다 한 번으로 못 박으면 **두 번째 벽에서
+            // 그냥 포기한다.** 벽 하나에 한 번씩이 맞는 눈금이다.
+            _reportedUnreachable = false;
             return;
         }
 
         _noGainTimer += elapsed;
         if (_noGainTimer < goalStallTime) return;
 
+        // **여기도 광역에게 알린다**(2026-08-31).
+        //
+        // 이 갈래는 *한 발짝도 못 간다*가 아니라 **가긴 가는데 가까워지지 않는다**이고,
+        // 지하에서 그 모양은 대개 **얇은 벽**이다: 광역 셀은 6.4m라 벽이 2~3m면 표본이
+        // 여전히 여럿 열려 **셀이 열린 것으로 구워진다.** 그러면 라우트가 벽을 뚫고 지나가고,
+        // 로컬은 **벽까지의 부분 경로**를 내므로 `로컬경로 있음`인 채로 폰이 벽에 붙어 선다
+        // (사용자: *"얇은 벽을 뚫을 수 있다고 생각하고 가다가 멈춰버렸어"*).
+        //
+        // `AdvanceWaypoint` 쪽에만 알림을 달아 뒀더니 **이 갈래로 빠지는 경우가 통째로
+        // 안 배웠다** — 포기하는 자리가 여럿이면 **배우는 자리도 여럿이어야 한다.**
+        var stalledAt = SelectSteeringTarget(pos);
+        if (!_reportedUnreachable && CanReportSteer(stalledAt))
+        {
+            _reportedUnreachable = true;
+            Pathfinder.ReportUnreachable(stalledAt);
+            _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
+            _coarseIndex = 0;
+            ReplanLocal();
+
+            // **새 길에는 새 시계를 준다** — 안 그러면 다시 뽑자마자 그 자리에서 포기한다.
+            _noGainTimer  = 0f;
+            _bestGoalDist = RemainingRouteDistance(pos);
+            return;
+        }
+
         // 갈 수 없는 곳이다. **BT가 다음 행동을 고르게 놓아 준다** — 막혔을 때의 마지막
         // 단계와 같은 자리이고, 여기서 계속 붙들면 그 폰은 다른 일을 영영 못 한다.
         MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
-                                      pos, _finalGoal, _localPath != null);
+                                      pos, _finalGoal, _localPath != null, gameObject, _cc,
+                                      _coarseRoute != null ? _coarseRoute.Count : 0,
+                                      SelectSteeringTarget(pos));
         StopMovement();
     }
 
@@ -606,7 +769,7 @@ public class PawnMover : MonoBehaviour
 
         MovementDiagnostics.RecordStage(_blockedCount,
                                         _brain != null ? _brain.UnitName : name,
-                                        pos, ref _lastDiagLogTime);
+                                        pos, ref _lastDiagLogTime, _cc);
 
         switch (_blockedCount)
         {
@@ -651,10 +814,13 @@ public class PawnMover : MonoBehaviour
         _progressTimer  = 0f;
         _blockedCount   = 0;
         _sidestepTimer  = 0f;
+        _reportedUnreachable = false;
 
         // 새 목적지다 — 기록은 **지금 거리에서** 시작한다. `MaxValue`로 두면 첫 측정이
         // 무조건 기록을 깨서 시계가 한 번 공짜로 되돌아간다.
-        _bestGoalDist = Mathf.Sqrt(HorizDistSqr(transform.position, _finalGoal));
+        // **기록도 같은 자로 잰다** — 직선으로 시작해 놓고 남은 길로 견주면 첫 비교부터
+        // *"기록을 못 깼다"*가 되어 시계가 처음부터 돈다.
+        _bestGoalDist = RemainingRouteDistance(transform.position);
         _noGainTimer  = 0f;
     }
 
@@ -678,6 +844,12 @@ public class PawnMover : MonoBehaviour
     const float RockCheckInterval = 0.5f;
     float _nextRockCheck;
 
+    // 꺼낸 것을 알리는 간격(초, 실시간). **폰마다가 아니라 세계가 하나로 센다** — 여럿이
+    // 같은 모서리에 끼는 것이 흔한 모양이라, 폰당으로 두면 열넷 줄이 그대로 나온다.
+    const float RockLogInterval = 1f;
+    static float _lastRockLog = -999f;
+    static int   _rockLogSuppressed;
+
     void EscapeRock()
     {
         if (!RockMap.Enabled) return;
@@ -692,20 +864,54 @@ public class PawnMover : MonoBehaviour
 
         // **가장 가까운 설 수 있는 칸으로 옮긴다.** 못 찾으면 그냥 둔다 — 아무 데나 던지면
         // 세계 반대편에 나타나는 것보다 갇혀 있는 편이 낫다(적어도 어디 있는지는 안다).
-        var out_ = map.FindWorkableNear(here);
+        //
+        // **멀리까지 본다**(2026-08-30). `FindWorkableNear`의 기본 반경은 **두 칸**인데,
+        // 세계의 4분의 3이 바위인 지하에서 그건 *거의 못 빠져나온다*는 뜻이다 — 바위 속으로
+        // 세 칸만 들어가 있어도 영영 갇히고, 그 폰은 **경로도 있고 앞을 막은 것도 없는데
+        // 한 발짝도 못 가는** 상태가 된다(이동 진단이 그렇게 찍힌다). 자리를 묻는 문은
+        // `RockMap.TryNearestOpen` 하나다(무리 실체화·저작 배치와 같은 답).
+        if (!RockMap.TryNearestOpen(transform.position, 12f, out var open)) return;
+
+        var out_ = map.WorldToTile(open);
         if (out_ == here) return;
 
-        var to = map.TileToGround(out_);
-        to.y += PawnPlacement.CenterOffset(gameObject);
+        // **세우는 문은 `PawnPlacement` 하나다**(2026-08-30에 되돌렸다).
+        //
+        // 여기서 손으로 계산하고 있었고 **틀렸다**: `CenterOffset`은 *피벗에서 몸 한가운데까지*
+        // 인데(어깨에 메거나 침대에 눕힐 때 쓰는 값) 그걸 **지면 높이에 더했다.** 폰의 피벗은
+        // 발밑이라 지면에 그대로 놓는 것이 맞는데, 1m를 더해 **공중에 띄워 놓은 것**이다
+        // (사용자: *"심지어 공중에 살짝 떠있어"*).
+        //
+        // 그리고 그것이 **낀 것의 원인이기도 하다** — 띄운 채 컨트롤러를 되켜면 유니티가
+        // 겹침을 푸는데, 바위 콜라이더는 속 빈 껍데기라 **"밖"이 안쪽일 수 있다.** 꺼내려던
+        // 것이 도로 밀어 넣고, 다음 검사가 또 꺼내고 — 그 되풀이가 사용자가 본 무한 반복이다.
+        //
+        // `PlaceOnGround`가 컨트롤러를 껐다 켜는 것까지 한다(켠 채로 옮기면 콜라이더가 원래
+        // 자리로 되민다 — 업기·가두기가 이미 쓰는 방식이다).
+        PawnPlacement.PlaceOnGround(gameObject, map.TileToGround(out_));
 
-        // **컨트롤러를 껐다 켠다** — 켠 채로 자리를 옮기면 콜라이더가 원래 자리로 되민다
-        // (업기·가두기가 이미 쓰는 방식).
-        bool was = _cc.enabled;
-        _cc.enabled = false;
-        transform.position = to;
-        _cc.enabled = was;
+        // **알리되 콘솔을 덮지 않는다**(2026-09-02). 폰 열넷이 같은 모서리에서 되풀이해 끼면
+        // 0.5초마다 열넷 줄이 나오고, 에디터에서 경고 한 줄은 **스택 트레이스를 짓는다** —
+        // 증상을 알리려던 것이 프레임을 먹는다(`LogGiveUp`이 먼저 겪은 그 자리).
+        //
+        // **끄지는 않는다.** 이건 진짜 사고이고, 조용해지면 *"가끔 폰이 순간이동한다"*로만
+        // 보인다. 억눌린 건수는 다음 줄에 같이 적어 몇 번째인지가 남게 한다.
+        if (Time.unscaledTime - _lastRockLog >= RockLogInterval)
+        {
+            string more = _rockLogSuppressed > 0 ? $" (그 사이 {_rockLogSuppressed}번 더)" : "";
+            _rockLogSuppressed = 0;
+            _lastRockLog = Time.unscaledTime;
+            Debug.LogWarning($"[이동] {name}이(가) 바위 {here} 안에 있어 {out_}(으)로 꺼냈다.{more}");
+        }
+        else _rockLogSuppressed++;
 
-        Debug.LogWarning($"[이동] {name}이(가) 바위 {here} 안에 있어 {out_}(으)로 꺼냈다.");
+        // **꺼냈으면 길을 다시 뽑는다.** 안 뽑으면 폰이 **끼기 직전의 경로를 그대로 이어
+        // 걸어** 같은 모서리로 되돌아가고, 꺼내고 끼기를 무한히 되풀이한다(사용자가 본
+        // 그것 — 그러다 시계가 다 차면 포기한다). 자리가 순간이동으로 바뀌었으니 로컬
+        // 격자도 다시 구워져야 맞다.
+        // **길이 아직 안 난 폰은 그냥 둔다** — 곧 `BuildRoute`가 새 자리에서 낸다(여기서
+        // 다시 뽑으면 **지난 명령의 코스 라우트**를 기준으로 창을 굽는다).
+        if (_hasTarget && !_routePending) ReplanLocal();
     }
 
     void Update()
@@ -724,7 +930,27 @@ public class PawnMover : MonoBehaviour
 
         EscapeRock();
 
-        if (_cc.isGrounded)
+        // ── 지형이 안 선 자리에서는 추상으로 움직인다 ──────────────────────
+        //
+        // **스트리밍은 카메라 둘레만 세운다.** 그래서 카메라에서 먼 내 폰은 **발밑에
+        // 콜라이더가 없다** — 중력에 떨어지다 낙하 그물에 걸려 **제자리로 되돌려지고**,
+        // 원정 나간 폰이 영영 도착하지 못한다(사용자가 짚었다: *"땅이 사라지고 폰이
+        // 사라지잖아, 근데 내 폰은 안 사라짐"*).
+        //
+        // **길은 이미 함수가 안다** — 높이·바위·점유가 전부 로드와 무관하게 답한다. 없는
+        // 것은 **물리뿐**이므로, 물리를 빼고 걷는다: 경로를 따라 자리를 직접 옮기고 높이는
+        // `SampleGroundHeight`가 준다.
+        //
+        // **카메라를 폰마다 따라가게 하는 길은 안 쓴다** — 폰이 흩어지면 그만큼 세계가
+        // 통째로 올라오고, 스트리밍이 있는 이유가 사라진다.
+        bool ghost = !TerrainStreamer.HasGroundAt(transform.position);
+
+        if (ghost)
+        {
+            _verticalVel     = 0f;                    // 받쳐 줄 것이 없으니 중력을 안 건다
+            _lastGroundedPos = transform.position;    // 돌아왔을 때 되돌아갈 자리도 여기다
+        }
+        else if (_cc.isGrounded)
         {
             _verticalVel = groundStickForce;
             _lastGroundedPos = transform.position;
@@ -753,12 +979,20 @@ public class PawnMover : MonoBehaviour
         {
             if (_hasTarget) StopMovement();
         }
+        else if (_routePending)
+        {
+            // **길이 아직 없다.** 예산이 나면 이번 프레임에 내고, 아니면 다음 프레임에 다시
+            // 온다 — 그동안은 중력만 받고 서 있는다(따라갈 웨이포인트가 없다).
+            if (TakeBakeBudget()) BuildRoute();
+        }
         else if (_hasTarget)
         {
             Vector3 pos = transform.position;
 
-            // 윈도우를 충분히 벗어났으면 새 윈도우로 재계획
-            if ((pos - _replanAnchor).sqrMagnitude > _replanDriftSqr)
+            // 윈도우를 충분히 벗어났으면 새 윈도우로 재계획.
+            // **예산을 못 얻으면 다음 프레임에 다시 온다** — 그동안은 이미 뽑아 둔 경로를
+            // 그대로 따라 걷는다(창이 40m라 몇 프레임 늦는 것으로는 창을 못 벗어난다).
+            if ((pos - _replanAnchor).sqrMagnitude > _replanDriftSqr && TakeBakeBudget())
                 ReplanLocal();
 
             Vector3 to = _currentTarget - pos;
@@ -783,6 +1017,17 @@ public class PawnMover : MonoBehaviour
                 float effectiveSpeed = (_stats != null
                     ? _baseMoveSpeed * (1f + _stats.Athletics / 100f) * weightCorrection * sfxMult
                     : moveSpeed) * _mobilityMult;
+
+                // **목표를 지나치지 않는다**(2026-08-30). 도착 판정은 0.12m인데 10배에서
+                // 한 걸음은 0.67m다 — **매 프레임 웨이포인트를 0.55m씩 지나쳤다가 되돌아온다.**
+                // 그게 사용자가 본 *"10배 때는 왔다갔다를 해"*이고, 오간 거리의 합은 0에
+                // 가까우니 `TrackProgress`가 **막혔다고 판단해** 비켜서기까지 얹는다
+                // (로그의 "막힘 2단계"가 자리를 옮겨 가며 되풀이되던 것).
+                //
+                // **속도를 남은 거리에 맞춰 깎는다** — 한 프레임에 딱 웨이포인트까지만 간다.
+                // 웨이포인트 간격이 1m 남짓이라 배속에서도 속도가 안 깎인다(0.67 < 1).
+                if (Time.deltaTime > 0.0001f)
+                    effectiveSpeed = Mathf.Min(effectiveSpeed, dist / Time.deltaTime);
 
                 Vector3 desired = to / dist;
                 Vector3 steer   = Steer(pos, desired);
@@ -813,7 +1058,55 @@ public class PawnMover : MonoBehaviour
             }
         }
 
-        _cc.Move(move * Time.deltaTime);
+        if (ghost) GhostMove(move * Time.deltaTime);
+        else       StepMove(move * Time.deltaTime);
+    }
+
+    // 물리 없이 걷는다 — 위 `ghost` 설명 참고.
+    //
+    // **높이는 함수가 준다**(`SampleGroundHeight` — 콜라이더도 `Terrain`도 안 본다).
+    // **컨트롤러를 껐다 켜지 않는다** — 둘레에 콜라이더가 없어 되밀 것이 없고, 매 프레임
+    // 껐다 켜면 업기·가두기가 같은 스위치를 쓰는 자리와 엉킨다.
+    void GhostMove(Vector3 delta)
+    {
+        delta.y = 0f;
+
+        var p = transform.position + delta;
+        var map = MapManager.Instance;
+        if (map != null) p.y = map.SampleGroundHeight(p);
+
+        transform.position = p;
+    }
+
+    // ── 한 프레임의 걸음을 잘게 나눈다 ──────────────────────────────────────
+    //
+    // **배속에서 길을 못 찾던 원인이 여기다**(2026-08-30, 사용자: *"3배 10배로 돌릴 때 길을
+    // 잘 못 찾아"*).
+    //
+    // `Time.deltaTime`은 `timeScale`을 탄다 — 10배에서 60fps면 한 프레임이 **0.167초**다.
+    // 걷는 속도가 4m/s쯤이니 **한 번의 `Move`가 0.67m**가 되고, 그건 폰 반지름(0.35m)의
+    // **두 배**다. 컨트롤러는 그 걸음을 쓸어서(sweep) 막아 주지만, 모서리·이음매·얇은 면에서는
+    // 그만한 걸음이 **뚫고 들어간다** — 그리고 한 번 안으로 들어가면 바위 콜라이더에는
+    // 밀어낼 것이 없었다(속 빈 껍데기). 지금까지 본 *"잘 가다가 갑자기 벽에 낀다"*가 배속에서만
+    // 잘 나던 이유가 이것이다.
+    //
+    // **`deltaTime`을 깎으면 안 된다** — 그러면 시계는 10배로 가는데 폰만 1배로 걸어서
+    // *"허기는 도는데 아무도 도착 못 하는"* 세계가 된다. **변위는 그대로 두고 나눠서 민다.**
+    //
+    // **한 걸음의 한도는 몸 반지름보다 작아야 한다**(0.2 < 0.35) — 그래야 어떤 걸음도 몸을
+    // 통째로 지나치지 못한다. **횟수에는 천장을 둔다**: 프레임이 크게 튄 순간(로딩 직후)
+    // 수십 번을 부르면 그 프레임이 더 길어져 다음 프레임이 더 튀는 악순환이 된다.
+    const float MaxStep     = 0.2f;
+    const int   MaxSubSteps = 8;
+
+    void StepMove(Vector3 delta)
+    {
+        float len = delta.magnitude;
+        if (len <= MaxStep || len <= 0.0001f) { _cc.Move(delta); return; }
+
+        int n = Mathf.Min(Mathf.CeilToInt(len / MaxStep), MaxSubSteps);
+        Vector3 part = delta / n;
+        for (int i = 0; i < n; i++) _cc.Move(part);
     }
 
     public void SetLimping(bool limping)
@@ -921,6 +1214,11 @@ public class PawnMover : MonoBehaviour
     // 지금 로컬 정밀 경로를 들고 있는가. 없으면 직선 폴백으로 가는 중이라 물체에 처박힌다 —
     // 포기 진단이 "길을 못 찾은 것"과 "길은 있는데 못 간 것"을 가르는 데 쓴다.
     public bool HasLocalPath => _localPath != null && _localPath.Count > 0;
+
+    // **길을 기다리는 중인가.** `HasLocalPath`를 *"걷는 중"*의 뜻으로 쓰는 쪽이 있는데,
+    // 예산을 기다리는 한두 프레임 동안은 **목표는 있고 경로만 없다** — 그때 "막혀 선 것"으로
+    // 보면 애먼 폰을 밀어낸다.
+    public bool RoutePending => _routePending;
 
     public bool IsMoving()   => _hasTarget;
     public void SetDestination(Vector3 pos) => SetMoveTarget(pos);

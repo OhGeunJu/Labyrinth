@@ -41,6 +41,16 @@ public static class SimLocality
         return (brain.transform.position - Center).sqrMagnitude <= r2;
     }
 
+    // **그 자리가 지금 도는 곳인가**(2026-08-31). `ShouldTick`이 *폰*에게 묻는 것과 같은
+    // 물음을 **자리**에게 묻는다 — 습격이 도착했을 때 *실체로 벌일 것인가, 추상으로 풀
+    // 것인가*를 가르는 자리다.
+    //
+    // **답을 여기 두는 이유는 `ShouldTick`과 갈리면 안 되기 때문이다** — 갈리면 적을
+    // 세워는 놓고 BT는 안 도는 반쪽 상태가 그대로 생긴다(내 폰은 `IsPlayer`라 거리를 안
+    // 보고 계속 도므로, **석상이 된 습격대를 우리 폰들만 두들기는** 그림이 된다).
+    public static bool IsSimulated(Vector3 world) =>
+        !Active || (world - Center).sqrMagnitude <= Radius * Radius;
+
     // 일감이 이 폰에게 너무 먼가. **거리 컷오프가 없으면 지도 반대편 일감을 집는다** —
     // `JobManager`가 점수를 먼저 보고 거리를 동점 처리에만 쓰기 때문이다(200m 맵에서는
     // 그 차이가 안 보였다).

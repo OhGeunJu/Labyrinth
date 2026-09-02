@@ -26,6 +26,17 @@ public class HaulDesignator : MonoBehaviour
 
     public static bool IsActive { get; private set; }
 
+    // ── 도구 둘 ─────────────────────────────────────────────────────────────
+    //
+    // **지정 / 취소.** 우클릭으로도 지울 수 있지만 그건 **한 칸씩**이라, 넓게 찍은 것을
+    // 넓게 무를 길이 없었다. 도구를 바꾸면 **같은 드래그가 반대로 돈다** — 찍을 때 쓰던
+    // 손놀림 그대로 지운다.
+    public enum Tool { Designate, Cancel }
+
+    public static Tool Current { get; private set; } = Tool.Designate;
+    public static void Use(Tool t) => Current = t;
+
+
     static readonly Color Fill = new(0.35f, 0.95f, 0.45f, 0.22f);
     static readonly Color Line = new(0.35f, 0.95f, 0.45f, 0.9f);
 
@@ -92,7 +103,7 @@ public class HaulDesignator : MonoBehaviour
             {
                 if (d == null) continue;
                 d.SetPendingHighlight(false);
-                d.SetHaulAllowed(true);
+                d.SetHaulAllowed(Current == Tool.Designate);
             }
 
             _pending.Clear();
@@ -105,12 +116,22 @@ public class HaulDesignator : MonoBehaviour
 
     static HaulDesignator _instance;
 
+
+    // **한 번에 하나다** — 근거는 `ExclusiveMode`. 켤 때 *"내가 켰다"*만 알리고, 끄는 판단은
+    // 각자 한다(여기서 남을 직접 끄면 모드가 늘 때마다 이 줄이 늘어난다).
+    void OnEnable()  => ExclusiveMode.Claimed += OnOtherClaimed;
+    void OnDisable() => ExclusiveMode.Claimed -= OnOtherClaimed;
+
+    void OnOtherClaimed(object who) { if (!ReferenceEquals(who, this)) SetActive(false); }
+
     void SetActive(bool on)
     {
         if (IsActive == on) return;
         IsActive = on;
         ClearPending();
         _dragging = false;
+
+        if (on) ExclusiveMode.Claim(this);
     }
 
     // 커서 아래의 바닥 물건. 드롭은 트리거 구체 하나만 콜라이더로 갖는다.
@@ -144,7 +165,8 @@ public class HaulDesignator : MonoBehaviour
                 // 새로 찍히는 것"만 보여 주는 편이 무엇을 하는지 분명하다.
                 foreach (var drop in FindObjectsByType<DroppedItem>(FindObjectsSortMode.None))
                 {
-                    if (drop == null || drop.HaulAllowed) continue;
+                    // **취소 도구는 반대를 모은다** — 이미 찍힌 것만 잡아야 지울 것이 생긴다.
+                    if (drop == null || drop.HaulAllowed == (Current == Tool.Designate)) continue;
 
                     var sp = cam.WorldToScreenPoint(drop.transform.position);
                     if (sp.z >= 0f && sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY)
@@ -155,7 +177,7 @@ public class HaulDesignator : MonoBehaviour
         else
         {
             var under = PickUnder(cur);
-            if (under != null && !under.HaulAllowed) next.Add(under);
+            if (under != null && under.HaulAllowed != (Current == Tool.Designate)) next.Add(under);
         }
 
         foreach (var d in _pending)

@@ -84,6 +84,7 @@ public static class WorldStreamingSetup
         if (hm != null) hm.objectReferenceValue = null;
 
         WriteUnderworldProfiles(st);
+        WireTerrainMaterial(st);
         st.ApplyModifiedPropertiesWithoutUndo();
 
         ApplyUnderworldLighting();
@@ -92,15 +93,154 @@ public static class WorldStreamingSetup
         EnableProceduralTerrain();
         int slept   = SleepOldTerrains(go);
         int screens = SleepLegacyWorldScreen();
+        int shaders = RegisterRuntimeShaders();
 
         EditorUtility.SetDirty(go);
         Selection.activeGameObject = go;
 
         Debug.Log($"[월드] 배선 완료 — {go.name}에 TerrainStreamer + WorldContentStreamer + BandMaterializer. " +
                   $"레이어 '{LayerMask.LayerToName(layer)}' · 옛 Terrain {slept}개 · " +
-                  $"옛 월드맵 화면 {screens}개 재움." + "\n" +
+                  $"옛 월드맵 화면 {screens}개 재움 · 셰이더 {shaders}개 새로 등록." + "\n" +
                   $"세계 {TerrainGrid.WorldSize}m · 청크 {TerrainGrid.ChunkSize}m · " +
                   $"{TerrainGrid.ChunksPerAxis}×{TerrainGrid.ChunksPerAxis}");
+    }
+
+    // ── 런타임에 이름으로 찾는 셰이더를 빌드에 넣는다 ──────────────────────
+    //
+    // **`Shader.Find`는 빌드에 포함된 것만 찾는다.** 그리고 셰이더가 빌드에 들어가는 길은
+    // **어떤 재질 에셋이 그것을 가리키는 것** 하나뿐인데, 코드가 이름으로 찾는 것은 참조가
+    // 아니다. 그래서 **에디터에서는 멀쩡하고 빌드에서만 검게 나온다** — 2026-09-02에 지하
+    // 지형이 통째로 검은 판이었고, 원인이 `DungeonColony/Terrain/Lit`이 잘려 나간 것이었다.
+    //
+    // **Always Included Shaders가 그 유일한 문이다** — *"재질이 안 가리켜도 넣어라"*.
+    // 목록은 `RuntimeShaders.All`이 든다(코드가 찾는 이름과 여기가 넣는 이름이 갈리면
+    // 그 셰이더만 조용히 빠진다).
+    //
+    // **여기 붙이는 이유**: 이건 씬 배선이 아니라 프로젝트 설정이지만, 따로 눌러야 하는
+    // 버튼을 하나 더 만들면 **언젠가 그것만 안 누른다**(*"손으로 여섯 번 누르게 하면 언젠가
+    // 다섯만 누른다"*). 이미 빠짐없이 도는 버튼에 얹는다.
+    static int RegisterRuntimeShaders()
+    {
+        var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset");
+        if (assets == null || assets.Length == 0)
+        {
+            Debug.LogError("[월드] Graphics Settings를 못 열었다 — 런타임 셰이더가 빌드에서 잘려 " +
+                           "**땅바닥이 검게 나온다.**");
+            return 0;
+        }
+
+        var so   = new SerializedObject(assets[0]);
+        var list = so.FindProperty("m_AlwaysIncludedShaders");
+        if (list == null)
+        {
+            Debug.LogError("[월드] `m_AlwaysIncludedShaders`를 못 찾았다 — 필드 이름이 바뀌었나? " +
+                           "**셰이더가 안 등록됐다.**");
+            return 0;
+        }
+
+        // ── ① 넣으면 안 되는 것을 먼저 뺀다 ────────────────────────────────
+        //
+        // **한 번 잘못 넣어 봤다**(2026-09-02) — 지형 셰이더까지 아홉을 넣었더니 빌드 중에
+        // 유니티가 죽었다(변형이 수만 개다. 근거는 `RuntimeShaders.AlwaysInclude`).
+        // 그래서 **되돌리는 길을 도구가 든다** — 손으로 지우게 하면 다음 사람이 같은 자리에
+        // 다시 빠진다. 지우는 것은 **우리가 넣었던 이름**뿐이라(`RuntimeShaders.All`) 남이
+        // 넣어 둔 것은 안 건드린다.
+        int removed = 0;
+        for (int i = list.arraySize - 1; i >= 0; i--)
+        {
+            var sh = list.GetArrayElementAtIndex(i).objectReferenceValue as Shader;
+            if (sh == null) continue;
+
+            bool ours = System.Array.IndexOf(RuntimeShaders.All, sh.name) >= 0;
+            bool keep = System.Array.IndexOf(RuntimeShaders.AlwaysInclude, sh.name) >= 0;
+            if (!ours || keep) continue;
+
+            list.DeleteArrayElementAtIndex(i);
+            removed++;
+        }
+
+        // ── ② 작은 것만 넣는다 ────────────────────────────────────────────
+        int added = 0;
+        foreach (var name in RuntimeShaders.AlwaysInclude)
+        {
+            var sh = Shader.Find(name);
+
+            // **빌트인 중에는 이 프로젝트에 없는 것도 있다**(파이프라인마다 다르다).
+            // 폴백으로만 쓰이는 이름이라 없다고 해서 사고는 아니다 — 조용히 넘긴다.
+            if (sh == null) continue;
+
+            bool has = false;
+            for (int i = 0; i < list.arraySize; i++)
+                if (list.GetArrayElementAtIndex(i).objectReferenceValue == sh) { has = true; break; }
+            if (has) continue;
+
+            list.InsertArrayElementAtIndex(list.arraySize);
+            list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = sh;
+            added++;
+        }
+
+        if (added > 0 || removed > 0)
+        {
+            so.ApplyModifiedProperties();
+
+            // **바로 디스크에 쓴다**(2026-09-02). `ApplyModifiedProperties`는 메모리의
+            // 오브젝트만 고치고, `ProjectSettings/GraphicsSettings.asset`은 유니티가 저장할 때
+            // 써진다 — 그런데 **여기 걸리면 유니티가 빌드 중에 죽는다.** 죽으면 고친 것이
+            // 디스크에 안 남아, 다시 켜도 **같은 목록으로 또 죽는다.** 실제로 그렇게 한 바퀴
+            // 돌았다. 되돌리는 도구가 되돌린 것을 못 남기면 도구가 아니다.
+            AssetDatabase.SaveAssets();
+        }
+        if (removed > 0)
+            Debug.Log($"[월드] Always Included에서 무거운 셰이더 {removed}개를 뺐다 — " +
+                      "지형 셰이더는 변형이 수만 개라 **빌드가 죽는다.** 지형은 재질로 넣는다.");
+        return added;
+    }
+
+    // ── 지형 재질을 만들어 씬에 물린다 ──────────────────────────────────────
+    //
+    // **이것이 지형 셰이더를 빌드에 넣는 올바른 문이다.** 재질이 셰이더를 가리키면 그것은
+    // *참조*라 유니티가 **실제로 쓰이는 변형만** 굽는다 — Always Included처럼 전부 굽지 않는다.
+    //
+    // 딸려 오는 것: **런타임에 `Shader.Find`를 부를 일이 없어진다**(`TerrainStreamer.Material`이
+    // 물린 재질을 그대로 쓴다). 이름으로 찾는 길은 씬 배선을 빠뜨렸을 때의 그물로만 남는다.
+    static void WireTerrainMaterial(SerializedObject st)
+    {
+        const string Dir  = "Assets/2_Material/Underworld";
+        const string Path = Dir + "/TerrainChunk.mat";
+
+        var prop = st.FindProperty("terrainMaterial");
+        if (prop == null)
+        {
+            Debug.LogError("[월드] `terrainMaterial` 필드를 못 찾았다 — 이름이 바뀌었나? " +
+                           "**빌드에서 땅바닥이 검게 나온다.**");
+            return;
+        }
+        if (prop.objectReferenceValue != null) return;   // 손으로 물린 것은 안 건드린다
+
+        var sh = Shader.Find(RuntimeShaders.TerrainLit)
+              ?? Shader.Find(RuntimeShaders.UrpTerrainLit);
+        if (sh == null)
+        {
+            Debug.LogError("[월드] 지형 셰이더를 못 찾았다 — `2_Material/TerrainShader/`가 " +
+                           "컴파일에 실패했나? **빌드에서 땅바닥이 검게 나온다.**");
+            return;
+        }
+
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(Path);
+        if (mat == null)
+        {
+            if (!AssetDatabase.IsValidFolder(Dir)) AssetDatabase.CreateFolder("Assets/2_Material", "Underworld");
+            mat = new Material(sh) { name = "TerrainChunk" };
+            AssetDatabase.CreateAsset(mat, Path);
+            AssetDatabase.SaveAssets();
+        }
+        else if (mat.shader != sh)
+        {
+            mat.shader = sh;
+            EditorUtility.SetDirty(mat);
+        }
+
+        prop.objectReferenceValue = mat;
     }
 
     // ── 지하 지형은 거의 평지다 ─────────────────────────────────────────────
@@ -139,27 +279,46 @@ public static class WorldStreamingSetup
         var cfeats = st.FindProperty("ceilingFeatures");
         if (cfeats != null) cfeats.arraySize = 0;
 
-        // **작은 세계에 맞춘다.** 청크가 64m가 된 뒤로 반경 2는 320m라 세계(256m)를 통째로
-        // 덮는다 — 그건 괜찮지만, **시뮬 반경 1,200m와 일감 거리 600m는 세계보다 넉 배 크다.**
-        // 값이 뜻을 잃으면 다음에 보는 사람이 *"왜 안 걸리지"*를 여기서 찾게 된다.
+        // **세계에 맞춘다.** 청크가 64m라 지형 반경 2는 320m다. 옛 값(시뮬 1,200m · 일감
+        // 600m)은 세계가 256m이던 때 **세계보다 넉 배 커서 뜻을 잃었다** — 값이 뜻을 잃으면
+        // 다음에 보는 사람이 *"왜 안 걸리지"*를 여기서 찾게 된다.
+        //
+        // **세계를 1,024m로 넓힌 뒤에도 그대로 둔다**(2026-08-31) — 이제 시뮬 반경이 세계의
+        // 3분의 1이라 **밖이 실제로 생긴다**. 그 밖에서 벌어지는 습격은 얼려 두는 것이 아니라
+        // `WorldBattle.ResolveRaid`가 추상으로 결과를 낸다.
         Set(st, "simRadius",      320f);
         Set(st, "maxJobDistance", 200f);
 
-        // **천장(여유)도 씬에 쓴다** — 필드를 새로 만든 날 씬이 옛 기본값(+9)으로 굳었으면
-        // 코드에서 −7로 바꿔도 **세계가 뻥 뚫린 채**다(바위가 하나도 안 선다).
-        // **바위가 압도적으로 많아야 한다.** −7이었을 때는 여유가 문턱(폰 키 1.8m) 언저리를
-        // 오르내려서 **바위가 듬성듬성 선 판자**처럼 보였다 — 벽이 뚫려 보인다는 것이 그거다.
-        // −11이면 최대 여유가 4.6m라 **저절로 난 굴이 드물게만** 생기고 나머지는 통짜 바위다.
+        // **천장(여유)도 씬에 쓴다** — 필드를 새로 만든 날 씬이 옛 기본값으로 굳었으면
+        // 코드를 고쳐도 **세계가 뻥 뚫린 채**이거나 **통짜 바위**다(둘 다 겪었다).
         //
-        // **잔요철을 거의 없앤다**(1.5 → 0.4). 이게 문턱 바로 옆에서 흔들려 **칸 하나씩
-        // 뚫렸다 막혔다** 하는 얼룩을 만든다 — 굴의 벽이 톱니처럼 되는 원인이다.
-        Set(st, "ceilingProfile.BaseClearance",  -11f);
-        Set(st, "ceilingProfile.CavernPeriod",   180f);
-        Set(st, "ceilingProfile.CavernAmplitude", 11f);
-        Set(st, "ceilingProfile.TunnelPeriod",    60f);
-        Set(st, "ceilingProfile.TunnelAmplitude",  4f);
-        Set(st, "ceilingProfile.RoughPeriod",     18f);
-        Set(st, "ceilingProfile.RoughAmplitude", 0.4f);
+        // **열림은 점이 아니라 선이다**(2026-08-30). 여유를 노이즈의 **합**으로 내던 때는
+        // 열리는 자리가 여러 노이즈의 꼭대기가 겹치는 곳이라 굴이 **물방울로 흩어지고 길이
+        // 안 났다** — 화면에는 시작 공터 하나만 둥그렇게 있었다. 이제 능선을 따라 통로가
+        // 나고, 값의 뜻도 바뀌었다(`TerrainCeilingProfile` 참조).
+        //
+        // **주기는 미터로 저작하고 세계 크기를 안 탄다**(2026-08-31에 바로잡았다).
+        //
+        // 전에는 여기에 *"세계를 넓히면 주기도 같이 키울 것"*이라고 적혀 있었는데, 그건
+        // **지도 그림을 기준으로 한 말**이고 판정에는 틀렸다. 폭(간선 9m · 잔가지 5m)은
+        // **폰의 눈금**이라 세계가 넓어져도 안 변한다 — 주기만 4배로 키우면 통로 사이가
+        // 400m가 되어 **열린 넓이가 4분의 1에서 16분의 1로 떨어지고**, 굴이 아니라
+        // *가끔 실금이 간 통짜 바위*가 된다(걸어서 4분 동안 벽만 보게 된다).
+        //
+        // 주기를 그대로 두면 **국소 그림이 그대로**다: 세계 256m에서 간선이 두어 번
+        // 가로지르던 것이 1,024m에서 열 번 가로지를 뿐, 한 자리에서 보이는 굴은 같다.
+        // **세계 크기를 따라가야 하는 것은 셀 *수*로 재는 값**(광역 격자)이지 미터로 재는
+        // 값이 아니다. 확인은 `World → 2. Preview Cave Map` 한 장으로 한다.
+        Set(st, "ceilingProfile.BaseClearance", -11f);
+        Set(st, "ceilingProfile.OpenClearance",   6f);
+        Set(st, "ceilingProfile.PassagePeriod", 100f);
+        Set(st, "ceilingProfile.PassageWidth",    9f);
+        Set(st, "ceilingProfile.BranchPeriod",   42f);
+        Set(st, "ceilingProfile.BranchWidth",     5f);
+        Set(st, "ceilingProfile.ChamberPeriod",  70f);
+        Set(st, "ceilingProfile.ChamberRarity", 0.66f);
+        Set(st, "ceilingProfile.RoughPeriod",    18f);
+        Set(st, "ceilingProfile.RoughAmplitude", 0.6f);
         Set(st, "ceilingProfile.SinkDepth",        2f);
     }
 

@@ -23,7 +23,8 @@ public class ModeBarUI : MonoBehaviour
         public Mode   Mode;
     }
 
-    public enum Mode { Build, Mine, Haul }
+    // **값은 꼬리에 붙인다** — 씬이 정수로 들고 있어, 중간에 끼우면 저작해 둔 버튼이 밀린다.
+    public enum Mode { Build, Mine, Haul, FarmZone }
 
     [SerializeField] List<Slot> slots = new();
 
@@ -31,19 +32,18 @@ public class ModeBarUI : MonoBehaviour
     [SerializeField] Color idle   = new(0.25f, 0.25f, 0.25f, 1f);
     [SerializeField] Color active = new(0.78f, 0.62f, 0.20f, 1f);
 
-    // **건설 중에는 숨는다**(2026-08-29, 사용자). 건설 모드는 제 목록 창(`BuildModeUI`)을
-    // 통째로 띄우므로 그 위에 모드 바가 겹친다.
+    // **건설 중에도 뜬다**(2026-09-02, 사용자 결정 — 전에는 숨겼다).
     //
-    // **오브젝트를 끄지 않는다** — 끄면 `Update`가 안 돌아서 **건설을 끝내도 다시 안 나타난다**
-    // (자기가 자기를 못 켠다). `CanvasGroup`으로 투명하게 만들면 계속 돌면서 지켜본다.
-    // 알파만 0으로 두면 **안 보이는데 눌리므로** 레이캐스트도 같이 끈다.
-    CanvasGroup _group;
+    // 숨긴 이유는 *"건설 목록이 그 위에 겹친다"*였는데, **겹치는 것은 자리를 옮기면 되는
+    // 일**이고 숨기면 **건설에서 채굴로 바로 못 넘어간다**(끄고, 찾고, 다시 켠다). 모드 바가
+    // 있는 이유가 *모드끼리 바로 옮겨 다니는 것*이라 숨기면 그 이유가 사라진다.
+    //
+    // 창 규약대로 `panel`은 자식을 가리킨다(`<기준>_UI` = 스크립트만 · `<기준>_Panel` =
+    // 보였다 사라지는 자식) — 지금은 늘 켜 두지만, 숨길 일이 생기면 여기서 끈다.
+    [SerializeField] GameObject panel;
 
     void Awake()
     {
-        _group = GetComponent<CanvasGroup>();
-        if (_group == null) _group = gameObject.AddComponent<CanvasGroup>();
-
         foreach (var s in slots)
         {
             if (s.Button == null) continue;
@@ -54,14 +54,7 @@ public class ModeBarUI : MonoBehaviour
 
     void Update()
     {
-        bool hide = BuildModeManager.IsActive;
-        if (_group != null)
-        {
-            _group.alpha          = hide ? 0f : 1f;
-            _group.blocksRaycasts = !hide;
-            _group.interactable   = !hide;
-        }
-        if (hide) return;
+        if (panel != null && !panel.activeSelf) panel.SetActive(true);
 
         foreach (var s in slots)
         {
@@ -78,6 +71,7 @@ public class ModeBarUI : MonoBehaviour
         Mode.Build => BuildModeManager.IsActive,
         Mode.Mine  => MineDesignator.IsActive,
         Mode.Haul  => HaulDesignator.IsActive,
+        Mode.FarmZone => FarmZoneDesignator.IsActive,
         _          => false,
     };
 
@@ -90,6 +84,7 @@ public class ModeBarUI : MonoBehaviour
             case Mode.Build: BuildModeManager.Instance?.ToggleBuildMode(); break;
             case Mode.Mine:  MineDesignator.Toggle();                      break;
             case Mode.Haul:  HaulDesignator.Toggle();                      break;
+            case Mode.FarmZone: FarmZoneDesignator.Toggle();               break;
         }
     }
 }

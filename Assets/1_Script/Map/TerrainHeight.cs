@@ -36,7 +36,20 @@ public static class TerrainHeight
     // 진짜 지형**을 대신 답한다(`TerrainErosionBaker`가 굽는다).
     //
     // **여전히 함수다** — 메모리의 배열을 이중선형으로 뽑을 뿐이라 로드 안 된 청크도 답이 나온다.
-    public static TerrainHeightmap Heightmap;
+    // **바뀌면 기억을 버린다** — 아래 정점 캐시가 이 값에서 나오므로, 그냥 필드로 두면
+    // 침식 도구가 높이맵을 갈아 끼운 뒤에도 **옛 높이가 그대로 답한다.**
+    static TerrainHeightmap _heightmap;
+
+    public static TerrainHeightmap Heightmap
+    {
+        get => _heightmap;
+        set
+        {
+            if (_heightmap == value) return;
+            _heightmap = value;
+            ForgetVertices();
+        }
+    }
 
     // ── 바이옴이 지형 성격을 정한다 ─────────────────────────────────────────
     //
@@ -52,7 +65,7 @@ public static class TerrainHeight
     // 매번 뒤지면 그게 굽는 시간의 전부가 된다.
     static Biome[] _biomes;
 
-    public static void ForgetBiomes() => _biomes = null;
+    public static void ForgetBiomes() { _biomes = null; ForgetVertices(); }
 
     static Biome BiomeAt(int rx, int ry)
     {
@@ -275,13 +288,54 @@ public static class TerrainHeight
     }
 
     // 저작 도구가 델타를 다시 구운 뒤 부른다. 안 비우면 **에디터가 옛 높이를 계속 쓴다.**
-    public static void ForgetDeltas() => _delta.Clear();
+    public static void ForgetDeltas() { _delta.Clear(); ForgetVertices(); }
 
     // ── 정점 높이 ───────────────────────────────────────────────────────────
 
     // **전역 정점 좌표로 묻는다.** 청크 지역 좌표로 물으면 가장자리에서 어느 청크의 값인지가
     // 갈려 이음매가 생긴다 — 주인을 좌표에서 계산해 **답이 하나뿐이게** 만든다.
+    // ── 정점 하나는 한 번만 센다 ────────────────────────────────────────────
+    //
+    // **`VertexHeightGlobal`은 순수 함수다** — 같은 정점은 언제 물어도 같은 값이고, 그 값을
+    // 내는 데 펄린 여러 층과 바이옴 이중선형이 든다. 그런데 **묻는 쪽이 정점 단위가 아니다**:
+    // `At`은 한 번에 정점 넷을 뽑고, 길찾기 베이크는 1m 칸마다 `At`을 부른다 — 2m 정점
+    // 격자에서 **같은 정점이 한 베이크 안에서만도 수십 번 다시 계산된다.**
+    //
+    // 세계는 한 변 513정점(16청크 × 32 + 1)이라 **통째로 담아도 1MB**다. 게으르게 채우고
+    // 저작이 바뀌면 통째로 버린다(`ForgetDeltas`·`ForgetBiomes`·`Heightmap` 설정).
+    //
+    // **밖은 안 담는다** — 세계 밖 좌표는 청크가 클램프돼 답이 겹치므로 색인이 성립하지 않는다.
+    const int GlobalVerts = TerrainGrid.ChunksPerAxis * OwnedPerChunk + 1;
+
+    static float[] _vertex;
+    static bool[]  _vertexKnown;
+
+    public static void ForgetVertices()
+    {
+        _vertex      = null;
+        _vertexKnown = null;
+    }
+
     public static float VertexHeightGlobal(int gx, int gz)
+    {
+        if ((uint)gx >= GlobalVerts || (uint)gz >= GlobalVerts) return ComputeVertexHeight(gx, gz);
+
+        if (_vertexKnown == null)
+        {
+            _vertex      = new float[GlobalVerts * GlobalVerts];
+            _vertexKnown = new bool[GlobalVerts * GlobalVerts];
+        }
+
+        int i = gz * GlobalVerts + gx;
+        if (_vertexKnown[i]) return _vertex[i];
+
+        float h = ComputeVertexHeight(gx, gz);
+        _vertex[i]      = h;
+        _vertexKnown[i] = true;
+        return h;
+    }
+
+    static float ComputeVertexHeight(int gx, int gz)
     {
         var chunk = new Vector2Int(
             Mathf.Clamp(gx / OwnedPerChunk, 0, TerrainGrid.ChunksPerAxis - 1),

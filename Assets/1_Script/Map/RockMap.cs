@@ -33,17 +33,21 @@ public static class RockMap
     // 서 있는"* 씬이 생긴다.
     public static bool Enabled => TerrainCeiling.Enabled;
 
-    // 바위 한 칸의 높이(m). **딛는 면에서 이만큼 솟는다.**
+    // 바위 한 칸을 **그리는** 높이(m). 딛는 면에서 이만큼 솟는다.
     //
-    // 폰 키(1.8m)보다 넉넉히 높아야 **벽으로 읽힌다** — 낮으면 넘어 다닐 수 있을 것처럼
-    // 보이는데 실제로는 못 넘어서, 화면과 판정이 어긋난다.
-    // **2026-08-29에 3.2 → 9.6m로 올렸다**(사용자). 3.2m는 폰 키의 두 배가 채 안 돼서
-    // 위에서 내려다보면 **벽이 낮은 턱**처럼 보였다 — 참고 화면의 그 깊은 굴이 안 나온다.
-    // 9.6m면 폰의 다섯 배라 **파낸 방이 우물처럼 깊게** 읽힌다.
+    // **2026-08-29에 3.2 → 9.6m로 올렸다**(사용자). 3.2m는 폰 키의 두 배가 채 안 돼서 위에서
+    // 내려다보면 **낮은 턱**처럼 보였다 — 참고 화면의 그 깊은 굴이 안 나온다.
     //
-    // **높여도 판정은 안 바뀐다** — 지나갈 수 있나는 여유(`TerrainCeiling`)가 답하고
-    // 이 값은 **그리는 높이일 뿐**이다. 다만 옆면이 그만큼 커져 정점이 는다.
+    // **판정에는 안 쓴다** — 지나갈 수 있나는 여유(`TerrainCeiling`)가 답한다. 정점 수도
+    // 높이와 무관하다(옆면은 사각형 하나다).
     public const float Height = 9.6f;
+
+    // **막는 높이도 이 값을 쓴다.** 박스라서 *따로 잡을 수는 있다* — 막는 데 필요한 것은
+    // 폰이 지나가는 높이뿐이니 2.7m면 되고, 메시 콜라이더로는 그렇게 못 한다(그린 면이 곧
+    // 막는 면이다). **그런데 안 나눈다**(2026-08-30): 박스는 **크기와 무관하게 같은
+    // 프리미티브 검사**라 낮춰도 값이 안 준다. 얻는 것이 없는데 잃는 것은 있다 — 콜라이더가
+    // 낮으면 비스듬히 보는 채로 **벽의 위쪽 면을 눌렀을 때 레이가 그 위를 지나간다.**
+    // **값이 안 줄면 손잡이를 늘리지 않는다** — 둘이 어긋날 자리만 하나 생긴다.
 
     // ── 캔 칸 ───────────────────────────────────────────────────────────────
 
@@ -63,17 +67,64 @@ public static class RockMap
 
     // ── 묻기 ────────────────────────────────────────────────────────────────
 
+    // ── 칸 하나는 한 번만 센다 ──────────────────────────────────────────────
+    //
+    // **가장 자주 불리는 물음이다** — 길찾기 베이크가 1m 칸마다 부르고(40×40 창 하나에
+    // 1,600번), 폰이 늘면 그만큼 곱해진다. 함수 쪽 답은 정점 넷의 이중선형이라 이미
+    // `TerrainCeiling`이 정점을 기억하지만, **여기서 한 겹 더 접으면 lerp 넷까지 사라진다.**
+    //
+    // **캔 칸은 캐시 앞에서 답한다** — 캐시가 담는 것은 *함수의 답*뿐이고, 판 것은 `_mined`가
+    // 든다(캘 때 캐시를 손볼 일이 없다. 되메우는 길이 없으니 한 방향뿐이다).
+    //
+    // 버리는 때는 둘: **천장 저작이 바뀌었을 때**(`TerrainCeiling.Version`)와 **격자 위상이
+    // 움직였을 때**다. 위상은 지하에서 0으로 못 박히지만(`ProposeGrid`가 안 건드린다) 여기서
+    // 그 전제에 기대면, 언젠가 그 규칙이 바뀌는 날 **세계의 모든 바위가 반 칸 어긋난 채로
+    // 굳는다** — 두 float 비교로 막을 수 있는 것을 전제로 막지 않는다.
+    const byte Unknown = 0, Rock = 1, Open = 2;
+
+    static byte[]   _cache;
+    static int      _cacheVersion = -1;
+    static Vector2  _cachePhase;
+
+    public static void Forget()
+    {
+        if (_cache != null) System.Array.Clear(_cache, 0, _cache.Length);
+    }
+
     public static bool IsRock(Vector2Int tile)
     {
         if (!Enabled) return false;
         if (_mined.Contains(tile)) return false;
 
+        var map   = MapManager.Instance;
+        var phase = map != null ? map.GridPhase : Vector2.zero;
+
+        if (_cacheVersion != TerrainCeiling.Version || _cachePhase != phase)
+        {
+            _cacheVersion = TerrainCeiling.Version;
+            _cachePhase   = phase;
+            Forget();
+        }
+
+        int size = TerrainGrid.WorldSize;
+        bool indexed = (uint)tile.x < size && (uint)tile.y < size;
+        int  i = 0;
+
+        if (indexed)
+        {
+            _cache ??= new byte[size * size];
+            i = tile.y * size + tile.x;
+            byte c = _cache[i];
+            if (c != Unknown) return c == Rock;
+        }
+
         // **칸 한가운데에서 잰다** — 모서리에서 재면 이웃 칸과 답이 갈려 벽이 한 줄 어긋난다.
-        var map = MapManager.Instance;
         Vector3 w = map != null ? map.TileToWorld(tile)
                                 : new Vector3(tile.x + 0.5f, 0f, tile.y + 0.5f);
 
-        return TerrainCeiling.ClearanceAt(w.x, w.z) < PawnMover.BodyHeight;
+        bool rock = TerrainCeiling.ClearanceAt(w.x, w.z) < PawnMover.BodyHeight;
+        if (indexed) _cache[i] = rock ? Rock : Open;
+        return rock;
     }
 
     public static bool IsRock(Vector3 world)
@@ -92,12 +143,58 @@ public static class RockMap
         return (map != null ? map.SurfaceHeight(tile) : 0f) + Height;
     }
 
+    // **밖에서 온 것이 설 자리는 어디인가 — 답은 여기 하나다**(2026-08-30).
+    //
+    // 지하로 내려온 뒤 **세계의 3분의 2가 바위**인데, 무엇을 세우는 코드들은 그걸 하나도
+    // 안 보고 있었다: 저작 도구가 놓은 마을 · 실체화하는 무리 · 이벤트가 부르는 상인.
+    // 증상이 저마다 다르게 보여서 더 나쁘다 — 마을은 **아예 안 보이고**(벽 속이다), 무리는
+    // **벽에 낀 채 경고만 찍고**, 상인은 **오긴 오는데 갇혀 있다.**
+    //
+    // 셋이 각자 *"열린 데를 찾는다"*를 적으면 반드시 갈린다(반경도, 굴을 파는 것을 세는지도).
+    // 그래서 **답을 하나로 둔다.**
+    //
+    // **`MapManager`가 없어도 답한다** — 무리는 로드 안 된 곳에서도 돌고, 저작 도구는 판이
+    // 열리기 전에 묻는다. **캔 칸도 열린 것으로 친다**(`IsRock`이 함수와 캔 칸을 합쳐 답한다).
+    public const float OpenProbeStep = 2f;
+
+    public static bool TryNearestOpen(Vector3 world, float maxRadius, out Vector3 found)
+    {
+        found = world;
+        if (!Enabled) return true;                  // 지상이면 어디든 열려 있다
+        if (!IsRock(world)) return true;
+
+        for (float r = OpenProbeStep; r <= maxRadius; r += OpenProbeStep)
+        {
+            // 고리 하나를 도는 데 필요한 만큼만 굴린다 — 반경이 커도 눈금이 일정하다.
+            int steps = Mathf.Max(8, Mathf.CeilToInt(2f * Mathf.PI * r / OpenProbeStep));
+            for (int i = 0; i < steps; i++)
+            {
+                float a = i / (float)steps * Mathf.PI * 2f;
+                var p = new Vector3(world.x + Mathf.Cos(a) * r, world.y, world.z + Mathf.Sin(a) * r);
+
+                // **세계 밖으로는 안 내보낸다** — 밖은 열려 있다고 나오지만 지형이 없다.
+                if (p.x < 1f || p.z < 1f || p.x > TerrainGrid.WorldSize - 1f || p.z > TerrainGrid.WorldSize - 1f)
+                    continue;
+
+                if (IsRock(p)) continue;
+                found = p;
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ── 바꾸기 ──────────────────────────────────────────────────────────────
 
     // 캘 것으로 찍는다 / 무른다. **바위가 아닌 칸은 안 찍는다** — 찍어 놓고 아무 일도 안
     // 일어나면 지정이 먹었는지를 알 수 없다.
     public static bool Mark(Vector2Int tile, bool on)
     {
+        // **세계 밖은 안 찍는다**(2026-08-30). 드래그 박스는 콜라이더가 아니라 평면과 교차해
+        // 칸을 모으므로 **지형이 끝난 자리 너머까지 닿는다** — 거기서도 `IsRock`은 참을
+        // 돌려주므로(여유 함수는 세계 밖에서도 값을 낸다) 찍히고, 일감까지 난다.
+        if (on && !TerrainGrid.TileInWorld(tile)) return false;
+
         if (on && !IsRock(tile)) return false;
         bool changed = on ? _marked.Add(tile) : _marked.Remove(tile);
         if (changed) OnChanged?.Invoke(tile);
@@ -164,6 +261,113 @@ public static class RockMap
             var t = m.WorldToTile(center);
             m.SetTile(t, m.GetTile(t));
         }
+
+        // **연 넓이만큼 다시 굽는다**(2026-08-31). 위의 `SetTile` 한 번은 **칸 하나**를
+        // 알리는 것이라 광역 셀 하나와 코스 몇 칸만 고쳐진다 — 공터는 12m다. 안 고치면
+        // 격자에 **기지가 바위에 둘러싸인 섬**으로 남아, 멀리 찍었을 때 광역 경로가 아예
+        // 안 나오고 폰이 조용히 선다.
+        HierarchicalPathfinder.Instance?.RebakeArea(center, radius + 2f);
+    }
+
+    // **시작 자리를 굴에 잇는다**(2026-08-30).
+    //
+    // 통로가 그물로 나 있어도 시작 공터가 그 사이 **바위 한복판**에 떨어질 수 있다. 그러면
+    // 첫 화면은 여전히 *둥근 웅덩이 하나*이고, 플레이어는 굴이 있다는 것도 어느 쪽에 있는지도
+    // 알 수가 없다 — 사방이 똑같은 벽이라 **어디를 팔지가 뽑기가 된다.**
+    //
+    // 그래서 **가장 가까운 자연 굴까지 좁은 길 하나를 뚫어 둔다.** 공터에서 뻗어 나가는 그
+    // 길이 곧 *"저쪽으로 가면 된다"*이고, 굴의 그물에 올라타는 진입로다.
+    //
+    // **찾는 것은 함수가 답하는 굴이다** — `IsRock`은 캔 칸까지 열린 것으로 치므로 그걸로
+    // 찾으면 **방금 연 시작 공터 자신을 찾아** 길이가 0인 길을 뚫고 끝난다.
+    public static bool OpenPathToCave(Vector3 center, float searchRadius = 90f, float width = 3f)
+    {
+        if (!Enabled) return false;
+
+        var map = MapManager.Instance;
+        var from = map != null ? map.WorldToTile(center)
+                               : new Vector2Int(Mathf.FloorToInt(center.x), Mathf.FloorToInt(center.z));
+
+        if (!TryFindNaturalCave(from, searchRadius, out var to)) 
+        {
+            Debug.LogWarning($"[바위] 반경 {searchRadius:0}m 안에 자연 굴이 없다 — 통로 폭이 0이거나 " +
+                             "기준 여유가 너무 깊다. `0. Setup World Streaming`을 돌렸는지 볼 것.");
+            return false;
+        }
+
+        int dug = Carve(from, to, width);
+        if (map != null) map.SetTile(from, map.GetTile(from));   // 길찾기에 한 번만 알린다
+
+        // **뚫은 길 전체를 다시 굽는다**(2026-08-31). 이 길은 최대 90m인데 위의 알림은
+        // **출발 칸 하나**다 — 그러면 격자는 길이 없는 세계를 계속 들고 있고, 진입로를
+        // 뚫어 둔 뜻이 통째로 사라진다(공터가 섬으로 남는다).
+        var mid  = new Vector3((from.x + to.x) * 0.5f, 0f, (from.y + to.y) * 0.5f);
+        float rr = Vector2.Distance(new Vector2(from.x, from.y), new Vector2(to.x, to.y)) * 0.5f
+                 + width + 2f;
+        if (map != null) mid = map.TileToWorld(new Vector2Int(Mathf.RoundToInt(mid.x),
+                                                             Mathf.RoundToInt(mid.z)));
+        HierarchicalPathfinder.Instance?.RebakeArea(mid, rr);
+
+        return dug > 0;
+    }
+
+    // 함수가 **굴이라고 답하는** 가장 가까운 칸. 고리 모양으로 넓혀 가며 찾는다 — 가까운
+    // 것부터 봐야 길이 짧다. **성기게 훑는다**(2칸) — 통로 폭이 그보다 넓으므로 안 놓친다.
+    static bool TryFindNaturalCave(Vector2Int from, float searchRadius, out Vector2Int found)
+    {
+        found = from;
+        var map = MapManager.Instance;
+        int max = Mathf.CeilToInt(searchRadius);
+
+        for (int r = 4; r <= max; r += 2)
+        for (int dy = -r; dy <= r; dy += 2)
+        for (int dx = -r; dx <= r; dx += 2)
+        {
+            if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;   // 고리 위만
+
+            var t = new Vector2Int(from.x + dx, from.y + dy);
+            Vector3 w = map != null ? map.TileToWorld(t) : new Vector3(t.x + 0.5f, 0f, t.y + 0.5f);
+            if (TerrainCeiling.ClearanceAt(w.x, w.z) < PawnMover.BodyHeight) continue;
+
+            found = t;
+            return true;
+        }
+        return false;
+    }
+
+    // 두 칸을 잇는 굴을 판다. **반 칸씩 걸어가며** 둘레를 연다 — 칸 단위로 뛰면 대각선에서
+    // 모서리만 닿아 **폰이 못 지나가는 길**이 난다(대각선은 직교 이웃 둘이 다 열려야 간다).
+    static int Carve(Vector2Int from, Vector2Int to, float width)
+    {
+        float half = Mathf.Max(0.5f, width * 0.5f);
+        var a = new Vector2(from.x, from.y);
+        var b = new Vector2(to.x,   to.y);
+
+        float len   = Vector2.Distance(a, b);
+        int   steps = Mathf.Max(1, Mathf.CeilToInt(len * 2f));
+        int   r     = Mathf.CeilToInt(half);
+        int   dug   = 0;
+
+        for (int i = 0; i <= steps; i++)
+        {
+            var c = Vector2.Lerp(a, b, i / (float)steps);
+            int cx = Mathf.RoundToInt(c.x), cy = Mathf.RoundToInt(c.y);
+
+            for (int dy = -r; dy <= r; dy++)
+            for (int dx = -r; dx <= r; dx++)
+            {
+                if (dx * dx + dy * dy > half * half) continue;
+
+                var t = new Vector2Int(cx + dx, cy + dy);
+                if (!IsRock(t)) continue;
+
+                _mined.Add(t);
+                _marked.Remove(t);
+                OnChanged?.Invoke(t);
+                dug++;
+            }
+        }
+        return dug;
     }
 
     // 판을 새로 열 때. **`_marked`도 비운다** — 안 비우면 지난 판의 지정이 남는다.

@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.Rendering;
 
 // **지붕과 페이드는 한 벌이다**(2026-08-28).
 //
@@ -57,9 +56,6 @@ public class BuildingRoof : MonoBehaviour
     // 문을 넘는 데 걸리는 시간보다 촘촘하면 충분하다.
     const float CheckInterval = 0.2f;
 
-    static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
-    static readonly int ColorId     = Shader.PropertyToID("_Color");
-
     // 흐려지는 조각 하나. **알파를 조각마다 따로 든다** — 지붕과 앞 벽과 뒤 벽이 서로
     // 다른 목표로 가므로 하나로 묶으면 셋이 같이 움직인다.
     class Piece
@@ -100,7 +96,8 @@ public class BuildingRoof : MonoBehaviour
         foreach (var r in under.GetComponentsInChildren<Renderer>(true))
         {
             // **재질을 복제한다.** 공유 재질을 건드리면 세상의 모든 오두막이 같이 흐려진다.
-            var mat = MakeFadeable(r.sharedMaterial);
+            // 투명으로 바꾸는 식은 `FadeMaterial` 하나가 든다(청사진과 같은 답을 쓴다).
+            var mat = FadeMaterial.CloneOf(r.sharedMaterial);
             r.sharedMaterial = mat;
             _pieces.Add(new Piece { Mat = mat, Always = always, Out = OutwardOf(r.transform) });
         }
@@ -207,35 +204,7 @@ public class BuildingRoof : MonoBehaviour
 
     void Apply()
     {
-        foreach (var p in _pieces)
-        {
-            var m = p.Mat;
-            if (m == null) continue;
-            if (m.HasProperty(BaseColorId)) m.SetColor(BaseColorId, WithAlpha(m.GetColor(BaseColorId), p.Alpha));
-            else if (m.HasProperty(ColorId)) m.SetColor(ColorId, WithAlpha(m.GetColor(ColorId), p.Alpha));
-        }
+        foreach (var p in _pieces) FadeMaterial.SetAlpha(p.Mat, p.Alpha);
     }
 
-    static Color WithAlpha(Color c, float a) => new Color(c.r, c.g, c.b, a);
-
-    // 불투명 재질을 **알파를 먹는 재질로** 바꾼 사본. URP는 표면 종류를 키워드와 블렌드
-    // 상태로 들고 있어서, 색만 반투명하게 해서는 아무 일도 안 일어난다.
-    static Material MakeFadeable(Material src)
-    {
-        var m = src != null ? new Material(src) : new Material(Shader.Find("Universal Render Pipeline/Lit"));
-
-        m.SetFloat("_Surface",  1f);                                     // 0 불투명 · 1 투명
-        m.SetFloat("_Blend",    0f);                                     // 알파 블렌드
-        m.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-        m.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-        m.SetFloat("_ZWrite",   0f);
-        m.SetFloat("_AlphaClip", 0f);
-
-        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        m.DisableKeyword("_ALPHATEST_ON");
-        m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-        m.renderQueue = (int)RenderQueue.Transparent;
-
-        return m;
-    }
 }

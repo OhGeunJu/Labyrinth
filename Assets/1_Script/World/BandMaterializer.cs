@@ -107,6 +107,16 @@ public class BandMaterializer : MonoBehaviour
             float x = band.Position.x + Mathf.Cos(ang) * rad;
             float z = band.Position.z + Mathf.Sin(ang) * rad;
 
+            // **바위 속에 세우지 않는다**(2026-08-30). 무리는 토큰일 때 지형만 보고 걸어서
+            // **바위 한복판에 서 있을 수 있다** — 그대로 실체화하면 폰이 벽에 낀 채
+            // `EscapeRock`이 매번 경고만 찍고(그 반경으로는 못 빠져나온다) 습격이 영영
+            // 도착하지 않는다. **자리를 묻는 문은 `RockMap.TryNearestOpen` 하나다.**
+            if (RockMap.TryNearestOpen(new Vector3(x, 0f, z), 24f, out var open))
+            {
+                x = open.x;
+                z = open.z;
+            }
+
             // **지면 위에 세우는 길은 `PawnPlacement` 하나다** — 피벗이 발밑이라 그냥 찍으면
             // 캡슐 절반이 파묻히고, 유니티가 겹침을 풀며 옆으로 밀어내다 가장자리면 떨어진다.
             float y = MapManager.Instance != null

@@ -85,33 +85,13 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
             r.material = _ghostMat;
     }
 
-    Material CreateBlueprintMaterial()
-    {
-        // URP → Standard 순으로 시도
-        var shader = Shader.Find("Universal Render Pipeline/Lit")
-                  ?? Shader.Find("Standard");
-        var mat = new Material(shader) { color = new Color(0.3f, 0.6f, 1f, 0.4f) };
-
-        // URP Lit
-        if (mat.HasProperty("_Surface"))
-        {
-            mat.SetFloat("_Surface", 1f);
-            mat.SetFloat("_Blend",   0f);
-            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        }
-        // Built-in Standard
-        if (mat.HasProperty("_Mode"))
-        {
-            mat.SetFloat("_Mode", 3f);
-            mat.EnableKeyword("_ALPHABLEND_ON");
-        }
-
-        mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        mat.SetInt("_ZWrite", 0);
-        mat.renderQueue = 3000;
-        return mat;
-    }
+    // **투명으로 만드는 식은 `FadeMaterial` 하나가 든다** — 지붕 페이드와 같은 답이다.
+    //
+    // 여기가 안 비치던 원인은 색이었다: `new Material(sh) { color = ... }`의 `Material.color`는
+    // **`_Color`**를 짚는데 URP Lit이 읽는 것은 **`_BaseColor`**라, 알파 0.4를 넣어 놓고도
+    // 셰이더는 기본값(흰색, 알파 1)을 읽었다. `FadeMaterial.SetColor`가 둘 다 넣는다.
+    Material CreateBlueprintMaterial() =>
+        FadeMaterial.Create(new Color(0.3f, 0.6f, 1f, 0.4f));
 
     void Start()
     {
@@ -270,7 +250,7 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
             placed.OccupyFootprint();
         }
 
-        // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
+        // 벽 등 장애물이면 코스 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(transform.position);
 
         Destroy(gameObject);

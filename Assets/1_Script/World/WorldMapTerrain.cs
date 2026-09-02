@@ -157,9 +157,8 @@ public class WorldMapTerrain : MonoBehaviour
 
     Material MakeMaterial(WorldMap wm)
     {
-        var sh = Shader.Find("Universal Render Pipeline/Lit")
-                 ?? Shader.Find("Standard")
-                 ?? Shader.Find("Universal Render Pipeline/Unlit");
+        var sh = RuntimeShaders.Find(RuntimeShaders.Lit, RuntimeShaders.Standard,
+                                     RuntimeShaders.Unlit);
         _mat = new Material(sh) { name = "WorldTerrainMat" };
         if (_mat.HasProperty("_Smoothness")) _mat.SetFloat("_Smoothness", 0f);
         if (_mat.HasProperty("_Glossiness")) _mat.SetFloat("_Glossiness", 0f);

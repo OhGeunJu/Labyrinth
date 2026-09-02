@@ -111,27 +111,22 @@ public static class WorldBattle
 
     // ── 판정 ──────────────────────────────────────────────────────────────────
 
-    // 원정대 ↔ 무리. **결과를 계산만 하지 않고 그 자리에서 적용한다** — 피해·손실·약탈이
-    // 따로 놀면 호출자마다 빠뜨리는 것이 생긴다(조우에서 한 것과 소굴 습격에서 한 것이 달라진다).
-    public static WorldBattleResult Resolve(ExpeditionParty party, WorldBand band)
+    // **누가 이기고 얼마나 잃나 — 답이 한 벌이다**(2026-08-31). 원정대의 조우와 거점 방어가
+    // 각자 굴리면 *"같은 전력인데 나가서 싸우면 이기고 지키면 진다"*가 생기고, 그건 판정이
+    // 아니라 버그로 읽힌다.
+    //
+    // **흔들림은 곱셈이다.** 덧셈으로 흔들면 전력이 클 때는 아무 영향이 없고 작을 때만
+    // 판이 뒤집혀서, 강한 무리를 상대할수록 운이 사라진다.
+    //
+    // 진 쪽은 크게 잃고, 이긴 쪽은 **상대가 셌던 만큼만** 잃는다 — 이겨도 공짜가 아니어야
+    // "이길 수는 있지만 붙을 만한가"가 판단거리가 된다.
+    static bool Roll(float mine, float theirs, out float myLoss, out float theirLoss)
     {
-        var result = new WorldBattleResult();
-        if (party == null || band == null) { result.Summary = "싸울 상대가 없다."; return result; }
-
-        float mine   = PowerOf(party.Members);
-        float theirs = band.Power;
-
-        // **흔들림은 곱셈이다.** 덧셈으로 흔들면 전력이 클 때는 아무 영향이 없고 작을 때만
-        // 판이 뒤집혀서, 강한 무리를 상대할수록 운이 사라진다.
         float roll  = Random.Range(0.80f, 1.25f);
         float ratio = mine <= 0f ? 0f : (mine * roll) / (mine * roll + Mathf.Max(1f, theirs));
+        bool  won   = ratio >= 0.5f;
 
-        result.PlayerWon = ratio >= 0.5f;
-
-        // 진 쪽은 크게 잃고, 이긴 쪽은 **상대가 셌던 만큼만** 잃는다.
-        // 이겨도 공짜가 아니어야 "이길 수는 있지만 붙을 만한가"가 판단거리가 된다.
-        float myLoss, theirLoss;
-        if (result.PlayerWon)
+        if (won)
         {
             myLoss    = Mathf.Clamp(theirs / Mathf.Max(1f, mine) * 0.35f, 0f, 0.6f);
             theirLoss = Random.Range(0.6f, 1f);
@@ -141,9 +136,21 @@ public static class WorldBattle
             myLoss    = Random.Range(0.55f, 0.9f);
             theirLoss = Mathf.Clamp(mine / Mathf.Max(1f, theirs) * 0.35f, 0f, 0.6f);
         }
+        return won;
+    }
+
+    // 원정대 ↔ 무리. **결과를 계산만 하지 않고 그 자리에서 적용한다** — 피해·손실·약탈이
+    // 따로 놀면 호출자마다 빠뜨리는 것이 생긴다(조우에서 한 것과 소굴 습격에서 한 것이 달라진다).
+    public static WorldBattleResult Resolve(ExpeditionParty party, WorldBand band)
+    {
+        var result = new WorldBattleResult();
+        if (party == null || band == null) { result.Summary = "싸울 상대가 없다."; return result; }
+
+        result.PlayerWon = Roll(PowerOf(party.Members), band.Power,
+                                out float myLoss, out float theirLoss);
 
         ApplyToBand(band, theirLoss, result);
-        ApplyToParty(party, myLoss, result);
+        ApplyToPawns(party.Members, myLoss, result);
 
         // 진 쪽이 턴다. 이겼으면 쓰러뜨린 수만큼 노획하고, 졌으면 등짐을 빼앗긴다.
         if (result.PlayerWon) LootFromBand(party, band, result);
@@ -151,6 +158,171 @@ public static class WorldBattle
 
         result.Summary = BuildSummary(band, result);
         return result;
+    }
+
+    // ── 거점 습격 — 아무도 안 보고 있을 때 ────────────────────────────────────
+    //
+    // **안 보는 곳의 습격은 추상으로 푼다**(2026-08-31, 사용자 결정).
+    //
+    // 왜 필요한가: `SimLocality.Center`가 **카메라**라, 카메라가 멀면 쳐들어온 적의 BT가
+    // 안 돈다. 그런데 **내 폰은 거리를 안 보고 계속 돈다**(`IsPlayer`) — 그래서 실체로
+    // 세워 두면 **적이 석상처럼 서서 두들겨 맞는 반쪽 시뮬**이 된다. 그 자리가 안 도는
+    // 곳이면 필드 전투를 아예 안 벌이고 여기서 결과만 낸다.
+    //
+    // **추상이라는 것은 "그림이 없다"는 뜻이지 "가짜"라는 뜻이 아니다** — 방어자도 창고도
+    // 실제 오브젝트라, 피해는 `BodyPartSystem`이 받고 약탈은 **진짜 창고에서 빠진다.**
+    // 그것이 이 길의 유일한 위험(값이 두 벌이 되는 것)을 막는 자리다: 굴림도 손실도
+    // `Roll`·`ApplyToPawns`로 원정대와 **같은 것**을 쓴다.
+    //
+    // **이겨도 노획은 없다.** 실체 습격에서도 전리품은 저절로 안 들어온다 — 시체를 폰이
+    // 털어야 한다. 여기서만 창고에 넣어 주면 **안 보고 있는 편이 이득**이 된다.
+    //
+    // **거점의 경계는 `Territory.Same` 하나가 답한다** — 창고 집계가 이미 쓰는 자다.
+    // 반경을 따로 적으면 *"이 창고는 털렸는데 저 창고는 멀쩡한"* 자리가 생긴다.
+    // 지도에서 걸어온 무리가 덮쳤다.
+    public static WorldBattleResult ResolveRaid(WorldBand band, Vector3 at)
+    {
+        var result = new WorldBattleResult();
+        if (band == null) { result.Summary = "싸울 상대가 없다."; return result; }
+
+        var defenders = DefendersAt(at);
+        result.PlayerWon = Roll(PowerOf(defenders), band.Power,
+                                out float myLoss, out float theirLoss);
+
+        ApplyToBand(band, theirLoss, result);
+        Aftermath(defenders, myLoss, at, result);
+
+        result.Summary = BuildRaidSummary(band.IsAlive ? band.Count : 0, defenders.Count, result);
+        return result;
+    }
+
+    // **이벤트 추첨으로 나온 습격** — 이쪽은 무리 토큰이 없고 **이미 세워진 폰**이 공격자다
+    // (프리팹만으로는 전력을 못 잰다 — 스탯은 `Awake`에서 굴려지므로 프리팹의 `Stats`는
+    // 비어 있다). 그래서 세우는 것까지는 그대로 하고, 결과만 여기서 낸다.
+    //
+    // **공격자를 치우는 것은 부르는 쪽 몫이다** — 여기서 `Destroy`까지 하면 판정 함수가
+    // 씬을 건드리게 되고, 이긴 경우와 진 경우의 뒤처리가 두 군데로 갈린다.
+    public static WorldBattleResult ResolveRaid(IList<UnitBrain> attackers, Vector3 at)
+    {
+        var result = new WorldBattleResult();
+        int count  = attackers != null ? attackers.Count : 0;
+        if (count == 0) { result.Summary = "싸울 상대가 없다."; return result; }
+
+        var defenders = DefendersAt(at);
+        result.PlayerWon = Roll(PowerOf(defenders), PowerOf(attackers),
+                                out float myLoss, out float theirLoss);
+
+        // 무리 쪽 `ApplyToBand`와 같은 규칙 — 이겼으면 최소 한 명은 쓰러진다.
+        int lose = Mathf.Clamp(Mathf.RoundToInt(count * theirLoss), 0, count);
+        if (result.PlayerWon) lose = Mathf.Max(1, lose);
+        result.BandLosses = lose;
+
+        Aftermath(defenders, myLoss, at, result);
+
+        result.Summary = BuildRaidSummary(count - lose, defenders.Count, result);
+        return result;
+    }
+
+    // 우리 쪽에 남는 것 — 다치는 것과 털리는 것. **두 진입점이 같은 것을 쓴다.**
+    static void Aftermath(List<UnitBrain> defenders, float myLoss, Vector3 at,
+                          WorldBattleResult result)
+    {
+        ApplyToPawns(defenders, myLoss, result);
+
+        // 졌으면 창고를 턴다. **이겼으면 아무것도 안 오간다**(위 참고).
+        if (!result.PlayerWon) LootFromBase(at, result);
+    }
+
+    // 이 거점을 지키는 사람들 — **핵 영역 안에 있는 내 폰**이다. **쓰러진 사람도 담는다**
+    // (전력에서는 `PowerOf`가 0으로 세지만 피해는 받을 수 있어야 한다 — `ApplyToPawns`가
+    // 다시 거른다).
+    //
+    // **여기서 `Territory.Same`을 쓰면 안 된다** — 핵이 하나면 그 함수는 **언제나 참**이라
+    // 지도 반대편에 나가 있는 원정대까지 방어자로 잡힌다. 집이 비었는데 습격이 막히고,
+    // 원정대가 영문 모를 부상을 안고 돌아온다. 창고를 고를 때는 그 함수가 맞다 — 영역 밖
+    // 창고는 휴면이라 `IsActive`에서 이미 빠지기 때문이다(사람에게는 그 장치가 없다).
+    static List<UnitBrain> DefendersAt(Vector3 at)
+    {
+        var list = new List<UnitBrain>();
+
+        var core = Territory.CoreAt(at);
+        if (core == null) return list;   // 핵이 없으면 지킬 거점도 없다
+
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var f = all[i];
+            if (f == null || !f.IsPlayer) continue;
+            if (!core.IsWithinAnyRangeWorld(f.transform.position)) continue;
+
+            var brain = f.GetComponent<UnitBrain>();
+            if (brain != null) list.Add(brain);
+        }
+        return list;
+    }
+
+    // 진 거점은 창고를 털린다. **`RaidOutpost`와 같은 눈금**(절반~전부)이다 — 채집기지와
+    // 거점이 다른 비율로 털리면 어느 쪽을 지킬지가 규칙이 아니라 기분이 된다.
+    static void LootFromBase(Vector3 at, WorldBattleResult result)
+    {
+        foreach (var st in Storage.All)
+        {
+            if (st == null || !st.IsActive || st.Inventory == null) continue;
+            if (!Territory.Same(st.transform.position, at)) continue;
+
+            // **훑으면서 지우지 않는다** — 지우는 쪽이 같은 목록을 건드린다.
+            var stacks = new List<ItemInstance>(st.Inventory.Items);
+            foreach (var inst in stacks)
+            {
+                if (inst == null || inst.Data == null || inst.Quantity <= 0) continue;
+
+                int take = Mathf.Max(1, Mathf.RoundToInt(inst.Quantity * Random.Range(0.5f, 1f)));
+                take = Mathf.Min(take, inst.Quantity);
+
+                int got = st.Inventory.Remove(inst.Data, take, inst.Quality);
+                if (got <= 0) continue;
+
+                result.Loot.TryGetValue(inst.Data, out int cur);
+                result.Loot[inst.Data] = cur + got;
+            }
+        }
+    }
+
+    static string BuildRaidSummary(int enemiesLeft, int defenders, WorldBattleResult r)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        if (defenders == 0)
+            sb.Append("거점에 지키는 사람이 없었다.");
+        else
+            sb.Append(r.PlayerWon ? "거점을 지켜냈다." : "거점이 뚫렸다.");
+
+        if (r.BandLosses > 0) sb.Append($" 적 {r.BandLosses}명이 쓰러졌다.");
+        if (enemiesLeft > 0)  sb.Append($" 남은 적 {enemiesLeft}명.");
+
+        if (r.Down.Count > 0)
+        {
+            sb.Append($"\n<color=#FF8080>우리 쪽 {r.Down.Count}명이 크게 다쳤다</color> — ");
+            for (int i = 0; i < r.Down.Count; i++)
+            {
+                if (i > 0) sb.Append(" · ");
+                sb.Append(r.Down[i].UnitName);
+            }
+        }
+
+        if (r.Loot.Count > 0)
+        {
+            sb.Append("\n빼앗긴 것 — ");
+            bool first = true;
+            foreach (var kv in r.Loot)
+            {
+                if (!first) sb.Append(" · ");
+                sb.Append($"{kv.Key.ItemName} {kv.Value}");
+                first = false;
+            }
+        }
+
+        return sb.ToString();
     }
 
     // 무리끼리 붙었다 — 순찰대와 약탈대가 길에서 마주친 경우.
@@ -186,12 +358,16 @@ public static class WorldBattle
         result.BandLosses = band.TakeLosses(lose);
     }
 
-    // 원정대 쪽 손실은 **인원 삭제가 아니라 피해**다. 기절할지 죽을지는 `BodyPartSystem`이
+    // 우리 쪽 손실은 **인원 삭제가 아니라 피해**다. 기절할지 죽을지는 `BodyPartSystem`이
     // 정한다 — 갑옷·강인함이 지도 위에서도 제 몫을 해야 필드에서 갖춘 것이 뜻을 갖는다.
-    static void ApplyToParty(ExpeditionParty party, float lossRate, WorldBattleResult result)
+    //
+    // **원정대인지 거점 방어자인지는 안 묻는다**(2026-08-31) — 둘 다 *"진 쪽이 이만큼
+    // 다친다"*라는 같은 물음이라, 갈라 적으면 한쪽만 몸의 눈금을 따라가고 다른 쪽은
+    // 뒤처진다(부위 HP를 3.5배로 올렸을 때 실제로 그럴 뻔했다).
+    static void ApplyToPawns(IEnumerable<UnitBrain> members, float lossRate, WorldBattleResult result)
     {
         var alive = new List<UnitBrain>();
-        foreach (var m in party.Members)
+        foreach (var m in members)
             if (m != null && !(m.Blackboard != null && m.Blackboard.IsKnockedOut)) alive.Add(m);
         if (alive.Count == 0) return;
 

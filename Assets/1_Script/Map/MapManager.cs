@@ -90,10 +90,31 @@ public class MapManager : MonoBehaviour
     public bool HasBuildZone => _centered;
 
     // 격자가 정해졌나. **가제안도 정해진 것으로 친다**(2026-08-28) — 아래 `ProposeGrid` 참고.
-    public bool HasGrid    => _gridSet || _gridProposed;
+    // **지하에서는 판이 열릴 때부터 정해져 있다** — 바로 아래 설명.
+    public bool HasGrid    => _gridSet || _gridProposed || RockGrid;
 
     // 다시는 안 움직이나. 화면에 *"아직 확정 전"*을 알릴 때만 쓴다.
-    public bool GridLocked => _gridSet;
+    public bool GridLocked => _gridSet || RockGrid;
+
+    // ── 지하에서는 바위가 격자의 근거다 ────────────────────────────────────
+    //
+    // **위상이 커서를 따라 움직인다는 전제는 "격자 위에 아직 아무것도 없다"였다.** 지상에서는
+    // 참이었다 — 핵을 꽂기 전 세계에는 격자에 맞춰 놓인 것이 하나도 없었으니 위상은 아무 값이나
+    // 돼도 됐다.
+    //
+    // **지하에서 그 전제가 깨졌다**(2026-08-30). 판이 열리는 순간 이미 **세계 전체가 격자에
+    // 맞춰 선 바위**다. 그런데 `RockMap.IsRock`은 칸을 월드 좌표로 되돌려(`TileToWorld`)
+    // 여유를 재므로, **위상이 0.4m 밀리면 세계의 모든 바위가 0.4m 움직인다** — 그리는 것만이
+    // 아니라 *어디가 바위인가*라는 답 자체가 밀린다.
+    //
+    // 증상은 이렇게 나타났다(사용자: *"채굴을 지정하면 돌벽의 위치가 달라진다"*): 건설 모드에
+    // 들어가 커서를 움직이면 `ProposeGrid`가 매 프레임 위상을 바꾸는데, **이미 구워 둔 바위
+    // 메시는 옛 위상 그대로다.** 그러다 한 칸을 찍으면 그 청크만 다시 구워져 — **그 16×16
+    // 덩어리가 통째로 1m 미만만큼 미끄러진다.**
+    //
+    // **그래서 지하에서는 위상을 0으로 못 박는다.** *"근거 없는 세계 원점 격자를 쓰지 않는다"*는
+    // 원래 규칙의 뜻은 지켜진다 — 근거가 **바위**이고, 바위는 정수 월드 좌표 위에 서 있다.
+    static bool RockGrid => RockMap.Enabled;
 
     public Vector2 GridPhase => _gridPhase;
 
@@ -114,6 +135,11 @@ public class MapManager : MonoBehaviour
     public void ProposeGrid(Vector3 worldCenter)
     {
         if (_gridSet) return;
+
+        // **바위가 이미 격자 위에 서 있으면 제안할 것이 없다** — 위 `RockGrid` 참고.
+        // 여기서 안 막으면 커서를 움직이는 것만으로 세계의 바위가 통째로 미끄러진다.
+        if (RockGrid) return;
+
         _gridPhase    = new Vector2(Frac(worldCenter.x - 0.5f), Frac(worldCenter.z - 0.5f));
         _gridProposed = true;
     }
@@ -168,7 +194,9 @@ public class MapManager : MonoBehaviour
     {
         // **첫 핵만 격자를 정한다.** 위의 `_gridPhase` 설명 참고 — 나중에 밀면 이미 지은
         // 것이 통째로 반 칸 어긋난다. 핵이 칸 한복판에 오도록 위상을 잡는다.
-        if (!_gridSet)
+        // **지하에서는 핵도 격자를 못 옮긴다** — 이미 바위가 그 격자 위에 서 있고, 밀면
+        // 세계의 벽이 통째로 미끄러진다(위 `RockGrid`).
+        if (!_gridSet && !RockGrid)
         {
             _gridPhase = new Vector2(Frac(worldCenter.x - 0.5f), Frac(worldCenter.z - 0.5f));
             _gridSet   = true;

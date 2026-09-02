@@ -338,6 +338,7 @@ public static class WorldAuthoringScene
         }
         TerrainHeight.ForgetDeltas();
         TerrainHeight.ForgetBiomes();
+        TerrainCeiling.ForgetDeltas();   // **천장도 같이** — 옛 여유로 재면 판 방이 딴 데다
         return true;
     }
 }

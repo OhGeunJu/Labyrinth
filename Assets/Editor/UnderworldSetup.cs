@@ -464,9 +464,7 @@ public static class UnderworldSetup
             "DungeonColony/World/0. Swap Wood Costs To Stone",  // 지하에는 나무가 없다 — 돌로
             "DungeonColony/World/0. Create Fungal Wood Source", // 목재는 균사림에서 캔다
             "DungeonColony/Terrain/8. Generate Biome Map",      // 지하 바이옴을 깐다
-            "DungeonColony/Terrain/5. Populate World (자동 배치)",  // 마을·소굴·자원을 뿌린다
-            "DungeonColony/World/6. Resnap Sites To Terrain",   // 지면이 바뀌었으니 다시 앉힌다
-            "DungeonColony/World/5. Bake World",                // 청크 에셋으로 굽는다
+            "DungeonColony/World/3. Open Authoring Scene",      // **장소는 저작 씬에 놓인다**
         };
 
         foreach (var m in steps)
@@ -478,6 +476,48 @@ public static class UnderworldSetup
             return;
         }
 
+        // ── 장소 ────────────────────────────────────────────────────────────
+        //
+        // **`ExecuteMenuItem`으로 안 부른다.** 배치 도구의 메뉴 항목은 *창을 여는 것*이라
+        // 그렇게 부르면 **창만 뜨고 아무것도 안 놓이는데 참을 돌려준다** — 묶음은 성공한 줄
+        // 알고 넘어가고, 그 뒤 굽기는 빈 씬을 구워 **세계에 마을이 하나도 없게 된다.**
+        // 실제로 그렇게 됐다(구운 청크 0개, 2026-08-30에 드러났다).
+        WorldPopulator.RunHeadless();
+
+        var authoring = WorldAuthoringScene.FindRoot();
+        if (authoring == null)
+        {
+            Debug.LogError("[지하] 저작 루트를 못 찾았다 — 장소를 놓지도 굽지도 못한다. 여기서 멈춘다.");
+            return;
+        }
+
+        // **굽기는 "씬이 세계 전부를 담고 있다"는 표시를 요구한다**(없으면 거절한다 — 일부만
+        // 펼쳐 놓고 구우면 안 펼친 청크가 통째로 사라지기 때문이다). 여기서는 바로 앞에서
+        // **구운 것을 전부 지웠으므로** 씬이 곧 세계 전부다. 그 사실을 적어 준다.
+        authoring.MarkLoaded(System.DateTime.Now.ToString("yyyy-MM-dd HH:mm") + " (Rebuild)");
+        EditorUtility.SetDirty(authoring);
+
+        foreach (var m in new[]
+                 {
+                     "DungeonColony/World/6. Resnap Sites To Terrain",   // 지면이 바뀌었으니 다시 앉힌다
+                     "DungeonColony/World/5. Bake World",                // 청크 에셋으로 굽는다
+                 })
+        {
+            if (EditorApplication.ExecuteMenuItem(m)) continue;
+
+            Debug.LogError($"[지하] `{m}`을 실행하지 못했다 — 여기서 멈춘다.");
+            return;
+        }
+
+        // **구워졌는지 세어 본다.** 위의 도구들은 조건을 못 채우면 **로그만 남기고 참을
+        // 돌려준다** — 그래서 묶음이 *"다 세웠다"*라고 말하는데 세계가 비어 있을 수 있다.
+        // 한 번 겪은 사고는 **다음에 조용히 지나가지 않게** 여기서 막는다.
+        int baked = AssetDatabase.FindAssets("t:WorldChunkContent",
+                                             new[] { "Assets/Resources/WorldContent" }).Length;
+        if (baked == 0)
+            Debug.LogError("[지하] **구운 청크가 0개다 — 게임에 마을도 소굴도 안 선다.**\n" +
+                           "저작 씬(`World.unity`)이 열려 있는지, 배치가 실제로 놓았는지 위 로그를 볼 것.");
+
         TerrainGrid.ForgetRegions();
         TerrainHeight.ForgetBiomes();
         TerrainHeight.ForgetDeltas();
@@ -486,5 +526,187 @@ public static class UnderworldSetup
         Debug.Log($"[지하] 다 세웠다 — {TerrainGrid.WorldSize}m · 지역 {TerrainGrid.RegionSize}m.\n" +
                   "**씬을 저장할 것**(배선·지형 프로필·조명이 씬에 들어갔다).\n" +
                   "남은 것은 지하 색조뿐이다(`C. Bake World Color Map` — 지금은 그림이 없어 꺼져 있다).");
+    }
+
+    // ── 굴이 어떻게 났는지 본다 ─────────────────────────────────────────────
+    //
+    // **저작해 놓고 못 보면 그건 짐작이다.** 천장 값을 만질 때마다 Play Mode에 들어가
+    // 카메라를 끌고 다니며 *"길이 났나"*를 확인하는 것은 값 하나 바꾸는 데 1분이라, 결국
+    // 아무도 안 맞추고 기본값으로 굳는다. 세계 전체를 그림 한 장으로 뽑는다.
+    //
+    // **판정과 같은 함수를 쓴다**(`TerrainCeiling.ClearanceAt` + 폰 키) — 여기서 눈금을
+    // 따로 들면 *"그림에는 길이 있는데 폰은 못 지나가는"* 자리가 생긴다.
+    //
+    // **`Terrain`도 메시도 안 만든다** — 보기만 할 것이라 PNG 한 장이면 되고, 씬에 세우면
+    // 커서 레이캐스트가 그걸 짚는다(`E. World Preview`가 콜라이더를 안 다는 그 이유).
+    [MenuItem("DungeonColony/World/2. Preview Cave Map")]
+    static void PreviewCaves()
+    {
+        var st = TerrainAuthoring.SyncValues();
+        if (st == null)
+        {
+            Debug.LogError("[굴] 씬에 `TerrainStreamer`가 없다 — 게임이 쓸 값을 알 수 없어 그리지 않는다.");
+            return;
+        }
+        TerrainCeiling.ForgetDeltas();
+
+        int world = TerrainGrid.WorldSize;
+        int step  = Mathf.Max(1, Mathf.CeilToInt(world / 1024f));   // 큰 세계는 성기게
+        int res   = world / step;
+
+        var tex = new Texture2D(res, res, TextureFormat.RGB24, false);
+        var px  = new Color32[res * res];
+
+        int open = 0, crawl = 0;
+        for (int y = 0; y < res; y++)
+        for (int x = 0; x < res; x++)
+        {
+            float c = TerrainCeiling.ClearanceAt(x * step + 0.5f, y * step + 0.5f);
+
+            Color32 col;
+            if (c >= PawnMover.BodyHeight)      { open++;  col = new Color32(226, 214, 188, 255); }  // 지나갈 수 있다
+            else if (c > 0f)                    { crawl++; col = new Color32(120, 104,  84, 255); }  // 기어야 하는 틈
+            else                                {          col = new Color32( 38,  36,  33, 255); }  // 바위
+
+            px[y * res + x] = col;
+        }
+        tex.SetPixels32(px);
+        tex.Apply();
+
+        string dir  = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Tools");
+        System.IO.Directory.CreateDirectory(dir);
+        string path = System.IO.Path.Combine(dir, "cave_preview.png");
+        System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+
+        float total = res * (float)res;
+        Debug.Log($"[굴] {world}m 세계 · {step}m/픽셀 — **지나갈 수 있는 곳 {open / total:P0}** · " +
+                  $"기어야 하는 틈 {crawl / total:P0} · 바위 {(total - open - crawl) / total:P0}\n{path}\n" +
+                  "**3분의 1 언저리가 열려 있어야 굴처럼 보인다** — 너무 적으면 통로 폭을, " +
+                  "너무 많으면 주기를 키울 것(캘 바위가 남아야 한다).");
+
+        EditorUtility.RevealInFinder(path);
+    }
+
+    // ── 이어져 있나 — 그물을 색으로 가른다 ──────────────────────────────────
+    //
+    // **`2. Preview Cave Map`은 *어디가 열렸나*에 답하지 *어디까지 갈 수 있나*에는 답하지
+    // 못한다.** 그런데 길찾기를 고칠 때 실제로 필요한 물음은 뒤쪽이다 — *"폰이 여기서 저기로
+    // 걸어갈 수 있나"*를 화면으로 못 재니, 고칠 때마다 **의견끼리 부딪혔다**(*"길은 이어져
+    // 있어" ↔ "격자는 끊겼다는데"*). 2026-08-31에 그 다툼으로 하루가 반나절 갔다.
+    //
+    // **폰과 같은 규칙으로 훑는다** — 8방향이되 **대각선은 직교 이웃 둘이 다 열렸을 때만**
+    // (`PathGrid.Enterable`과 같은 규칙이다. 여기서 규칙을 따로 쓰면 그림이 또 거짓말을 한다).
+    //
+    // **시작점을 안 묻는다** — 덩어리를 전부 세어 **큰 것부터 색을 준다.** 그러면 한 장으로
+    // *"이 두 곳이 같은 그물인가"*에 답할 수 있고, 시작 자리가 어디냐에 안 흔들린다.
+    [MenuItem("DungeonColony/World/2b. Preview Cave Connectivity (그물)")]
+    static void PreviewConnectivity()
+    {
+        var st = TerrainAuthoring.SyncValues();
+        if (st == null)
+        {
+            Debug.LogError("[굴] 씬에 `TerrainStreamer`가 없다 — 게임이 쓸 값을 알 수 없어 그리지 않는다.");
+            return;
+        }
+        TerrainCeiling.ForgetDeltas();
+
+        int world = TerrainGrid.WorldSize;
+        int res   = world;                     // **1m 눈금 그대로** — 폰이 걷는 눈금이다
+        var walk  = new bool[res * res];
+
+        for (int y = 0; y < res; y++)
+        for (int x = 0; x < res; x++)
+            walk[y * res + x] = TerrainCeiling.ClearanceAt(x + 0.5f, y + 0.5f) >= PawnMover.BodyHeight;
+
+        // 덩어리 나누기 — 반복형 BFS(재귀는 100만 칸에서 스택이 터진다)
+        var label = new int[res * res];        // 0 = 아직, -1 = 바위
+        for (int i = 0; i < label.Length; i++) if (!walk[i]) label[i] = -1;
+
+        var sizes = new System.Collections.Generic.List<int> { 0 };   // 1번부터 쓴다
+        var queue = new int[res * res];
+
+        for (int start = 0; start < label.Length; start++)
+        {
+            if (label[start] != 0) continue;
+
+            int id = sizes.Count;
+            sizes.Add(0);
+
+            int head = 0, tail = 0;
+            label[start] = id;
+            queue[tail++] = start;
+
+            while (head < tail)
+            {
+                int i = queue[head++];
+                sizes[id]++;
+
+                int cx = i % res, cy = i / res;
+                for (int d = 0; d < 8; d++)
+                {
+                    int dx = d < 4 ? (d == 0 ? 1 : d == 1 ? -1 : 0) : (d == 4 || d == 5 ? 1 : -1);
+                    int dy = d < 4 ? (d == 2 ? 1 : d == 3 ? -1 : 0) : (d == 4 || d == 6 ? 1 : -1);
+
+                    int nx = cx + dx, ny = cy + dy;
+                    if (nx < 0 || ny < 0 || nx >= res || ny >= res) continue;
+
+                    int ni = ny * res + nx;
+                    if (label[ni] != 0) continue;
+
+                    // **대각선은 직교 둘이 다 열려야 간다** — 폰의 규칙 그대로.
+                    if (dx != 0 && dy != 0 &&
+                        (!walk[cy * res + (cx + dx)] || !walk[(cy + dy) * res + cx])) continue;
+
+                    label[ni] = id;
+                    queue[tail++] = ni;
+                }
+            }
+        }
+
+        // 큰 것부터 순위를 매긴다
+        var order = new System.Collections.Generic.List<int>();
+        for (int id = 1; id < sizes.Count; id++) order.Add(id);
+        order.Sort((a, b) => sizes[b].CompareTo(sizes[a]));
+
+        var rank = new int[sizes.Count];
+        for (int r = 0; r < order.Count; r++) rank[order[r]] = r;
+
+        var palette = new[]
+        {
+            new Color32(226, 214, 188, 255),   // 1등 — 본 그물
+            new Color32( 96, 176, 232, 255),   // 2등
+            new Color32(232, 152,  72, 255),   // 3등
+            new Color32(200,  84,  96, 255),   // 나머지 — **여기 찍으면 파기 전엔 못 간다**
+        };
+
+        var tex = new Texture2D(res, res, TextureFormat.RGB24, false);
+        var px  = new Color32[res * res];
+        for (int i = 0; i < label.Length; i++)
+        {
+            int id = label[i];
+            px[i] = id < 0 ? new Color32(38, 36, 33, 255)
+                           : palette[Mathf.Min(rank[id], palette.Length - 1)];
+        }
+        tex.SetPixels32(px);
+        tex.Apply();
+
+        string dir  = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "Tools");
+        System.IO.Directory.CreateDirectory(dir);
+        string path = System.IO.Path.Combine(dir, "cave_connectivity.png");
+        System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+
+        int openTotal = 0;
+        foreach (int id in order) openTotal += sizes[id];
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"[굴] 그물 {order.Count}개 · 열린 넓이 {openTotal / (float)(res * res):P0}\n");
+        for (int r = 0; r < Mathf.Min(5, order.Count); r++)
+            sb.Append($"  {r + 1}등 {sizes[order[r]]:N0}칸 ({sizes[order[r]] / (float)openTotal:P0})\n");
+        sb.Append(path + "\n**색이 다르면 파기 전에는 서로 못 간다** — 길찾기가 아니라 세계의 문제다.");
+        Debug.Log(sb.ToString());
+
+        EditorUtility.RevealInFinder(path);
     }
 }

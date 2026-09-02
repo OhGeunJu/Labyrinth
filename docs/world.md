@@ -24,21 +24,21 @@ NavMesh 제거. 켄시급 대형 맵이라 전체를 1m 격자로 못 덮으므�
 | 층 | 클래스 | 셀 크기 | 범위 | 용도 |
 |---|---|---|---|---|
 | 로컬 윈도우 | `LocalGridManager` | 1m | 유닛 주변 40m | 눈앞 장애물 정밀 회피 |
-| 메소 | `PathGrid` (`_meso`) | 2m | 코어 주변 160m | 긴 벽 코스 회피 |
+| 코스 | `PathGrid` (`_meso`) | 2m | 코어 주변 160m | 긴 벽 코스 회피 |
 | L2 | `PathGrid` (`_l2`) | 100m | 맵 전체 | 장거리 라우팅 |
 
 **`PathGrid`** — 범용 **Theta*(any-angle)** 격자. `LineOfSight` 가시선으로 부모를 건너뛰어 계단식 아닌 직선 경로 생성. 유클리드 휴리스틱(admissible), 8방향 확장, 이동 비용 지원, **decrease-key 인덱스 이진 최소 힙**(O(N log N)). 시작 셀이 막혀도(반경 부풀림) 탈출 허용. `Rebase`로 윈도우 풀링.
 
 **`HierarchicalPathfinder`** (MonoBehaviour 싱글톤, **씬에 배치 필요**):
-- `ComputeCoarseRoute(from, to)`: from이 메소(베이스) 안이면 메소로 라우팅(긴 벽 우회), to가 메소 밖이면 경계(게이트)까지 메소 후 to 직선. 그 외 장거리는 L2.
+- `ComputeCoarseRoute(from, to)`: from이 코스(베이스) 안이면 코스로 라우팅(긴 벽 우회), to가 코스 밖이면 경계(게이트)까지 코스 후 to 직선. 그 외 장거리는 L2.
 - `FindLocalPath(unitPos, target)`: 유닛 중심 윈도우를 즉석 베이크해 Theta*.
-- `RebakeObstacleAt(worldPos)`: 건물 배치/타일 변경 시 메소의 해당 영역만 `CheckBox` 재베이크.
+- `RebakeObstacleAt(worldPos)`: 건물 배치/타일 변경 시 코스의 해당 영역만 `CheckBox` 재베이크.
 - `obstacleLayer` — **Wall 레이어만** 지정(유닛/지형 제외). 유닛 포함 시 자기 셀을 막아 경로 실패 — 유닛은 `LocalGridManager.BakeOtherPawns`가 예외를 두고 따로 굽는다.
 - `FindLocalPath(unitPos, target, self)` — `self`를 넘기면 그 폰을 뺀 다른 폰들이 장애물로 들어간다.
 - `agentRadius` — 유닛 반경. **셀 반쪽(0.5m)을 넘는 만큼만** 장애물을 부풀린다. 폰(반경 0.3)은 타일 안에 들어가므로 부풀림 0 = 타일 단위 판정.
   - 예전엔 `half = 0.45 + agentRadius`라 벽에 직교로 붙은 셀이 전부 막혔다 → **복도를 3타일로 파야 겨우 한 줄이 걸어졌다.** 던전을 파서 통로를 만드는 게임에선 치명적이라 타일 단위로 바꿨다.
   - 전제: **폰 지름 < 타일 1칸**. `pawn.prefab`의 CharacterController·CapsuleCollider 반경 0.3(지름 0.6, 여유 0.4). 이 전제가 깨지면(반경 ≥ 0.5) 1타일 복도에서 긁히며 낀다.
-- 메소는 게임 시작 + 코어 이동 시(`MesoRecenterLoop`, 3초 점검) 베이크.
+- 코스는 게임 시작 + 코어 이동 시(`MesoRecenterLoop`, 3초 점검) 베이크.
 
 **`LocalGridManager`** — 로컬 윈도우 전용. `FindWindowPath`가 풀링된 윈도우 그리드 1개를 유닛 위치로 재배치·재베이크(매번 `CheckBox(Wall)`이라 런타임 벽도 항상 반영). 길찾기는 동기라 전 유닛 공용.
 
@@ -52,7 +52,7 @@ NavMesh 제거. 켄시급 대형 맵이라 전체를 1m 격자로 못 덮으므�
    - `obstacleLayer`에 유닛을 넣는 방식과 다르다 — 레이어로 넣으면 자기 셀까지 막혀 경로가 실패한다. 그래서 베이크 단계에서 예외를 두고 직접 굽는다.
 + **`PathBlockMemory`** — 폰이 실제로 막혔던 자리를 3초간 통행 불가로 기억(전 폰 공유). 시체·잡동사니처럼 위 4축에 안 걸리는 것까지 잡는 보완재.
 
-메소(2m 셀)는 관대한 판정: 셀이 덮는 타일이 **전부** 점유됐을 때만 차단한다. 얇은 벽까지 코스 단계에서 막으면 한 칸짜리 통로가 사라져 경로 자체를 못 찾는다 — 정밀 차단은 L1 몫.
+코스(2m 셀)는 관대한 판정: 셀이 덮는 타일이 **전부** 점유됐을 때만 차단한다. 얇은 벽까지 코스 단계에서 막으면 한 칸짜리 통로가 사라져 경로 자체를 못 찾는다 — 정밀 차단은 L1 몫.
 
 **`Pathfinder`** (static) — `PawnMover`의 진입점. `ComputeCoarseRoute`/`FindLocalPath`에 위임.
 

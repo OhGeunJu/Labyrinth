@@ -142,6 +142,12 @@ public class TerrainStreamer : MonoBehaviour
     readonly List<Vector2Int> _wanted = new();
     readonly List<Vector2Int> _stale  = new();
 
+    // **비교자를 미리 만들어 둔다.** 람다를 그 자리에 적으면 `center`를 잡아채므로 **프레임마다
+    // 클로저와 델리게이트가 새로 생긴다** — 프로파일러에서 GC 할당 1위가 `TerrainStreamer.Update`로
+    // 찍힌 자리가 여기다(하는 일은 스물다섯 개를 정렬하는 것뿐인데).
+    Vector2Int _sortCenter;
+    System.Comparison<Vector2Int> _byDistance;
+
     public int LiveCount => _live.Count;
 
     // **청크 목록의 주인은 여기 하나다.** 나무·바위·마을을 스트리밍하는 쪽이 반경 계산을
@@ -153,6 +159,17 @@ public class TerrainStreamer : MonoBehaviour
     // 이미 서 있는 청크 — 스트리머가 나중에 켜진 쪽도 따라잡을 수 있게.
     public static IEnumerable<Vector2Int> LiveChunks =>
         _instance != null ? _instance._live.Keys : System.Linq.Enumerable.Empty<Vector2Int>();
+
+    // **그 자리에 지형이 실제로 서 있나**(2026-08-30). 콜라이더가 있느냐를 묻는 것과 같다 —
+    // 스트리밍은 **카메라 둘레만** 세우므로, 카메라에서 먼 폰의 발밑에는 아무것도 없다.
+    // 그걸 모르면 폰이 중력에 떨어지다 낙하 그물에 걸려 **제자리로 되돌려진다.**
+    //
+    // **높이·바위와는 다른 물음이다** — 그쪽은 함수라 로드와 무관하게 답이 나온다. 여기서
+    // 묻는 것은 오직 *"물리가 받쳐 주나"*다.
+    // **스트리머가 없으면 참이다** — 절차 지형을 안 쓰는 씬에서는 지형이 늘 서 있다.
+    // 여기서 거짓을 돌려주면 그런 씬의 폰이 전부 추상 이동으로 떨어진다.
+    public static bool HasGroundAt(Vector3 world) =>
+        _instance == null || _instance._live.ContainsKey(TerrainGrid.ChunkAt(world));
 
     static TerrainStreamer _instance;
 
@@ -216,7 +233,9 @@ public class TerrainStreamer : MonoBehaviour
 
         // ③ 없는 것 세우기 — **한 프레임에 몇 개만.** 가운데부터.
         int budget = buildsPerFrame;
-        _wanted.Sort((a, b) => Sqr(a - center).CompareTo(Sqr(b - center)));
+        _sortCenter = center;
+        _byDistance ??= (a, b) => Sqr(a - _sortCenter).CompareTo(Sqr(b - _sortCenter));
+        _wanted.Sort(_byDistance);
         foreach (var c in _wanted)
         {
             if (budget <= 0) break;
@@ -241,41 +260,103 @@ public class TerrainStreamer : MonoBehaviour
 
     // ── 세우기 ──────────────────────────────────────────────────────────────
 
+    // ── 청크는 만들고 버리는 대신 **돌려 쓴다** ─────────────────────────────
+    //
+    // 세울 때마다 `new TerrainData()`를 하면 유니티가 **높이맵·알파맵·베이스맵 텍스처를 새로
+    // 만들어 GPU에 올린다**(프로파일러의 `CreateCommittedResourceWithTag`가 그것이다). 버릴
+    // 때는 그걸 다시 거둔다. 걸어 다니는 내내 그 왕복이 반복되는데, **개수는 늘 같다** —
+    // 화면에 있는 청크는 `(2r+1)²`로 정해져 있고 자리만 바뀐다.
+    //
+    // 그러니 **그릇은 그대로 두고 내용만 갈아 끼운다.** `SetHeights`·`SetAlphamaps`는 이미
+    // 있는 텍스처에 덮어쓰므로 새로 만들 것이 없고, 오브젝트·컴포넌트·머티리얼도 그대로다.
+    // 남는 비용은 **높이·스플랫을 올리는 것과 콜라이더 굽기**뿐인데 그건 어차피 치러야 한다.
+    //
+    // **`ChunkLoaded`/`ChunkUnloaded`를 듣는 쪽은 안 바뀐다** — 그쪽이 받는 것은 칸 좌표뿐이고
+    // `Terrain` 참조를 들고 있지 않다(`RockRenderer`·`WorldContentStreamer` 둘 다 그렇다).
+    readonly Stack<Terrain> _pool = new();
+
+    // **화면에 설 수 있는 만큼만 든다** — 그 이상은 다시 쓸 일이 없으니 진짜로 버린다.
+    int PoolCap => (2 * radius + 1) * (2 * radius + 1);
+
+    // 높이 배열도 다시 쓴다 — 129×129 = 66KB짜리 쓰레기가 청크마다 나온다.
+    float[,] _heights;
+
+    bool _loggedFirst;
+
     void Build(Vector2Int chunk)
     {
         int res = TerrainGrid.VertsPerAxis;   // 129 = 2^7 + 1 — 유니티가 요구하는 형태
 
-        var data = new TerrainData
-        {
-            heightmapResolution = res,
-            size = new Vector3(TerrainGrid.ChunkSize, HeightRange, TerrainGrid.ChunkSize),
-        };
-
         // **[z, x] 순서다** — 뒤집으면 지형이 전치되어 이웃과 안 맞는다.
-        var h = new float[res, res];
+        if (_heights == null || _heights.GetLength(0) != res) _heights = new float[res, res];
+        var h = _heights;
+
         for (int vz = 0; vz < res; vz++)
         for (int vx = 0; vx < res; vx++)
             h[vz, vx] = Mathf.Clamp01(
                 (TerrainHeight.VertexHeight(chunk, vx, vz) - MinHeight) / HeightRange);
+
+        Terrain terrain = null;
+        while (_pool.Count > 0 && terrain == null) terrain = _pool.Pop();   // 파괴된 것은 버린다
+
+        TerrainData data;
+        if (terrain != null)
+        {
+            data = terrain.terrainData;
+        }
+        else
+        {
+            data = new TerrainData
+            {
+                heightmapResolution = res,
+                size = new Vector3(TerrainGrid.ChunkSize, HeightRange, TerrainGrid.ChunkSize),
+            };
+
+            var go = new GameObject("Chunk");
+            go.transform.SetParent(Root, false);
+            go.layer = GroundLayer;
+
+            terrain = go.AddComponent<Terrain>();
+            terrain.terrainData   = data;
+            terrain.materialTemplate = Material();
+            // **인스턴싱을 안 쓴다**(2026-09-02). 켜면 정점 변위와 법선이 **인스턴싱 전용
+            // 변형**을 타는데, 우리 지형은 `TerrainData`도 키워드도 **전부 런타임 생성**이라
+            // 빌드 수집기가 그 변형이 쓰인다는 것을 알 방법이 없다 — 잘려 나가면 빌드에서만
+            // 이상하게 그려진다(에디터는 변형을 그때그때 굽는다).
+            //
+            // **잃는 것이 거의 없다** — 화면에 서는 청크가 25장뿐이고 CPU는 예산의 5%다.
+            terrain.drawInstanced = false;
+            terrain.allowAutoConnect = true;   // 자리로 이웃을 찾아 LOD 이음매를 맞춘다
+            terrain.groupingID    = 0;
+
+            go.AddComponent<TerrainCollider>().terrainData = data;
+        }
 
         data.SetHeights(0, 0, h);
 
         // **텍스처를 깐다** — 높이·경사·바이옴에서 결정적으로. 저장되는 것은 없다.
         TerrainSplat.Apply(data, chunk, h);
 
-        var go = new GameObject($"Chunk_{TerrainGrid.KeyOf(chunk)}");
-        go.transform.SetParent(Root, false);
-        go.transform.position = TerrainGrid.OriginOf(chunk) + Vector3.up * MinHeight;
-        go.layer = GroundLayer;
+        var t = terrain.transform;
+        t.position = TerrainGrid.OriginOf(chunk) + Vector3.up * MinHeight;
+        terrain.gameObject.name = $"Chunk_{TerrainGrid.KeyOf(chunk)}";
 
-        var terrain = go.AddComponent<Terrain>();
-        terrain.terrainData   = data;
-        terrain.materialTemplate = Material();
-        terrain.drawInstanced = true;
-        terrain.allowAutoConnect = true;   // 자리로 이웃을 찾아 LOD 이음매를 맞춘다
-        terrain.groupingID    = 0;
+        // **자리를 옮긴 다음에 켠다** — 켜 놓고 옮기면 그 한 프레임 동안 옛 자리에 서 있다.
+        if (!terrain.gameObject.activeSelf) terrain.gameObject.SetActive(true);
 
-        go.AddComponent<TerrainCollider>().terrainData = data;
+        // **첫 청크만 무엇으로 그리는지 적는다**(2026-09-02). 지형이 검게 나오는 길은 여럿이고
+        // (재질 없음 · 셰이더가 빌드에서 잘림 · 레이어 0장) **화면으로는 셋이 똑같이 보인다.**
+        // 한 줄이면 갈린다 — 그리고 빌드에서만 나는 증상이라 로그 말고는 볼 방법이 없다.
+        if (!_loggedFirst)
+        {
+            _loggedFirst = true;
+            var mat = terrain.materialTemplate;
+            Debug.Log($"[지형] 첫 청크 — 재질 {(mat != null ? mat.name : "**없음**")} · " +
+                      $"셰이더 {(mat != null && mat.shader != null ? mat.shader.name : "**없음**")} · " +
+                      $"레이어 {(data.terrainLayers != null ? data.terrainLayers.Length : 0)}장 · " +
+                      $"알파맵 {data.alphamapLayers}채널 {data.alphamapResolution}px · " +
+                      $"팔레트 {(TerrainSplat.Palette != null ? TerrainSplat.Palette.name : "**없음**")}");
+        }
 
         _live[chunk] = terrain;
         ChunkLoaded?.Invoke(chunk);
@@ -287,11 +368,20 @@ public class TerrainStreamer : MonoBehaviour
         _live.Remove(chunk);
         if (t == null) return;
 
-        // **`TerrainData`도 같이 버린다** — 오브젝트만 지우면 그 데이터가 메모리에 남아
-        // 걸어 다닐수록 샌다(에셋이 아니라 런타임에 만든 것이라 아무도 안 거둔다).
-        var data = t.terrainData;
-        Destroy(t.gameObject);
-        if (data != null) Destroy(data);
+        if (_pool.Count < PoolCap)
+        {
+            t.gameObject.SetActive(false);
+            _pool.Push(t);
+        }
+        else
+        {
+            // **`TerrainData`도 같이 버린다** — 오브젝트만 지우면 그 데이터가 메모리에 남아
+            // 걸어 다닐수록 샌다(에셋이 아니라 런타임에 만든 것이라 아무도 안 거둔다).
+            var data = t.terrainData;
+            Destroy(t.gameObject);
+            if (data != null) Destroy(data);
+        }
+
         ChunkUnloaded?.Invoke(chunk);
     }
 
@@ -313,14 +403,14 @@ public class TerrainStreamer : MonoBehaviour
         // **우리 사본을 먼저 찾는다** — URP 지형 셰이더에 매크로 변주를 얹은 것
         // (`2_Material/TerrainShader/`). 없으면 URP 원본으로 떨어진다: 사본이 컴파일에
         // 실패해도 **세상이 분홍색이 되지는 않는다.**
-        var sh = Shader.Find("DungeonColony/Terrain/Lit")
-              ?? Shader.Find("Universal Render Pipeline/Terrain/Lit")
-              ?? Shader.Find("Nature/Terrain/Standard");
-        if (sh == null)
-        {
-            Debug.LogWarning("[TerrainStreamer] 지형 셰이더를 못 찾았다 — 인스펙터에 머티리얼을 물릴 것.");
-            return null;
-        }
+        // **이름 목록은 `RuntimeShaders`가 든다** — `Shader.Find`는 **빌드에 포함된 것만**
+        // 찾는데, 이름으로 찾는 것은 참조가 아니라서 아무 재질도 안 가리키면 **통째로 잘려
+        // 나간다.** 그러면 재질이 `null`인 채로 지형이 서고 화면은 **검은 판**이다
+        // (2026-09-02에 실제로 그렇게 나왔다 — 에디터에서는 끝까지 멀쩡했다).
+        var sh = RuntimeShaders.Find(RuntimeShaders.TerrainLit,
+                                     RuntimeShaders.UrpTerrainLit,
+                                     RuntimeShaders.NatureTerrain);
+        if (sh == null) return null;
         _made = new Material(sh) { name = "TerrainChunk (runtime)" };
         return _made;
     }
@@ -328,6 +418,18 @@ public class TerrainStreamer : MonoBehaviour
     void OnDisable()
     {
         foreach (var c in new List<Vector2Int>(_live.Keys)) Unload(c);
+
+        // **넣어 둔 것도 거둔다.** `_root`를 지우면 오브젝트는 같이 사라지지만 런타임에 만든
+        // `TerrainData`는 **아무도 안 거둔다**(에셋이 아니다). 위 `Unload`가 살아 있는 것에
+        // 대해 하는 일을, 여기서는 풀에 대해 한다.
+        while (_pool.Count > 0)
+        {
+            var t = _pool.Pop();
+            if (t == null) continue;
+            var data = t.terrainData;
+            if (data != null) Destroy(data);
+        }
+
         if (_root != null) Destroy(_root.gameObject);
         if (_instance == this) _instance = null;
     }

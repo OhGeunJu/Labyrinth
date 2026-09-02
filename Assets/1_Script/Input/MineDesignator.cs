@@ -21,6 +21,17 @@ public class MineDesignator : MonoBehaviour
 
     public static bool IsActive { get; private set; }
 
+    // ── 도구 둘 ─────────────────────────────────────────────────────────────
+    //
+    // **지정 / 취소.** 우클릭으로도 지울 수 있지만 그건 **한 칸씩**이라, 넓게 찍은 것을
+    // 넓게 무를 길이 없었다. 도구를 바꾸면 **같은 드래그가 반대로 돈다** — 찍을 때 쓰던
+    // 손놀림 그대로 지운다.
+    public enum Tool { Designate, Cancel }
+
+    public static Tool Current { get; private set; } = Tool.Designate;
+    public static void Use(Tool t) => Current = t;
+
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
@@ -30,12 +41,26 @@ public class MineDesignator : MonoBehaviour
     }
 
     Camera  _cam;
+
+    // **드래그의 기준점은 월드다**(2026-08-30). 화면 좌표로 들고 있으면 **카메라가 움직일 때
+    // 그 점이 가리키는 월드 자리가 같이 움직인다** — 왼쪽 버튼을 누른 채 `WASD`로 밀면
+    // 처음 찍은 자리가 **화면에 붙어 따라와서**, 박스가 커지는 게 아니라 통째로 미끄러진다.
+    // 그래서 **화면에 보이는 것보다 넓게 찍을 수가 없었다**(사용자).
+    //
+    // 월드로 들고 **매 프레임 화면 좌표로 되돌린다** — 그러면 기준점이 화면 밖으로 나가도
+    // 사다리꼴 계산이 그대로 성립한다(`WorldToScreenPoint`는 뷰포트 밖 좌표도 준다).
+    Vector3 _dragStartWorld;
+    bool    _hasAnchor;
+
     Vector2 _dragStart;
     bool    _dragging;
 
     // 지금 찍힐 칸들 — 미리 찍어 두고, 무르면 되돌린다.
+    // **이번 드래그가 실제로 찍은 칸.** 원래 찍혀 있던 칸은 여기 안 들어간다 — 그래야
+    // 상자가 지나가도 남의 지시를 안 무른다.
     readonly HashSet<Vector2Int> _preview = new();
     readonly HashSet<Vector2Int> _next    = new();   // 이번 프레임에 찍혀야 할 것
+    readonly List<Vector2Int>    _undo    = new();   // 훑는 도중에 고치지 않으려고
 
     void Update()
     {
@@ -66,11 +91,41 @@ public class MineDesignator : MonoBehaviour
             return;
         }
 
-        if (mouse.leftButton.wasPressedThisFrame) { _dragStart = cur; _dragging = false; }
+        if (mouse.leftButton.wasPressedThisFrame)
+        {
+            _dragStart = cur;
+            _dragging  = false;
+
+            // **누른 그 순간의 월드 자리를 붙든다.** 콜라이더가 아니라 평면이라 허공을
+            // 눌러도 답이 나온다 — 박스의 귀퉁이가 굴 밖이어도 돼야 한다.
+            _hasAnchor = PlaneHit(cur, out _dragStartWorld);
+        }
+
+        // 카메라가 움직였으면 기준점의 **화면 자리**를 다시 낸다. 월드 자리는 그대로다.
+        if (mouse.leftButton.isPressed && _hasAnchor && _cam != null)
+        {
+            var sp = _cam.WorldToScreenPoint(_dragStartWorld);
+
+            // **카메라 뒤로 넘어가면 안 쓴다** — `z`가 음수면 화면 좌표가 뒤집혀 나와
+            // 박스가 반대쪽으로 뻗는다. 그때는 마지막으로 멀쩡했던 자리를 그대로 둔다.
+            if (sp.z > 0f) _dragStart = new Vector2(sp.x, sp.y);
+        }
 
         if (mouse.leftButton.isPressed && !_dragging &&
             (cur - _dragStart).sqrMagnitude > DragThreshold * DragThreshold)
             _dragging = true;
+
+        // **취소 도구는 되돌리기가 없다** — 지운 것을 다시 찍어 줄 이유가 없으니
+        // 미리보기 장부(`_preview`)도 안 쓴다. 상자 안의 찍힌 칸을 그대로 지운다.
+        if (mouse.leftButton.isPressed && Current == Tool.Cancel)
+        {
+            _next.Clear();
+            if (_dragging) CollectBox(_dragStart, cur, _next);
+            else if (TileUnder(cur, out var one)) _next.Add(one);
+
+            foreach (var t in _next) RockMap.Mark(t, false);
+            return;
+        }
 
         if (mouse.leftButton.isPressed)
         {
@@ -83,19 +138,35 @@ public class MineDesignator : MonoBehaviour
             if (_dragging) CollectBox(_dragStart, cur, _next);
             else if (TileUnder(cur, out var t) && RockMap.IsRock(t)) _next.Add(t);
 
+            // **무를 수 있는 것은 이번 드래그가 찍은 것뿐이다**(2026-08-30).
+            //
+            // 전에는 상자 안의 칸을 **전부** `_preview`에 넣었다. 그러면 **이미 찍혀 있던
+            // 칸**까지 거기 들어가고, 상자가 그 칸을 벗어나는 순간 **남의 지시를 무른다** —
+            // 이미 찍어 둔 데 위로 드래그가 한 번 지나가기만 해도 그게 지워졌다
+            // (사용자: *"채굴 지시가 사라져"*).
+            //
+            // **`Mark`가 참을 돌려준 것만 기억한다** — 참은 *"내가 이번에 바꿨다"*는 뜻이고,
+            // 이미 찍혀 있던 칸에서는 거짓이라 목록에 안 들어간다. 그래서 무를 것도 없다.
+            _undo.Clear();
             foreach (var t in _preview)
-                if (!_next.Contains(t)) RockMap.Mark(t, false);
+                if (!_next.Contains(t)) { RockMap.Mark(t, false); _undo.Add(t); }
+            foreach (var t in _undo) _preview.Remove(t);
 
             foreach (var t in _next)
-                if (!_preview.Contains(t)) RockMap.Mark(t, true);
+                if (!_preview.Contains(t) && RockMap.Mark(t, true)) _preview.Add(t);
 
-            _preview.Clear();
-            foreach (var t in _next) _preview.Add(t);
             return;
         }
 
         if (mouse.leftButton.wasReleasedThisFrame)
         {
+            _hasAnchor = false;
+            _dragging  = false;
+
+            // **취소로 놓았으면 일감을 안 낸다** — 지우려고 끈 드래그가 도로 일감을 내면
+            // 지운 것이 아니다.
+            if (Current == Tool.Cancel) return;
+
             // **놓는 순간 일감이 난다.** 누르는 동안 내는 것이 아니라 — 드래그 중에는
             // 박스가 계속 바뀌므로 그때마다 등록하면 **취소된 일감이 큐에 쌓인다.**
             Commit();
@@ -116,63 +187,56 @@ public class MineDesignator : MonoBehaviour
         // 허공으로 나가는 순간 `false`가 되어 **통째로 아무것도 안 찍힌다** — 화면에서는
         // *"드래그했는데 아무 일도 안 일어난다"*로만 보인다. 바닥이 완전 평지라 평면과의
         // 교점은 **언제나 있고 정확하다.**
+        // **두 점이면 된다 — 처음 찍은 칸과 지금 칸**(2026-09-02, 사용자 제안).
+        //
+        // 전에는 **화면 사각형의 네 귀퉁이**를 떨어뜨려 그 바깥 상자를 썼다. 화면의 네모는
+        // 비스듬한 시점에서 지면에서 **사다리꼴**이라, 그 바깥 상자는 **눈에 보이는 것보다
+        // 넓다** — 위아래 모서리 쪽에서 한 줄씩 더 찍힌다(*"찍는 곳이 정확히 안 찍힌다"*).
+        //
+        // 기준 칸에서 지금 칸까지 **상하좌우로 펴면** 각도와 무관하게 정확하고, 건설의 줄
+        // 긋기와 같은 손맛이 된다.
         if (!PlaneHit(new Vector2(a.x, a.y), out var p0)) return;
         if (!PlaneHit(new Vector2(b.x, b.y), out var p1)) return;
-        if (!PlaneHit(new Vector2(a.x, b.y), out var p2)) return;
-        if (!PlaneHit(new Vector2(b.x, a.y), out var p3)) return;
 
         var map = MapManager.Instance;
         if (map == null) return;
 
-        var t0 = map.WorldToTile(p0); var t1 = map.WorldToTile(p1);
-        var t2 = map.WorldToTile(p2); var t3 = map.WorldToTile(p3);
+        var t0 = map.WorldToTile(p0);
+        var t1 = map.WorldToTile(p1);
 
-        int minX = Mathf.Min(Mathf.Min(t0.x, t1.x), Mathf.Min(t2.x, t3.x));
-        int maxX = Mathf.Max(Mathf.Max(t0.x, t1.x), Mathf.Max(t2.x, t3.x));
-        int minY = Mathf.Min(Mathf.Min(t0.y, t1.y), Mathf.Min(t2.y, t3.y));
-        int maxY = Mathf.Max(Mathf.Max(t0.y, t1.y), Mathf.Max(t2.y, t3.y));
+        int minX = Mathf.Min(t0.x, t1.x), maxX = Mathf.Max(t0.x, t1.x);
+        int minY = Mathf.Min(t0.y, t1.y), maxY = Mathf.Max(t0.y, t1.y);
 
         // **한 번에 너무 넓게 찍는 것을 막는다** — 화면 전체를 드래그하면 수만 칸이 되고,
         // 그만큼의 일감이 큐에 들어가면 배정이 그 자리에서 멎는다.
+        //
+        // **자를 때 기준점 쪽을 남긴다**(2026-08-30). 그냥 `min` 쪽을 남기면, 위나 왼쪽으로
+        // 끌 때 **잘려 나가는 것이 처음 찍은 자리**라 박스가 커커지는 게 아니라 미끄러진다 —
+        // 카메라를 밀어 가며 길게 찍을 수 있게 된 뒤로 이게 눈에 보인다.
         const int MaxSpan = 60;
-        if (maxX - minX > MaxSpan) maxX = minX + MaxSpan;
-        if (maxY - minY > MaxSpan) maxY = minY + MaxSpan;
+        if (maxX - minX > MaxSpan)
+        {
+            if (t0.x - minX <= maxX - t0.x) maxX = minX + MaxSpan;
+            else                            minX = maxX - MaxSpan;
+        }
+        if (maxY - minY > MaxSpan)
+        {
+            if (t0.y - minY <= maxY - t0.y) maxY = minY + MaxSpan;
+            else                            minY = maxY - MaxSpan;
+        }
 
-        // **사각형이 아니라 사다리꼴 안만 찍는다**(2026-08-29).
-        //
-        // 카메라가 눕혀 있으면 화면의 사각형이 지면에서는 **사다리꼴**이 된다 — 화면 위쪽이
-        // 멀어서 넓게 퍼지기 때문이다. 그 바깥 상자를 찍으면 **위쪽이 훨씬 넓게 찍혀**,
-        // 드래그한 것보다 위가 더 파인다(사용자가 본 그것이다).
-        //
-        // 네 점을 **화면에서 그린 순서대로** 이어 다각형으로 보고, 칸 중심이 그 안에 드는
-        // 것만 찍는다. 바깥 상자는 훑을 범위를 좁히는 데만 쓴다.
-        Vector2 q0 = new(p0.x, p0.z), q1 = new(p3.x, p3.z),
-                q2 = new(p1.x, p1.z), q3 = new(p2.x, p2.z);
-
+        // **이제는 진짜 사각형이다.** 예전에는 화면 사각형이 지면에서 사다리꼴이 되는 것을
+        // 다각형 검사로 눌렀는데(2026-08-29), 기준을 **칸**으로 옮긴 뒤로는 애초에 사다리꼴이
+        // 안 생긴다 — 검사도 같이 걷어낸다.
         for (int y = minY; y <= maxY; y++)
         for (int x = minX; x <= maxX; x++)
         {
             var tile = new Vector2Int(x, y);
-            Vector3 c = map.TileToWorld(tile);
-            if (!InQuad(new Vector2(c.x, c.z), q0, q1, q2, q3)) continue;
             if (!RockMap.IsRock(tile)) continue;
             into.Add(tile);
         }
     }
 
-    // 볼록 사각형 안인가. **네 변에 대해 같은 쪽인지**만 보면 된다 — 화면 사각형을 지면에
-    // 투영한 것이라 언제나 볼록하다(오목해질 수가 없다).
-    static bool InQuad(Vector2 p, Vector2 a, Vector2 b, Vector2 c, Vector2 d)
-    {
-        float s0 = Cross(a, b, p);
-        float s1 = Cross(b, c, p);
-        float s2 = Cross(c, d, p);
-        float s3 = Cross(d, a, p);
-
-        bool neg = s0 < 0f || s1 < 0f || s2 < 0f || s3 < 0f;
-        bool pos = s0 > 0f || s1 > 0f || s2 > 0f || s3 > 0f;
-        return !(neg && pos);   // 부호가 안 섞이면 안쪽
-    }
 
     static float Cross(Vector2 a, Vector2 b, Vector2 p) =>
         (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
@@ -252,7 +316,14 @@ public class MineDesignator : MonoBehaviour
         var ray = _cam.ScreenPointToRay(screen);
         if (!Physics.Raycast(ray, out var hit, 5000f)) return false;
 
-        world = hit.point;
+        // **맞은 면 안쪽으로 조금 밀어 넣는다**(2026-08-30). 벽의 **옆면**을 누르면 맞은 점이
+        // 정확히 **칸 경계**에 떨어지는데, `WorldToTile`은 `Floor`라 그 경계가 어느 칸으로
+        // 가는지가 **면의 방향에 따라 갈린다** — 서쪽 면을 누르면 그 벽이, 동쪽 면을 누르면
+        // **벽 앞의 빈 칸**이 찍힌다(바위가 아니라서 조용히 아무 일도 안 일어난다).
+        //
+        // 법선 반대로 5cm면 언제나 맞은 물체 **안**이다. 윗면·바닥은 법선이 위라 y만 내려가고
+        // x·z는 그대로다 — 그쪽 판정은 한 줄도 안 바뀐다.
+        world = hit.point - hit.normal * 0.05f;
         return true;
     }
 
@@ -268,11 +339,21 @@ public class MineDesignator : MonoBehaviour
     float _prevPitch;
     bool  _pitchSaved;
 
+
+    // **한 번에 하나다** — 근거는 `ExclusiveMode`. 켤 때 *"내가 켰다"*만 알리고, 끄는 판단은
+    // 각자 한다(여기서 남을 직접 끄면 모드가 늘 때마다 이 줄이 늘어난다).
+    void OnEnable()  => ExclusiveMode.Claimed += OnOtherClaimed;
+    void OnDisable() => ExclusiveMode.Claimed -= OnOtherClaimed;
+
+    void OnOtherClaimed(object who) { if (!ReferenceEquals(who, this)) SetActive(false); }
+
     void SetActive(bool on)
     {
         if (IsActive == on) return;
         IsActive = on;
         if (!on) { ClearPreview(); _dragging = false; }
+
+        if (on) ExclusiveMode.Claim(this);
 
         // **채굴할 때는 위에서 내려다본다**(2026-08-29, 사용자). 눕힌 시점에서는 화면
         // 사각형이 지면에서 사다리꼴이라 **무엇이 찍힐지를 눈으로 못 잰다** — 위에서 보면
