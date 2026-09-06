@@ -24,6 +24,47 @@ public class PawnMover : MonoBehaviour
     int           _coarseIndex;
     List<Vector3> _localPath;
     int           _localIndex;
+
+    // **경로를 따라 남은 거리**(2026-09-05). 직선거리가 아니라 **그은 선**이다.
+    //
+    // 정체를 재는 쪽(`WorkNode`)이 직선으로 재면 굴에서 틀린다 — 폰과 목적지 사이가 통째로
+    // 바위면 경로가 수십 미터를 돌아서 가고, 그동안 직선거리는 줄지 않거나 늘어난다.
+    // *"멀쩡히 걷는 폰이 못 간다고 판정되던"* 그 자리다.
+    //
+    // **여기가 답한다** — 라우트를 든 것은 이쪽이고, 밖에서 다시 그으면 답이 두 벌이 된다.
+    // 라우트가 없으면(짧은 이동이라 로컬만으로 가는 경우) 직선으로 떨어진다 — 그때는
+    // 돌아갈 것이 없으므로 직선이 곧 그은 선이다.
+    //
+    // **줄어드는 것만 뜻이 있다.** 길을 다시 내면 값이 위로 튈 수 있는데(더 긴 우회를 찾았다),
+    // 부르는 쪽은 *"6초 안에 한 번이라도 줄었나"*만 보므로 걷는 동안 저절로 줄어든다.
+    //
+    // **`RemainingRouteDistance`와 같은 자다**(2026-09-06). 하루 동안 둘이 따로 있었고
+    // **꼬리 한 구간이 갈렸다** — 이쪽은 *마지막 웨이포인트에서 목적지까지*를 안 더했다.
+    // 라우트는 목적지 **근처**에서 끝나므로, 안 더하면 도달 불가한 자리를 겨눴을 때 남은
+    // 길이 실제보다 짧게 나온다. 같은 물음에 두 곳이 답하면 반드시 어긋난다.
+    public float RouteRemaining => _hasTarget ? RemainingRouteDistance(transform.position) : 0f;
+
+    // **길을 다시 낼 때마다 오른다**(2026-09-06).
+    //
+    // 정체를 *남은 경로가 줄었나*로 재는 쪽은 **길이 바뀌면 눈금도 다시 내야 한다.** 새 길이
+    // 더 긴 우회면(`ReportUnreachable`이 광역 덩어리를 20초 닫으면 실제로 그렇게 된다) 옛
+    // 기록은 **다시는 못 깨는 값**이 되어, 멀쩡히 걷는 폰이 정확히 시계만큼 뒤에 반드시
+    // 포기한다 — 로그에 `남은경로 110.8m (최고 56.8m)`로 남은 그것이다.
+    //
+    // `PawnMover` 자신은 이미 그렇게 하고 있었다(`TrackGoalGain`의 *"새 길에는 새 시계를
+    // 준다"*). 밖에서도 같은 일을 하려면 **길이 바뀐 사실이 보여야 한다.**
+    public int RouteVersion => _routeVersion;
+    int _routeVersion;
+
+    // **라우트를 갈아 끼우는 문은 하나다** — 판 올리기를 한 갈래에서만 빠뜨리면 그 갈래에
+    // 걸린 폰만 옛 눈금으로 재고, 그건 화면에서 *"가끔 포기한다"*로만 보인다.
+    void SetCoarseRoute(List<Vector3> route)
+    {
+        _coarseRoute = route;
+        _coarseIndex = 0;
+        _routeVersion++;
+    }
+
     Vector3       _replanAnchor;
 
     // 목적지는 정해졌는데 길은 아직 안 낸 상태. **`_hasTarget`과 다른 축이다** —
@@ -269,8 +310,7 @@ public class PawnMover : MonoBehaviour
     void BuildRoute()
     {
         _routePending = false;
-        _coarseRoute  = Pathfinder.ComputeCoarseRoute(transform.position, _finalGoal);
-        _coarseIndex  = 0;
+        SetCoarseRoute(Pathfinder.ComputeCoarseRoute(transform.position, _finalGoal));
         ResetProgress();
         ReplanLocal();
     }
@@ -308,7 +348,7 @@ public class PawnMover : MonoBehaviour
     {
         _hasTarget    = false;
         _routePending = false;
-        _coarseRoute  = null;
+        SetCoarseRoute(null);
         _localPath    = null;
     }
 
@@ -510,8 +550,7 @@ public class PawnMover : MonoBehaviour
         if (!IsStuck(pos)) return;
 
         // 로컬이 막힘 — 전역 재계획(현재 위치 기준 코스 라우트 갱신: 코스 벽 지식 반영)
-        _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
-        _coarseIndex = 0;
+        SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
         ReplanLocal();
 
         // 그래도 제자리면 정지 (제자리 떨림/무한 루프 방지).
@@ -537,8 +576,7 @@ public class PawnMover : MonoBehaviour
         {
             _reportedUnreachable = true;
             Pathfinder.ReportUnreachable(steer);
-            _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
-            _coarseIndex = 0;
+            SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
             ReplanLocal();
             if (!IsStuck(pos)) return;
         }
@@ -741,8 +779,7 @@ public class PawnMover : MonoBehaviour
         {
             _reportedUnreachable = true;
             Pathfinder.ReportUnreachable(stalledAt);
-            _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
-            _coarseIndex = 0;
+            SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
             ReplanLocal();
 
             // **새 길에는 새 시계를 준다** — 안 그러면 다시 뽑자마자 그 자리에서 포기한다.
@@ -786,8 +823,7 @@ public class PawnMover : MonoBehaviour
 
             case 3:   // 로컬 윈도우 밖으로 돌아야 하는 규모 — 전역 경로부터 다시
                 RememberBlockedSpot(pos, desired);
-                _coarseRoute = Pathfinder.ComputeCoarseRoute(pos, _finalGoal);
-                _coarseIndex = 0;
+                SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
                 ReplanLocal();
                 break;
 
@@ -1067,15 +1103,55 @@ public class PawnMover : MonoBehaviour
     // **높이는 함수가 준다**(`SampleGroundHeight` — 콜라이더도 `Terrain`도 안 본다).
     // **컨트롤러를 껐다 켜지 않는다** — 둘레에 콜라이더가 없어 되밀 것이 없고, 매 프레임
     // 껐다 켜면 업기·가두기가 같은 스위치를 쓰는 자리와 엉킨다.
+    //
+    // **벽은 여기서 막는다**(2026-09-05). *"없는 것은 물리뿐"*이라고 적어 두었는데, 물리가
+    // 하던 일 중 하나가 **벽을 막는 것**이었다. 바위 콜라이더는 `RockRenderer`가 **지형 청크가
+    // 로드된 곳에만** 세우고 그곳은 카메라 둘레뿐이라, 카메라에서 먼 폰에게는 **바위가
+    // 아예 없다** — 조향이 모서리를 스치거나 로컬 경로가 없어 직선으로 떨어지면 **그대로
+    // 벽 속으로 걸어 들어간다.** 그리고 한 번 들어가면 `EscapeRock`이 꺼내고 목적지가 도로
+    // 끌어들이는 **되풀이**가 된다(폰 여럿이 같은 칸에서 발견되던 그 자리).
     void GhostMove(Vector3 delta)
     {
         delta.y = 0f;
 
-        var p = transform.position + delta;
+        var from = transform.position;
+        var p    = BlockedByRock(from, from + delta);
+
         var map = MapManager.Instance;
         if (map != null) p.y = map.SampleGroundHeight(p);
 
         transform.position = p;
+    }
+
+    // ── 바위를 뚫지 않는다 ──────────────────────────────────────────────────
+    //
+    // **답은 `RockMap` 하나다** — 여기서 콜라이더를 쏘면 *로드된 곳에서만* 벽이 있는 그
+    // 반쪽 상태가 그대로 돌아온다(그것이 애초의 원인이다).
+    static bool InRock(Vector3 p)
+    {
+        if (!RockMap.Enabled) return false;
+
+        var map = MapManager.Instance;
+        return map != null && RockMap.IsRock(map.WorldToTile(p));
+    }
+
+    // **한 축씩 미끄러뜨린다** — 컨트롤러의 collide-and-slide와 같은 모양이다. 통째로 막으면
+    // 벽을 비스듬히 스치는 걸음에서 **한 발짝도 못 가고**, 그러면 벽을 끼고 도는 경로가
+    // 전부 정체로 잡힌다.
+    //
+    // **이미 안에 있으면 안 막는다.** 막으면 빠져나올 길이 없어져 `EscapeRock`이 옮겨 줄
+    // 때까지 굳는다 — 벽에 갇히는 것보다 나쁜 것은 **갇힌 채 못 나오는 것**이다.
+    static Vector3 BlockedByRock(Vector3 from, Vector3 to)
+    {
+        if (!InRock(to) || InRock(from)) return to;
+
+        var x = new Vector3(to.x, to.y, from.z);
+        if (!InRock(x)) return x;
+
+        var z = new Vector3(from.x, to.y, to.z);
+        if (!InRock(z)) return z;
+
+        return from;
     }
 
     // ── 한 프레임의 걸음을 잘게 나눈다 ──────────────────────────────────────
@@ -1099,14 +1175,31 @@ public class PawnMover : MonoBehaviour
     const float MaxStep     = 0.2f;
     const int   MaxSubSteps = 8;
 
+    // **뚫고 들어갔으면 그 프레임을 무른다**(2026-09-05). 잘게 나누는 것은 **줄이는** 장치지
+    // 막는 장치가 아니다 — 모서리·이음매에서는 여전히 새고, 바위 콜라이더는 속 빈 껍데기라
+    // **한 번 안으로 들어가면 밀어낼 것이 없다.** 한 프레임의 걸음은 길어야 수십 cm라
+    // 통째로 무르는 값이 싸고, 무르면 `OnBlocked`가 정상적으로 걸려 길을 다시 낸다.
+    //
+    // **밖에 있다가 안으로 들어간 경우만 무른다** — 안에서 시작했으면 나가는 중일 수도 있다.
     void StepMove(Vector3 delta)
     {
-        float len = delta.magnitude;
-        if (len <= MaxStep || len <= 0.0001f) { _cc.Move(delta); return; }
+        var  from    = transform.position;
+        bool wasFree = !InRock(from);
 
-        int n = Mathf.Min(Mathf.CeilToInt(len / MaxStep), MaxSubSteps);
-        Vector3 part = delta / n;
-        for (int i = 0; i < n; i++) _cc.Move(part);
+        float len = delta.magnitude;
+        if (len <= MaxStep || len <= 0.0001f) _cc.Move(delta);
+        else
+        {
+            int n = Mathf.Min(Mathf.CeilToInt(len / MaxStep), MaxSubSteps);
+            Vector3 part = delta / n;
+            for (int i = 0; i < n; i++)
+            {
+                _cc.Move(part);
+                if (wasFree && InRock(transform.position)) break;
+            }
+        }
+
+        if (wasFree && InRock(transform.position)) transform.position = from;
     }
 
     public void SetLimping(bool limping)
@@ -1184,6 +1277,12 @@ public class PawnMover : MonoBehaviour
     }
 
     public bool HasTarget()  => _hasTarget;
+
+    // **지금 겨누고 있는 최종 목적지.** 진단이 *"일감 지점"*과 이 값을 **따로** 찍어야 한다 —
+    // 둘은 다른 값이다(`SetMoveTarget`이 `SnapToStandable`로 접는다). 갈리면 *"일감까지 못
+    // 간다"*는 말이 **어디까지 못 간다는 것인지**를 화면에서 알 수 없다.
+    public Vector3 Goal      => _finalGoal;
+    public int     RoutePoints => _coarseRoute != null ? _coarseRoute.Count : 0;
 
     // 낙하 복구를 **어디로** 할 것인가.
     //

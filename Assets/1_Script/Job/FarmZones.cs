@@ -25,7 +25,14 @@ public static class FarmZones
 
     // **다시 센 횟수.** 밭이 *"내 색이 아직 맞나"*를 이 숫자로 판단한다 — 색을 매 프레임
     // 다시 칠하면 `MaterialPropertyBlock`을 밭 수만큼 매 프레임 새로 미는 셈이 된다.
-    public static int Version { get; private set; }
+    // **묻는 순간 최신이어야 한다**(2026-09-05에 고쳤다). `Version`은 `Rebuild` 안에서만
+    // 올랐는데, 그것을 보는 유일한 쪽(`FarmZoneOverlay.LateUpdate`)은 **아무것도 안 물어보고
+    // 번호만 본다** — 그래서 밭을 놓거나 헐어도 다른 코드가 우연히 `Of`/`ColorOf`를 부르기
+    // 전까지 **테두리가 옛 모양 그대로**였다. 게으른 다시 세기를 쓰면서 그 방아쇠를 안 당기는
+    // 자리를 남긴 셈이다. 게터가 직접 당긴다 — `Rebuild`는 안 더러우면 곧바로 돌아선다.
+    public static int Version { get { Rebuild(); return _version; } }
+
+    static int _version;
 
     public static void MarkDirty() => _dirty = true;
 
@@ -57,7 +64,7 @@ public static class FarmZones
     {
         if (!_dirty) return;
         _dirty = false;
-        Version++;
+        _version++;
 
         _zoneOf.Clear();
         _zones.Clear();

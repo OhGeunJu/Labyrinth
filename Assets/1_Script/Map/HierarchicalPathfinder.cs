@@ -7,7 +7,7 @@ using UnityEngine.Serialization;
 //
 // ── 격자 셋의 이름 (2026-08-30에 통일했다) ──────────────────────────────────
 //
-//   `_wide`   100m  세계 규모 폴백. 코스 격자 밖으로 나가는 먼 길에만 쓴다.
+//   `_graph`        세계 전체. **셀 안의 연결 덩어리마다 노드 하나**(HPA\* entrance).
 //   `_coarse`   2m  **실제로 쓰는 성긴 격자.** 핵 둘레를 덮고 복도를 안내한다.
 //   `_local`    1m  유닛 둘레 창. 정밀 회피.
 //
@@ -19,16 +19,12 @@ using UnityEngine.Serialization;
 // **씬 값은 `FormerlySerializedAs`가 지킨다** — 직렬화 필드는 이름을 바꾸는 순간 값이
 // 코드 기본값으로 되돌아간다(이 저장소가 여러 번 겪은 *"코드 기본값은 씬이 값을 들면 아무
 // 힘이 없다"*의 뒤집힌 짝이다).
-// PawnMover가 ComputeCoarseRoute(코스/L2 코스) +
+// PawnMover가 ComputeCoarseRoute(코스 라우트) +
 // FindLocalPath(유닛 중심 1m 윈도우)로 이용한다.
 [DefaultExecutionOrder(-100)]
 public class HierarchicalPathfinder : MonoBehaviour
 {
     public static HierarchicalPathfinder Instance { get; private set; }
-
-    [Header("그리드 설정")]
-    [FormerlySerializedAs("l2TileSize")]
-    [SerializeField] float wideTileSize  = 100f;
 
     [Header("로컬 윈도우 (유닛 중심 정밀 회피)")]
     [Tooltip("유닛 주변 1m 격자 윈도우 한 변 크기(m). 클수록 멀리 보지만 베이크 비용↑")]
@@ -56,7 +52,14 @@ public class HierarchicalPathfinder : MonoBehaviour
     [SerializeField] float slopeCostMult   = 0.05f;  // 경사도 1도당 추가 비용 배율
     [SerializeField] float maxWalkableSlope = 45f;    // 이 이상이면 불가
 
-    PathGrid        _wide;
+    // **광역은 이제 격자가 아니라 그래프다**(2026-09-05, `WideGraph`) — 셀 하나에 노드
+    // 하나가 아니라 **셀 안의 연결 덩어리마다 노드 하나**다.
+    //
+    // **옛 100m 격자(`_wide`)는 2026-09-06에 걷어냈다** — 검증이 끝났으므로. 그때 같이
+    // 사라진 것: 표본 문턱(`WideMinOpen`·`WideSamples`) · 경계 간선(`PathGrid`의 링크와
+    // `IgnoreLinks`) · 셀 단위 차단(`_wideBlocked`). 전부 **셀 하나에 노드 하나**라는
+    // 모양을 다이얼로 떠받치던 장치였고, 덩어리가 노드가 되면서 물음 자체가 없어졌다.
+    WideGraph       _graph;
     PathGrid        _coarse;
     Vector3         _coarseCenter;
     LocalGridManager _local;
@@ -99,8 +102,11 @@ public class HierarchicalPathfinder : MonoBehaviour
         // 코스 격자 (베이스 주변 중간 해상도)
         BuildCoarse(corePos);
 
-        Debug.Log($"[HierarchicalPathfinder] 초기화 완료 — " +
-                  $"광역:{_wide.Width}×{_wide.Height} 코스:{_coarse.Width}×{_coarse.Height}");
+        string wide = _graph != null
+            ? $"그래프 {_graph.Cells}×{_graph.Cells}셀(칸 {_graph.CellSize:0}m)"
+            : "**없음**";
+        Debug.Log($"[HierarchicalPathfinder] 초기화 완료 — 광역:{wide} " +
+                  $"코스:{_coarse.Width}×{_coarse.Height}");
     }
 
     // ── 광역 격자 — 세계 전체 ───────────────────────────────────────────────
@@ -125,174 +131,32 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 차단은 로컬 몫"*)이고, 놓친 좁은 굴은 로컬이 찾아 준다.
     const int   WideMaxCells = 160;   // 한 변의 셀 수 천장
     const float WideMinCell  = 4f;    // 셀이 이보다 잘면 굽는 값만 늘고 얻는 것이 없다
-    const int   WideSamples  = 3;     // 셀 하나를 몇 × 몇으로 찍나(값과 '설 수 있나'용)
 
     float _wideCell;
 
     void BuildWide()
     {
+        // **`MapManager`가 없으면 광역이 없다**(2026-09-06). 그래프는 *칸이 걸을 수 있나*를
+        // 물어서 짓는데 물어볼 데가 없기 때문이다. 옛 씬을 위해 100m 격자를 폴백으로 두었으나
+        // 그쪽은 **경로가 코스(핵 둘레 160m) 밖으로 못 나간다** — 조용히 그러면 원인이 안
+        // 보이므로 말한다.
         var map = MapManager.Instance;
         if (map == null)
         {
-            // 절차 지형이 없는 옛 씬 — 예전 방식 그대로.
-            if (_terrain == null)
-            {
-                Debug.LogWarning("[길찾기] Terrain도 MapManager도 없다 — 빈 광역 격자로 둔다.");
-                _wideCell = wideTileSize;
-                _wide = new PathGrid(100, 100, wideTileSize, Vector3.zero);
-            }
-            else
-            {
-                var origin = _terrain.transform.position;
-                float w = _terrain.terrainData.size.x, h = _terrain.terrainData.size.z;
-                _wideCell = wideTileSize;
-                _wide = new PathGrid(Mathf.CeilToInt(w / wideTileSize),
-                                     Mathf.CeilToInt(h / wideTileSize), wideTileSize, origin);
-                BakeFromTerrain(_wide, wideTileSize);
-            }
+            Debug.LogWarning("[길찾기] MapManager가 없다 — 광역 그래프를 못 짓는다. " +
+                             "코스 격자 밖으로 나가는 경로는 직선으로 떨어진다.");
             return;
         }
 
+        // **셀은 칸의 정수배다**(2026-09-05). 그래프가 셀 안을 1m로 훑으므로, 셀 한 변이
+        // 6.4m 같은 소수면 **셀마다 칸 수가 6이었다 7이었다** 해서 색인이 어긋난다.
         float world = TerrainGrid.WorldSize;
-        _wideCell   = Mathf.Max(WideMinCell, world / WideMaxCells);
+        int cellTiles = Mathf.Max(Mathf.CeilToInt(WideMinCell),
+                                  Mathf.CeilToInt(world / WideMaxCells));
+        _wideCell = cellTiles;
 
-        int n = Mathf.Max(2, Mathf.CeilToInt(world / _wideCell));
-        _wide = new PathGrid(n, n, _wideCell, Vector3.zero);
-
-        // **경계를 먼저 굽는다** — 셀의 열림이 경계에서 나오므로 순서가 뒤집히면
-        // 첫 굽기가 통째로 폴백(표본)으로 떨어진다.
-        _wide.EnsureLinks();
-        for (int y = 0; y < n; y++)
-        for (int x = 0; x < n; x++) BakeWideLinks(x, y);
-
-        for (int y = 0; y < n; y++)
-        for (int x = 0; x < n; x++) BakeWideCell(x, y);
-
-        _wide.BuildClearance();
-    }
-
-    // ── 경계가 이어져 있나 — HPA\*의 entrance ───────────────────────────────
-    //
-    // 두 셀이 맞닿은 **선**을 1m 간격으로 훑어, 그 선을 사이에 둔 **양쪽 칸이 둘 다 걸을 수
-    // 있는** 자리가 하나라도 있으면 이어진 것으로 본다.
-    //
-    // **셀 안을 훑는 것과는 다른 물음이다** — 셀이 아무리 넓게 열려 있어도 경계가 벽이면
-    // 못 건너가고, 반대로 셀이 대부분 바위여도 **한 칸짜리 틈**이 경계에 있으면 지나갈 수
-    // 있다. 후자를 막지 않는 것이 이 저장소의 규칙이다(*"한 칸짜리 통로를 막지 마라"*).
-    //
-    // 값은 셀당 경계 둘(동·북)이고 경계마다 표본 일곱쯤이라, 굽는 비용이 셀 표본과 같은
-    // 자릿수다. **세계를 키워도 셀 수가 천장에 걸려 있으므로**(160×160) 여기도 안 폭발한다.
-    void BakeWideLinks(int x, int y)
-    {
-        var map = MapManager.Instance;
-        if (map == null || _wide == null) return;
-
-        var c    = _wide.CellToWorld(new Vector2Int(x, y));
-        float h  = _wideCell * 0.5f;
-
-        _wide.SetLinkEast (x, y, CrossOpen(map, c, h, east: true));
-        _wide.SetLinkNorth(x, y, CrossOpen(map, c, h, east: false));
-    }
-
-    // 경계선을 1m로 훑는다. **양쪽 칸을 같이 본다** — 선 위의 한 점만 보면 그 점이 어느 칸에
-    // 속하는지에 따라 답이 갈린다(격자 위상이 정수가 아니다).
-    static bool CrossOpen(MapManager map, Vector3 center, float half, bool east)
-    {
-        float b = east ? center.x + half : center.z + half;   // 경계선의 자리
-        float lo = (east ? center.z : center.x) - half;
-
-        int steps = Mathf.Max(2, Mathf.CeilToInt(half * 2f));
-        for (int i = 0; i < steps; i++)
-        {
-            float t = lo + i + 0.5f;
-            var a = east ? new Vector3(b - 0.5f, 0f, t) : new Vector3(t, 0f, b - 0.5f);
-            var d = east ? new Vector3(b + 0.5f, 0f, t) : new Vector3(t, 0f, b + 0.5f);
-            if (map.IsWorkable(map.WorldToTile(a)) && map.IsWorkable(map.WorldToTile(d))) return true;
-        }
-        return false;
-    }
-
-    // 셀 하나를 다시 구웠으면 **그 셀에 닿은 경계 넷**도 다시 굽는다 — 동·북은 제 것이고
-    // 서·남은 이웃이 든다. 안 하면 판 자리가 셀은 열렸는데 **경계는 닫힌 채**로 남는다.
-    void BakeWideLinksAround(int x, int y)
-    {
-        BakeWideLinks(x, y);
-        BakeWideLinks(x - 1, y);
-        BakeWideLinks(x, y - 1);
-    }
-
-    // **광역에서도 지름길은 두께를 안다**(2026-08-31). `BuildClearance`를 안 구우면 Theta\*의
-    // 가시선이 **막힌 셀의 모서리를 스치며** 직선을 긋는다 — 6.4m 눈금에서 그 "스침"은
-    // 실제로 **수 미터의 바위**다. 그게 라우트가 굴을 안 따라가고 어둠을 가로지르던 그림의
-    // 나머지 절반이다(로컬 창이 `_windowGrid`에 이미 같은 것을 굽고 있었다).
-    //
-    // 굴이 6.4m 셀로 한두 칸 폭이라 대개 가시선이 안 열리고, 그러면 Theta\*가 **평범한 A\***로
-    // 떨어져 **칸을 따라 굴을 돈다.** 그것이 광역이 해야 할 일이다 — 매끄러움은 로컬 몫이다.
-    void RebuildWideClearance() => _wide?.BuildClearance();
-
-    // 셀 하나 — **하나라도 설 수 있으면 열어 둔다.**
-    // **한 점만 열려서는 안 된다**(2026-08-31). 전에는 표본 아홉 중 **하나라도** 열리면 셀을
-    // 열어 두었다 — *"하나라도 지날 수 있으면 열어 둔다"*는 규칙 그대로다. 그런데 6.4m 셀에
-    // 표본이 2.1m 간격이라, **굴을 살짝 스치기만 한 셀**도 열린 것이 됐다. Theta\*는 열린
-    // 셀 위로 직선을 그으므로 라우트가 **바위를 가로질러 뻗었고**, 폰은 거기까지 걸어가
-    // 벽 앞에서 섰다(씬 뷰의 노란 점들이 굴을 안 따라가고 어둠을 가로지른 그림).
-    //
-    // **문턱으로 푸는 길은 접었다**(2026-08-31).
-    //
-    // 표본 문턱을 올려 *좁은 셀*을 닫아 보려 했는데, 3으로 올리자 **세계가 통째로 끊겼고**
-    // (*"이제 걍 멀면 안 가는데?"*) 2로 내리자 **얇은 벽을 여전히 뚫었다.** 당연하다 —
-    // 셀 안에 열린 칸이 몇이냐는 **"이 셀을 지나갈 수 있나"에 답하지 못한다.** 벽은 칸 안이
-    // 아니라 **칸과 칸 사이**에 서기 때문이다.
-    //
-    // 그래서 규칙을 원래대로 되돌리고(*하나라도 지날 수 있으면 열어 둔다*), 빠져 있던
-    // 절반을 따로 굽는다 — **경계가 이어져 있나**(`BakeWideLinks`). 셀의 열림 비율은
-    // 이제 *"설 수 있나"*와 **값**만 정한다.
-    const int WideMinOpen = 1;
-
-    void BakeWideCell(int x, int y)
-    {
-        var map = MapManager.Instance;
-        if (map == null || _wide == null) return;
-
-        var c    = _wide.CellToWorld(new Vector2Int(x, y));
-        float h  = _wideCell * 0.5f;
-        int  hit = 0;
-
-        for (int sy = 0; sy < WideSamples; sy++)
-        for (int sx = 0; sx < WideSamples; sx++)
-        {
-            float fx = (sx + 0.5f) / WideSamples, fz = (sy + 0.5f) / WideSamples;
-            var p = new Vector3(c.x - h + fx * _wideCell, 0f, c.z - h + fz * _wideCell);
-            if (map.IsWorkable(map.WorldToTile(p))) hit++;
-        }
-
-        // **걸을 수 있나는 경계가 답한다**(2026-08-31에 바로잡았다).
-        //
-        // 표본만으로 정하던 때는 **셀이 닫혔는데 그 경계는 이어진** 모순이 나왔다(진단이
-        // 실제로 `북 닫힘/이음`을 찍었다). 당연하다 — 표본은 2.1m 간격이라 **1~2m짜리
-        // 통로가 통째로 안 걸린다.** 그런데 경계 검사는 **1m로 훑으므로** 그 통로를 본다.
-        //
-        // 그래서 **셀의 열림을 경계에서 낸다**: 사방 중 하나라도 건널 수 있으면 그 셀에는
-        // 걸을 수 있는 칸이 있다는 뜻이고, **넷 다 못 건너면 들어갈 수도 나올 수도 없어서**
-        // 라우팅에는 없는 것과 같다. 표본은 이제 **값(비용)만** 정한다.
-        bool open = _wide.LinkEast(x, y) || _wide.LinkEast(x - 1, y)
-                 || _wide.LinkNorth(x, y) || _wide.LinkNorth(x, y - 1)
-                 || hit >= WideMinOpen;   // 간선을 아직 안 구웠을 때의 폴백
-
-        // **로컬이 못 뚫었다고 알려 온 셀은 닫아 둔다**(아래 `ReportUnreachable`).
-        if (open && _wideBlocked.TryGetValue(new Vector2Int(x, y), out float until))
-        {
-            if (Time.time < until) open = false;
-            else _wideBlocked.Remove(new Vector2Int(x, y));
-        }
-
-        _wide.SetWalkable(x, y, open);
-
-        // **좁은 셀은 비싸다.** 지날 수는 있게 두되, 넉넉한 굴이 있으면 그쪽으로 돌게 한다 —
-        // 열림/막힘 둘로만 두면 *간신히 지나는 길*과 *넓은 간선*이 값이 같아 라우트가
-        // 바위를 스치는 쪽을 고른다.
-        int total = WideSamples * WideSamples;
-        _wide.SetCost(x, y, 1f + (1f - hit / (float)total) * 2f);
+        _graph = new WideGraph(Mathf.RoundToInt(world), cellTiles);
+        _graph.Build(map);
     }
 
     // ── 광역이 거짓말을 했을 때 ─────────────────────────────────────────────
@@ -314,17 +178,9 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 열릴 수 있고, 영구히 닫으면 **한 폰이 한 번 실패한 것으로 세계가 좁아진다.**
     const float WideBlockDuration = 20f;
 
-    readonly Dictionary<Vector2Int, float> _wideBlocked = new();
-
-    public void ReportUnreachable(Vector3 world)
-    {
-        if (_wide == null || !_wide.InWorldBounds(world)) return;
-
-        var c = _wide.WorldToCell(world);
-        _wideBlocked[c] = Time.time + WideBlockDuration;
-        BakeWideCell(c.x, c.y);
-        RebuildWideClearance();
-    }
+    // **덩어리 하나만 닫는다** — 셀을 통째로 닫으면 그 셀의 멀쩡한 다른 덩어리까지 같이
+    // 닫힌다(옛 격자에는 그 구별이 없어서 그렇게 할 수밖에 없었다).
+    public void ReportUnreachable(Vector3 world) => _graph?.BlockAt(world, WideBlockDuration);
 
     // 던전 코어 중심으로 코스 격자를 생성·베이크. 코어 이동 시 재중심.
     void BuildCoarse(Vector3 center)
@@ -340,18 +196,11 @@ public class HierarchicalPathfinder : MonoBehaviour
             BakeCell(_coarse, x, y, coarseTileSize, floorGate: true);
     }
 
-    void BakeFromTerrain(PathGrid grid, float tileSize)
-    {
-        for (int x = 0; x < grid.Width; x++)
-        for (int y = 0; y < grid.Height; y++)
-            BakeCell(grid, x, y, tileSize);
-    }
-
     // 셀 하나 베이크: 지형 경사(있으면) + 공허 게이트(floorGate) + 장애물 CheckBox(에이전트 반경 부풀림).
     // 재베이크에도 쓰이므로 walkable을 항상 마지막에 확정한다.
     // floorGate: 던전형 맵(FloorRequired)에서 셀이 덮는 타일에 바닥이 하나도 없으면 이동 불가.
     // 관대한 판정(하나라도 있으면 통과) — 좁은 바닥 다리 코스를 살리고, 정밀 차단은 L1이 담당.
-    // 코스 전용(L2 100m 셀은 타일 스캔이 무의미하게 비쌈).
+    // 코스 전용(광역은 `WideGraph`가 1m로 직접 훑는다).
     void BakeCell(PathGrid grid, int x, int y, float tileSize, bool floorGate = false)
     {
         var worldCenter = grid.CellToWorld(new Vector2Int(x, y));
@@ -386,7 +235,7 @@ public class HierarchicalPathfinder : MonoBehaviour
             return;
         }
 
-        // 타일을 훑기엔 너무 큰 셀(L2 100m) — 콜라이더로 어림잡는다. 반경 부풀림은
+        // 타일을 훑기엔 너무 큰 셀 — 콜라이더로 어림잡는다. 반경 부풀림은
         // **셀 반쪽보다 큰 에이전트**에만 적용한다.
         float half = tileSize * 0.45f + Mathf.Max(0f, agentRadius - tileSize * 0.5f);
         var halfBox = new Vector3(half, 2f, half);
@@ -448,7 +297,7 @@ public class HierarchicalPathfinder : MonoBehaviour
 
     // 코스 라우트: from이 베이스(코스) 안이면 코스(중간 해상도)로 라우팅 →
     // 윈도우보다 긴 벽도 우회. to가 코스 밖이면 경계(게이트 방향)까지 코스로
-    // 안내 후 to를 직선으로 잇는다. from이 코스 밖이면 장거리 L2(100m).
+    // 안내 후 to를 직선으로 잇는다. from이 코스 밖이면 광역 그래프가 안내한다.
     public List<Vector3> ComputeCoarseRoute(Vector3 from, Vector3 to)
     {
         // **둘 다 코스 안일 때만 코스로 간다**(2026-08-30).
@@ -462,64 +311,30 @@ public class HierarchicalPathfinder : MonoBehaviour
             if (r != null && r.Count > 0) { PushOffWalls(r, PushRadius); return Densify(r, from); }
         }
 
-        // 멀리는 광역이 안내한다. **셀이 성기므로 벽에서 떼는 반경도 그만큼 크다.**
-        if (_wide != null)
+        // ── 멀리는 광역 그래프가 안내한다 ────────────────────────────────
+        //
+        // **`PushOffWalls`를 안 쓴다.** 그래프의 웨이포인트는 **경계의 통과점**이고 그 자리는
+        // 양쪽 칸이 둘 다 걸을 수 있다고 이미 확인된 곳이다 — 벽에서 떼겠다고 밀면
+        // **한 칸짜리 통로의 통과점이 벽 속으로 밀려난다**(옛 격자에서는 셀 중심이 벽에
+        // 붙을 수 있어 필요했던 손질이다).
+        //
+        // **간선 무시 재시도도 없다.** 그건 *셀 열림*과 *경계 이음*이 따로 구워져 서로
+        // 거짓말을 하던 시절의 장치인데, 이제 **열림과 연결이 같은 1m 사실에서 나온다.**
+        // 부분 경로는 `WideGraph`가 스스로 낸다(*갈 수 있는 데까지*).
+        if (_graph != null)
         {
-            var wide = _wide.FindPath(from, to);
-
-            // **아예 못 냈으면 간선부터 의심한다** — 출발 셀이 간선으로 고립되면 여기가
-            // `null`이 되고, 그러면 라우트가 *목적지 하나*로 떨어져 폰이 통째로 못 움직인다.
-            if (wide == null || wide.Count == 0)
+            var route = _graph.FindRoute(from, to);
+            if (route != null && route.Count > 0)
             {
-                _wide.IgnoreLinks = true;
-                wide = _wide.FindPath(from, to);
-                _wide.IgnoreLinks = false;
+                var last = route[route.Count - 1];
+                float ddx = last.x - to.x, ddz = last.z - to.z;
+                if (ddx * ddx + ddz * ddz > _wideCell * _wideCell * 2.25f) WarnPartialWideRoute(last, to);
+
+                return Densify(route, from);
             }
 
-            if (wide != null && wide.Count > 0)
-            {
-                // **여기까지밖에 못 갔다면 그 이유를 말한다.** 부분 경로는 정상 동작이지만
-                // (*갈 수 있는 데까지 간다*), 그것이 **진짜 막다른 길**인지 **간선 판정이
-                // 너무 짠 것**인지는 화면에서 못 가린다 — 끝난 칸의 이웃과 간선을 찍는다.
-                // **끊긴 답이 나오면 간선을 무시하고 한 번 더 푼다.**
-                //
-                // 간선 판정(경계가 이어졌나)은 셀 열림보다 정확하지만 **완벽하지 않다** —
-                // 틀리면 *갈 수 있는 길이 끊긴 것*으로 보이고, 그건 라우트가 조금 나쁜 것보다
-                // 훨씬 나쁘다(폰이 아예 못 간다. 사용자: *"실제 길은 이어져 있어"*).
-                //
-                // 그래서 **정확한 답을 먼저 쓰되 그것이 세계를 끊으면 이어 둔다.** 그 라우트가
-                // 얇은 벽을 뚫는 것이면 폰이 걸어가다 알아채고 `ReportUnreachable`로 배운다 —
-                // **끊어 놓고 못 가는 것보다 이어 두고 배우는 편이 낫다.**
-                var last = wide[wide.Count - 1];
-                float dx = last.x - to.x, dz = last.z - to.z;
-                if (dx * dx + dz * dz > _wideCell * _wideCell * 2.25f)
-                {
-                    WarnPartialWideRoute(last, to);
-
-                    // **검증된 앞부분은 버리지 않는다**(2026-08-31에 한 번 되돌렸다).
-                    //
-                    // 처음에는 *부분 경로면 통째로 갈아탄다*로 넣었는데, 그러면 조금만 모자라도
-                    // **처음부터 벽 뚫는 라우트**가 되어 고치기 전으로 돌아간다(사용자:
-                    // *"아까까지 잘 됐는데 다시 그때 경로로 돌아왔어"*).
-                    //
-                    // 간선을 지킨 앞부분은 **믿을 수 있는 안내**다. 그러니 **거기까지는 그대로
-                    // 쓰고, 그 끝에서부터만** 간선을 무시하고 이어 붙인다 — 미심쩍은 구간이
-                    // 꼬리에만 남고, 거기서 벽을 만나면 `ReportUnreachable`이 배운다.
-                    _wide.IgnoreLinks = true;
-                    var tail = _wide.FindPath(last, to);
-                    _wide.IgnoreLinks = false;
-
-                    if (tail != null && tail.Count > 0)
-                    {
-                        var tend = tail[tail.Count - 1];
-                        float tdx = tend.x - to.x, tdz = tend.z - to.z;
-                        if (tdx * tdx + tdz * tdz < dx * dx + dz * dz) wide.AddRange(tail);
-                    }
-                }
-
-                PushOffWalls(wide, Mathf.CeilToInt(_wideCell * 0.5f));
-                return Densify(wide, from);
-            }
+            WarnNoWideRoute(from, to);
+            return new List<Vector3> { to };
         }
 
         // **여기 오면 광역까지 실패한 것이다** — 라우트가 *목적지 하나*로 떨어지고, 그러면
@@ -533,77 +348,30 @@ public class HierarchicalPathfinder : MonoBehaviour
     float _nextWideWarn;
     float _nextPartialWarn;
 
-    // 라우트가 중간에 끝났다 — **끝난 칸의 사방**을 찍는다. `열림`은 셀이 걸을 수 있나이고
-    // `이음`은 그 방향으로 **건너갈 수 있나**다. 둘은 다른 물음이라 따로 봐야 한다:
-    // *"이웃이 열려 있는데 이음이 닫혔다"*면 간선 판정이 짠 것이고, *"이웃이 닫혔다"*면
-    // 진짜 벽이다.
+    // 라우트가 중간에 끝났다 — **그 자리에 덩어리가 몇이고 이웃이 몇인가**를 찍는다
+    // (`WideGraph.Describe`). 이웃이 0이면 그 덩어리가 **섬**이고, 그건 진짜 막다른 길이거나
+    // 아직 안 판 벽이다. **부분 경로 자체는 정상 동작이다**(*갈 수 있는 데까지 간다*) —
+    // 가려야 하는 것은 그것이 **세계의 문제인지 그래프의 문제인지**다.
+    //
+    // **진단은 남긴다** — 값이 싸고, 08-31에 이 사슬을 푼 것이 이 둘이다.
     void WarnPartialWideRoute(Vector3 end, Vector3 goal)
     {
-        if (_wide == null || Time.time < _nextPartialWarn) return;
+        if (_graph == null || Time.time < _nextPartialWarn) return;
         _nextPartialWarn = Time.time + 3f;
 
-        var c = _wide.WorldToCell(end);
-        var g = _wide.WorldToCell(goal);
-
-        string Side(int dx, int dy, bool link)
-        {
-            int nx = c.x + dx, ny = c.y + dy;
-            if (!_wide.InBounds(nx, ny)) return "밖";
-            return $"{(_wide.IsWalkable(nx, ny) ? "열림" : "닫힘")}/{(link ? "이음" : "**끊김**")}";
-        }
-
-        // 간선은 `PathGrid`가 들고 있으므로 여기서는 **같은 검사를 다시 해서** 보여 준다
-        // (판정과 화면이 같은 함수를 봐야 그림이 거짓말을 안 한다).
-        var map = MapManager.Instance;
-        var cc  = _wide.CellToWorld(c);
-        float h = _wideCell * 0.5f;
-        bool e  = map != null && CrossOpen(map, cc, h, east: true);
-        bool n  = map != null && CrossOpen(map, cc, h, east: false);
-        var wc  = _wide.CellToWorld(new Vector2Int(c.x - 1, c.y));
-        var sc  = _wide.CellToWorld(new Vector2Int(c.x, c.y - 1));
-        bool w  = map != null && CrossOpen(map, wc, h, east: true);
-        bool sv = map != null && CrossOpen(map, sc, h, east: false);
-
         Debug.LogWarning(
-            $"[길찾기] 광역 라우트가 중간에 끝났다 — 끝 셀 ({c.x},{c.y}) 표본 {OpenSamples(c.x, c.y)}/" +
-            $"{WideSamples * WideSamples}, 목표 셀 ({g.x},{g.y}) 표본 {OpenSamples(g.x, g.y)}/" +
-            $"{WideSamples * WideSamples}\n" +
-            $"  동 {Side(1, 0, e)} · 서 {Side(-1, 0, w)} · 북 {Side(0, 1, n)} · 남 {Side(0, -1, sv)}");
+            $"[길찾기] 광역 라우트가 중간에 끝났다 — 끝 {_graph.Describe(end)} · " +
+            $"목표 {_graph.Describe(goal)} · 셀 {_wideCell:0}m");
     }
 
     void WarnNoWideRoute(Vector3 from, Vector3 to)
     {
-        if (_wide == null || Time.time < _nextWideWarn) return;
+        if (_graph == null || Time.time < _nextWideWarn) return;
         _nextWideWarn = Time.time + 3f;
 
-        var a = _wide.WorldToCell(from);
-        var b = _wide.WorldToCell(to);
         Debug.LogWarning(
-            $"[길찾기] 광역 경로 없음 — 출발 셀 ({a.x},{a.y}) {(_wide.IsWalkable(a.x, a.y) ? "열림" : "**닫힘**")}" +
-            $"(표본 {OpenSamples(a.x, a.y)}/{WideSamples * WideSamples}) · " +
-            $"도착 셀 ({b.x},{b.y}) {(_wide.IsWalkable(b.x, b.y) ? "열림" : "**닫힘**")}" +
-            $"(표본 {OpenSamples(b.x, b.y)}/{WideSamples * WideSamples}) · " +
-            $"셀 {_wideCell:0.0}m · 격자 {_wide.Width}×{_wide.Height}");
-    }
-
-    // 그 셀에서 실제로 몇 표본이 열려 있나 — 문턱이 맞는지를 숫자로 본다.
-    int OpenSamples(int x, int y)
-    {
-        var map = MapManager.Instance;
-        if (map == null || _wide == null || !_wide.InBounds(x, y)) return -1;
-
-        var c   = _wide.CellToWorld(new Vector2Int(x, y));
-        float h = _wideCell * 0.5f;
-        int hit = 0;
-
-        for (int sy = 0; sy < WideSamples; sy++)
-        for (int sx = 0; sx < WideSamples; sx++)
-        {
-            float fx = (sx + 0.5f) / WideSamples, fz = (sy + 0.5f) / WideSamples;
-            var p = new Vector3(c.x - h + fx * _wideCell, 0f, c.z - h + fz * _wideCell);
-            if (map.IsWorkable(map.WorldToTile(p))) hit++;
-        }
-        return hit;
+            $"[길찾기] 광역 경로 없음 — 출발 {_graph.Describe(from)} · " +
+            $"도착 {_graph.Describe(to)} · 셀 {_wideCell:0}m");
     }
 
     // ── 웨이포인트 사이는 로컬 창보다 좁아야 한다 ───────────────────────────
@@ -764,6 +532,24 @@ public class HierarchicalPathfinder : MonoBehaviour
     {
         var here = map.WorldToTile(p);
 
+        // **여기를 건드리지 말 것**(2026-09-05에 손댔다 되돌렸다).
+        //
+        // *"한 칸짜리 길에서 포기하고 뒤로 돌아간다"*는 보고를 받고 **이 함수를 범인으로
+        // 짚었다** — 한 칸짜리 통로에서는 통로 칸(트인 이웃 둘)이 뒤쪽 방 칸(여덟)에 지므로
+        // 웨이포인트가 통로 밖으로 끌려간다는 것이었다. 그럴듯했고 **틀렸다.**
+        //
+        // 진짜 원인은 `WorkNode`에 있었다 — 운반은 짐을 집으면 목표가 창고로 바뀌는데
+        // **진행 기록이 안 지워져** 6초 뒤 반드시 취소됐고, 취소는 짐을 바닥에 떨군다.
+        // *"집었다 떨구고 다시 집기"*가 그것이다(`_progressFor`).
+        //
+        // 그동안 여기에 넣었던 *"설 수 있는 칸이면 그대로 둔다"*는 **캐러 가는 길을 망가뜨렸다**
+        // (사용자: *"고치기 전에는 중간에 가다가 안 멈췄었어"*). 코스 셀은 한 칸이라도 열리면
+        // 열린 것으로 치므로 그 **중심 칸이 갈 수 없는 주머니**에 있을 수 있는데, 둘레에서
+        // 트인 자리를 고르는 이 규칙이 그때 폰을 **지나갈 수 있는 쪽으로 되돌려 주고 있었다.**
+        //
+        // 남는 교훈: **증상이 그럴듯하게 설명된다고 원인인 것은 아니다.** 6초라는 주기가
+        // 로그에 찍혀 있었는데 그걸 늦게 봤다.
+
         int  bestOpen = -1;
         float bestDist = float.MaxValue;
         Vector2Int best = here;
@@ -806,25 +592,15 @@ public class HierarchicalPathfinder : MonoBehaviour
     public int LocalWindowSize => localWindowSize;
 
     // 건물 배치/타일 변경 시 호출. 코스 격자의 해당 영역만 CheckBox 재베이크.
-    // (L2 전체 셀을 막던 과다차단 없이 정확히 갱신)
+    // (광역 셀을 통째로 막던 과다차단 없이 정확히 갱신)
     public void RebakeObstacleAt(Vector3 worldPos)
     {
         // **광역도 같이 고친다** — 통째로 바위이던 셀을 한 칸 파면 그 셀이 열려야 한다.
         // 안 고치면 **판 길이 먼 경로에는 영영 안 보인다.**
-        if (_wide != null && _wide.InWorldBounds(worldPos))
-        {
-            var wc = _wide.WorldToCell(worldPos);
-
-            // **경계 먼저, 셀 나중** — 그리고 경계가 바뀌면 **이웃 셀의 열림도 바뀐다.**
-            BakeWideLinksAround(wc.x, wc.y);
-            BakeWideLinksAround(wc.x + 1, wc.y);
-            BakeWideLinksAround(wc.x, wc.y + 1);
-            for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
-                if (_wide.InBounds(wc.x + dx, wc.y + dy)) BakeWideCell(wc.x + dx, wc.y + dy);
-
-            RebuildWideClearance();
-        }
+        //
+        // 그래프는 **그 칸이 든 셀의 덩어리를 다시 나누고 닿은 경계를 다시 잇는다** —
+        // 한 칸을 파는 것이 덩어리 둘을 하나로 합칠 수 있으므로 이웃까지 같이 본다.
+        _graph?.RebakeArea(worldPos, 1f);
 
         if (_coarse == null || !_coarse.InWorldBounds(worldPos)) return;
         var c = _coarse.WorldToCell(worldPos);
@@ -853,21 +629,7 @@ public class HierarchicalPathfinder : MonoBehaviour
     {
         if (radius <= 0f) return;
 
-        if (_wide != null)
-        {
-            var c = _wide.WorldToCell(center);
-            int r = Mathf.CeilToInt(radius / Mathf.Max(0.01f, _wideCell)) + 1;
-            // **경계 먼저, 셀 나중** — 셀의 열림이 경계에서 나온다.
-            for (int dy = -r - 1; dy <= r + 1; dy++)
-            for (int dx = -r - 1; dx <= r + 1; dx++)
-                if (_wide.InBounds(c.x + dx, c.y + dy)) BakeWideLinksAround(c.x + dx, c.y + dy);
-
-            for (int dy = -r; dy <= r; dy++)
-            for (int dx = -r; dx <= r; dx++)
-                if (_wide.InBounds(c.x + dx, c.y + dy)) BakeWideCell(c.x + dx, c.y + dy);
-
-            RebuildWideClearance();
-        }
+        _graph?.RebakeArea(center, radius);
 
         if (_coarse != null)
         {
@@ -898,9 +660,16 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 장애물과 달리 반경 부풀림이 없으므로 단일 셀이면 충분 — 스타터 바닥(400타일) 일괄 등록도 감당.
     void OnFloorChanged(Vector2Int tileCoord)
     {
-        if (_coarse == null || MapManager.Instance == null) return;
+        if (MapManager.Instance == null) return;
         var worldPos = MapManager.Instance.TileToWorld(tileCoord);
-        if (!_coarse.InWorldBounds(worldPos)) return;
+
+        // **광역도 같이 본다**(2026-09-05). `WideGraph._walk`는 `IsWorkable`을 **담아 둔 것**인데,
+        // 바닥은 그 답을 바꾼다 — 머리 위 여유를 **깔린 바닥 윗면에서** 재기 때문이다
+        // (`MapManager.HasHeadroom`). 안 알리면 기단을 올려 여유가 없어진 칸으로 **먼 경로가
+        // 계속 폰을 보내고**, 반대로 바닥이 열어 준 자리는 **영영 안 보인다.**
+        _graph?.RebakeArea(worldPos, 1f);
+
+        if (_coarse == null || !_coarse.InWorldBounds(worldPos)) return;
         var c = _coarse.WorldToCell(worldPos);
         BakeCell(_coarse, c.x, c.y, coarseTileSize, floorGate: true);
     }

@@ -65,6 +65,28 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
     void OnEnable()  { All.Add(this); JoinNeighborGroup(); FarmZones.MarkDirty(); }
     void OnDisable() { All.Remove(this); FarmZones.MarkDirty(); }
 
+    // **밭을 도는 곳은 여기 하나다**(2026-09-05에 되살렸다).
+    //
+    // 2026-09-02에 구역(`FarmZones`)을 붙이면서 `OnEnable`/`OnDisable`을 고치다 **`Update`가
+    // 통째로 사라졌다.** `UpdateGrowth`와 `TryRegisterJobs`는 그대로 남아 있는데 **부르는
+    // 곳이 없어져서**, 작물이 자라지도 않고 심기·물주기·수확 일감이 하나도 안 나갔다 —
+    // **농사가 통째로 죽어 있었다.** 컴파일도 통과하고 밭도 놓이고 구역 테두리까지 그려지니
+    // 화면에는 *"심었는데 안 자란다"*로만 보인다.
+    //
+    // (`private` 메서드에 부르는 곳이 없어도 C#은 경고를 안 준다 — 그래서 지우는 쪽이
+    // 안 걸린다. 남는 교훈: **없어진 것은 `Update`인데 증상은 다른 자리에서 난다.**)
+    void Update()
+    {
+        UpdateGrowth();
+
+        _jobCheckTimer -= Time.deltaTime;
+        if (_jobCheckTimer <= 0f)
+        {
+            _jobCheckTimer = JobCheckInterval;
+            TryRegisterJobs();
+        }
+    }
+
     // **면을 칠하지 않는다 — 테두리로 그린다**(`FarmZoneOverlay`, 2026-09-02).
     //
     // 처음엔 흙 색에 구역 색을 곱했는데 **애매했다**(사용자). 어두운 굴에서 옅은 곱셈은
@@ -208,12 +230,23 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
         {
             SelectedSeed    = seed;
             NextSeed        = null;
+            _clearNext      = false;
             _seedJobPending = false;
             return;
         }
 
-        NextSeed = seed;
+        NextSeed   = seed;
+        _clearNext = seed == null;
     }
+
+    // **"안 바꾼다"와 "비운다"는 다른 뜻이다**(2026-09-05). `NextSeed = null` 하나로 둘을
+    // 적었더니 자라는 밭에서 [지우기]가 **아무 일도 안 했다** — 거두고 나서 `NextSeed`가
+    // 비어 있으니 *"바꿀 것이 없다"*로 읽혀 `SelectedSeed`가 그대로 남고, 밭이 **영원히
+    // 다시 심었다**(화면에는 버튼이 안 먹는 것으로만 보인다).
+    bool _clearNext;
+
+    // 거두고 나면 비워지나 — 패널이 그 상태를 띄울 수 있게 열어 둔다(`NextSeed`와 같은 자리).
+    public bool ClearQueued => _clearNext;
 
     // 지금 자라는 것을 거둔 뒤에 바뀔 씨앗. 없으면 그대로 간다.
     public SeedData NextSeed { get; private set; }
@@ -247,7 +280,13 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
 
         // **바꿔 둔 것이 있으면 이제 바뀐다** — 자라는 중에 구역의 씨앗을 바꿔도 다 큰 작물을
         // 버리지 않고, 거두고 나서 갈아탄다. 없으면 `SelectedSeed` 유지 → 다음 사이클 자동 시작.
-        if (NextSeed != null)
+        if (_clearNext)
+        {
+            SelectedSeed = null;
+            NextSeed     = null;
+            _clearNext   = false;
+        }
+        else if (NextSeed != null)
         {
             SelectedSeed = NextSeed;
             NextSeed     = null;

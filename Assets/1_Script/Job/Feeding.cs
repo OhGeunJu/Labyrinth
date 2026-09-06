@@ -16,9 +16,13 @@ public static class Feeding
     // 대개 받아 먹을 형편이 아니다 — 간수의 시간이 곧 포로를 살려 두는 값이다.
     public const float FeedTimeMult = 2f;
 
-    // 누가 이 축을 도는가 · 임계 · 남은 자리는 **`Needs`가 답한다**(축이 셋이라 여기 적으면
+    // 누가 이 축을 도는가 · 임계 · 남은 자리는 **`Needs`가 답한다**(축이 넷이라 여기 적으면
     // 축마다 한 벌씩 생긴다). 부르는 쪽이 두 이름을 외우지 않게 그대로 흘려보낸다.
-    public static bool  Simulates(UnitBrain brain)            => Needs.Simulates(brain);
+    //
+    // **허기 축을 도는가**(2026-09-04에 좁혔다). 그냥 `Needs.Simulates(brain)`이면 *몸이
+    // 요구하는 것이 하나라도 있는가*라, **골렘도 먹는 폰으로 잡혔다** — 간수가 돌덩이에게
+    // 밥을 나르고, 소지품 창에서 골렘에게 빵을 먹일 수 있었다.
+    public static bool  Simulates(UnitBrain brain) => Needs.Simulates(brain, NeedKind.Hunger);
     public static bool  IsHungry(UnitBrain brain) => Needs.IsLow(brain, NeedKind.Hunger);
     public static float Room(float current)       => Needs.Room(current);
 

@@ -639,13 +639,79 @@ public class BuildModeManager : MonoBehaviour
         _ghostSourcePrefab = prefab;
 
         // 비활성이라 아직 Awake 전 — 지금 제거하면 활성화돼도 영영 실행되지 않는다(렌더러/메시는 남음).
-        // 배치 대상 건물 컴포넌트는 상호 RequireComponent가 없어 제거 순서 무관.
-        foreach (var b in model.GetComponentsInChildren<MonoBehaviour>(true))
-            if (b != null) DestroyImmediate(b);
+        StripScripts(model);
         foreach (var c in model.GetComponentsInChildren<Collider>(true))
             c.enabled = false;
 
         ShowWorkSpotOnGhost(model);
+    }
+
+    // **스크립트를 뗀다 — 다만 순서를 지키고, 모양을 정하는 것은 남긴다**(2026-09-04).
+    //
+    // 전에는 *"배치 대상 건물 컴포넌트는 상호 RequireComponent가 없어 제거 순서 무관"*이라고
+    // 적고 그냥 훑었다. **그 전제는 아무도 안 지키고 있었고, 벽걸이 횃불에서 깨졌다** —
+    // 유니티가 *"Can't remove LightSource because WallTorch depends on it"*을 매 프레임 뱉었다
+    // (고스트는 커서를 움직일 때마다 다시 만들어진다). 전제를 적어 두는 것으로는 안 지켜진다.
+    //
+    // **요구받는 것은 나중에 지운다** — 요구하는 쪽이 먼저 사라지면 그때는 지울 수 있다.
+    // 진전이 없으면 멈춘다(서로 요구하는 고리는 그냥 남긴다 — 지우려다 에러를 뱉느니
+    // 남는 편이 낫고, 어차피 그 아래에서 콜라이더가 꺼지고 활성화도 이 뒤다).
+    //
+    // **`IPlacementPose`는 지우지 않고 끈다** — 놓일 자리에 따라 모양이 갈리는 건물은
+    // 미리보기에서도 그 모양이어야 한다(그게 안 되면 *짓고 나서야 어느 쪽인지 알게 된다*).
+    // 꺼 두므로 `OnEnable`이 안 돌고, 그래서 **부수효과를 막는다는 이 함수의 뜻은 그대로다.**
+    static void StripScripts(GameObject model)
+    {
+        var left = new List<MonoBehaviour>();
+        foreach (var b in model.GetComponentsInChildren<MonoBehaviour>(true))
+        {
+            if (b == null) continue;
+            if (b is IPlacementPose) { b.enabled = false; continue; }
+            left.Add(b);
+        }
+
+        bool progress = true;
+        while (left.Count > 0 && progress)
+        {
+            progress = false;
+            for (int i = left.Count - 1; i >= 0; i--)
+            {
+                var b = left[i];
+                if (b != null && IsRequiredBySibling(b)) continue;
+
+                if (b != null) DestroyImmediate(b);
+                left.RemoveAt(i);
+                progress = true;
+            }
+        }
+    }
+
+    // 같은 오브젝트의 다른 컴포넌트가 `[RequireComponent]`로 이것을 붙들고 있나.
+    static bool IsRequiredBySibling(MonoBehaviour b)
+    {
+        var mine = b.GetType();
+        foreach (var other in b.GetComponents<Component>())
+        {
+            if (other == null || other == b) continue;
+
+            foreach (RequireComponent rq in
+                     other.GetType().GetCustomAttributes(typeof(RequireComponent), true))
+            {
+                if (rq.m_Type0 != null && rq.m_Type0.IsAssignableFrom(mine)) return true;
+                if (rq.m_Type1 != null && rq.m_Type1.IsAssignableFrom(mine)) return true;
+                if (rq.m_Type2 != null && rq.m_Type2.IsAssignableFrom(mine)) return true;
+            }
+        }
+        return false;
+    }
+
+    // **놓일 자리에 따라 모양이 갈리는 건물에게 그 칸을 알려 준다.** 고스트가 옮겨 갈 때마다
+    // 물어야 한다 — 한 번만 물으면 커서를 옮겨도 처음 칸의 모양 그대로다.
+    static void PoseAt(GameObject root, Vector2Int tile)
+    {
+        if (root == null) return;
+        foreach (var p in root.GetComponentsInChildren<IPlacementPose>(true))
+            p.PoseAt(tile);
     }
 
     // 고스트에서도 **작업 자리 화살표**를 보여준다.
@@ -711,6 +777,10 @@ public class BuildModeManager : MonoBehaviour
             var pos  = FootprintCenter(GetFootprint(tile));
             g.transform.SetPositionAndRotation(pos, rot);
             if (_ghostHover <= 0f) SeatOnLevel(g, pos.y, tile);
+
+            // **여벌도 제 칸을 묻는다** — 안 물으면 줄 전체가 커서 칸의 모양으로 선다
+            // (벽을 따라 그으면 끝의 하나만 맞고 나머지는 거짓말이 된다).
+            PoseAt(g, tile);
         }
     }
 
@@ -730,6 +800,11 @@ public class BuildModeManager : MonoBehaviour
         _ghost.transform.SetPositionAndRotation(pos, rot);
         // 부양 프리팹은 이미 모델을 띄워 붙였으므로 스냅하지 않는다(실제 배치와 동일 규칙).
         if (_ghostHover <= 0f) SeatOnLevel(_ghost, pos.y, tile);
+
+        // **자리를 잡은 뒤에 모양을 묻는다** — 회전을 트랜스폼에서 읽으므로 순서가 뒤집히면
+        // 지난 프레임의 방향으로 벽을 고른다. 자유 배치에는 칸이 없으니 자리에서 낸다.
+        var map = MapManager.Instance;
+        if (map != null) PoseAt(_ghost, tile ?? map.WorldToTile(pos));
     }
 
     // 커서 아래의 지면 지점. 배치 미리보기와 철거 모드의 청사진 픽킹이 **같은 조준**을 쓴다 —

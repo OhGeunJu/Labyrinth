@@ -46,7 +46,38 @@ public class MineJob : JobBase
 
     // **이미 파였으면 할 일이 없다** — 두 폰이 같은 칸을 겨눴거나, 찍어 둔 사이에 다른
     // 경로로 파였을 수 있다.
-    public override bool IsReady => RockMap.IsRock(_tile) && RockMap.IsMarked(_tile);
+    //
+    // **그리고 둘러설 자리가 없으면 아직 일감이 아니다**(2026-09-05).
+    //
+    // 채굴은 **바위 칸 자체를 겨눈다**(`TileCoord`) — 다른 일감이 *폰이 설 수 있는 칸*을
+    // 겨누는 것과 다른 자리다. 그래서 덩이를 넓게 찍으면 **속에 있는 칸**은 둘레가 전부
+    // 바위라 **닿을 방법이 없는데**, 그것도 큐에 그대로 올라갔다. 폰은 배정을 받아 수십
+    // 미터를 걸어가서 못 닿고 놓고, 그 일감은 잠시 쉬었다 다시 올라오고 — **폰 열여섯이
+    // 그 왕복만 되풀이했다**(10초에 포기 711건, 정작 겉면은 아무도 안 팠다).
+    //
+    // 겉면부터 파면 속이 저절로 겉면이 된다 — **파 들어가는 순서가 규칙에서 나온다.**
+    // (`Reach`가 2m라 대각선 이웃에서도 닿으므로 여덟을 다 본다.)
+    public override bool IsReady =>
+        RockMap.IsRock(_tile) && RockMap.IsMarked(_tile) && HasFace(_tile);
+
+    static readonly Vector2Int[] Around =
+    {
+        new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1),
+        new Vector2Int(1, 1), new Vector2Int(1, -1), new Vector2Int(-1, 1), new Vector2Int(-1, -1),
+    };
+
+    // 둘러설 수 있는 칸이 하나라도 있나. **`MapManager`가 없으면 참**(격자 없는 씬에서
+    // 채굴이 통째로 막히지 않게 — 다른 폴백과 같은 규칙).
+    static bool HasFace(Vector2Int tile)
+    {
+        var map = MapManager.Instance;
+        if (map == null) return true;
+
+        foreach (var d in Around)
+            if (map.IsWorkable(tile + d)) return true;
+
+        return false;
+    }
 
     protected override void Execute(UnitBrain unit)
     {
@@ -90,7 +121,19 @@ public class MineJob : JobBase
         if (node != null && node.DropItem != null)
         {
             int amount = Random.Range(node.DropMin, node.DropMax + 1);
-            if (amount > 0) DroppedItem.Spawn(node.DropItem, amount, drop);
+            if (amount > 0)
+            {
+                // **캐낸 것은 저절로 실려 간다**(2026-09-05, 사용자 요청).
+                //
+                // 바닥의 물건은 원래 **체크한 것만** 운반된다(`DroppedItem.HaulAllowed`,
+                // 기본 꺼짐) — 널린 전리품을 폰이 알아서 줍줍하지 않게 하려는 규칙이다.
+                // 그런데 **설비가 내놓는 것은 그 축과 무관하다**(자원 노드·작업대 산출물은
+                // 아예 바닥을 안 거친다 — 생산 라인은 그대로 자동이다).
+                //
+                // 벽을 파서 나온 돌은 **전리품이 아니라 생산물**이다. 바닥을 거치는 것은
+                // 구현 사정일 뿐인데, 그것 때문에 **캘 때마다 사람이 따로 찍어 줘야 했다.**
+                DroppedItem.Spawn(node.DropItem, amount, drop)?.SetHaulAllowed(true);
+            }
         }
 
         Status = JobStatus.Done;

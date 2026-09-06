@@ -473,8 +473,8 @@ public class WorkNode : BTNode
     // 길이 막히는 이유는 여러 가지다(노드가 사방으로 둘러싸임, 바닥 밖, 철거로 지형 변화…).
     // 원인을 다 막기보다 **진행이 없으면 놓는다**로 처리한다 —
     // `ExpeditionFormation.NudgeStragglers`가 집결에서 쓰는 것과 같은 모양.
-    const float StuckSeconds  = 6f;     // 이만큼 가까워지지 않으면 포기
-    const float ProgressEpsilon = 0.35f; // 이보다 줄어야 "가고 있다"고 본다
+    const float StuckSeconds  = 6f;     // 이만큼 **경로가 안 줄면** 포기
+    const float ProgressEpsilon = 0.5f; // 이만큼 줄어야 "가고 있다"고 본다
 
     // ── 어디까지 가면 "도착"인가 ──────────────────────────────────────────
     // **저작한 자리에 실제로 선다**(`WorkSpot`). 칸 하나가 1m이므로 그 칸 위에 서 있다는 것은
@@ -496,13 +496,18 @@ public class WorkNode : BTNode
     // 여럿이 둘러서서 캔다 — 한 칸에 붙이면 서로 비켜서다 아무도 못 캔다. 넉넉히 둔다.
     const float NodeReach = 2.0f;
 
-    float _stuckTimer;
-    float _bestDist = float.MaxValue;
+    float      _stuckTimer;
+    float      _bestLeft = float.MaxValue;
+    Vector2Int _progressFor = new Vector2Int(int.MinValue, int.MinValue);
+
+    // **어느 길을 재고 있었나**(2026-09-06). 길이 바뀌면 기록도 버린다 — 아래 `Tick` 참조.
+    int        _progressRoute = int.MinValue;
 
     void ResetProgress()
     {
-        _stuckTimer = 0f;
-        _bestDist   = float.MaxValue;
+        _stuckTimer    = 0f;
+        _bestLeft      = float.MaxValue;
+        _progressRoute = int.MinValue;
     }
 
     public override BTStatus Tick(UnitBlackboard bb)
@@ -608,6 +613,25 @@ public class WorkNode : BTNode
             return BTStatus.Failure;
         }
 
+        // **목표 칸이 바뀌면 진행 기록을 버린다**(2026-09-05).
+        //
+        // 운반은 **한 일감 안에서 목표를 바꾼다** — 짐을 집으면 `TileCoord`가 창고로 간다
+        // (`HaulJob` 2단계). 그런데 진행 기록(`_bestLeft`)은 **새 일감일 때만** 지워졌다:
+        // 물건 앞에 도착해 기록이 0에 가까워진 채로 목표가 50m 밖 창고로 바뀌니, 그 뒤로는
+        // **어떤 값도 기록보다 작을 수 없어** 6초 뒤 반드시 *"갈 수 없다"*가 됐다.
+        //
+        // 그리고 놓는 것은 **취소**라 `OnCancelled`가 짐을 바닥에 떨군다 — 그래서 짐꾼이
+        // **집었다 떨구고 다시 집기를** 되풀이했다(사용자가 본 그 그림이다). 6초라는 주기가
+        // 그대로 로그에 찍혀 있었다.
+        //
+        // `_settled`는 같은 이유로 이미 `_settledFor`에 칸을 들고 있었다 — **그 짝을 진행
+        // 기록에는 안 달아 둔 것**이 이 사고의 전부다.
+        if (_progressFor != currentJob.TileCoord)
+        {
+            ResetProgress();
+            _progressFor = currentJob.TileCoord;
+        }
+
         var jobCenter = MapManager.Instance.TileToWorld(currentJob.TileCoord);
         var pos       = bb.Self.transform.position;
         float dist    = Vector2.Distance(new Vector2(pos.x, pos.z),
@@ -616,18 +640,84 @@ public class WorkNode : BTNode
         if (!Arrived(dist, currentJob.TileCoord, currentJob.Reach))
         {
             // 이동 중이 아닐 때만 목표 재설정 (이미 이동 중이면 기다림)
-            if (!bb.Mover.HasTarget())
+            bool moving = bb.Mover.HasTarget();
+            if (!moving)
                 bb.Mover.SetMoveTarget(TileToWorld(currentJob.TileCoord, bb));
 
-            // 가까워지고 있나? 아니면 얼마나 오래 제자리인가.
-            if (dist < _bestDist - ProgressEpsilon) { _bestDist = dist; _stuckTimer = 0f; }
-            else                                     _stuckTimer += bb.TickDelta;
+            // **직선이 아니라 그은 선으로 잰다**(2026-09-05, 사용자: *"직선말고 그은 선으로
+            // 구분하면 안돼?"*).
+            //
+            // 전에는 *일감까지의 직선거리*가 줄어야 "가고 있다"로 쳤다. 지상에서는 대개
+            // 맞았지만 **굴에서는 틀린 눈금이다** — 폰과 일감 사이가 통째로 바위면 경로가
+            // 수십 미터를 **돌아서** 가고, 그동안 직선거리는 줄지 않거나 늘어난다. 그래서
+            // 멀쩡히 걷고 있는 폰이 6초마다 *"갈 수 없다"*며 일감을 놓았다(진단에
+            // **`로컬경로 있음` · `앞을 막은 것: 없음`**이 같이 찍혀 있었다 — 그 둘이 같이
+            // 뜨면 못 가는 것이 아니라 **재는 쪽이 틀린 것**이다).
+            //
+            // **답은 `PawnMover.RouteRemaining` 하나다** — 라우트를 든 것은 그쪽이고, 여기서
+            // 다시 그으면 답이 두 벌이 된다. 라우트가 없는 짧은 이동에서는 그 값이 직선으로
+            // 떨어지는데, 그때는 돌아갈 것이 없으므로 **직선이 곧 그은 선이다.**
+            //
+            // *"움직이기만 하면 통과"*로 두지 않는 이유: 그러면 **제자리에서 맴도는 폰**이
+            // 영원히 일감을 붙들고 있는다. 남은 경로는 맴돌면 안 줄어든다.
+            //
+            // **다시 낸 길이 더 길어도 괜찮다** — 값이 위로 튈 뿐이고, 여기서는 *6초 안에
+            // 한 번이라도 줄었나*만 보므로 걷는 동안 저절로 줄어든다.
+            // **목표가 없는 틱의 값은 안 믿는다.** 그때 `RouteRemaining`은 0인데, 그것을
+            // 최고 기록으로 삼으면 **다시 목표를 준 뒤 어떤 값도 그보다 작을 수 없어**
+            // 걷고 있어도 6초 뒤 반드시 놓는다. 시계는 그대로 돌린다 — 목표를 주기만 하고
+            // 아무 데도 못 가는 상태가 이어지면 그것도 놓아야 하는 상태다.
+            if (!moving) _stuckTimer += bb.TickDelta;
+            else
+            {
+                // **길을 다시 내면 눈금도 다시 낸다**(2026-09-06, 채굴 로그가 답했다).
+                //
+                // 로그에 `남은경로 110.8m (최고 56.8m)`가 열여섯 폰에게 한꺼번에 찍혔다 —
+                // 같은 창의 이동 요약은 `막힘 1~2회 · 포기 0`이었으니 **폰은 멀쩡히 걷고
+                // 있었다.** 남은 길이 두 배로 뛴 것이다: `ReportUnreachable`은 광역 덩어리를
+                // **20초 닫으므로**(한 폰이 벽 앞에서 배운 것이 그 순간 모두의 라우트를
+                // 바꾼다) 다음 라우트가 통째로 우회로 나온다. 그러면 **옛 기록은 다시는 못
+                // 깨는 값**이고, 6초 뒤 *반드시* "갈 수 없다"가 된다 — 걸어서 되돌리려면
+                // 뛴 만큼(50m 넘게)을 시계 안에 걷어야 하는데 그럴 수가 없다.
+                //
+                // *"다시 낸 길이 더 길어도 괜찮다 — 걷는 동안 저절로 줄어든다"*라고 적어
+                // 두었던 것이 여기서 틀렸다. **줄기는 하는데 기록까지 못 내려간다.**
+                //
+                // `PawnMover`는 제 시계에 이미 이 짝을 달아 두었다(`TrackGoalGain`의
+                // *"새 길에는 새 시계를 준다"*). **밖에서 재는 쪽도 같아야 한다** —
+                // `_progressFor`(목표 칸이 바뀌면 버린다)와 정확히 같은 모양이다.
+                int   routeNow = bb.Mover.RouteVersion;
+                float left     = bb.Mover.RouteRemaining;
+
+                if (routeNow != _progressRoute)
+                {
+                    // **`MaxValue`로 두지 않는다** — 그러면 다음 틱이 공짜로 기록을 깨서
+                    // 시계가 한 번 더 되돌아간다(`PawnMover.ResetProgress`가 같은 이유로
+                    // 지금 거리에서 시작한다).
+                    _progressRoute = routeNow;
+                    _bestLeft      = left;
+                    _stuckTimer    = 0f;
+                }
+                else if (left < _bestLeft - ProgressEpsilon) { _bestLeft = left; _stuckTimer = 0f; }
+                else                                          _stuckTimer += bb.TickDelta;
+            }
 
             if (_stuckTimer >= StuckSeconds)
             {
+                // **왜 시계가 찼는지를 같이 찍는다**(2026-09-05). *"갈 수 없다"*만으로는
+                // **이동이 멎은 것인지**(목표 없음) **가고는 있는데 안 줄어든 것인지**를
+                // 가릴 수가 없고, 그 둘은 고쳐야 할 자리가 전혀 다르다. 그리고 **일감 지점과
+                // 이동 목표는 다른 값이다**(`SnapToStandable`이 접는다) — 채굴은 일감 지점이
+                // *바위 칸 그 자체*라 특히 갈린다.
+                var mg = bb.Mover.Goal;
                 Debug.LogWarning($"[Work] {bb.Self.name}: '{JobCategoryInfo.DisplayName(currentJob.Category)}' " +
-                                 $"일감 지점 {currentJob.TileCoord}까지 갈 수 없어 놓습니다 " +
-                                 "(길이 막혔거나 바닥 밖일 수 있습니다).");
+                                 $"일감 지점 {currentJob.TileCoord}까지 갈 수 없어 놓습니다 — " +
+                                 $"이동목표 {(bb.Mover.HasTarget() ? "있음" : "**없음**")} " +
+                                 $"({mg.x:F1}, {mg.z:F1}) 라우트 {bb.Mover.RoutePoints}점" +
+                                 $"(#{bb.Mover.RouteVersion}) · " +
+                                 $"남은경로 {bb.Mover.RouteRemaining:F1}m (최고 " +
+                                 $"{(_bestLeft == float.MaxValue ? "없음" : _bestLeft.ToString("F1") + "m")}) · " +
+                                 $"일감까지 직선 {dist:F1}m");
 
                 // **왜 못 갔는지까지 남긴다.** 좌표만 찍으면 "길은 열려 보이는데 왜?"에서 멈춘다 —
                 // 목표 칸이 점유됐는지·바닥이 있는지·차단 기억에 걸렸는지, 그리고 로컬 경로가
@@ -1161,6 +1251,127 @@ public class EatNode : BTNode
     {
         _food = null; _sourceStorage = null; _eatFrom = null;
         _approach = Vector3.zero; _eatTimer = 0f; _hasFood = false;
+    }
+}
+
+// **충전 — 골렘은 에너지를, 해골은 사기를 채운다**(2026-09-04).
+//
+// `EatNode`의 짝이고 자리도 그 옆이다. 갈리는 것은 **아무 데서나 먹을 수 없다**는 것 하나다:
+// 밥은 배낭에서도 창고 앞에서도 먹지만, 충전은 **그 건물 앞에 서야 한다.**
+//
+// ## 산 몸에게는 실패로 흘려보낸다
+//
+// 트리는 하나이고 몸이 셋이라, 이 노드는 **대부분의 폰에게 첫 줄에서 끝난다**
+// (`Recharge.TryAxisOf`). 몸마다 트리를 나누지 않는 이유는 그러면 `BuildMinionTree`가
+// 셋이 되고, 전투·일감·순찰이 그 셋에 복사되기 때문이다.
+//
+// ## 재료가 없으면 — 멈춘 골렘은 서서 기다린다
+//
+// 임계 아래인데 재료가 없으면 보통은 **실패**로 넘어가 하던 일을 계속한다(유지비를 못 대는
+// 것이 곧 정지는 아니다). 다만 **바닥에 닿았으면 `Running`으로 붙든다** — 그것이 "그 자리에
+// 멈춘다"의 구현이고, **BT를 끄지 않으므로** 재료가 생기는 순간 제 발로 걸어간다.
+// (끄는 길로 만들면 재료가 생겨도 영영 못 가는 데드락이다.)
+public class RechargeNode : BTNode
+{
+    // **손만 닿으면 된다**(`JobBase.HandReach`) — 일감들과 같은 규약. 창고 앞에 서는
+    // `EatNode`와 같은 자리다.
+    const float ArrivalDist = JobBase.HandReach;
+
+    Recharger _site;
+    Vector3   _approach;
+    float     _timer;
+    bool      _arrived;
+    bool      _targetSet;
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        var brain = bb.Brain;
+        if (!Recharge.TryAxisOf(brain, out var kind)) { Reset(); return BTStatus.Failure; }
+
+        bool stalled = Recharge.Stalled(brain, kind);
+        if (!Recharge.IsLow(brain, kind)) { Reset(); return BTStatus.Failure; }
+
+        // **자리를 먼저 고른다** — 없으면 멈춘 폰만 붙든다.
+        if (_site == null || !_site.isActiveAndEnabled)
+        {
+            _site = Recharge.Nearest(kind, bb.Self.transform.position);
+            if (_site == null) return Wait(bb, stalled);
+
+            // **건물 자기 칸이 아니라 폰이 서는 자리로 간다**(`WorkSpot`) — 충전대가 제 칸을
+            // 막으면 중심을 겨눈 폰은 영영 못 닿는다(`EatNode`가 창고에서 겪은 그 자리).
+            _approach = MapManager.Instance != null
+                      ? MapManager.Instance.TileToWorld(WorkSpot.TileFor(_site))
+                      : _site.transform.position;
+            _arrived   = false;
+            _targetSet = false;
+            _timer     = 0f;
+        }
+
+        // **재료를 먼저 보고, 그다음에 목표를 준다**(2026-09-05에 순서를 바로잡았다).
+        //
+        // 반대로 두었더니 재료가 없는 동안 **매 틱**(10Hz) 자리를 다시 고르고 목표를 준 뒤
+        // 곧바로 `Reset`으로 버렸다 — 폰은 아래 `WorkNode`로 내려가 일을 집는데 **이동 목표만
+        // 충전대 쪽으로 덮여** 일터가 아니라 충전대로 끌려갔고, 그 사이 광역 A\*가 초당 열 번
+        // 돌았다. 재료가 없는 것은 이 기능이 **늘 있으리라 예상하는 상태**라 더 나빴다.
+        //
+        // **가는 동안에도 다시 본다** — 남이 써 버릴 수 있고, 안 보면 빈 충전대 앞에서
+        // 6초를 서 있다 실패한다.
+        if (!Recharge.HasFuel(_site, brain)) { Reset(); return Wait(bb, stalled); }
+
+        // **평면 거리로 잰다** — `TileToWorld`는 Y=0(길찾기용)이라 폰의 키가 그대로 얹힌다.
+        var self = bb.Self.transform.position;
+        float dist = Vector2.Distance(new Vector2(self.x, self.z),
+                                      new Vector2(_approach.x, _approach.z));
+        if (dist > ArrivalDist)
+        {
+            // 도착했다가 밀려났으면 처음부터 — 원격으로 충전하지 않는다.
+            if (_arrived) { Reset(); return BTStatus.Running; }
+
+            // **목표를 잃었으면 다시 준다**(2026-09-05). 목표를 자리 고를 때 한 번만 주었더니,
+            // 위 분기가 이 노드를 밀어냈다 돌아오면(`FightNode`가 `StopMovement`를 부른다)
+            // **`_site`가 그대로라 다시 안 주고** `Running`만 돌려줬다 — 에너지는 안 죽이므로
+            // 깨울 시계도 없어서 **그 폰이 영원히 선 채로 아래 분기까지 막았다.**
+            // (`RestNode`가 침대로 가다 막혔을 때 접근 면을 다시 고르는 것과 같은 자리.)
+            if (!_targetSet || !bb.Mover.HasTarget())
+            {
+                bb.Mover.SetMoveTarget(_approach);
+                _targetSet = true;
+            }
+            return BTStatus.Running;
+        }
+
+        if (!_arrived)
+        {
+            _arrived = true;
+            bb.Mover.StopMovement();
+        }
+
+        _timer += bb.TickDelta;
+        if (_timer < Recharge.Seconds) return BTStatus.Running;
+
+        // **빼는 것과 채우는 것은 붙어 있어야 한다** — 사이에 한 틱이라도 있으면 재료만
+        // 사라지고 안 차는 창이 생긴다.
+        if (!Recharge.Consume(_site, brain)) { Reset(); return Wait(bb, stalled); }
+
+        Recharge.Fill(brain, kind);
+        Debug.Log($"[충전] {bb.Self.name} {Needs.Name(kind)} 충전 완료 — {_site.name}");
+        Reset();
+        return BTStatus.Success;
+    }
+
+    // 채울 수 없을 때. **멈춘 폰은 여기서 붙들린다**(아래 분기가 안 돈다) — 살아 있는
+    // 폰이면 그냥 실패시켜 하던 일을 계속하게 둔다.
+    BTStatus Wait(UnitBlackboard bb, bool stalled)
+    {
+        if (!stalled) return BTStatus.Failure;
+
+        bb.Mover?.StopMovement();
+        return BTStatus.Running;
+    }
+
+    void Reset()
+    {
+        _site = null; _approach = Vector3.zero; _timer = 0f; _arrived = false; _targetSet = false;
     }
 }
 

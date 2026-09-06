@@ -86,6 +86,10 @@ public class BuildingDormancy : MonoBehaviour
         // 관개 수로: `OnDisable`이 레지스트리에서 빠지므로 **영역 밖 수로는 아무것도 안 적신다.**
         // 안 넣으면 핵에서 떨어진 곳에 수로만 놓아도 밭이 영영 안 마른다(화톳불과 같은 자리).
         if (TryGetComponent<Irrigation>(out var irr))   yield return irr;
+        // 충전대·제단: `OnDisable`이 레지스트리에서 빠진다. 안 넣으면 **핵 영역 밖 충전대가
+        // 후보로 남아** 골렘이 16km 밖으로 걸어간다(화톳불·수로와 같은 자리 — 휴면은
+        // "전면 사용 불가"인데 하나가 예외가 되면 그 하나로 새어 나간다).
+        if (TryGetComponent<Recharger>(out var rc))     yield return rc;
     }
 
     // 이 오브젝트(또는 부모)가 휴면 중인가 — 클릭/주문 등 외부 진입점 게이트용.

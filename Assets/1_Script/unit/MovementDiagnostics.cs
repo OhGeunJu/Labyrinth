@@ -108,7 +108,9 @@ public static class MovementDiagnostics
                          $"목표칸 {DescribeTile(goal)}\n" +
                          $"  선 자리: {DescribeTile(pos)}{DescribeFooting(pos, cc)}\n" +
                          $"  앞을 막은 것: {DescribeBlocker(pos, goal, self)}\n" +
-                         $"  가는 길 칸: {DescribePathTiles(pos, goal)}");
+                         $"  곧장 그은 선: {DescribePathTiles(pos, goal)}\n" +
+                         $"  선 자리 둘레:\n{DescribeNeighborhood(pos)}" +
+                         DescribeCorner(pos, goal));
     }
 
     // **"무언가에 막혔다"를 "무엇에 막혔다"로 바꾼다.** 로컬 경로가 있는데도 못 나아가면
@@ -135,8 +137,13 @@ public static class MovementDiagnostics
         return sb.Length > 0 ? sb.ToString() : "없음(물리적으로 안 막힘 — 조향/경로 문제)";
     }
 
-    // 폰에서 목표까지 지나야 할 칸들의 상태. **보이지 않는 점유**(모델보다 큰 건물 footprint)가
-    // 길을 끊고 있으면 여기서 `점유됨`으로 바로 드러난다.
+    // 폰에서 목표까지 **직선을 그어** 그 위의 칸들을 찍는다. **보이지 않는 점유**(모델보다
+    // 큰 건물 footprint)가 길을 끊고 있으면 여기서 `점유됨`으로 바로 드러난다.
+    //
+    // **경로가 아니다 — 직선이다**(2026-09-05에 이름을 고쳤다). "가는 길 칸"이라고 적어 두었더니
+    // 굴에서 **바위가 줄줄이 찍히는 것이 마치 라우트가 벽을 뚫는 것처럼** 읽혔다. 굴은 굽어
+    // 있으므로 직선이 바위를 지나는 것은 **정상이다** — 여기서 볼 것은 *어떤 종류의 것이
+    // 사이에 있나*이지 *경로가 어디로 가나*가 아니다(그건 `라우트 N점`과 `조향`이 답한다).
     static string DescribePathTiles(Vector3 pos, Vector3 goal)
     {
         var map = MapManager.GetForPosition(goal);
@@ -169,6 +176,71 @@ public static class MovementDiagnostics
     }
 
     // 그 좌표의 타일이 어떤 상태인지 — 통행/바닥/차단기억
+    // ── 둘레 3×3을 그림으로 ────────────────────────────────────────────────
+    //
+    // **칸 하나하나를 글로 적으면 아홉 줄이 되고, 그러면 아무도 안 읽는다.** 눈으로 모양이
+    // 보여야 *"주머니에 갇혔나"*가 한눈에 들어온다.
+    //
+    // `.` 걸을 수 있다 · `#` 바위 · `X` 점유(건물) · `_` 바닥 없음 · `!` 차단기억 · `@` 나
+    static string DescribeNeighborhood(Vector3 world)
+    {
+        var map = MapManager.GetForPosition(world);
+        if (map == null) return "    맵없음\n";
+
+        var c  = map.WorldToTile(world);
+        var sb = new System.Text.StringBuilder();
+
+        // 북(+z)이 위로 오게 그린다 — 화면과 같은 방향이라야 눈으로 맞춰 볼 수 있다.
+        for (int dz = 1; dz >= -1; dz--)
+        {
+            sb.Append("    ");
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                var t = new Vector2Int(c.x + dx, c.y + dz);
+                sb.Append(dx == 0 && dz == 0 ? '@' : Mark(map, t)).Append(' ');
+            }
+            sb.Append(dz == 1 ? "  (위가 북)" : "").Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    static char Mark(MapManager map, Vector2Int t)
+    {
+        if (RockMap.IsRock(t))                  return '#';
+        if (!map.GetTile(t.x, t.y).IsPassable)  return 'X';
+        if (!map.IsStandable(t))                return '_';
+        if (PathBlockMemory.IsBlocked(t))       return '!';
+        return '.';
+    }
+
+    // ── 대각선 한 칸이면 모서리 둘을 찍는다 ─────────────────────────────────
+    //
+    // **대각선은 직교 이웃 둘이 다 열려야 지나간다**(`PathGrid.Enterable`) — 안 그러면 몸이
+    // 두 면 사이에 낀다. 그런데 진단은 **출발 칸과 목표 칸만** 찍었다: 둘 다 멀쩡한데 경로가
+    // 없으면 *"양쪽 다 통행인데 길이 없다"*는 모순처럼 읽히고, **정작 막은 것은 그 사이의
+    // 모서리 둘**이다(2026-09-05에 그 그림으로 세 번 포기한 로그를 보고 넣었다).
+    static string DescribeCorner(Vector3 pos, Vector3 goal)
+    {
+        var map = MapManager.GetForPosition(goal);
+        if (map == null) return "";
+
+        var a = map.WorldToTile(pos);
+        var b = map.WorldToTile(goal);
+
+        int dx = b.x - a.x, dz = b.y - a.y;
+        if (Mathf.Abs(dx) != 1 || Mathf.Abs(dz) != 1) return "";
+
+        var side1 = new Vector2Int(a.x + dx, a.y);
+        var side2 = new Vector2Int(a.x, a.y + dz);
+
+        bool open1 = map.IsWorkable(side1);
+        bool open2 = map.IsWorkable(side2);
+
+        return $"  대각 한 칸 — 모서리 [{side1.x},{side1.y}]{(open1 ? "열림" : "**막힘**")} · " +
+               $"[{side2.x},{side2.y}]{(open2 ? "열림" : "**막힘**")}" +
+               (open1 && open2 ? "" : " → **대각선은 둘 다 열려야 지나간다**") + "\n";
+    }
+
     static string DescribeTile(Vector3 world)
     {
         var map = MapManager.GetForPosition(world);

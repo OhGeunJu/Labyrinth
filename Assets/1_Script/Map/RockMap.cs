@@ -210,11 +210,20 @@ public static class RockMap
         _marked.Remove(tile);
 
         // **길찾기에 알린다.** 안 알리면 격자가 옛 상태로 남아 **판 자리를 폰이 계속 벽으로
-        // 본다.** 점유는 안 건드리고 소식만 보낸다 — 바위는 `_occupied`가 아니라 여기가
-        // 들고 있으므로, `SetTile`로 알리면 **판 자리를 통행 가능으로 덮어써** 원래 막혀
-        // 있던 건물 점유까지 풀린다.
+        // 본다.** 점유는 안 건드린다 — 바위는 `_occupied`가 아니라 여기가 들고 있으므로,
+        // `SetTile`로 알리면 **판 자리를 통행 가능으로 덮어써** 원래 막혀 있던 건물 점유까지
+        // 풀린다.
+        //
+        // **그래서 소식만 보내려고 `SetTile(tile, GetTile(tile))`을 불렀는데 — 그건 아무것도
+        // 안 했다**(2026-09-05에 드러났다). `SetTile`은 **값이 실제로 바뀌었을 때만**
+        // `OnTileChanged`를 쏘는데, 지금 값을 그대로 넘기니 `changed`가 늘 거짓이었다.
+        // 그 결과 **판 칸이 코스·광역 격자에 영영 안 나타났다** — 로컬은 매번 새로 구워서
+        // 멀쩡했고, 그래서 *가까이는 가는데 멀리는 못 가는* 모양으로만 보였다.
+        //
+        // 이제 **여는 쪽이 직접 부른다**(`OpenAround`·`OpenPathToCave`와 같은 자리 —
+        // *"격자가 스스로 알 방법은 없다"*).
         var map = MapManager.Instance;
-        if (map != null) map.SetTile(tile, map.GetTile(tile));
+        if (map != null) HierarchicalPathfinder.Instance?.RebakeObstacleAt(map.TileToWorld(tile));
 
         OnChanged?.Invoke(tile);
         return true;

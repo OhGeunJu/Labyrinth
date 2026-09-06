@@ -29,6 +29,19 @@ public static class Farming
         return Mathf.Max(1, Mathf.RoundToInt(baseAmount * mult));
     }
 
+    // **거두면 씨앗도 나온다**(2026-09-05, 사용자 요청). 심을 때 한 알을 쓰므로(`SeedJob`)
+    // 평균 1.5알이면 밭이 **저절로 이어지고 천천히 넓어진다** — 씨앗을 사 와야만 농사가
+    // 도는 구조는 지하에서 상인이 드문 만큼 곧 막다른 길이 된다.
+    //
+    // **원예를 안 태운다.** 늘어나야 하는 것은 *수확량*이고(`HarvestAmount`가 이미 그 축이다)
+    // 씨앗은 *이어 가는 것*이다 — 둘 다 스탯을 타면 잘 키운 농부 하나가 씨앗을 홍수처럼
+    // 내놓아 밭의 크기가 스탯 하나로 정해진다.
+    //
+    // **작물마다 저작하지 않는다.** `SeedData`에 필드를 더하면 **이미 있는 에셋은 전부 0**이라
+    // (새 필드의 기본값) *"고쳤는데 씨앗이 안 나온다"*가 된다. 갈라야 할 이유가 생기면 그때
+    // 저작으로 옮긴다.
+    public static int SeedReturn(UnitBrain unit) => Random.Range(1, 3);
+
     // 도전 대상이 없어 SOL만 — 노동 스탯이 다 그 모양이다(`Research`·`Social`과 같은 자리).
     public static void Grow(UnitBrain unit, float amount)
     {

@@ -223,15 +223,13 @@ public static class DebugGiveItems
         string name = index == 0 ? ChestName : $"{ChestName} {index + 1}";
 
         foreach (var st in Storage.All)
-            if (st != null && st.name == name) return st;
+            if (st != null && st.name == name) return Repair(st);
 
         var go = new GameObject(name);
 
         // 던전 핵 옆에 **한 줄로** 늘어놓는다 — 폰이 운반해 갈 수 있어야 하므로 손 닿는 곳이어야
         // 하고, 겹쳐 놓으면 어느 것을 클릭했는지 알 수 없다.
-        var core = Object.FindFirstObjectByType<DungeonCore>();
-        go.transform.position = (core != null ? core.transform.position : Vector3.zero)
-                              + new Vector3(3f + index * 2f, 0f, 3f);
+        go.transform.position = SpotNearCore(index);
 
         // 눈에 보이고 클릭도 되게 — 안 그러면 어디 생겼는지 알 수 없다.
         var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -253,8 +251,84 @@ public static class DebugGiveItems
         var storage = go.AddComponent<Storage>();
         storage.BuildingName = "디버그 상자";
 
-        Debug.Log($"[Debug] {name} 생성 ({ChestW}×{ChestH} = {ChestW * ChestH}칸). 핵 옆에 있습니다.");
+        // **진짜 건물로 세운다**(2026-09-05, 사용자: *"내가 옮길 수가 없으니깐"*).
+        //
+        // 그전에는 `Storage`만 붙인 맨 오브젝트라 **`PlacedBuilding`이 없었다.** 그러면
+        // `BuildingRelocator.Begin(pb)`에 넘길 것이 없어 살펴보기 창에 **[이동한다]가 아예
+        // 안 뜨고**, 발자국도 등록이 안 돼 길찾기는 상자를 **없는 것으로 본다**(몸은 부딪히는데
+        // 지도는 빈 칸 — 폰이 처박히는 그 자리다).
+        //
+        // 창고 데이터를 그대로 물린다 — 테스트 상자라고 **다른 규칙으로 살 이유가 없다**.
+        // 고르기·살펴보기·옮기기·철거가 전부 평소 길로 돌아온다.
+        var data = Resources.Load<BuildingData>("Data/Buildings/Storage");
+        if (data != null) PlacedBuilding.Attach(go, data);
+        else Debug.LogWarning("[Debug] `Data/Buildings/Storage`를 못 찾았습니다 — 상자를 옮길 수 없습니다.");
+
+        Debug.Log($"[Debug] {name} 생성 ({ChestW}×{ChestH} = {ChestW * ChestH}칸) — {go.transform.position}");
         return storage;
+    }
+
+    // **이미 있는 상자도 고친다**(2026-09-05). 한 번 파묻힌 상자는 다시 눌러도 `EnsureDebugChest`가
+    // *"있으면 그걸 쓴다"*로 그대로 돌려줘서 **영원히 파묻힌 채**였다 — 사람이 못 고르니 지울
+    // 수도 없다(하이어라키에서 손으로 지우는 수밖에).
+    //
+    // **손으로 옮겨 둔 상자는 안 건드린다** — 파묻혔을 때만 끌어올린다. 다시 돌릴 때마다
+    // 제자리로 되돌리면 *"옮겨 놨는데 왜 돌아오지"*가 된다.
+    static Storage Repair(Storage st)
+    {
+        var map = MapManager.Instance;
+        if (map != null)
+        {
+            var pos  = st.transform.position;
+            float top = map.TileToGround(map.WorldToTile(pos)).y;
+
+            if (pos.y < top - 0.1f)
+            {
+                st.transform.position = new Vector3(pos.x, top, pos.z);
+                Debug.Log($"[Debug] {st.name}이(가) 파묻혀 있어 지면 위로 올렸습니다 — y {pos.y:F2} → {top:F2}");
+            }
+        }
+
+        // 옛 상자에는 `PlacedBuilding`이 없다 — 그래서 [이동한다]가 안 떴다.
+        if (st.GetComponent<PlacedBuilding>() == null)
+        {
+            var data = Resources.Load<BuildingData>("Data/Buildings/Storage");
+            if (data != null)
+            {
+                PlacedBuilding.Attach(st.gameObject, data);
+                Debug.Log($"[Debug] {st.name}에 건물 정보를 물렸습니다 — 이제 고르고 옮길 수 있습니다.");
+            }
+        }
+
+        return st;
+    }
+
+    // **바닥 위에 놓는다 — 핵의 Y를 베끼지 않는다**(2026-09-05).
+    //
+    // 전에는 핵의 자리에 `(3 + index*2, 0, 3)`을 더했다. 그러면 **높이가 핵의 것**이라, 세 칸
+    // 옆 지면이 조금만 낮아도 상자가 **땅에 파묻힌다** — 폰은 좌표만 보므로 운반은 멀쩡히
+    // 되는데(사용자: *"그래도 아이템을 갖고오긴 하던데"*) **커서 레이가 지면에 먼저 맞아
+    // 사람이 못 고른다.** 보이지도 잡히지도 않는 상자가 되는 것이다.
+    //
+    // 그래서 **설 수 있는 칸을 찾아 그 윗면에 앉힌다**(`TileToGround` — 기단을 깔았으면
+    // 슬래브 윗면이다). 지하에서는 세 칸 옆이 바위일 수도 있으므로 `FindWorkableNear`가
+    // 답하게 두고, **이미 놓인 상자 칸은 뺀다**(겹쳐 놓으면 어느 것을 눌렀는지 모른다).
+    static Vector3 SpotNearCore(int index)
+    {
+        var core   = Object.FindFirstObjectByType<DungeonCore>();
+        var anchor = core != null ? core.transform.position : Vector3.zero;
+        var want   = anchor + new Vector3(3f + index * 2f, 0f, 3f);
+
+        var map = MapManager.Instance;
+        if (map == null) return want;
+
+        var taken = new List<Vector2Int>();
+        foreach (var st in Storage.All)
+            if (st != null && st.name.StartsWith(ChestName))
+                taken.Add(map.WorldToTile(st.transform.position));
+
+        var tile = map.FindWorkableNear(map.WorldToTile(want), maxRadius: 8, exclude: taken);
+        return map.TileToGround(tile);
     }
 
     // 자원 아이템 + 장비 + 소비품 전부. 골드도 포함(살 것을 사 보려면 필요하다).

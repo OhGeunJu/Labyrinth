@@ -598,7 +598,10 @@ public class InventoryUI : MonoBehaviour
         // `BecomeCorpse`는 `UnitBrain`을 **끄기만** 하므로 `GetComponent`로는 산 사람과
         // 구별이 안 되고, 시체 배낭에서 밥을 우클릭하면 **그 밥이 사라졌다**(시체는 배가
         // 안 고프니 아무 일도 안 일어난 채로).
-        if (!Needs.Simulates(eater))
+        // **축까지 물어야 한다** — 몸이 셋이 되면서 `Simulates(brain)`은 *무엇이든 요구하는
+        // 폰인가*가 됐다. 골렘은 에너지를 요구하지 허기를 요구하지 않으므로, 축을 안 물으면
+        // **돌덩이에게 빵을 먹일 수 있다**(먹여도 안 차니 밥만 사라진다).
+        if (!Feeding.Simulates(eater))
             return Refuse(icon, $"{eater.UnitName}은(는) 지금 먹을 수 없다");
 
         // **원정 나간 폰은 못 먹는다.** 그 폰들은 GameObject가 꺼져 있어(`ExpeditionParty`)

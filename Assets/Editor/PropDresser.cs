@@ -58,7 +58,12 @@ public static class PropDresser
         new Dress { Building = "LargeStorage", Props = new[]{ "containers/crates/P_PROP_crate_dungeon_01" } },
 
         // ── 거주·장례
-        new Dress { Building = "Campfire",   Props = new[]{ "light/P_PROP_campfire_dungeon_01" }, KeepHeight = true },
+        //
+        // **화톳불은 여기서 뺐다**(2026-09-05) — `CampfireUpgrader`가 그 생김새를 든다.
+        // 둘 다 두면 **같은 물건의 얼굴에 답이 둘**이고, 둘 다 돌리면 `[Art]`가 두 겹으로
+        // 선다. 무엇보다 여기 방식(*"옛 메시를 끄고 소품을 얹는다"*)은 **불꽃까지 같이
+        // 끈다** — 화톳불에서 불꽃은 장식이 아니라 *켜졌는지를 보여 주는 유일한 표시*다
+        // (`LightSource.flames`). 그래서 저쪽은 불꽃을 다시 짓고 배선까지 물린다.
         new Dress { Building = "Grave",      Props = new[]{ "furniture/P_PROP_gravestone_dungeon_01" }, KeepHeight = true },
         new Dress { Building = "Pyre",       Props = new[]{ "light/P_PROP_brazier_dungeon_01" }, KeepHeight = true },
 

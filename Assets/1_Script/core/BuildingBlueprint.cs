@@ -77,8 +77,29 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
             BuildModeManager.SnapOnSurface(
                 ghost, MapManager.Instance.SurfaceHeight(MapManager.Instance.WorldToTile(transform.position)));
 
-        foreach (var c in ghost.GetComponentsInChildren<Collider>())     c.enabled = false;
-        foreach (var b in ghost.GetComponentsInChildren<MonoBehaviour>()) b.enabled = false;
+        // **꺼진 자식까지 훑는다 — 그리고 모양을 정하기 *전*에 끈다**(2026-09-05).
+        //
+        // `GetComponentsInChildren`은 기본으로 **켜진 것만** 본다. 그런데 바로 아래
+        // `PoseAt`이 **꺼져 있던 쪽 모형을 켠다**(`WallTorch`의 선 것/걸린 것 중 하나) —
+        // 그 밑에 붙은 스크립트는 **한 번도 안 꺼진 채로 살아난다.** 아직 짓지도 않은
+        // 청사진에서 `OnEnable`/`Update`가 도는 것이 `EnsureGhost`가 막으려던 바로 그것이다.
+        foreach (var c in ghost.GetComponentsInChildren<Collider>(true))     c.enabled = false;
+        foreach (var b in ghost.GetComponentsInChildren<MonoBehaviour>(true)) b.enabled = false;
+
+        // **놓일 자리에 따라 모양이 갈리는 건물은 청사진도 그 모양이어야 한다**(2026-09-04).
+        //
+        // 미리보기에서 벽에 걸린 것을 보고 눌렀는데 청사진이 바닥에 서 있으면, 완성될 때까지
+        // *어느 쪽이 맞는지*를 알 방법이 없다 — 지우고 다시 놓게 된다.
+        //
+        // **꺼 놓고 부른다.** 위에서 `enabled = false`를 걸었으므로 `Start`도 `Update`도 안
+        // 돌고, `Instantiate`가 활성으로 만드는 바람에 `OnEnable`이 한 번 돌긴 했지만 그때는
+        // **아직 원점에 있어** 엉뚱한 답을 냈다. 자리를 잡은 지금 다시 묻는 것이 진짜 답이다.
+        if (MapManager.Instance != null)
+        {
+            var tile = MapManager.Instance.WorldToTile(transform.position);
+            foreach (var pose in ghost.GetComponentsInChildren<IPlacementPose>(true))
+                pose.PoseAt(tile);
+        }
 
         _ghostMat = CreateBlueprintMaterial();
         foreach (var r in ghost.GetComponentsInChildren<Renderer>())

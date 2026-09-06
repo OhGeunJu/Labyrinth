@@ -147,62 +147,21 @@ public class PathGrid
             || _height[i] - _height[j] > _climb[i] + ClimbSlack;
     }
 
+    // ── 칸과 칸 **사이**를 따로 굽던 것은 걷어냈다(2026-09-06) ─────────────
+    //
+    // **벽은 칸 안이 아니라 칸 사이에 선다** — 셀 하나에 노드 하나이던 옛 광역 격자에는
+    // 그 사실을 적을 자리가 없어서, 경계마다 *이어졌나*(HPA\*의 entrance)를 따로 구웠다.
+    // 그 절반은 이제 `WideGraph`가 **덩어리와 통과점**으로 들고, 광역 격자 자체가 사라졌다.
+    //
+    // 로컬(1m)·코스(2m)는 칸이 잘아 애초에 이 문제가 거의 없어 굽지 않았다 — 그래서
+    // `EnsureLinks`를 **아무도 부른 적이 없고**(배열이 늘 null이라 `Linked`가 늘 참이었다)
+    // `IgnoreLinks`도 실제로는 아무것도 안 껐다. **안 쓰는 손잡이는 남기지 않는다.**
+
     // `from`에서 `to`로 한 걸음 들어갈 수 있는가 — 막힘과 오르막을 **한 자리에서** 묻는다.
     // 이 물음이 두 군데로 갈리면 대각선 모서리 검사만 옛 규칙으로 남는다.
-    // ── 칸과 칸 **사이** — 이어져 있나 ─────────────────────────────────────
-    //
-    // **벽은 칸 안이 아니라 칸 사이에 선다**(2026-08-31). 칸 하나의 열림만 구우면 A\*는
-    // *"이웃한 열린 칸은 이어져 있다"*고 가정하는데, 셀이 크면 그 가정이 자주 거짓이다 —
-    // 두 셀이 다 열려 있어도 **맞닿은 경계가 통째로 벽**일 수 있다.
-    //
-    // HPA\*에서 이걸 **entrance(transition)**라고 부른다: 클러스터마다 이웃과 맞닿은
-    // 경계에서 *열린 구간*을 찾아 잇는 것이 알고리즘의 절반이다. 그 절반이 빠져 있었다.
-    //
-    // **안 구우면 예전 그대로다** — 로컬·코스 격자는 칸이 1~2m라 이 문제가 거의 없어서
-    // 지금은 광역만 굽는다.
-    bool[] _linkE;   // (x,y) ↔ (x+1,y)
-    bool[] _linkN;   // (x,y) ↔ (x,y+1)
-
-    public void EnsureLinks()
-    {
-        int n = Width * Height;
-        if (_linkE == null || _linkE.Length != n) { _linkE = new bool[n]; _linkN = new bool[n]; }
-    }
-
-    public void SetLinkEast (int x, int y, bool open) { if (_linkE != null && InBounds(x, y)) _linkE[y * Width + x] = open; }
-    public void SetLinkNorth(int x, int y, bool open) { if (_linkN != null && InBounds(x, y)) _linkN[y * Width + x] = open; }
-
-    public bool LinkEast (int x, int y) => _linkE != null && InBounds(x, y) && _linkE[y * Width + x];
-    public bool LinkNorth(int x, int y) => _linkN != null && InBounds(x, y) && _linkN[y * Width + x];
-
-    // **대각선은 여기서 안 본다** — `FindPath`가 직교 두 이웃(`side1`·`side2`)을 따로
-    // 검사하므로, 직교만 막아 두면 대각선도 따라 막힌다.
-    // **간선을 무시하고 한 번 더 풀 수 있다**(2026-08-31). 간선 판정은 *더 정확한 답*이지만
-    // **완벽하지는 않다** — 틀리면 갈 수 있는 길이 끊긴 것으로 보이고, 그건 라우트가 조금
-    // 나쁜 것보다 훨씬 나쁘다(폰이 아예 못 간다). 그래서 **끊긴 답이 나오면 무시하고 다시
-    // 풀어 본다**: 정확한 답을 먼저 쓰되, 그것이 세계를 끊으면 이어 두고 **폰이 걸어가며
-    // 배우게 한다**(`ReportUnreachable`).
-    public bool IgnoreLinks;
-
-    bool Linked(int from, int to)
-    {
-        if (_linkE == null || IgnoreLinks) return true;
-
-        int fx = from % Width, fy = from / Width;
-        int tx = to   % Width, ty = to   / Width;
-        int dx = tx - fx,      dy = ty - fy;
-
-        if (dy == 0 && dx ==  1) return _linkE[from];
-        if (dy == 0 && dx == -1) return _linkE[to];
-        if (dx == 0 && dy ==  1) return _linkN[from];
-        if (dx == 0 && dy == -1) return _linkN[to];
-        return true;
-    }
-
     bool Enterable(int from, int to)
     {
         if (!_walkable[to]) return false;
-        if (!Linked(from, to)) return false;
         if (!UsesHeight) return true;
 
         // 올라갈 때는 **가는 칸**의 한도, 내려갈 때는 **떠나는 칸**의 한도(되돌아 올라올

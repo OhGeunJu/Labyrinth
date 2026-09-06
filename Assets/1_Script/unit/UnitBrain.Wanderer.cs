@@ -37,6 +37,11 @@ public partial class UnitBrain
                 .Add(new FightNode()))
             .Add(new RestNode())
             .Add(new EatNode())
+            // **몸이 셋이라 채우는 자리도 셋이다** — 골렘은 충전대, 해골은 제단으로
+            // 간다(`RechargeNode`). 산 몸에게는 첫 줄에서 실패로 흘러가므로
+            // 트리를 몸마다 나누지 않는다. **일감보다 위여야 한다** — 에너지가
+            // 바닥난 골렘을 그 자리에 세우는 것이 이 노드이기 때문이다.
+            .Add(new RechargeNode())
             .Add(new WorkNode())
             .Add(new IdleNode());
 

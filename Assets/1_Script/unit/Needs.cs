@@ -1,8 +1,12 @@
 using UnityEngine;
 
-// **몸이 요구하는 것들** — 허기 · 피로.
+// **몸이 요구하는 것들** — 허기 · 피로 · 에너지 · 사기.
 //
-// 둘은 기계적으로 같은 물건이다: 0~100 사이에서 **저절로 줄고**, 임계 아래로 내려가면 폰이
+// **넷이지만 한 몸이 넷을 다 요구하지는 않는다** — 산 몸은 허기·피로, 골렘은 에너지,
+// 해골은 사기다(`BodyKind`). 무엇을 요구하는지는 몸이 답하고(`Runs`), 그 답을 쓰는 자리는
+// `Simulates` 하나다.
+//
+// 축들은 기계적으로 같은 물건이다: 0~100 사이에서 **저절로 줄고**, 임계 아래로 내려가면 폰이
 // **채우러 가고**, 바닥에 닿으면 **몸이 상한다**. 갈리는 것은 눈금과 채우는 방법뿐이다.
 //
 // 그래서 축마다 따로 적지 않는다. 허기 하나뿐이던 시절에도 그 규칙은 여섯 군데에 흩어져
@@ -14,12 +18,39 @@ using UnityEngine;
 // 아니라 **하는 일이 허기와 같아서**다: 둘 다 *창고에서 소모품을 찾아 먹기*이고 우물이 서는
 // 순간 물은 사실상 무한이라, **축은 둘인데 플레이어가 내리는 결정은 늘지 않았다** — 폰이
 // 하루 세 번 더 걸어갈 뿐이었다. 되살릴 일이 있으면 그날 worklog에 설계가 통째로 남아 있다.
-public enum NeedKind { Hunger, Rest }
+//
+// **에너지·사기는 그 함정을 피한다** — 하는 일은 같아 보여도 **채우는 자리가 창고가 아니라
+// 지은 건물**이라(충전대·제단) *어디에 몇 개 세우나*라는 결정이 딸려 온다.
+
+// **축은 꼬리에 붙인다** — 블랙보드가 `(int)kind`로 색인하는 `float[]`이라, 중간에 끼우면
+// 살아 있는 폰의 허기 칸에 에너지가 들어간다.
+public enum NeedKind { Hunger, Rest, Energy, Morale }
+
+// **몸의 종류 — 무엇을 요구하는지가 여기서 갈린다**(2026-09-04, 사용자: *"골렘 하수인
+// 허기가 있는게 이상함"*).
+//
+// 그전에는 *"플레이어 세력인가"* 하나가 축을 정해서 **골렘이 밥을 먹고 침대에서 잤다.**
+// 그러다 창고가 비면 돌덩이가 굶어 죽었다 — 규칙이 아니라 사고다.
+//
+// | 몸 | 요구하는 것 | 바닥에 닿으면 | 채우는 자리 |
+// |---|---|---|---|
+// | 산 몸 | 허기 · 피로 | 굶어 죽는다 / 쓰러져 잔다 | 음식 · 침대 |
+// | 구축물(골렘) | **에너지** | **일이 멎는다** | 마력 충전대 |
+// | 언데드(해골) | **사기** | **무너진다** | 망자의 제단 |
+//
+// **비대칭이 곧 성격이다.** 골렘은 기계라 꺼졌다 다시 켜면 되고(멈출 뿐 안 죽는다),
+// 해골은 붙들어 둔 의지라 놓치면 흩어진다. 그래서 골렘은 비싸고 안전하며, 해골은
+// 싸고 손이 간다.
+//
+// **"멈춘다"는 일·순찰·배회가 멎는다는 뜻이다** — 명령과 반격은 남는다(`RechargeNode`가
+// 전투·명령 **아래**에 있다). 완전히 굳게 하면 에너지 떨어진 골렘이 공짜 표적이 되고,
+// 무엇보다 **재료가 생겨도 제 발로 못 가는 데드락**이 된다.
+public enum BodyKind { Living, Construct, Undead }
 
 public static class Needs
 {
     public const float Full  = 100f;
-    public const int   Count = 2;
+    public const int   Count = 4;
 
     // ── 눈금 ─────────────────────────────────────────────────────────────
     //
@@ -42,6 +73,14 @@ public static class Needs
     const float MealsPerDay = 2f;
     const float WakeDays    = 2f / 3f;
 
+    // **에너지·사기는 하루에 한 번 바닥나는 눈금이다** — 임계(40)까지가 1,080초라 실제로는
+    // **하루 1.67번** 채우러 간다(밥은 3.3번이다). 유지비가 밥보다 성긴 대신 **재료가 비싸다**
+    // (마력석·뼈는 밀밭처럼 자라지 않는다) — 그것이 하수인을 늘리는 값이다.
+    //
+    // **한 번에 가득 찬다**(`Recharge.Fill`) — 음식처럼 영양이 갈리지 않으므로 임계~가득
+    // 사이를 재는 `Band` 셈이 필요 없다. 그래서 `Full`을 그대로 나눈다.
+    const float ChargesPerDay = 1f;
+
     // 폰이 오가는 구간 — 임계에서 자러 가서 가득 채우고 일어난다.
     const float Band = Full - Threshold;
 
@@ -54,7 +93,8 @@ public static class Needs
             // 갈까*를 정할 뿐이라 밥은 있을 때 자주 먹는 것이 맞다. 그래서 하루 2끼는
             // *한 번 채워 바닥날 때까지*의 눈금이고, 실제로는 임계에서 먹으므로 더 자주 간다.
             NeedKind.Hunger => Full / (day / MealsPerDay),
-            _               => Band / (day * WakeDays),
+            NeedKind.Rest   => Band / (day * WakeDays),
+            _               => Full / (day / ChargesPerDay),
         };
     }
 
@@ -125,9 +165,14 @@ public static class Needs
     //
     // **피로는 안 죽인다.** 잠을 못 자서 죽는 것은 이 게임의 시간 눈금(하루 30분)에서 성립하지
     // 않고, 무엇보다 **못 쓰게 만드는 것이 더 아프다** — 바닥에 닿으면 그 자리에 쓰러져 잔다.
+    // **사기는 허기와 같은 자리다** — 다 하면 무너진다(언데드는 기절하지 않으므로
+    // `BodyPartSystem`이 곧장 죽인다). **에너지는 피로와 같은 자리다** — 안 죽고 멈춘다.
+    // 멈춘 골렘을 되살리는 길은 재료가 생기는 것뿐이고, 그때는 제 발로 간다
+    // (`RechargeNode`가 멈춘 채로도 계속 돌기 때문이다 — 안 그러면 **데드락**이다).
     public static float StarvePerSecond(NeedKind kind) => kind switch
     {
         NeedKind.Hunger => 2f,
+        NeedKind.Morale => 2f,
         _               => 0f,
     };
 
@@ -136,8 +181,36 @@ public static class Needs
     public static string Name(NeedKind kind) => kind switch
     {
         NeedKind.Hunger => "허기",
-        _               => "피로",
+        NeedKind.Rest   => "피로",
+        NeedKind.Energy => "에너지",
+        _               => "사기",
     };
+
+    // ── 무슨 몸인가 ──────────────────────────────────────────────────────
+    //
+    // **답이 갈리는 길이 둘이다** — 종족이 애초에 그런 몸이거나(`UnitData.IsConstruct`),
+    // 한 번 죽어 일어났거나(`UnitBrain.IsUndead` — 해골 종족 ∥ `Rise`로 세운 시체).
+    // 언데드를 여기서 따로 세지 않는 이유는 그 물음의 답이 이미 한 벌이기 때문이다.
+    //
+    // **언데드가 먼저다** — 일으켜 세운 골렘 같은 것은 없지만, 순서를 안 정해 두면
+    // 둘 다 참인 에셋이 하나 생기는 날 답이 자리에 따라 갈린다.
+    public static BodyKind BodyOf(UnitBrain brain)
+    {
+        if (brain == null) return BodyKind.Living;
+        if (brain.IsUndead) return BodyKind.Undead;
+        return brain.Data != null && brain.Data.IsConstruct ? BodyKind.Construct : BodyKind.Living;
+    }
+
+    // 이 몸이 그 축을 요구하는가. **`Simulates`가 이걸 부른다**(반대가 아니다) — 밖에서
+    // `IsConstruct`를 다시 물으면 몸이 늘 때 그 자리가 뒤처진다.
+    public static bool Runs(BodyKind body, NeedKind kind) => body switch
+    {
+        BodyKind.Construct => kind == NeedKind.Energy,
+        BodyKind.Undead    => kind == NeedKind.Morale,
+        _                  => kind == NeedKind.Hunger || kind == NeedKind.Rest,
+    };
+
+    public static bool Runs(UnitBrain brain, NeedKind kind) => Runs(BodyOf(brain), kind);
 
     // ── 누가 이 축을 도는가 ──────────────────────────────────────────────
     //
@@ -161,23 +234,31 @@ public static class Needs
         return bb.Faction != null && bb.Faction.IsPlayer;
     }
 
-    // **축마다 다시 묻는다** — 갇힌 사람은 **피로가 안 돈다.**
+    // **축마다 다시 묻는다** — 무슨 몸인가(`Runs`)와, 갇혔는가 둘이다.
     //
-    // 먹이고 물 주는 것은 남이 해 줄 수 있지만(`FeedJob`) **잠은 대신 자 줄 수 없다.**
-    // 갇히면 BT가 안 돌아 `RestNode`도 안 도니, 피로만 도는 것은 *채울 길이 없는 바*를
-    // 하나 만드는 일이다 — 그건 관리할 것이 아니라 화면의 거짓말이다. 가둬 두는 값은
-    // 허기로 이미 든다.
+    // **갇힌 사람은 허기만 돈다.** 먹이는 것은 남이 해 줄 수 있지만(`FeedJob`) **잠은 대신
+    // 자 줄 수 없고**, 충전대와 제단은 **갇힌 채로는 갈 수가 없다** — 도는데 채울 길이 없는
+    // 축은 관리할 것이 아니라 화면의 거짓말이다. 갇히면 BT가 안 돌아 `RestNode`도
+    // `RechargeNode`도 안 돈다는 것이 그 이유의 전부다.
+    //
+    // **사기는 안 막으면 가두는 것이 곧 처형이 된다** — 바닥나면 무너지는데(`StarvePerSecond`)
+    // 제단에 갈 수가 없으니 **가둔 해골은 반드시 죽는다.**
+    //
+    // 딸려 오는 것 하나: **골렘과 해골은 굶겨서 회유할 수 없다**(도는 축이 없다). 우리에
+    // 넣어 두는 값이 사람에게만 든다는 뜻이고, 그건 맞다 — 돌덩이를 굶기는 그림이 애초에
+    // 이 물음의 출발이었다.
     //
     // (우리에 세워 두든 침대에 눕히든 같다. 자리로 갈라 봐야 "왜 이 포로만 피로가 도나"가
     // 되고, 침대 포로만 저절로 차는 것은 그 자리를 회복하는 자리로 만들자는 뜻인데 그건
     // 이미 부상 회복이 하고 있다.)
     public static bool Simulates(UnitBrain brain, NeedKind kind)
     {
-        if (!Simulates(brain)) return false;
-        if (kind != NeedKind.Rest) return true;
+        if (!Simulates(brain))  return false;
+        if (!Runs(brain, kind)) return false;
 
         var bb = brain.Blackboard;
-        return bb != null && !bb.IsPrisoner;
+        if (bb != null && bb.IsPrisoner) return kind == NeedKind.Hunger;
+        return true;
     }
 
     // **줄고 있는가** — 도는 축이라고 늘 주는 것은 아니다.
