@@ -732,6 +732,7 @@ GameObject:
   - component: {fileID: 8201246580325208406}
   - component: {fileID: 3868008047542374026}
   - component: {fileID: 9049621554922202114}
+  - component: {fileID: 303583652584124513}
   m_Layer: 0
   m_Name: Node_SapphireVein
   m_TagString: Untagged
@@ -812,3 +813,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: d91b49c04d9746a469853390606808b8, type: 2}
   refundRatio: 1
+--- !u!114 &303583652584124513
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8194378447521789000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1

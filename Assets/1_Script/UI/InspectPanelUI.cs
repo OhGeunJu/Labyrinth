@@ -37,6 +37,8 @@ public class InspectPanelUI : MonoBehaviour
     // 자원 노드. **이미 있던 `OnNodeSelected`를 같이 듣는다** — 노드 패널을 여는 이벤트가
     // 이미 있는데 여기에 또 만들면 둘이 어긋난다.
     ResourceNode _node;
+    Forageable   _forage;
+    Vector2Int?  _rock;
 
     // 바닥에 떨어진 물건. **자동 운반이 켜졌는지**를 볼 자리가 여기다 — 초록 구슬만으로는
     // "왜 안 실려 가지"에 답이 안 된다(구슬이 없는 것과 창고가 없는 것이 같아 보인다).
@@ -71,6 +73,8 @@ public class InspectPanelUI : MonoBehaviour
         SelectionManager.OnBuildingInspected  += OnBuildingInspected;
         SelectionManager.OnCoreInspected      += OnCoreInspected;
         SelectionManager.OnNodeSelected       += OnNodeSelected;
+        SelectionManager.OnForageInspected    += OnForageInspected;
+        SelectionManager.OnRockInspected      += OnRockInspected;
         SelectionManager.OnItemsInspected     += OnItemsInspected;
         BuildModeManager.OnActiveChanged      += OnBuildModeChanged;
 
@@ -131,7 +135,10 @@ public class InspectPanelUI : MonoBehaviour
                                                          : new Color(0.20f, 0.20f, 0.22f);
         if (_haulLabel != null)
         {
-            _haulLabel.text  = value ? "운반 V" : "운반";
+            // **토글이 아니라 상태로 적는다**(사용자 결정) — 체크박스는 *지금 어느 쪽인지*를
+            // 눈이 한 번 더 재야 하는데, 살펴보기 창은 **읽는 창**이다. 품목 창에서는
+            // 여럿을 빠르게 켜고 끄는 자리라 거기서만 토글이다.
+            _haulLabel.text  = value ? "자동운반 켜짐" : "자동운반 꺼짐";
             _haulLabel.color = value ? new Color(0.85f, 0.98f, 0.87f) : new Color(0.80f, 0.80f, 0.82f);
         }
 
@@ -139,16 +146,23 @@ public class InspectPanelUI : MonoBehaviour
         _haulToggle.onClick.AddListener(ToggleHaulOnSelection);
     }
 
+    // **이 한 개가 아니라 그 품목을 켠다**(2026-09-06, 사용자 결정).
+    //
+    // 하나를 눌러 켜면 **세계의 그 품목 전부**가 따라온다 — 바닥에 널린 갓버섯 스무 개를
+    // 하나씩 찍는 일이 없어지고, 무엇보다 **앞으로 떨어지는 것에도 걸린다.** 개별로 찍는
+    // 길은 그대로 남는다(`H` 지정 모드·우클릭) — 둘은 *"나른다"*만 말하므로 합집합이고
+    // **어느 쪽이 이기는지를 정할 일이 없다**(`DroppedItem.Hauls`).
+    //
     // **여럿을 고르면 한 번에 뒤집는다.** 하나라도 꺼져 있으면 전부 켜고, 전부 켜져 있을 때만
     // 끈다 — 섞여 있을 때 "누르면 무엇이 되나"가 애매하면 두 번 눌러 확인하게 된다.
     void ToggleHaulOnSelection()
     {
         bool anyOff = false;
         foreach (var d in _items)
-            if (d != null && !d.HaulAllowed) { anyOff = true; break; }
+            if (d != null && !HaulPolicy.IsAuto(d.Item)) { anyOff = true; break; }
 
         foreach (var d in _items)
-            if (d != null) d.SetHaulAllowed(anyOff);
+            if (d != null) HaulPolicy.SetAuto(d.Item, anyOff);
 
         Refresh();
     }
@@ -160,12 +174,16 @@ public class InspectPanelUI : MonoBehaviour
         SelectionManager.OnBuildingInspected  -= OnBuildingInspected;
         SelectionManager.OnCoreInspected      -= OnCoreInspected;
         SelectionManager.OnNodeSelected       -= OnNodeSelected;
+        SelectionManager.OnForageInspected    -= OnForageInspected;
+        SelectionManager.OnRockInspected      -= OnRockInspected;
         SelectionManager.OnItemsInspected     -= OnItemsInspected;
         BuildModeManager.OnActiveChanged      -= OnBuildModeChanged;
     }
 
     void OnItemsInspected(IReadOnlyList<DroppedItem> items)
     {
+        _forage = null;
+        _rock   = null;
         _items.Clear();
         if (items != null)
             foreach (var d in items) if (d != null) _items.Add(d);
@@ -175,18 +193,24 @@ public class InspectPanelUI : MonoBehaviour
     void OnPawnInspected(UnitBrain brain)
     {
         _inspected = brain;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
     void OnBlueprintInspected(BuildingBlueprint bp)
     {
         _blueprint = bp;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
     void OnBuildingInspected(PlacedBuilding pb)
     {
         _building = pb;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
@@ -196,9 +220,165 @@ public class InspectPanelUI : MonoBehaviour
         Refresh();
     }
 
+    // **채집물은 자원 노드가 아니다** — 한 번 따면 없어지므로 게이지도 배정도 없다.
+    // 그래서 창에 적을 것도 다르다: *무엇이 얼마나 나오나 · 찍혔나 · 그 품목이 자동운반인가*.
+    // **광맥 창과 같은 눈높이로 적는다**(2026-09-06) — 처음엔 세 줄짜리 맨 글이었는데,
+    // 같은 화면의 광맥은 이름을 색으로 세우고 갈래를 달고 무엇이 얼마나 나오는지를 적는다.
+    // **창마다 격이 다르면 어떤 물건은 덜 중요한 것처럼 보인다.**
+    void ShowForage(Forageable f)
+    {
+        Show();
+        if (infoText == null) return;
+
+        var item = f.Item;
+        var sb   = new StringBuilder();
+
+        sb.AppendLine($"<b><color=#E8C566>{(item != null ? item.ItemName : "채집물")}</color></b>  " +
+                      "<color=#888>[채집물]</color>");
+        sb.AppendLine();
+
+        if (item != null)
+        {
+            sb.AppendLine($"따면  <b>{item.ItemName}</b>  " +
+                          $"<color=#888>한 번에 {f.MinAmount}~{f.MaxAmount}개</color>");
+
+            // **한 번이면 끝난다는 것이 이 물건의 성격이다** — 광맥과 갈리는 자리라 적는다.
+            sb.AppendLine("<color=#888>한 번 따면 없어집니다  ·  기술이 필요 없습니다</color>");
+            sb.AppendLine();
+
+            if (!string.IsNullOrEmpty(item.Description))
+            {
+                sb.AppendLine($"<color=#9a9a9a>{item.Description}</color>");
+                sb.AppendLine();
+            }
+        }
+
+        // **찍혔나와 자동운반은 다른 축이다.** 앞은 *이걸 딸까*(이 한 개), 뒤는 *딴 것을
+        // 나를까*(그 품목 전부). 둘을 한 줄로 적으면 **왜 안 실려 가는지를 못 가린다.**
+        sb.AppendLine(f.Designated
+            ? "<color=#7fe08a>채집 지정됨</color>  <color=#888>— 폰이 와서 땁니다</color>"
+            : "<color=#F90>지정 안 됨</color>  <color=#888>— 아래 [채집한다] 또는 H로 찍습니다</color>");
+
+        if (item != null)
+            sb.AppendLine(HaulPolicy.IsAuto(item)
+                ? "<color=#7fe08a>자동운반 켜짐</color>  <color=#888>— 딴 것은 저절로 실려 갑니다</color>"
+                : "<color=#c9c9c9>자동운반 꺼짐</color>  <color=#888>— 딴 것은 바닥에 남습니다</color>");
+
+        infoText.text = sb.ToString();
+
+        // **버튼은 이 창에서 할 수 있는 일만 둔다** — 채집물에는 *이동한다·분해한다*가 없다
+        // (건물이 아니다). 대신 **찍는 일**과 **그 품목의 자동운반**이 여기 있어야 한다:
+        // 지정 모드를 켜러 가지 않고도 눈앞의 것 하나를 시킬 수 있어야 한다.
+        var acts = new List<(string, Action)>
+        {
+            (f.Designated ? "채집 취소" : "채집한다",
+             () => { f.SetDesignated(!f.Designated); Refresh(); }),
+        };
+        if (item != null) acts.Add(HaulSwitch(item));
+
+        SetActions(acts);
+    }
+
+    // **자동운반 스위치는 동작 줄의 버튼 하나다**(2026-09-06에 옮겼다).
+    //
+    // 그전에는 창 **오른쪽 위**의 작은 버튼이었는데 사용자가 *"자동운반 토글은 어디있는지
+    // 모르겠고"*라고 했다 — **찾을 수 없는 스위치는 없는 스위치다.** 그리고 그 자리는
+    // 바닥 물건에만 떴으므로 채집물·광맥에는 애초에 없었다.
+    //
+    // **켜는 것은 이 한 개가 아니라 그 품목이다**(`HaulPolicy`) — 그래서 바닥 물건이든
+    // 채집물이든 광맥이든 **같은 버튼이 같은 일을 한다.**
+    (string, Action) HaulSwitch(ItemData item)
+        => (HaulPolicy.Label(item), () => { HaulPolicy.Toggle(item); Refresh(); });
+
+    // **벽 한 칸.** 광맥 창과 같은 눈높이로 적되 **묻는 것이 다르다**: 노드는 *누가 붙었나*가
+    // 중심이고 벽은 *파면 무엇이 나오나 · 찍었나*가 중심이다(벽에는 배정이 없다 — 찍으면
+    // 큐에 올라가고 아무나 온다).
+    void ShowRock(Vector2Int tile)
+    {
+        Show();
+        if (infoText == null) return;
+
+        var vein = RockMap.VeinAt(tile);
+        var data = vein != null ? vein : RockMap.PlainRock;
+        var item = data != null ? data.DropItem : null;
+        bool marked = RockMap.IsMarked(tile);
+
+        var sb = new StringBuilder();
+        sb.AppendLine(vein != null
+            ? $"<b><color=#E8C566>{(item != null ? item.ItemName : "광맥")} 광맥</color></b>  <color=#888>[벽]</color>"
+            : "<b><color=#E8C566>바위</color></b>  <color=#888>[벽]</color>");
+        sb.AppendLine($"<color=#888>({tile.x}, {tile.y})</color>");
+        sb.AppendLine();
+
+        if (item != null)
+            sb.AppendLine($"파면  <b>{item.ItemName}</b>  " +
+                          $"<color=#888>한 번에 {data.DropMin}~{data.DropMax}개</color>");
+        else
+            sb.AppendLine("<color=#F90>파도 나오는 것이 없습니다 — " +
+                          "`World → 0. Create Rock Materials`가 맨바위 산출을 물립니다.</color>");
+        sb.AppendLine();
+
+        sb.AppendLine(marked
+            ? "<color=#7fe08a>채굴 지정됨</color>  <color=#888>— 채굴을 켜 둔 폰이 옵니다(P)</color>"
+            : "<color=#c9c9c9>지정 안 됨</color>  <color=#888>— 아래 [채굴한다] 또는 K로 찍습니다</color>");
+
+        if (item != null)
+            sb.AppendLine(HaulPolicy.IsAuto(item)
+                ? "<color=#7fe08a>자동운반 켜짐</color>  <color=#888>— 캔 것은 저절로 실려 갑니다</color>"
+                : "<color=#c9c9c9>자동운반 꺼짐</color>  <color=#888>— 캔 것은 바닥에 남습니다</color>");
+
+        infoText.text = sb.ToString();
+
+        var acts = new List<(string, Action)>
+        {
+            (marked ? "채굴 취소" : "채굴한다",
+             () => { RockMap.Mark(tile, !marked); Refresh(); }),
+        };
+        if (item != null) acts.Add(HaulSwitch(item));
+
+        SetActions(acts);
+    }
+
+    // **힘을 받고 있나.** 없는 건물에는 한 줄도 안 적는다 — 이 축과 무관한 것에 전력 줄이
+    // 뜨면 *"이 침대도 전기를 먹나"*가 된다.
+    //
+    // **모자란 것과 끈 것을 가른다** — 앞은 핵을 키워야 하고 뒤는 누르면 그만이다.
+    static void AppendPower(StringBuilder sb, Component c)
+    {
+        if (!PowerUser.Has(c, out var u)) return;
+
+        if (!u.SwitchedOn)
+            sb.AppendLine($"<color=#888>전력 꺼 둠 ({u.Cost})</color>");
+        else if (u.Powered)
+            sb.AppendLine($"<color=#7fe08a>전력 {u.Cost}</color> <color=#888>— 핵이 대고 있습니다.</color>");
+        else
+            sb.AppendLine($"<color=#F44336>전력 부족 ({u.Cost} 필요)</color> " +
+                          "<color=#888>— 부핵을 세우거나 다른 건물을 끄세요.</color>");
+    }
+
+    static (string, Action) PowerSwitch(PowerUser u)
+        => (u.SwitchedOn ? "전력 끈다" : "전력 켠다", () => u.ToggleSwitch());
+
+    void OnRockInspected(Vector2Int? tile)
+    {
+        _rock   = tile;
+        _forage = null;
+        _items.Clear();
+        Refresh();
+    }
+
+    void OnForageInspected(Forageable f)
+    {
+        _forage = f;
+        _items.Clear();     // 바닥 물건이 창을 먼저 가져간다 — 눌러 본 것이 이겨야 한다
+        Refresh();
+    }
+
     void OnNodeSelected(ResourceNode node)
     {
         _node = node;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
@@ -210,7 +390,7 @@ public class InspectPanelUI : MonoBehaviour
         if (active)
         {
             _inspected = null; _blueprint = null; _building = null;
-            _core = null; _node = null; _items.Clear();
+            _core = null; _node = null; _forage = null; _rock = null; _items.Clear();
         }
         Refresh();
     }
@@ -262,6 +442,8 @@ public class InspectPanelUI : MonoBehaviour
         for (int i = _items.Count - 1; i >= 0; i--)
             if (_items[i] == null) _items.RemoveAt(i);
         if (_items.Count > 0) { ShowItems();                 return; }
+        if (_rock.HasValue && RockMap.IsRock(_rock.Value)) { ShowRock(_rock.Value); return; }
+        if (_forage    != null) { ShowForage(_forage);       return; }
         if (_node      != null) { ShowNode(_node);           return; }
         if (_building  != null) { ShowBuilding(_building);   return; }
         if (_core      != null) { ShowCore(_core);           return; }
@@ -619,16 +801,21 @@ public class InspectPanelUI : MonoBehaviour
     void ShowItems()
     {
         Show();
-        SetActions(null);   // 스위치는 **오른쪽 위 버튼**이다 — 아래 동작 줄은 안 쓴다
+        // **스위치를 동작 줄로 내렸다**(2026-09-06) — 오른쪽 위의 작은 버튼은 사용자가
+        // 못 찾았다(*"자동운반 토글은 어디있는지 모르겠고"*). **찾을 수 없는 스위치는 없는
+        // 스위치다.** 이제 채집물·광맥과 **같은 자리에 같은 버튼**이 선다.
+        //
+        // 여럿을 골랐으면 **품목마다 하나씩** — 같은 품목이 여럿이면 한 번만 세운다.
+        var seen = new List<ItemData>();
+        var acts = new List<(string, Action)>();
+        foreach (var it in _items)
+        {
+            if (it?.Item == null || seen.Contains(it.Item)) continue;
+            seen.Add(it.Item);
+            acts.Add(HaulSwitch(it.Item));
+        }
+        SetActions(acts.Count > 0 ? acts : null);
         if (infoText == null) return;
-
-        // 켜진 것과 꺼진 것이 섞일 수 있다 — 체크는 **전부 켜졌을 때만** 찬 것으로 본다
-        // (누르면 `OnLinkClicked`가 "하나라도 꺼져 있으면 전부 켠다"로 받는다).
-        int on = 0;
-        foreach (var d in _items) if (d.HaulAllowed) on++;
-        bool allOn = on == _items.Count;
-
-        SetHaulToggle(allOn);
 
         var sb = new StringBuilder();
 
@@ -663,15 +850,23 @@ public class InspectPanelUI : MonoBehaviour
 
         // **왜 안 실려 가는지까지 적는다.** 찍어 놨는데 받아 줄 창고가 없으면 아무 일도
         // 안 일어나는데, 그건 찍기를 잊은 것과 화면에서 똑같이 보인다.
+        //
+        // **`Hauls`로 센다 — `HaulAllowed`가 아니다**(2026-09-06). 품목 규칙으로 켜진 것은
+        // 개별로 안 찍혀 있으므로, 옛 기준으로 세면 **자동운반이 켜진 물건을 "지정 안 됨"**
+        // 이라고 적는다(스위치를 켜 놓고 창은 아니라고 말하는 꼴이다).
+        int on = 0;
+        foreach (var d in _items) if (d.Hauls) on++;
+        bool allOn = on == _items.Count;
+
         if (on == 0)
         {
-            sb.AppendLine("<color=#888>운반 지정 안 됨 — 아무도 건드리지 않습니다.</color>");
+            sb.AppendLine("<color=#888>자동운반 꺼짐 · 지정 안 됨 — 아무도 건드리지 않습니다.</color>");
         }
         else
         {
             int stranded = 0;
             foreach (var d in _items)
-                if (d.HaulAllowed &&
+                if (d.Hauls &&
                     Storage.FindNearest(d.transform.position, d.Item, d.Amount, d.Quality) == null)
                     stranded++;
 
@@ -702,7 +897,10 @@ public class InspectPanelUI : MonoBehaviour
         var d  = node.Data;
         var pb = node.GetComponentInParent<PlacedBuilding>();
 
+        // **저작한 이름이 먼저다** — 나오는 것이 정체가 아닌 물건이 있다(거대버섯은 목재를
+        // 내놓지만 *"목재 나무"*가 아니다). 비어 있으면 예전처럼 파생시킨다.
         string name = pb != null && pb.Data != null ? pb.Data.BuildingName
+                    : d != null && !string.IsNullOrEmpty(d.DisplayName) ? d.DisplayName
                     : d != null && d.DropItem != null ? $"{d.DropItem.ItemName} {(d.IsTree ? "나무" : "광맥")}"
                     : node.name;
         bool tree = d != null && d.IsTree;
@@ -718,13 +916,26 @@ public class InspectPanelUI : MonoBehaviour
             sb.AppendLine($"<color=#888>{(tree ? "벌목" : "채굴")} 권장 {d.RequiredSkill:F0}  ·  " +
                           $"동시 {node.AssignedCount}/{(node.MaxWorkers > 0 ? node.MaxWorkers.ToString() : "제한 없음")}명</color>");
             sb.AppendLine();
+
+            if (!string.IsNullOrEmpty(d.Description))
+            {
+                sb.AppendLine($"<color=#9a9a9a>{d.Description}</color>");
+                sb.AppendLine();
+            }
         }
 
         // **"왜 안 캐지"의 답이 화면에 있어야 한다.** 이제 답이 자리에 따라 갈린다:
         // 핵 영역 안이면 할 일 없는 폰이 저 혼자 붙지만(`ResourceNode.ClaimFreeFor`),
         // **밖이면 여전히 손으로만 붙인다** — 안 그러면 폰이 맵 전체의 나무를 베러 떠난다.
         // 안 갈라 적으면 영역 밖 광맥 앞에서 오지 않는 폰을 기다리게 된다.
-        if (node.AssignedCount == 0)
+        if (node.CanDesignate)
+        {
+            // **야생에는 배정이 없다** — *"배정된 폰이 없습니다"*는 여기서 거짓말이다.
+            sb.AppendLine(node.Designated
+                ? $"<color=#7fe08a>지정됨</color>  <color=#888>— {(tree ? "벌목" : "채굴")}을 켜 둔 폰이 옵니다(P)</color>"
+                : $"<color=#F90>지정 안 됨</color>  <color=#888>— 아래 버튼 또는 H로 찍습니다</color>");
+        }
+        else if (node.AssignedCount == 0)
         {
             var core = DungeonCore.Instance;
             bool inTerritory = core == null || core.IsWithinAnyRangeWorld(node.transform.position);
@@ -749,6 +960,14 @@ public class InspectPanelUI : MonoBehaviour
                 sb.AppendLine($"<color=#888>{auto}명은 저 혼자 붙었습니다 — 작업을 끄면 놓습니다.</color>");
         }
 
+        // **유한한 것은 얼마나 남았는지 보여야 한다** — 안 보이면 무한한 것과 화면에서
+        // 구별되지 않고, 그러면 *"왜 갑자기 사라졌지"*가 된다.
+        if (node.YieldsLeft >= 0)
+            sb.AppendLine($"<color=#F90>{node.YieldsLeft}번 더</color> " +
+                          $"<color=#888>캐면 없어집니다 — 계속 쓰려면 기지에 심습니다.</color>");
+        else if (node.IsBuilt)
+            sb.AppendLine("<color=#888>기지에 심은 것이라 마르지 않습니다.</color>");
+
         int stock = node.Inventory != null && d != null && d.DropItem != null
                   ? node.Inventory.GetTotalQuantity(d.DropItem) : 0;
         if (stock > 0)
@@ -756,15 +975,29 @@ public class InspectPanelUI : MonoBehaviour
 
         infoText.text = Josa.Fix(sb.ToString());
 
-        // 씬에 흩어진 나무·바위는 `PlacedBuilding`이 없다 — 건드릴 수 없는 지형이므로 버튼도 없다.
+        // 씬에 흩어진 나무·바위는 `PlacedBuilding`이 없다 — 옮기거나 분해할 수 없다.
+        // **그래도 버튼이 하나는 있다**: 여기서 나오는 것을 자동으로 나를지(2026-09-06,
+        // 사용자: *"이제 보니깐 벽에도 그런게 없네"*). 캔 것이 바닥에 쌓이는데 그 스위치가
+        // 이 창에 없으면, **캔 자리에서는 정할 수가 없다.**
+        AppendPower(sb, node);
+
+        var acts = new List<(string, Action)>();
         if (pb != null)
-            SetActions(new List<(string, Action)>
-            {
-                ("이동한다", (Action)(() => BuildingRelocator.Begin(pb))),
-                ("분해한다", pb.Demolish),
-            });
-        else
-            SetActions(null);
+        {
+            acts.Add(("이동한다", (Action)(() => BuildingRelocator.Begin(pb))));
+            acts.Add(("분해한다", pb.Demolish));
+        }
+
+        // **야생은 찍어서 가져온다 — 붙이는 것이 아니다**(2026-09-06). 배정 버튼이 아니라
+        // 지정 버튼이 여기 있어야 그 둘이 화면에서 갈린다.
+        if (node.CanDesignate)
+            acts.Add((node.Designated ? "지정 취소" : (tree ? "벤다" : "캔다"),
+                      () => { node.SetDesignated(!node.Designated); Refresh(); }));
+
+        if (PowerUser.Has(node, out var pu)) acts.Add(PowerSwitch(pu));
+        if (d != null && d.DropItem != null) acts.Add(HaulSwitch(d.DropItem));
+
+        SetActions(acts.Count > 0 ? acts : null);
     }
 
     // 침대가 어떤 용도이고 누가 쓰고 있나. 색 표식과 **같은 말을 글자로도** 적는다 —
@@ -808,6 +1041,8 @@ public class InspectPanelUI : MonoBehaviour
         if (core.Data != null)
             sb.AppendLine($"<color=#888>영역 반경 {core.Data.BaseRadius:F0}m</color>");
 
+        AppendCorePower(sb, core);
+
         infoText.text = Josa.Fix(sb.ToString());
 
         // 소환·목록은 핵 제 패널(`DungeonCoreUI`)이 다룬다 — 여기는 **핵 자체**를 다루는 자리다.
@@ -815,6 +1050,74 @@ public class InspectPanelUI : MonoBehaviour
         {
             ("이동한다", (Action)(() => CoreRelocator.Begin(core))),
         });
+    }
+
+    // **핵이 내는 힘과 그것을 나눠 쓰는 것들.**
+    //
+    // 총량만 적으면 *"모자란다"*까지는 알아도 **무엇을 끄면 되는지**를 모른다. 그래서 먹는
+    // 것을 줄줄이 적고 **못 받고 있는 것에 표를 단다** — 배분이 *먼저 지은 순서*라는 규칙이
+    // 목록의 차례로 그대로 보인다(그 규칙을 글로 설명할 필요가 없어진다).
+    //
+    // **끈 것은 따로 적는다** — 끄는 것이 힘을 돌려주는 유일한 길이라, 껐다는 사실이 안
+    // 보이면 *"왜 남는 힘이 안 쓰이지"*가 된다.
+    static void AppendCorePower(StringBuilder sb, DungeonCore core)
+    {
+        int cap  = PowerGrid.CapacityOf(core);
+        int used = PowerGrid.UsedOf(core);
+        int want = PowerGrid.DemandOf(core);
+
+        sb.AppendLine();
+        sb.AppendLine(want > cap
+            ? $"전력  <color=#F44336>{used}/{cap}</color>  <color=#888>— {want - cap}만큼 모자랍니다.</color>"
+            : $"전력  <color=#7fe08a>{used}/{cap}</color>  <color=#888>— {cap - used} 남았습니다.</color>");
+
+        // **부핵이 얼마를 보태는지 적는다** — 늘리는 길이 그것뿐이라, 그 값이 안 보이면
+        // *"부핵을 하나 더 세울까"*를 재 볼 근거가 없다.
+        int subs = 0, subPower = 0;
+        foreach (var sc in SubCore.All)
+            if (sc != null && Territory.Same(sc.transform.position, core))
+            { subs++; subPower += sc.EnergyOutput; }
+
+        if (subs > 0)
+            sb.AppendLine($"<color=#888>핵 {core.EnergyOutput} + 부핵 {subs}개 {subPower}</color>");
+
+        int listed = 0;
+        foreach (var u in PowerUsersIn(core))
+        {
+            if (listed++ >= 8) { sb.AppendLine("<color=#888>  …</color>"); break; }
+
+            string name = NameOfUser(u);
+            sb.AppendLine(!u.SwitchedOn
+                ? $"<color=#666>  · {name} {u.Cost} — 꺼 둠</color>"
+                : u.Powered
+                    ? $"<color=#9a9a9a>  · {name} {u.Cost}</color>"
+                    : $"<color=#F44336>  · {name} {u.Cost} — 멈춤</color>");
+        }
+
+        if (listed == 0) sb.AppendLine("<color=#888>  힘을 쓰는 건물이 없습니다.</color>");
+    }
+
+    static System.Collections.Generic.List<PowerUser> PowerUsersIn(DungeonCore core)
+    {
+        var list = new System.Collections.Generic.List<PowerUser>();
+        foreach (var u in UnityEngine.Object.FindObjectsByType<PowerUser>(FindObjectsSortMode.None))
+            if (u != null && Territory.CoreAt(u.transform.position) == core) list.Add(u);
+        return list;
+    }
+
+    // 건물 이름이 있으면 그것, 없으면 노드가 내놓는 것. **오브젝트 이름은 마지막이다** —
+    // `Node_IronVein(Clone)`은 사람이 읽으라고 만든 글자가 아니다.
+    static string NameOfUser(PowerUser u)
+    {
+        var pb = u.GetComponentInParent<PlacedBuilding>();
+        if (pb != null && pb.Data != null && !string.IsNullOrEmpty(pb.Data.BuildingName))
+            return pb.Data.BuildingName;
+
+        var node = u.GetComponent<ResourceNode>();
+        if (node != null && node.Data != null && node.Data.DropItem != null)
+            return node.Data.DropItem.ItemName;
+
+        return u.name;
     }
 
     // 폰을 볼 때의 동작 줄 — **붙잡아 갈 사람에게만 뜬다.**

@@ -192,6 +192,7 @@ GameObject:
   - component: {fileID: 4200433689945832977}
   - component: {fileID: 7196212815146660384}
   - component: {fileID: 6478932104337439970}
+  - component: {fileID: 6536345588821696878}
   m_Layer: 0
   m_Name: Node_RubyVein
   m_TagString: Untagged
@@ -268,6 +269,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: 402fd0965b0348b4c8b7c21f0c1d76b9, type: 2}
   refundRatio: 1
+--- !u!114 &6536345588821696878
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3645038411875693412}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1
 --- !u!1 &4741686943497618141
 GameObject:
   m_ObjectHideFlags: 0

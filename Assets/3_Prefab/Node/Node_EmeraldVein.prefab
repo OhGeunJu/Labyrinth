@@ -102,6 +102,7 @@ GameObject:
   - component: {fileID: 8502461098373635445}
   - component: {fileID: 6007869283591962948}
   - component: {fileID: 4333401170281186439}
+  - component: {fileID: 4988314443188816802}
   m_Layer: 0
   m_Name: Node_EmeraldVein
   m_TagString: Untagged
@@ -182,6 +183,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: 1f1c9c278e1481c4bb5494979df227a6, type: 2}
   refundRatio: 1
+--- !u!114 &4988314443188816802
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 254948003218784529}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1
 --- !u!1 &3294687563300377190
 GameObject:
   m_ObjectHideFlags: 0

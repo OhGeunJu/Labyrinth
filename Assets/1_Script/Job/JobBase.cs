@@ -42,6 +42,12 @@ public abstract class JobBase
     public const float StandReach = 0.9f;
     public const float HandReach  = 2.0f;
 
+    // **자원 노드는 둘러서서 캔다** — 작업대와 달리 *저작된 설 자리*가 없고 `MaxWorkers`만큼
+    // 여럿이 붙으므로, 좁게 잡으면 한 칸을 두고 서로 비켜서다 아무도 못 캔다.
+    // **`BTLeafNodes`의 같은 이름과 값이 같아야 한다** — 갈리면 *배정해서 캘 때*와
+    // *찍어서 캘 때*가 다른 거리에서 선다.
+    public const float NodeReach  = 2.0f;
+
     public virtual float Reach => StandReach;
 
     // ── 작업 현장(건물) ────────────────────────────────────────────────

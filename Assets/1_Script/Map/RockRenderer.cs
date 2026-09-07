@@ -49,6 +49,110 @@ public class RockRenderer : MonoBehaviour
     [Tooltip("한 프레임에 다시 굽는 청크 수. 드래그로 넓게 찍으면 여러 장이 한꺼번에 더러워진다.")]
     [SerializeField, Range(1, 8)] int rebuildsPerFrame = 2;
 
+    // ── 벽 자르기 (`2_Material/RockShader/RockCut.hlsl`) ─────────────────────
+    //
+    // **벽이 24m가 된 값이 여기서 치러진다.** 깊이는 벌었는데 비스듬한 카메라에서 앞쪽
+    // 벽이 뒤를 통째로 가리므로, **수평면 하나로 위를 잘라 낸다.**
+    //
+    // **반경이 아니라 평면이다**(2026-09-07, 두 번 고쳐서 여기 왔다). 카메라에서 가까울수록
+    // 낮추는 쪽을 먼저 만들었는데 **어지러웠다** — 트인 자리가 카메라를 따라다니는 웅덩이라
+    // 조금만 움직여도 눈앞의 벽이 오르내린다. 띠를 여섯 배로 넓혀도 그대로였다:
+    // **움직이는 것 자체가 문제**였지 넓이가 아니었다.
+    //
+    // 평면이면 **패닝으로는 아무것도 안 변한다.** 변하는 것은 줌뿐이고 그건 일부러 하는
+    // 조작이다 — 그래서 **깊이가 줌에 붙는다**: 당기면 내려다보이고 물리면 협곡이 온다.
+    //
+    // **값을 여기서 미는 이유**: 셰이더의 `static const`로 두면 만질 때마다 다시 굽고
+    // 플레이 중에 못 본다. 전역 유니폼이면 **인스펙터에서 보면서 맞춘다**.
+    [Header("벽 자르기")]
+    [Tooltip("끄면 벽이 어디서나 제 높이 그대로다(가리는 대신 깊어 보인다).")]
+    [SerializeField] bool cutNearWalls = true;
+
+    // **주 손잡이 — 눈높이의 비율이다**(2026-09-07에 고정 오프셋에서 바꿨다).
+    //
+    // *"눈에서 몇 미터 아래"*로 두었더니 **줌에 따라 뜻이 달라졌다**: 가까이서는 바닥에
+    // 눌려 아무리 키워도 더 안 내려가고, 물러나면 40을 빼도 벽이 여전히 눈앞을 막았다
+    // (사용자: *"전혀 안 낮아지는데"*). 화면에서 벽이 얼마나 가리는지는 **절대 높이가
+    // 아니라 내 눈높이와의 비**가 정한다 — 50m 위에서 14m 벽은 여전히 벽이다.
+    //
+    // 비율이면 **어느 줌에서나 같은 만큼 트인다.** 내리면 더 트이고, 올리면 벽이 남는다.
+    [Range(0.02f, 0.6f)]
+    [Tooltip("눈높이의 이만큼 높이에서 자른다. 내릴수록 벽이 낮아지고 멀리까지 보인다.")]
+    [SerializeField] float cutFrac = 0.4f;
+
+    // **비율로 바꾼 뒤로는 거의 안 걸린다** — 아주 가까이 당겼을 때만이다. 경계선을
+    // 내리는 것은 위의 `cutFrac`이고, 이 값은 *벽이 아예 사라지지는 않게* 하는 바닥이다.
+    [Tooltip("아무리 당겨도 벽은 이만큼 남는다(m). 경계선 높이와는 다른 축이다.")]
+    [SerializeField] float cutLow = 2.5f;
+
+    static readonly int IdOn       = Shader.PropertyToID("_RockCutOn");
+    static readonly int IdLow      = Shader.PropertyToID("_RockCutLow");
+    static readonly int IdFrac     = Shader.PropertyToID("_RockCutFrac");
+    static readonly int IdFloorY   = Shader.PropertyToID("_RockCutFloorY");
+
+    // **매 프레임 민다** — 카메라가 움직이면 바닥 높이도 따라 움직인다. 지하 바닥은 거의
+    // 평지라 **한 값이면 족하다**(정점마다 제 기둥의 바닥을 들려면 스트림이 하나 더 는다).
+    //
+    // **끄면 `_RockCutOn`에 0을 민다** — 셰이더가 그 하나로 기능 전체를 건너뛴다.
+    // 0이 곧 꺼짐이라 **아무도 안 밀었을 때도 안전하다**(에디터 씬 뷰가 그렇다).
+    void PushCutUniforms()
+    {
+        if (!cutNearWalls) { Shader.SetGlobalFloat(IdOn, 0f); return; }
+
+        var cam = Camera.main;
+        var map = MapManager.Instance;
+
+        // **바닥을 모르면 자르지 않는다**(2026-09-07). 여기서 0으로 떨어뜨리면 자르는 면이
+        // **실제 바닥보다 30m 아래**에 놓여 **바위가 통째로 사라진다** — 화면에는
+        // *"밑으로 내려가지도 않았는데 다 투명했어"*로만 보이고, 원인이 바닥값이라는
+        // 표시가 아무 데도 없다. **모르면 끄는 편이 짐작해서 자르는 것보다 낫다.**
+        if (cam == null || map == null) { Shader.SetGlobalFloat(IdOn, 0f); return; }
+
+        var camPos = cam.transform.position;
+        float floorY = map.SampleGroundHeight(camPos.x, camPos.z);
+
+        Shader.SetGlobalFloat(IdOn,       1f);
+        Shader.SetGlobalFloat(IdLow,      cutLow);
+        Shader.SetGlobalFloat(IdFrac,     cutFrac);
+        Shader.SetGlobalFloat(IdFloorY,   floorY);
+
+        // **숫자를 안 보면 손잡이를 짐작으로 돌리게 된다**(2026-09-07에 네 번 헛돌렸다).
+        // 화면만 보고는 *벽이 안 낮아지는 것*인지 *카메라가 낮은 것*인지 가릴 수가 없다.
+        if (!cutDebug) return;
+
+        _debugAt += Time.unscaledDeltaTime;
+        if (_debugAt < 1f) return;
+        _debugAt = 0f;
+
+        float eye  = camPos.y - floorY;
+        float wall = Mathf.Max(eye * cutFrac, cutLow);
+
+        // **둘은 다른 물음이라 따로 찍는다**(2026-09-07에 한 낱말로 뭉뚱그렸다가 틀렸다).
+        // *"바위 속인가"*라고 라벨을 달아 놓고 실제로는 **자르고 남은 벽**과 견주고 있었고,
+        // 그래서 24m 기둥 한복판에 있는 카메라를 **`바깥`**이라고 답했다 — 그 거짓말 하나를
+        // 근거로 등진 면 버리기를 지웠다(사용자: *"아니 지금 바위 속에 있는거야"*).
+        //
+        //   · **바위 속**   = 지도가 아는 진짜 바위. 통행·채굴이 보는 것과 같은 답이다.
+        //   · **그린 벽 속** = 지금 그려지는 것 속. **등진 면이 보일 수 있는 조건**이라
+        //                     셰이더 이야기를 할 때 봐야 하는 쪽은 이것이다.
+        //
+        // **이름이 묻는 것과 재는 것이 같아야 한다.**
+        bool column   = RockMap.IsRock(camPos);
+        bool inRock   = column && eye < RockMap.Height;
+        bool inDrawn  = column && eye < wall;
+
+        Debug.Log($"[바위 컷] 눈높이 {eye:F1}m · 벽 {wall:F1}m · " +
+                  $"{(inRock ? "바위 속" : "바위 밖")} · " +
+                  $"{(inDrawn ? "그린 벽 속" : "그린 벽 위")} · " +
+                  $"카메라 Y {camPos.y:F1} · 바닥 Y {floorY:F1} · " +
+                  $"시점각 {cam.transform.eulerAngles.x:F0}도");
+    }
+
+    [Tooltip("1초마다 눈높이·벽 높이·카메라가 바위 속인지를 로그로 찍는다. 진단·값 맞춤용.")]
+    [SerializeField] bool cutDebug;
+
+    float _debugAt;
+
     [Layer]
     [Tooltip("바위가 놓일 레이어. **`Ground`여야 한다** — 커서 레이캐스트가 바위를 짚어야 " +
              "캘 자리를 고를 수 있다.")]
@@ -247,6 +351,7 @@ public class RockRenderer : MonoBehaviour
 
     void LateUpdate()
     {
+        PushCutUniforms();
 
         int budget = rebuildsPerFrame;
         while (budget-- > 0 && _dirty.Count > 0)
@@ -493,9 +598,72 @@ public class RockRenderer : MonoBehaviour
         var mr = go.AddComponent<MeshRenderer>();
         mr.sharedMaterials = new[] { TopMat(), SideMat(), MarkMat() };
 
+        // **그림자를 안 던진다**(2026-09-07) — 천장 메시가 그랬던 것과 같은 이유이고,
+        // 이제는 하나가 더 있다: **깎는 것은 포워드 패스뿐**이라 그림자 패스는 **깎지 않은
+        // 24m 벽**을 굽는다. 남겨 두면 **보이지 않는 벽이 그림자를 던진다.**
+        //
+        // 지하에는 해가 없어 방향광 그림자가 정보를 나르지 않고, 24m 벽 수천 개가
+        // 그림자맵에 들어가는 값도 만만치 않다. **잃는 것이 없다.**
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        TintForBiome(mr, chunk);
+
         c = new Chunk { Go = go, Mesh = mesh };
         _chunks[chunk] = c;
         return c;
+    }
+
+    // **벽도 바이옴을 따라간다**(2026-09-06). 굴에서 화면의 절반 이상은 벽이라, 바닥만
+    // 바꾸면 *"바닥 색이 좀 다른 같은 굴"*로 보인다.
+    //
+    // **재질을 바이옴마다 만들지 않는다** — `MaterialPropertyBlock`으로 **색만** 얹는다.
+    // 재질을 늘리면 여덟 벌을 손으로 맞추게 되고, 그중 하나는 반드시 뒤처진다.
+    //
+    // **옆면(서브메시 1)에만 건다**(2026-09-06에 바로잡았다).
+    //
+    // 윗면은 *안 판 자리 = 어둠*이라 거의 검어야 **세계의 경계가 어디인지**가 읽힌다
+    // (기본색이 0.05~0.07인 이유). 거기까지 물들이면 **안 판 바위가 밝아져** 판 곳과
+    // 안 판 곳이 한 덩어리로 보인다.
+    //
+    // 찍힌 칸(서브메시 2)도 안 건다 — 그건 *"여기를 판다"*는 표시라 어느 바이옴에서든 같은
+    // 주황이어야 한다. `MaterialPropertyBlock`은 **머티리얼 인덱스별로** 걸 수 있다.
+    //
+    // **색조는 텍스처에 곱해진다** — 그래서 값이 원래 밝기(0.72~0.80) 근처여야 하고,
+    // 어둡게 넣으면 색이 아니라 **밝기만 내려간다**(그렇게 한 번 만들었다).
+    //
+    // 청크가 16m라 한 청크는 대개 한 지역(64m) 안이다 — **한복판에서 한 번만 묻는다.**
+    // **`new`를 필드 초기화자에 두면 안 된다**(2026-09-06에 겪었다).
+    //
+    // 정적 필드 초기화자는 **정적 생성자**에서 도는데, 그것이 처음 불리는 시점은 이 클래스가
+    // 처음 쓰이는 때 — 즉 **`MonoBehaviour`가 생성되는 도중**일 수 있다. 유니티는 그 자리에서
+    // 엔진 객체를 만드는 것을 막는다:
+    //
+    //   `CreateImpl is not allowed to be called from a MonoBehaviour constructor
+    //    (or instance field initializer), call it in Awake or Start instead.`
+    //
+    // 그리고 정적 생성자가 던지면 `TypeInitializationException`이라 **이 클래스가 통째로
+    // 죽는다** — 화면에는 *"벽이 안 뜬다"*로만 보였다(원인이 색칠 한 줄이라는 표시가 없다).
+    //
+    // **처음 쓸 때 만든다.** `MaterialPropertyBlock`은 순수 관리 객체처럼 보이지만
+    // 네이티브 자원을 잡는다 — `Mesh`·`Material`과 같은 취급을 해야 한다.
+    static MaterialPropertyBlock _mpb;
+
+    void TintForBiome(MeshRenderer mr, Vector2Int chunk)
+    {
+        if (MapManager.Instance == null) return;
+
+        _mpb ??= new MaterialPropertyBlock();
+
+        float half = ChunkTiles * 0.5f;
+        var   at   = MapManager.Instance.TileToWorld(
+                         new Vector2Int(Mathf.RoundToInt(chunk.x * ChunkTiles + half),
+                                        Mathf.RoundToInt(chunk.y * ChunkTiles + half)));
+
+        var tint = WorldMap.BiomeAtWorld(new Vector2(at.x, at.z)).RockTint();
+
+        _mpb.Clear();
+        _mpb.SetColor("_BaseColor", tint);
+        _mpb.SetColor("_Color",     tint);   // 빌트인으로 떨어졌을 때
+        mr.SetPropertyBlock(_mpb, 1);        // 옆면만
     }
 
     void Drop(Vector2Int chunk)
@@ -547,7 +715,10 @@ public class RockRenderer : MonoBehaviour
 
     static Material Lit(string name, Color color)
     {
-        var sh = RuntimeShaders.Find(RuntimeShaders.Lit, RuntimeShaders.Standard);
+        // **사본 → URP → 빌트인 순이다**(지형과 같은 규칙) — 사본이 컴파일에 실패해도
+        // 세상이 분홍색이 되지는 않는다. 깎기만 사라지고 벽은 제 높이로 선다.
+        var sh = RuntimeShaders.Find(RuntimeShaders.RockLit, RuntimeShaders.Lit,
+                                     RuntimeShaders.Standard);
         var m = new Material(sh) { name = name };
         m.SetColor("_BaseColor", color);
         m.SetColor("_Color",     color);   // 빌트인으로 떨어졌을 때

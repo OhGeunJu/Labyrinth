@@ -3,7 +3,14 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
-// **바닥 물건에 "실어 가라"를 찍는 모드.** H키로 켠다.
+// **"저건 가져와라"를 찍는 모드.** H키로 켠다.
+//
+// **찍는 대상이 둘이다**(2026-09-06) — 바닥의 물건(`DroppedItem` → 운반)과 채집물
+// (`Forageable` → 채집). **플레이어에게 그 둘은 같은 것이다**: *저기 있는 가져올 것*.
+// 채집 모드를 따로 내면 **같은 손놀림을 두 번 배우게 되고**(드래그로 네모, 우클릭으로 무르기 —
+// 조작이 한 글자도 안 다르다) 모드가 하나 늘 때마다 `ExclusiveMode` 식구·모드 바 칸·단축키가
+// 같이 는다. 갈리는 것은 **찍힌 뒤에 무슨 일감이 나가느냐**뿐이고 그건 각자가 안다
+// (`IGatherTarget`).
 //
 // 바닥의 물건은 아무도 안 건드리고 체크한 것만 실려 간다(`DroppedItem.HaulAllowed`).
 // 그런데 **켜는 길이 우클릭 하나뿐이면 쓸 수가 없다** — 전투가 끝나거나 발견 이벤트가
@@ -53,7 +60,7 @@ public class HaulDesignator : MonoBehaviour
     bool    _dragging;
 
     // 지금 지정될 것들 — 미리 보여 주고, 놓는 순간 그대로 적용한다.
-    readonly HashSet<DroppedItem> _pending = new();
+    readonly HashSet<IGatherTarget> _pending = new();
 
     void Update()
     {
@@ -82,7 +89,7 @@ public class HaulDesignator : MonoBehaviour
         if (mouse.rightButton.wasPressedThisFrame)
         {
             var under = PickUnder(cur);
-            if (under != null) under.SetHaulAllowed(false);
+            under?.SetDesignated(false);
             return;
         }
 
@@ -103,7 +110,7 @@ public class HaulDesignator : MonoBehaviour
             {
                 if (d == null) continue;
                 d.SetPendingHighlight(false);
-                d.SetHaulAllowed(Current == Tool.Designate);
+                d.SetDesignated(Current == Tool.Designate);
             }
 
             _pending.Clear();
@@ -134,8 +141,10 @@ public class HaulDesignator : MonoBehaviour
         if (on) ExclusiveMode.Claim(this);
     }
 
-    // 커서 아래의 바닥 물건. 드롭은 트리거 구체 하나만 콜라이더로 갖는다.
-    DroppedItem PickUnder(Vector2 screen)
+    // 커서 아래의 **찍을 수 있는 것**. 드롭도 채집물도 트리거 콜라이더 하나를 갖는다.
+    // **부모까지 본다** — 채집물은 콜라이더가 루트에 있지만, 앞으로 자식에 달린 것이
+    // 생기면 `GetComponent`만으로는 조용히 안 잡힌다.
+    IGatherTarget PickUnder(Vector2 screen)
     {
         var cam = Cam();
         if (cam == null) return null;
@@ -143,15 +152,15 @@ public class HaulDesignator : MonoBehaviour
         var ray = cam.ScreenPointToRay(screen);
         foreach (var hit in Physics.RaycastAll(ray, 500f))
         {
-            var drop = hit.collider.GetComponent<DroppedItem>();
-            if (drop != null) return drop;
+            var t = hit.collider.GetComponentInParent<IGatherTarget>();
+            if (t != null && t.CanDesignate) return t;
         }
         return null;
     }
 
     void RefreshPending(Vector2 cur)
     {
-        var next = new HashSet<DroppedItem>();
+        var next = new HashSet<IGatherTarget>();
 
         if (_dragging)
         {
@@ -163,21 +172,20 @@ public class HaulDesignator : MonoBehaviour
 
                 // **이미 켜진 것은 안 담는다** — 담아도 결과는 같지만 미리보기가 "이번에
                 // 새로 찍히는 것"만 보여 주는 편이 무엇을 하는지 분명하다.
-                foreach (var drop in FindObjectsByType<DroppedItem>(FindObjectsSortMode.None))
-                {
-                    // **취소 도구는 반대를 모은다** — 이미 찍힌 것만 잡아야 지울 것이 생긴다.
-                    if (drop == null || drop.HaulAllowed == (Current == Tool.Designate)) continue;
+                // **둘을 같이 훑는다.** `FindObjectsByType`은 인터페이스를 못 받으므로
+                // 종류마다 한 번씩 부른다 — 목록을 따로 들면 등록·해제가 또 규칙이 된다.
+                Collect<DroppedItem>(cam, next, minX, maxX, minY, maxY);
+                Collect<Forageable>(cam, next, minX, maxX, minY, maxY);
 
-                    var sp = cam.WorldToScreenPoint(drop.transform.position);
-                    if (sp.z >= 0f && sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY)
-                        next.Add(drop);
-                }
+                // **야생 자원 노드도 같은 모드가 찍는다**(2026-09-06) — 지은 것은
+                // `CanDesignate`가 거짓이라 저절로 빠진다.
+                Collect<ResourceNode>(cam, next, minX, maxX, minY, maxY);
             }
         }
         else
         {
             var under = PickUnder(cur);
-            if (under != null && under.HaulAllowed != (Current == Tool.Designate)) next.Add(under);
+            if (under != null && under.Designated != (Current == Tool.Designate)) next.Add(under);
         }
 
         foreach (var d in _pending)
@@ -187,6 +195,22 @@ public class HaulDesignator : MonoBehaviour
 
         _pending.Clear();
         foreach (var d in next) _pending.Add(d);
+    }
+
+    void Collect<T>(Camera cam, HashSet<IGatherTarget> into,
+                    float minX, float maxX, float minY, float maxY)
+        where T : Component
+    {
+        foreach (var c in FindObjectsByType<T>(FindObjectsSortMode.None))
+        {
+            // **취소 도구는 반대를 모은다** — 이미 찍힌 것만 잡아야 지울 것이 생긴다.
+            if (c is not IGatherTarget t || !t.CanDesignate) continue;
+            if (t.Designated == (Current == Tool.Designate)) continue;
+
+            var sp = cam.WorldToScreenPoint(t.Where.position);
+            if (sp.z >= 0f && sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY)
+                into.Add(t);
+        }
     }
 
     void ClearPending()
@@ -209,7 +233,7 @@ public class HaulDesignator : MonoBehaviour
 
         GUI.color = new Color(0.75f, 1f, 0.8f);
         GUI.Label(new Rect(10, 34, 720, 24),
-                  "[운반 지정] 클릭=단일 / 드래그=일괄 · 우클릭=지정 해제  H=끄기  Esc=나가기");
+                  "[가져오기 지정] 바닥 물건·버섯 · 클릭=단일 / 드래그=일괄 · 우클릭=해제  H=끄기  Esc=나가기");
         GUI.color = Color.white;
 
         if (!_dragging || Mouse.current == null) return;

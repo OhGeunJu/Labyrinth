@@ -43,6 +43,12 @@ public class Recharger : MonoBehaviour, IWorldClickable
             Debug.LogWarning($"[충전] {name}: 재료가 비어 있습니다 — {Needs.Name(fills)}가 공짜로 찹니다.", this);
     }
 
+    // 유지 시설이 먹는 힘 — 이식 광맥(2)보다 비싸다. 사람 없이 도는 것 중 **폰의 상태를
+    // 되돌리는 것**이라, 광맥 하나보다 값이 커야 *어느 쪽에 힘을 쓸까*가 결정이 된다.
+    const int DefaultPowerCost = 3;
+
+    void Start() => PowerUser.Ensure(this, DefaultPowerCost);
+
     void OnEnable()  => All.Add(this);
     void OnDisable() => All.Remove(this);
 

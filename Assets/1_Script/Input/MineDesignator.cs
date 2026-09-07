@@ -28,6 +28,15 @@ public class MineDesignator : MonoBehaviour
     // 손놀림 그대로 지운다.
     public enum Tool { Designate, Cancel }
 
+    // **찍는 중인가**(2026-09-06, 사용자: *"드래그를 풀어야지 채굴을 하러가야지 … 내가
+    // 채굴위치를 고민중인데 걍 바로 가서 채굴해버리니깐"*).
+    //
+    // `Commit`은 놓을 때만 부르는데도 폰이 먼저 갔다 — **`MineJobBoard`가 1초마다 찍힌 칸을
+    // 훑어서 일감을 내기 때문**이다. 드래그 중의 표시는 *미리보기*인데 그것을 **결정으로
+    // 읽고 있었다.** 미리보기와 결정이 같은 자료(`RockMap.IsMarked`)를 쓰는 한, **읽는 쪽이
+    // "아직 손을 안 뗐다"를 알아야 한다.**
+    public static bool IsDesignating { get; private set; }
+
     public static Tool Current { get; private set; } = Tool.Designate;
     public static void Use(Tool t) => Current = t;
 
@@ -98,7 +107,7 @@ public class MineDesignator : MonoBehaviour
 
             // **누른 그 순간의 월드 자리를 붙든다.** 콜라이더가 아니라 평면이라 허공을
             // 눌러도 답이 나온다 — 박스의 귀퉁이가 굴 밖이어도 돼야 한다.
-            _hasAnchor = PlaneHit(cur, out _dragStartWorld);
+            _hasAnchor = DragPoint(cur, out _dragStartWorld);
         }
 
         // 카메라가 움직였으면 기준점의 **화면 자리**를 다시 낸다. 월드 자리는 그대로다.
@@ -126,6 +135,8 @@ public class MineDesignator : MonoBehaviour
             foreach (var t in _next) RockMap.Mark(t, false);
             return;
         }
+
+        IsDesignating = mouse.leftButton.isPressed;
 
         if (mouse.leftButton.isPressed)
         {
@@ -160,8 +171,9 @@ public class MineDesignator : MonoBehaviour
 
         if (mouse.leftButton.wasReleasedThisFrame)
         {
-            _hasAnchor = false;
-            _dragging  = false;
+            _hasAnchor    = false;
+            _dragging     = false;
+            IsDesignating = false;
 
             // **취소로 놓았으면 일감을 안 낸다** — 지우려고 끈 드래그가 도로 일감을 내면
             // 지운 것이 아니다.
@@ -195,8 +207,8 @@ public class MineDesignator : MonoBehaviour
         //
         // 기준 칸에서 지금 칸까지 **상하좌우로 펴면** 각도와 무관하게 정확하고, 건설의 줄
         // 긋기와 같은 손맛이 된다.
-        if (!PlaneHit(new Vector2(a.x, a.y), out var p0)) return;
-        if (!PlaneHit(new Vector2(b.x, b.y), out var p1)) return;
+        if (!DragPoint(new Vector2(a.x, a.y), out var p0)) return;
+        if (!DragPoint(new Vector2(b.x, b.y), out var p1)) return;
 
         var map = MapManager.Instance;
         if (map == null) return;
@@ -276,6 +288,20 @@ public class MineDesignator : MonoBehaviour
         return true;
     }
 
+    // 드래그의 한 점. **콜라이더를 먼저 묻고 없으면 평면으로 떨어뜨린다**(2026-09-07).
+    //
+    // 전에는 평면만 썼다. 그 이유는 옳았다 — *"콜라이더로 잡으면 귀퉁이 하나가 허공으로
+    // 나가는 순간 통째로 아무것도 안 찍힌다."* **틀린 것은 둘 중 하나만 고른 것이다.**
+    //
+    // 평면만 쓰면 **벽의 옆면을 겨눴을 때 어긋난다**: 평면은 *윗면*의 높이인데 눈이 짚은
+    // 것은 그보다 낮은 옆면이라, 그 차이가 화면에서 몇 칸이 된다. 9.6m일 때는 옆면이
+    // 화면에서 작아 티가 덜 났지만 **24m가 되면 화면의 벽은 거의 전부 옆면이다.**
+    //
+    // 콜라이더가 답하면 그것이 **정확하다**(맞은 자리가 곧 그 기둥이고, 옆면은 안쪽으로
+    // 밀어 넣어 칸까지 맞다). 못 맞히는 것은 허공뿐이고 거기서만 평면이 답한다.
+    bool DragPoint(Vector2 screen, out Vector3 world)
+        => Ground(screen, out world) || PlaneHit(screen, out world);
+
     // **바닥 평면과의 교점.** 박스를 칠 때 쓴다 — 귀퉁이가 허공이어도 답이 나온다.
     //
     // **한 번 클릭할 때는 이걸 안 쓴다** — 벽 윗면을 눌렀을 때 평면까지 뚫고 내려가면
@@ -293,6 +319,7 @@ public class MineDesignator : MonoBehaviour
         // 되어, 겨눈 곳보다 **한참 위(먼 쪽)에 찍힌다** — 사용자가 본 그것이다.
         //
         // 벽이 높을수록 어긋남이 커지므로 `RockMap.Height`를 3배로 올린 날 같이 드러났다.
+        // **이제는 허공을 겨눴을 때의 폴백이다** — 벽 위에서는 `DragPoint`가 콜라이더로 답한다.
         var map = MapManager.Instance;
         float ground = map != null ? map.SampleGroundHeight(_cam.transform.position) : 0f;
         float y = ground + RockMap.Height;
@@ -369,6 +396,11 @@ public class MineDesignator : MonoBehaviour
             _prevPitch  = cam.Pitch;
             _pitchSaved = true;
             cam.LerpToPitch(cam.TopDownPitch);
+
+            // **높이도 같이 올린다**(2026-09-07). 벽이 24m가 된 뒤로 각도만 돌리면
+            // **벽 사이에서 천장을 보는 꼴**이라, 무엇을 찍는지가 여전히 안 보인다.
+            // 내려 주지는 않는다 — 멀리서 보며 찍는 것을 모드가 거절할 이유가 없다.
+            cam.RiseTo(cam.MineViewHeight);
         }
         else if (_pitchSaved)
         {

@@ -66,10 +66,17 @@ public class WorldContentStreamer : MonoBehaviour
         }
     }
 
-    // **캔 나무는 다시 안 자란다.** 청크를 떠났다 돌아오면 결정적 계산이 그 나무를 **또**
-    // 세우므로, 없어진 것을 기억해야 한다. 좌표가 아니라 **뿌린 순번(id)**으로 기억한다 —
-    // 자리는 계산으로 나오지만 *"몇 번째 것"*은 안 바뀐다.
-    static readonly HashSet<long> _taken = new();
+    // **캔 것을 기억한다.** 청크를 떠났다 돌아오면 결정적 계산이 그것을 **또** 세우므로,
+    // 없어진 것을 기억해야 한다. 좌표가 아니라 **뿌린 순번(id)**으로 기억한다 — 자리는
+    // 계산으로 나오지만 *"몇 번째 것"*은 안 바뀐다.
+    //
+    // **담는 값은 "다시 날 게임일"이다**(2026-09-06). 전에는 집합이라 *영원히 없어진 것*밖에
+    // 못 적었는데, 버섯은 다시 나야 한다(`ScatterRule.RegrowDays`). 나무·바위는
+    // `PositiveInfinity`가 들어가 예전과 **한 톨도 안 달라진다.**
+    //
+    // **자리를 안 기억해도 되는 이유**가 뿌리기가 결정적이라는 것이다 — 잊기만 하면 같은
+    // 자리에 같은 것이 다시 선다. *"저장하는 것이 없다"*는 이 파일의 전제가 그대로 유지된다.
+    static readonly Dictionary<long, float> _taken = new();
 
     static readonly List<Vector2Int> _placed = new();   // 간격 검사용 임시
 
@@ -160,9 +167,6 @@ public class WorldContentStreamer : MonoBehaviour
 
             for (int i = 0; i < count; i++)
             {
-                long id = Id(chunk, r, i);
-                if (_taken.Contains(id)) continue;   // 캔 것은 다시 안 선다
-
                 float lx = Rand(chunk, r, i, 1) * TerrainGrid.ChunkSize;
                 float lz = Rand(chunk, r, i, 2) * TerrainGrid.ChunkSize;
                 float wx = chunk.x * TerrainGrid.ChunkSize + lx;
@@ -172,21 +176,148 @@ public class WorldContentStreamer : MonoBehaviour
                 if (h < rule.MinHeight || h > rule.MaxHeight) continue;
                 if (SlopeDeg(wx, wz) > rule.MaxSlope) continue;
 
+                // **바위 속에는 안 세운다.** 경사·고도는 지상의 물음이고, 지하에서 *설 수
+                // 있나*에 답하는 것은 `IsWorkable` 하나다(바위 + 머리 여유). 청크가 로드
+                // 안 돼 있어도 답이 나오므로 여기서 물어도 된다.
+                if (rule.RequireOpenTile)
+                {
+                    var map = MapManager.Instance;
+                    if (map == null || !map.IsWorkable(map.WorldToTile(new Vector3(wx, 0f, wz))))
+                        continue;
+                }
+
+                // **바이옴이 다르면 안 난다** — 목재(거대버섯)를 균사림에만 두는 길이 이것이다.
+                // 저작한 지도가 답하므로(`WorldMap.BiomeAtWorld`) 청크가 로드 안 돼 있어도
+                // 계산된다 — 이 파일의 다른 판정과 같은 성질이다.
+                if (rule.Biomes != null && rule.Biomes.Length > 0 && !InBiome(rule, wx, wz))
+                    continue;
+
                 if (rule.MinSpacing > 0.01f && TooClose(wx, wz, rule.MinSpacing)) continue;
 
-                var go = Instantiate(rule.Prefab, new Vector3(wx, h, wz),
-                                     Quaternion.Euler(0f, Rand(chunk, r, i, 3) * 360f, 0f), Root);
+                // ── 한 자리에 여럿 ────────────────────────────────────────────
+                //
+                // **간격(`MinSpacing`)은 씨점끼리만 잰다** — 무리 안에서까지 재면 무리가
+                // 성립하지 않는다(그게 이 축의 전부다).
+                int lo = Mathf.Max(1, rule.ClusterMin);
+                int hi = Mathf.Max(lo, rule.ClusterMax);
+                int k  = lo + Mathf.FloorToInt(Rand(chunk, r, i, 5) * (hi - lo + 1));
+                k = Mathf.Clamp(k, lo, Mathf.Min(hi, ClusterStride));
 
-                float sc = Mathf.Lerp(rule.ScaleRange.x, rule.ScaleRange.y, Rand(chunk, r, i, 4));
-                go.transform.localScale *= sc;
+                // **자리를 먼저 고르고 나서 세운다.** 칸 목록을 미리 고르는 이유는
+                // *"같은 칸에 둘"*을 막기 위해서다 — 자리를 그때그때 굴리면 겹친다.
+                var spots = ClusterSpots(chunk, r, i, wx, wz, k, rule);
 
-                // **캐면 기억한다** — 프리팹에 붙은 표식이 파괴될 때 순번을 남긴다.
-                go.AddComponent<ScatterTag>().Id = id;
+                for (int j = 0; j < spots.Count; j++)
+                {
+                    // **식구마다 제 순번을 갖는다** — `_taken`이 그 단위이기 때문이다.
+                    // 하나로 묶으면 **하나만 따도 무리째 사라진다**(그리고 통째로 다시 난다).
+                    //
+                    // **보폭은 상수다** — 규칙의 `ClusterMax`로 곱하면 저작을 손볼 때마다
+                    // 이미 딴 것의 순번이 다른 것을 가리킨다.
+                    long mid = Id(chunk, r, i * ClusterStride + j);
+                    if (StillTaken(mid)) continue;
 
-                into.Add(go);
+                    float mx = spots[j].x, mz = spots[j].y;
+                    float mh = TerrainHeight.At(mx, mz);
+
+                    var go = Instantiate(rule.Prefab, new Vector3(mx, mh, mz),
+                                         Quaternion.Euler(0f, Rand(chunk, r, i * ClusterStride + j, 3) * 360f, 0f),
+                                         Root);
+
+                    float sc = Mathf.Lerp(rule.ScaleRange.x, rule.ScaleRange.y,
+                                          Rand(chunk, r, i * ClusterStride + j, 4));
+                    go.transform.localScale *= sc;
+
+                    // **캐면 기억한다** — 프리팹에 붙은 표식이 파괴될 때 순번을 남긴다.
+                    // **다시 날 때까지의 날수도 표식이 든다** — 규칙 배열은 저작이라 순번으로
+                    // 되찾을 수 있지만, **저작이 바뀌면 그 순번이 다른 규칙을 가리킨다.**
+                    var tag = go.AddComponent<ScatterTag>();
+                    tag.Id         = mid;
+                    tag.RegrowDays = rule.RegrowDays;
+
+                    into.Add(go);
+                }
+
                 _placed.Add(new Vector2Int(Mathf.RoundToInt(wx), Mathf.RoundToInt(wz)));
             }
         }
+    }
+
+    // ── 무리는 **맞닿은 칸**에 앉는다 ───────────────────────────────────────
+    //
+    // 반경 안에 무작위로 흩뿌리면 서넛이 *같은 동네*에 서기는 해도 **서로 떨어져 선다** —
+    // 원 안의 점을 고르는 일에는 *"붙어 있어라"*라고 적을 자리가 없다. 반경을 줄이면
+    // 이번엔 **한 점에 겹친다.** 둘 사이에 답이 없다.
+    //
+    // **칸을 고르면 간격이 규칙에서 나온다.** 칸이 1m라 이웃 칸을 고르는 순간 정확히 1m가
+    // 되고, 같은 칸을 두 번 안 고르므로 겹치지도 않는다. *따닥따닥*이 곧 *맞닿은 칸*이다.
+    //
+    // **가까운 고리부터 채운다** — 제 칸, 그다음 맞닿은 여덟, 그다음 그 바깥. 전부 섞어서
+    // 고르면 `ClusterSpread`를 2로 올리는 순간 **무리가 도넛처럼 벌어진다**(바깥 고리가
+    // 칸 수가 많아 뽑힐 확률이 높다).
+    static readonly List<Vector2> _spots = new();
+    static readonly List<Vector2Int> _ring = new();
+
+    List<Vector2> ClusterSpots(Vector2Int chunk, int rule, int seed,
+                               float wx, float wz, int want, ScatterRule cfg)
+    {
+        _spots.Clear();
+
+        var map = MapManager.Instance;
+        if (map == null || cfg.ClusterSpread <= 0)
+        {
+            // 격자가 없으면 예전처럼 한 점이다(무리를 못 짓는다).
+            for (int j = 0; j < want; j++) _spots.Add(new Vector2(wx, wz));
+            return _spots;
+        }
+
+        var origin = map.WorldToTile(new Vector3(wx, 0f, wz));
+
+        for (int ring = 0; ring <= cfg.ClusterSpread && _spots.Count < want; ring++)
+        {
+            _ring.Clear();
+            if (ring == 0) _ring.Add(origin);
+            else
+                for (int dz = -ring; dz <= ring; dz++)
+                for (int dx = -ring; dx <= ring; dx++)
+                {
+                    if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != ring) continue;   // 고리의 테두리만
+                    _ring.Add(new Vector2Int(origin.x + dx, origin.y + dz));
+                }
+
+            // **고리 안에서는 섞는다** — 안 섞으면 무리가 늘 같은 방향으로 자란다
+            // (왼쪽 아래부터 채워져 ㄱ자로 선다). 결정적 셔플이라 다시 와도 같은 그림이다.
+            for (int a = _ring.Count - 1; a > 0; a--)
+            {
+                int b = Mathf.Min(a, Mathf.FloorToInt(Rand(chunk, rule, seed * 31 + ring, 8 + a) * (a + 1)));
+                (_ring[a], _ring[b]) = (_ring[b], _ring[a]);
+            }
+
+            foreach (var t in _ring)
+            {
+                if (_spots.Count >= want) break;
+                if (cfg.RequireOpenTile && !map.IsWorkable(t)) continue;   // 벽에는 안 난다
+
+                // **칸 한복판에 앉힌다** — 칸을 고른 뜻이 그것이다. 안 그러면 다시 흩어진다.
+                var c = map.TileToWorld(t);
+                _spots.Add(new Vector2(c.x, c.z));
+            }
+        }
+
+        return _spots;
+    }
+
+    // 한 씨점이 가질 수 있는 식구 수의 천장. **저작값이 아니라 순번 인코딩의 보폭**이라
+    // 상수여야 한다 — `Id`가 순번을 16비트에 담으므로 청크당 씨점 × 이 값이 65,536을
+    // 넘으면 안 된다(지금은 열댓 × 여덟이라 한참 아래다).
+    const int ClusterStride = 8;
+
+    static bool InBiome(ScatterRule rule, float x, float z)
+    {
+        var here = WorldMap.BiomeAtWorld(new Vector2(x, z));
+        for (int i = 0; i < rule.Biomes.Length; i++)
+            if (rule.Biomes[i] == here) return true;
+        return false;
     }
 
     static bool TooClose(float x, float z, float spacing)
@@ -278,6 +409,7 @@ public class WorldContentStreamer : MonoBehaviour
 
     // ── 결정적 난수 ─────────────────────────────────────────────────────────
 
+    // `i`는 **씨점 순번 × `ClusterStride` + 식구 번호**다(부르는 쪽이 합친다).
     long Id(Vector2Int c, int rule, int i) =>
         (((long)c.x & 0xFFFF) << 40) | (((long)c.y & 0xFFFF) << 24) | ((long)(rule & 0xFF) << 16) | (uint)(i & 0xFFFF);
 
@@ -298,7 +430,24 @@ public class WorldContentStreamer : MonoBehaviour
     }
 
     // 캔 나무를 기억한다.
-    public static void MarkTaken(long id) => _taken.Add(id);
+    // `regrowDays`가 0 이하면 영영 안 난다(나무·바위).
+    //
+    // **이미 적힌 것보다 늦게 덮어쓰지 않는다** — 같은 id가 두 번 오는 일은 없어야 하지만,
+    // 온다면 그건 *두 번 캤다*는 뜻이라 나중 것이 맞다. 그냥 덮어쓴다.
+    public static void MarkTaken(long id, float regrowDays)
+        => _taken[id] = regrowDays > 0f
+                      ? GameTimeManager.CurrentDay + regrowDays
+                      : float.PositiveInfinity;
+
+    // 아직 안 났나. **여기서 지운다** — 훑는 김에 만료된 것을 걷어내지 않으면 딸 때마다
+    // 사전이 자라기만 한다(한 판 내내 딴 버섯이 전부 남는다).
+    static bool StillTaken(long id)
+    {
+        if (!_taken.TryGetValue(id, out float back)) return false;
+        if (GameTimeManager.CurrentDay < back) return true;
+        _taken.Remove(id);
+        return false;
+    }
 }
 
 // 뿌려진 것에 붙는 표식. **파괴될 때 순번을 남긴다** — 안 남기면 청크를 다시 밟을 때
@@ -307,12 +456,16 @@ public class ScatterTag : MonoBehaviour
 {
     [HideInInspector] public long Id;
 
+    // 딴 뒤 며칠 만에 다시 나나(0이면 안 난다). **뿌릴 때 규칙에서 받아 든다** —
+    // 파괴되는 시점에 규칙 배열을 되짚으면 그 사이 저작이 바뀌었을 때 엉뚱한 값을 쓴다.
+    [HideInInspector] public float RegrowDays;
+
     // **청크가 내려갈 때는 남기면 안 된다.** 그건 없어진 것이 아니라 잠깐 치운 것이다.
     // 그래서 스트리머가 내릴 때는 이 플래그를 세우고 지운다.
     [HideInInspector] public bool Unloading;
 
     void OnDestroy()
     {
-        if (!Unloading && Application.isPlaying) WorldContentStreamer.MarkTaken(Id);
+        if (!Unloading && Application.isPlaying) WorldContentStreamer.MarkTaken(Id, RegrowDays);
     }
 }

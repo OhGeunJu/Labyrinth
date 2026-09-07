@@ -192,6 +192,7 @@ GameObject:
   - component: {fileID: 5698044576614682779}
   - component: {fileID: 7036253840794178447}
   - component: {fileID: 4451519530207087948}
+  - component: {fileID: 3428804285539570781}
   m_Layer: 0
   m_Name: Node_TinVein
   m_TagString: Untagged
@@ -270,6 +271,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: 19f0e3e0a501b984081d42874aaa80d6, type: 2}
   refundRatio: 1
+--- !u!114 &3428804285539570781
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5867482739458472657}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1
 --- !u!1 &6943067521475274089
 GameObject:
   m_ObjectHideFlags: 0

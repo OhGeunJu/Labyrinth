@@ -9,15 +9,26 @@ public class SubCore : MonoBehaviour
     [SerializeField] float radius = 8f;
     [Header("하수인 캡 증가")]
     [SerializeField] int minionCapBonus = 3;
+    [Header("전력")]
+    [Tooltip("이 부핵이 보태는 힘. 영역의 총량에 더해진다(`PowerGrid`).")]
+    [Min(0)] [SerializeField] int energyOutput = 6;
     [Header("범위 내 유닛 효과")]
     [SerializeField] float moveSpeedModifier = 0f;
     [SerializeField] float damagePerSecond   = 0f;
 
+    // **레지스트리** — `PowerGrid`가 영역의 총량을 셀 때 부핵을 훑는다. 매번
+    // `FindObjectsByType`을 도는 것은 이 저장소가 여러 번 피해 온 일이다.
+    public static readonly System.Collections.Generic.List<SubCore> All = new();
+
     RangeCircle _circle;
     float    _effectTimer;
 
+    void OnEnable()  { All.Add(this);    PowerGrid.Recompute(); }
+    void OnDisable() { All.Remove(this); PowerGrid.Recompute(); }
+
     public float Radius             => radius;
     public int   MinionCapBonus     => minionCapBonus;
+    public int   EnergyOutput       => Mathf.Max(0, energyOutput);
     public float MoveSpeedModifier  => moveSpeedModifier;
     public float DamagePerSecond    => damagePerSecond;
 

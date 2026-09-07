@@ -104,7 +104,16 @@ public static class UnderworldSetup
 
         // 윗면은 거의 검다. **완전한 0으로는 안 내린다** — 그러면 벽 윗면과 화면 배경이
         // 구별이 안 가 **세계의 경계**를 못 읽는다.
-        var top  = Mat("Rock_Top",  diffuse, normal, new Color(0.05f, 0.06f, 0.07f));
+        // **뚜껑에는 무늬를 안 깐다**(2026-09-07, 사용자: *"뚜껑에 가까워지면 벽에 적용된
+        // 머터리얼이 살짝 희미하게 보이는데 이거 그냥 안 보이게 못 해?"*).
+        //
+        // 색조를 거의 검게 눌러도 **텍스처와 노멀맵은 그대로 살아 있어서**, 주변광이 그
+        // 결을 훑으면 **어두운 벽 무늬**로 어른거린다. 자르는 면이 큰 평면이라 그 어른거림이
+        // 화면의 절반을 덮는다.
+        //
+        // **텍스처를 안 물리면 그냥 평평한 어둠이다.** 윗면은 원래 *"안 판 자리 = 어둠"*을
+        // 말하는 자리라 잃는 것이 없다 — 완전한 0으로만 안 내리면 경계는 그대로 읽힌다.
+        var top  = Mat("Rock_Top",  null, null, new Color(0.04f, 0.045f, 0.05f));
         var wall = Mat("Rock_Wall", diffuse, normal, new Color(0.72f, 0.76f, 0.80f));
 
         // **찍힌 칸은 스스로 빛난다.** 색만 바꾸면 어두운 굴에서 **주변광에 같이 묻혀**
@@ -144,12 +153,23 @@ public static class UnderworldSetup
         string path = $"{MatDir}/{name}.mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
 
+        // **바위 사본 셰이더를 쓴다** — 가까운 벽을 낮춰 그린다(`RockCut.hlsl`).
+        // 재질이 이것을 가리키는 것이 **빌드에 들어가는 유일한 문**이다(`RuntimeShaders`).
+        var sh = Shader.Find(RuntimeShaders.RockLit)
+              ?? Shader.Find(RuntimeShaders.Lit)
+              ?? Shader.Find(RuntimeShaders.Standard);
+
         if (m == null)
         {
-            var sh = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             m = new Material(sh) { name = name };
             AssetDatabase.CreateAsset(m, path);
         }
+
+        // **이미 있는 재질도 갈아 끼운다**(2026-09-07). 만들 때만 물리면 **어제 만든 재질은
+        // 옛 셰이더 그대로**라, 도구를 다시 돌려도 깎기가 안 걸린다 — 화면에는 *"벽이 그대로
+        // 가린다"*로만 보이고 원인이 재질에 있다는 표시가 아무 데도 없다.
+        // 프로퍼티 이름이 원본과 같으므로 갈아 끼워도 값이 안 날아간다.
+        if (sh != null && m.shader != sh) m.shader = sh;
 
         m.SetTexture("_BaseMap", diffuse);
         m.SetColor("_BaseColor", tint);
@@ -192,6 +212,13 @@ public static class UnderworldSetup
             }
             m.SetTexture("_BumpMap", normal);
             m.EnableKeyword("_NORMALMAP");
+        }
+        else
+        {
+            // **되돌리는 쪽도 있어야 한다** — 전에 물려 둔 노멀맵이 남아 있으면
+            // 텍스처를 뗀 뒤에도 결이 그대로 어른거린다.
+            m.SetTexture("_BumpMap", null);
+            m.DisableKeyword("_NORMALMAP");
         }
 
         EditorUtility.SetDirty(m);

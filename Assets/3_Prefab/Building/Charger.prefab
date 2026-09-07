@@ -462,6 +462,7 @@ GameObject:
   - component: {fileID: 3761484356719654251}
   - component: {fileID: 7538740085634452258}
   - component: {fileID: 6156813975381561240}
+  - component: {fileID: 9147151488456620777}
   m_Layer: 0
   m_Name: Charger
   m_TagString: Untagged
@@ -540,6 +541,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: 9d4b39e8ca3944948944cfe823a9f7f7, type: 2}
   refundRatio: 1
+--- !u!114 &9147151488456620777
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4990527835935049372}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 3
+  switchedOn: 1
 --- !u!1 &8214468092059279395
 GameObject:
   m_ObjectHideFlags: 0

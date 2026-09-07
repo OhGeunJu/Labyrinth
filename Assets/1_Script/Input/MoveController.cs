@@ -380,7 +380,19 @@ public class MoveController : MonoBehaviour
                         : "";
             string verb = tree ? "여기서 나무를 벤다" : "여기서 캔다";
 
-            if (node.IsFull)
+            // **야생은 배정이 아니라 지정이다**(2026-09-06). 그전에는 여기서 `Assign`을
+            // 불렀는데 야생이 그것을 거절하게 된 뒤로 **아무 일도 안 일어나면서 "자리가
+            // 모자란다"는 거짓말**이 찍혔다(자리는 비어 있었다).
+            //
+            // **누르는 사람에게는 하는 일이 같다** — *"여기서 캔다"*. 갈리는 것은 그 뒤이고
+            // (배정이냐 큐냐) 그건 노드가 안다.
+            if (node.CanDesignate)
+            {
+                // 야생 — 지정이다. **자리 수는 안 적는다**(배정이 아니므로 뜻이 없다).
+                options.Add((node.Designated ? $"{verb} - 지정 취소" : verb,
+                             () => node.SetDesignated(!node.Designated)));
+            }
+            else if (node.IsFull)
             {
                 options.Add(($"{verb}{room} - 자리 없음", () => { }));
             }
