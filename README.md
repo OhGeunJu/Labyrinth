@@ -1,221 +1,156 @@
 # DungeonColony
 
-림월드 + 켄시 + 던전 코어 시뮬레이터
+**지하 콜로니 시뮬레이터** — 림월드 + 켄시 + 던전 코어.
+
+사방이 바위인 지하에 던전 코어를 꽂고, **캐면서 넓힌다.** 세계의 기본 상태는 *열린 굴*이
+아니라 **꽉 찬 돌**이라, 파는 것이 곧 확장이자 탐험이다.
 
 ---
 
-## 게임 컨셉
+## 무엇을 하는 게임인가
 
-플레이어는 던전 코어(미궁핵)를 운영하는 주체로서, 두 종류의 유닛을 관리한다.
+- **루프의 본류는 탐험이다.** 기지는 잠깐 들러 점검하는 곳이고, 탐험해 가져온 자원으로
+  기지에 광맥을 이식하고, 그것으로 만든 장비·하수인으로 더 험한 곳에 간다.
+- **자연은 찍어서 가져오고, 기지는 배정해서 캔다.** 야생 노드는 매장량만큼 내고 사라지지만
+  이식한 광맥은 마르지 않는다 — 굴 밖으로 나갈 이유가 규칙에서 나온다.
+- **어둠이 밀물처럼 든다.** 하루가 밤낮이 아니라 썰물↔밀물이고, 어느 때에도 밝기 배율이
+  1이 아니다. 그래서 불이 장식이 아니다 — 폰이 실제로 그만큼만 본다.
 
-- **방랑자** — 림월드/켄시 스타일. 직접 선택·명령 가능. 다양한 작업과 전투 수행.
-- **하수인** — 펠월드 팰 스타일. 던전 코어가 자원을 소비해 소환. 배정된 작업만 자동 수행, 공격받으면 반격.
+### 유닛 둘
+
+| 종류 | 데이터 | 조작 | 특징 |
+|---|---|---|---|
+| **방랑자** | `UnitData` | 직접 명령(우클릭) | 모든 작업. 소집(`R`)으로 싸울 태세에 붙든다 |
+| **하수인** | `MinionData` | 자동 AI | 던전 코어가 자원을 써서 소환. 허용한 작업만 |
+
+**몸이 무엇을 요구하는지 정한다** — 산 몸은 허기·피로, 골렘은 에너지, 해골은 사기.
+골렘은 멈출 뿐이고 해골은 무너진다.
 
 ---
 
 ## 개발 환경
 
-- Unity 6.3 (6000.3.9f1)
+- Unity 6.3 (6000.3.9f1) · URP (Forward+)
 - Input System (New)
 - TextMeshPro
 - Wingman
 - DOTween Pro
 
+**CLI 빌드는 없다** — 동작 확인은 에디터 Play Mode다. 다만 **컴파일은 에디터 없이도 본다**:
+
+```
+dotnet msbuild Assembly-CSharp.csproj -t:Build
+```
+
+Play Mode에 들어가기 전에 문법·시그니처 사고를 먼저 거르는 용도다. 새 파일을 만든 직후에는
+`.csproj`가 낡아 있으므로(유니티가 만든다) 유니티에 포커스를 한 번 줘서 다시 만들게 할 것.
+
 ---
 
-## 프로젝트 구조
+## 폴더
 
 ```
 Assets/
-├── 1 Script/
-│   ├── Map/
-│   │   ├── TileData.cs              # 타일 데이터 (Passable / Impassable)
-│   │   ├── MapManager.cs            # 맵 전체 관리 (싱글톤)
-│   │   ├── GridRenderer.cs          # 타일 변경 시 시각화 갱신
-│   │   └── ResourceNode.cs          # 자원 노드 (채굴 → 인벤토리 → HaulJob)
-│   │
-│   ├── unit/
-│   │   ├── UnitBrain.cs             # AI 진입점 (BT 실행, 방랑자/하수인/적 분기)
-│   │   ├── UnitBlackboard.cs        # 유닛 공유 런타임 상태
-│   │   ├── UnitStats.cs             # 숙련도 (0-100, 플레이 중 성장)
-│   │   ├── UnitData.cs              # 유닛 템플릿 (ScriptableObject)
-│   │   ├── CombatHandler.cs         # 근접/원거리 전투, 무게·상태 보정
-│   │   ├── BodyPartSystem.cs        # 부위별 체력 / 혈액 / 기절
-│   │   ├── BodyPart.cs              # 부위 데이터 (HP 0=기능상실, -100=파괴)
-│   │   ├── Faction.cs               # 진영 (Player / Enemy)
-│   │   ├── BTNode.cs / BTSequence / BTSelector
-│   │   └── BTLeafNodes.cs           # ConditionNode, DetectNode, FightNode, WorkNode, IdleNode
-│   │
-│   ├── Item/
-│   │   ├── ItemData.cs              # 아이템 템플릿 (Weight 포함)
-│   │   ├── WeaponData.cs            # 무기 데이터 (ItemData 상속)
-│   │   ├── MinionData.cs            # 하수인 데이터 (UnitData 상속)
-│   │   ├── ItemStack.cs             # (ItemData, Quantity) 값 타입
-│   │   ├── Inventory.cs             # 아이템 저장소 (무게·타입 집계 포함)
-│   │   └── DroppedItem.cs           # 씬 내 드롭 아이템 (Spawn() 팩토리)
-│   │
-│   ├── Job/
-│   │   ├── JobBase.cs               # 작업 추상 클래스 (Category 포함)
-│   │   ├── JobCategory.cs           # 작업 카테고리 열거형
-│   │   ├── MineJob.cs               # 채굴 작업
-│   │   ├── HaulJob.cs               # 운반 작업 (ResourceNode → StorageBuilding)
-│   │   ├── GroundHaulJob.cs         # 운반 작업 (DroppedItem → StorageBuilding)
-│   │   └── JobManager.cs            # 작업 관리 (우선순위 점수 적용)
-│   │
-│   ├── core/
-│   │   ├── DungeonCore.cs           # 미궁핵 (하수인 소환 포함)
-│   │   ├── DungeonCoreManager.cs    # 미궁핵 관리 (싱글톤)
-│   │   └── DungeonCoreData.cs       # 미궁핵 데이터 (ScriptableObject)
-│   │
-│   ├── UI/
-│   │   ├── UnitInfoUI.cs            # 유닛 정보 패널
-│   │   ├── PawnInventoryPanel.cs    # 인벤토리 패널 (I키)
-│   │   ├── InventorySlotUI.cs       # 슬롯 드래그 드롭
-│   │   ├── PriorityPanel.cs         # 작업 우선순위 패널 (P키)
-│   │   ├── NodeInfoPanel.cs         # 자원 노드 정보 패널
-│   │   ├── PawnRosterPanel.cs       # 폰 목록 패널
-│   │   └── PawnEntryUI.cs           # 폰 목록 항목
-│   │
-│   ├── WeaponType.cs                # 무기 타입 열거형
-│   ├── Equipment.cs                 # 장착 슬롯 (MainHand)
-│   ├── StorageBuilding.cs           # 창고 (아이템 필터, 전체 집계)
-│   ├── PriorityManager.cs           # 글로벌 작업 우선순위 (싱글톤)
-│   ├── PawnMover.cs                 # 유닛 이동 (Athletics, 무게 보정)
-│   ├── Pathfinder.cs                # Theta* 경로탐색
-│   ├── SelectionManager.cs          # 유닛 선택
-│   ├── MoveController.cs            # 이동/공격 명령 (방랑자만)
-│   └── CameraController.cs          # 카메라 조작
-│
-└── 5 Data/
-    ├── UnitData/
-    ├── MinionData/
-    ├── WeaponData/
-    └── DungeonCoreData/
+├── 0_Scenes/       Scene1(게임) · World(세계 저작 — 빌드에 안 들어간다)
+├── 1_Script/       런타임 코드. Map · unit · Job · Item · UI · core · World · Combat · Event · Input · Data
+├── 2_Material/     머티리얼과 셰이더 사본(TerrainShader · RockShader)
+├── 3_Prefab/       Building · Pawn · Node · UI — 종류로 나뉜다
+├── 5_Data/         ScriptableObject 저작물
+├── Editor/         에디터 도구(세계 굽기 · 프리팹 생성 · UI 배치)
+├── Resources/      런타임에 이름으로 찾는 것(Data/ · WorldContent/)
+└── StreamingAssets/Data/   JSON 데이터 — 모드가 넣는 자리
+docs/               상세 문서. 여기가 근거다
+Tools/              게임 데이터 표 뽑기(export_gamedata.py → GameData.xlsx)
 ```
+
+**SO냐 JSON이냐를 가르는 기준은 "다른 에셋이 GUID로 가리켜야 하는가"다.** JSON 아이템은
+런타임 생성이라 프리팹이 참조할 방법이 없어서 문자열 `ItemId` 경로가 따로 있다.
 
 ---
 
-## 핵심 시스템
+## 굵은 축들
 
-### 유닛 종류
+한 줄 요약이고, **근거와 눈금은 전부 `docs/`에 있다.**
 
-| 종류 | 데이터 | BT 트리 | 특징 |
+| 축 | 무엇을 하나 |
+|---|---|
+| **바위와 굴** | 세계는 1,024m 한 판. 여유(천장−바닥)가 폰 키보다 좁으면 바위다. 굴은 노이즈 능선이 그물처럼 판다 |
+| **스트리밍** | 지형은 함수(노이즈 + 저작 + 델타)라 저장하지 않는다. 청크는 뷰어 둘레만 선다 |
+| **길찾기** | 3계층 — 광역 HPA\*(셀 안 연결 덩어리마다 노드) · 코스 2m · 로컬 1m 창 |
+| **일감** | 큐 작업(우선순위 배열)과 직접 배정(자원 노드·순찰) 둘. 폰별 on/off는 `WorkSettings` |
+| **건설** | 격자 위상은 지하에서 바위가 정한다. 바닥은 오브젝트가 아니라 데이터이고 기단·계단이 된다 |
+| **전투** | 피해는 한 축(물리 3 + 원소 7). 부위별 체력·혈액·기절, 쓰러진 폰은 자동으로 안 맞는다 |
+| **몸** | 허기·피로·에너지·사기 — 넷은 기계적으로 같고 갈리는 건 눈금과 채우는 법뿐 |
+| **세력** | 축 다섯이 서로를 모른다(종족·세력·AI 성향·역할·소지). 조합은 프리팹이 한다 |
+| **포로** | 업기·가두기·회유·간수·탈출·몸값 |
+| **상인** | 지갑은 전역이되 동전은 세상에 남는다. 흥정이 값을 정한다 |
+| **연구** | 그래프이고 자리는 씬에 저작한다 — 다시 구워도 옮긴 자리는 안 없어진다 |
+| **전력** | 핵이 내는 힘을 건물이 나눠 쓴다. 배분은 순서(먼저 지은 것이 먼저)이고 늘리는 길은 부핵뿐 |
+
+### 스탯
+
+0–130 · 5단위 **27등급**(F- ~ SSS+) · **53개** 스탯. 켄시식으로 **쓰면 자란다**
+(도전 배수 × SOL × 수적 열세 배수). 하수인은 잠겨 있다.
+
+---
+
+## 단축키
+
+| 키 | | 키 | |
 |---|---|---|---|
-| **방랑자** | UnitData | 소집→전투→작업→대기 | 직접 명령, 모든 작업 가능 |
-| **하수인** | MinionData | 자동감지→작업→대기 | 자원 소비로 소환, 허용 작업만 수행 |
-| **적** | UnitData | 감지→전투→대기 | 자동 AI |
+| `I` | 인벤토리 | `B` | 건설 |
+| `C` | 스탯 | `X` | 철거(건설 모드 안) |
+| `P` | 무리 관리 | `H` | 운반 지정 |
+| `L` | 세력 우호도 | `K` | 채굴 지정 |
+| `G` | 원정 편성 | `O` | 자동운반 품목 |
+| `M` | 월드맵 | `R` | 소집 |
+| `1~4` | 능동 능력 | 좌/우클릭 | 선택 / 명령 |
 
-### BT (Behavior Tree)
-
-기절(IsKnockedOut) 시 틱 중단.
-
-### 작업 시스템
-
-작업 선택 점수 = `글로벌 우선순위 × 100 + 작업 자체 우선순위`
-
-| 작업 | 클래스 | 흐름 |
-|---|---|---|
-| 채굴 | MineJob | ResourceNode.Work() 반복 |
-| 노드 운반 | HaulJob | ResourceNode 인벤토리 → 폰 → StorageBuilding |
-| 지면 운반 | GroundHaulJob | DroppedItem.PickUp() → 폰 → StorageBuilding |
-
-### 우선순위 시스템
-
-P키로 패널 열기. 카테고리별 0(OFF)~5 설정. 0이면 해당 작업 완전 무시.
-
-카테고리: 채굴, 운반, 원예, 벌목, 건설, 경비
-
-### 창고 시스템
-
-- `StorageBuilding` — 인벤토리 보유, 허용 아이템 타입 필터 설정 가능
-- `DroppedItem.Spawn()` — 씬에 아이템 생성 + GroundHaulJob 자동 등록
-- `StorageBuilding.GetTotal(type)` / `Consume(type, amount)` — 전체 창고 집계
-
-### 캐릭터 스탯 (0–100)
-
-| 카테고리 | 스탯 | 주요 효과 |
-|---|---|---|
-| **속성** | 근력 | 맨손 피해, 대형무기 속도, 최대 수용 무게(×5) |
-| | 강인함 | 피해 저항, 기절 저항 |
-| | 손재주 | 공격/방어 속도, 절단 피해 |
-| | 인지력 | 원거리 명중률 |
-| **전투 기술** | 근접공격/방어 | 무기 착용 시 공격빈도/블록 |
-| | 정밀사격 | 아군 피격 회피 (60~100%) |
-| | 무술 | 맨손 전투 전반 |
-| | 회피 | 회피 확률 |
-| | 육상 | 이동속도 (`base × (1 + Athletics/100)`) |
-| **무기 숙련** | 한손검/도끼/둔기 등 | 해당 무기 피해량 |
-| **노동** | 채굴/원예/벌목 등 | 작업 속도/품질 |
-
-### 전투 공식
-
-```
-// 근접 데미지
-damage = AttackDamage × (1 + 무기숙련도/100)
-       × [1 + Dexterity/100 × 0.5]  // 절단무기
-       × [1 + Strength/100 × 0.5]   // 맨손
-       × 상태보정 × 무게보정
-
-// 공격 속도
-interval = BaseAttackInterval
-         / (1 + Dexterity/100)
-         / [1 + Strength/100 × 0.5] // 대형무기
-         / 상태보정 / 무게보정
-
-// 무게 보정 (Strength × 5 초과 시)
-weightCorrection = maxWeight / currentWeight
-```
-
-### 부위별 체력
-
-| 부위 | 기능 상실 (0) | 파괴 (-100) |
-|---|---|---|
-| 머리/가슴/복부 | 기절 시도 (강인함 저항) | 즉사 |
-| 팔 | 공격력 감소 | 기절 시도 |
-| 다리 | 절뚝거림/기기 | 기절 시도 |
-
-혈액 0% 미만 → 기절. -30% → 사망.
-
-### 인벤토리 & 드롭
-
-- I키: 선택 유닛 인벤토리 열기
-- 슬롯 드래그 → UI 밖에서 손 놓으면 해당 위치에 아이템 드롭
-- 드롭된 아이템은 자동으로 GroundHaulJob 등록 → 운반 폰이 창고로 전달
-
-### 하수인 소환
-
-`DungeonCore` 인스펙터에서 `MinionEntry(MinionData + Prefab)` 목록 설정.
-`DungeonCore.Summon(minionData, position)` — StorageBuilding에서 비용 소비 후 프리팹 스폰.
-
-### 미궁핵 유형
-
-| 유형 | 효과 |
-|---|---|
-| Cave | 기본 동굴 |
-| Meadow | 초원 |
-| Desert | 허기 증가, 이동속도 감소 |
-| Swamp | 이동속도 감소, 독 |
-| Ice | 이동속도 감소, 미끄러짐 |
-| Lava | 주변 지속 데미지 |
-| Jungle | 이동속도/시야 감소 |
-| Cursed | 아군 스탯 감소, 적 스탯 증가 |
+카메라는 `WASD`·중클릭 드래그·스크롤.
 
 ---
 
-## 단축키 모음
+## 문서
 
-| 키 | 기능 |
+**`CLAUDE.md`가 색인이다** — 답이 한 벌이어야 하는 자리와 *어기면 조용히 깨지는 규칙*이
+거기 있고, 눈금과 전말은 `docs/`에 있다.
+
+| 문서 | |
 |---|---|
-| I | 선택 유닛 인벤토리 |
-| P | 작업 우선순위 패널 |
-| WASD / 중클릭 드래그 | 카메라 이동 |
-| 스크롤 | 카메라 줌 |
+| `docs/units.md` | 폰·스탯·Needs·소집·명세/특성/배경 |
+| `docs/combat.md` | 피해·능력·몸·치료·시체 |
+| `docs/jobs.md` | 일감·창고·작업 자리·도축 |
+| `docs/build.md` | 건설·바닥·휴면·연구 저작 |
+| `docs/world.md` | 지도·길찾기·스트리밍·밤·이벤트 |
+| `docs/ui.md` | 창·입력·인벤토리 조작 |
+| `docs/data.md` | JSON·모드·시간 축·가치 사슬 |
+| `docs/singletons.md` | 싱글톤 항목별 근거 |
+| `docs/prisoners.md` · `merchants.md` · `factions.md` | 포로 · 상인 · 세력 |
+| `docs/editor_creators.md` | **에디터 도구 — UI를 만들기 전에 먼저 읽을 것** |
+| `docs/worklog.md` | 날짜별 작업 기록 |
+| `docs/design_*.md` | 설계 기록(왜 그렇게 정했는지가 남아 있다) |
 
 ---
 
-## 다음 할 것
+## 세계를 다시 굽기
 
-- **DungeonCore 영역 효과** — 환경 타입별 범위 내 유닛 버프/패널티
-- **적 스폰 시스템** — 웨이브 또는 이벤트 기반
-- **제작/가공 시스템** — 자원 → 아이템 변환
-- **적 사망 전리품** — `DroppedItem.Spawn()` 연결
+세계는 저작 씬(`World.unity`)에 서 있고, 게임을 켜면 그것이 청크로 스트리밍된다.
+다시 세우는 문은 하나다:
+
+```
+World → 1. Rebuild Underworld
+```
+
+지상 굽기 지우기 · 지도 크기 · 바이옴 · 장소 · Resnap · 굽기가 순서대로 묶여 있다.
+**손으로 여섯 번 누르게 하면 언젠가 다섯만 누른다.**
+
+굴이 어떻게 났는지는 `World → 2. Preview Cave Map`이 PNG 한 장으로 답한다 —
+**판정과 같은 함수를 쓴다.**
+
+---
+
+## 아직 안 된 것
+
+- **적이 능동 능력을 쓰는가** — 그릇은 폰마다 붙어 있고, 없는 것은 적 BT의 *언제 쓸까*다
+- **월드맵의 직접 건설** — 필드맵 절차 생성이 필요해 덩치가 크다
+- **층** — 다섯 층·한 번에 한 층은 설계까지다(`docs/design_underworld.md`). 지금은 한 판이다
