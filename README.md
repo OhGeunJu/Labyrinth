@@ -15,9 +15,11 @@
 
 ## 개발 환경
 
-- Unity 2022+
+- Unity 6.3 (6000.3.9f1)
 - Input System (New)
 - TextMeshPro
+- Wingman
+- DOTween Pro
 
 ---
 
