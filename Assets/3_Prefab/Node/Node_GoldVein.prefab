@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 3132230535386504479}
   - component: {fileID: 2140813495227479154}
   - component: {fileID: 5855477192743934119}
+  - component: {fileID: 1779931144888255482}
   m_Layer: 0
   m_Name: Node_GoldVein
   m_TagString: Untagged
@@ -90,6 +91,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: e8620e6319dbda24a99c064428afca51, type: 2}
   refundRatio: 1
+--- !u!114 &1779931144888255482
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 29725934195965749}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1
 --- !u!1 &768124829086593773
 GameObject:
   m_ObjectHideFlags: 0

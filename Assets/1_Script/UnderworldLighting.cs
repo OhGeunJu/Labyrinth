@@ -71,8 +71,8 @@ public class UnderworldLighting : MonoBehaviour
         _sky     = RenderSettings.ambientSkyColor;
         _equator = RenderSettings.ambientEquatorColor;
         _ground  = RenderSettings.ambientGroundColor;
-        _fog     = RenderSettings.fogDensity;
-        _cur     = Norm(Tide);
+        _fog = RenderSettings.fogDensity;
+        _cur = Norm(Tide);
         Apply(_cur);
     }
 
@@ -105,6 +105,11 @@ public class UnderworldLighting : MonoBehaviour
         RenderSettings.ambientGroundColor  = _ground  * k;
 
         // **안개는 반대로 짙어진다** — 어두워지는 것과 멀리 안 보이게 되는 것은 같은 일이다.
+        //
+        // **켜는 것은 여기가 아니다**(2026-09-07). 씬에서 안개가 꺼져 있어(`m_Fog: 0`) 이
+        // 줄은 실제로 아무 일도 안 한다 — 켜 봤더니 **지금 필요가 없었다**(사용자: *"청크가
+        // 그렇게 많이 로드되는 것도 아닌데 안개로 가려버릴 필요는 없다"*). 쓸 날이 오면
+        // 씬에서 켜면 되고, 그때 이 줄이 저절로 살아난다.
         RenderSettings.fogDensity = Mathf.Lerp(_fog * 1.8f, _fog, t);
     }
 }

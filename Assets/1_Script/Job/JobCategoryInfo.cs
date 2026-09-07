@@ -33,6 +33,18 @@ public static class JobCategoryInfo
         JobCategory.Mining,
         JobCategory.Construction,
         JobCategory.Farming,
+        // **채집은 농사 바로 뒤다.** 하는 일이 수확과 같고(자란 것을 거둔다), 한 번이면
+        // 끝나므로 줄을 오래 막지 않는다. **큐에 두는 것이 요점이다** — 직접 배정으로
+        // 두었더니 폰 하나가 버섯 한 무리에 *배정되어 눌러앉았다*(2026-09-06에 바로잡았다).
+        // 지나가다 집는 일에 붙이고 떼는 조작을 물리면 값만 크고 얻는 것이 없다.
+        JobCategory.Foraging,
+        // **벌목도 큐에 들어왔다**(2026-09-06). 전에는 `DirectAssign`에만 있어서
+        // **`Weight`가 0이라 찍어 놓고 아무도 안 갔다** — 야생 거대버섯에 *[여기서 캔다]*를
+        // 걸어도 폰이 꿈쩍하지 않았다. **채굴이 2026-08-29에 겪은 것과 글자 그대로 같은
+        // 함정**이고, 그때 남긴 경고를 이번에 그대로 밟았다.
+        //
+        // **이제 둘 다다**(채굴과 같은 모양): 기지에 심은 나무는 **직접 배정**, 야생은 **큐**.
+        JobCategory.Logging,
         JobCategory.Crafting,
         // **도축은 제작 뒤, 운반 앞이다.** 시체는 삭으므로(신선 2일 → 썩음 4일 → 뼈) 늦으면
         // 나올 것이 줄어든다 — 운반보다는 급하고, 사람이 걸어 둔 제작 주문보다는 덜하다.
@@ -99,6 +111,7 @@ public static class JobCategoryInfo
         JobCategory.Medical      => "치료",
         JobCategory.Warden       => "간수",
         JobCategory.Butcher      => "도축",
+        JobCategory.Foraging     => "채집",
         _                        => "-",
     };
 }

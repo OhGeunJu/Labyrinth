@@ -27,6 +27,16 @@ public class SelectionManager : MonoBehaviour
 
     public Action<PawnMover, bool> OnSelectionChanged;
     public static event Action<ResourceNode> OnNodeSelected;
+
+    // **채집물도 살펴볼 수 있어야 한다**(2026-09-06) — 자원 노드와 바닥 물건은 창이 뜨는데
+    // 버섯만 눌러도 아무것도 안 나왔다. *무엇이 나오나 · 찍혔나 · 그 품목이 자동운반인가*를
+    // 볼 자리가 없으면 **초록 구슬만 보고 "왜 안 따지"를 짐작**하게 된다.
+    public static event Action<Forageable> OnForageInspected;
+
+    // **벽도 살펴볼 수 있어야 한다**(2026-09-06) — 광맥·채집물·바닥 물건은 창이 뜨는데
+    // **벽만 눌러도 아무것도 안 나왔다.** 벽은 세계에서 가장 많이 누르는 것이고, 파면
+    // 무엇이 나오는지·찍혔는지·그 돌을 자동으로 나를지가 **거기서 답해져야 한다.**
+    public static event Action<Vector2Int?> OnRockInspected;
     public static event Action<Corpse> OnCorpseSelected;
 
     // 바닥에 떨어진 물건 — 청사진·건물과 같은 **한 클릭짜리 조사**다(딴 데를 누르면 풀린다).
@@ -249,6 +259,31 @@ public class SelectionManager : MonoBehaviour
                 // 빈 목록을 받는다(`ResourceNodeUI.AssignSelected`가 Selected를 읽는다).
                 // 시체 클릭도 같은 이유로 선택을 유지한다.
                 OnNodeSelected?.Invoke(node);
+                return;
+            }
+
+            // 벽(바위) — 콜라이더가 청크 메시라 컴포넌트가 없다. **`RockRenderer`가 제
+            // 자식인지로 답한다**(`IsRockCollider`) — 레이어로 가르면 지형과 섞인다.
+            if (RockRenderer.IsRockCollider(hit.collider) && MapManager.Instance != null)
+            {
+                // **맞은 면 안쪽으로 밀어 넣는다** — 벽 옆면을 누르면 맞은 점이 정확히 칸
+                // 경계에 떨어져 **벽 앞의 빈 칸이 잡힌다**(`MineDesignator.Ground`와 같은 자리).
+                var inside = hit.point - hit.normal * 0.05f;
+                var tile   = MapManager.Instance.WorldToTile(inside);
+
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                OnRockInspected?.Invoke(tile);
+                return;
+            }
+
+            // 채집물 — **선택은 유지한다**(노드·시체·바닥 물건과 같은 이유).
+            var forage = hit.collider.GetComponentInParent<Forageable>();
+            if (forage != null)
+            {
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                OnForageInspected?.Invoke(forage);
                 return;
             }
 

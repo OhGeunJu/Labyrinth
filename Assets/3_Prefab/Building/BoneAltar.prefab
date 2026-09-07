@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 1270243421998993548}
   - component: {fileID: 4037479284447513616}
   - component: {fileID: 2176442660993824491}
+  - component: {fileID: 2814555405731537733}
   m_Layer: 0
   m_Name: BoneAltar
   m_TagString: Untagged
@@ -86,6 +87,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: 6ac26b0f2d23e75479149d311a3c72b9, type: 2}
   refundRatio: 1
+--- !u!114 &2814555405731537733
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1306993646561409057}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 3
+  switchedOn: 1
 --- !u!1 &4901473795464167161
 GameObject:
   m_ObjectHideFlags: 0

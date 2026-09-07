@@ -372,6 +372,7 @@ GameObject:
   - component: {fileID: 4283766374663835432}
   - component: {fileID: 4129967819927185631}
   - component: {fileID: 6629519447939176626}
+  - component: {fileID: 4339685749430667571}
   m_Layer: 0
   m_Name: Node_MagicCrystal
   m_TagString: Untagged
@@ -448,3 +449,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: abf601c7c358a3b4dba1ef312e9395d3, type: 2}
   refundRatio: 1
+--- !u!114 &4339685749430667571
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7280746284805718068}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1

@@ -494,7 +494,9 @@ public class WorkNode : BTNode
 
     // **자원 노드는 이 규약을 안 쓴다.** 바위·나무에는 저작된 자리가 없고 `MaxWorkers`만큼
     // 여럿이 둘러서서 캔다 — 한 칸에 붙이면 서로 비켜서다 아무도 못 캔다. 넉넉히 둔다.
-    const float NodeReach = 2.0f;
+    // **`JobBase.NodeReach`가 답한다** — 배정으로 캐는 여기와 찍어서 캐는 일감이 같은
+    // 거리에서 서야 한다.
+    const float NodeReach = JobBase.NodeReach;
 
     float      _stuckTimer;
     float      _bestLeft = float.MaxValue;

@@ -47,10 +47,23 @@ public class LightSource : MonoBehaviour
     [Tooltip("불꽃이 흔들리는 폭(등 세기 대비). 0이면 가만히 탄다.")]
     [Range(0f, 0.5f)] [SerializeField] float flicker = 0.15f;
 
+    // **불이 아니라 빛나는 것도 있다**(2026-09-06, 발광 버섯).
+    //
+    // 지금까지 이 컴포넌트는 *불*만 알았다 — 켜는 때를 `Campfire`가 정하고(저녁에 켜고
+    // 아침에 끈다) 아무도 안 켜면 영영 어둡다. **버섯은 켜는 사람이 없다**: 그냥 빛난다.
+    //
+    // **`Vision`이 이걸 그대로 읽는 것이 요점이다** — 발광 버섯 지대에 들어서면 화면이
+    // 밝아지는 만큼 **폰도 실제로 더 본다.** 순수한 장식 조명으로 두면 *"밝아 보이는데
+    // 안 보인다"*가 생긴다(**화면과 판정은 같은 수를 봐야 한다**).
+    [Tooltip("켜는 사람 없이 늘 빛난다(발광 버섯 등). 화톳불은 끈다 — 그건 때가 정한다.")]
+    [SerializeField] bool alwaysLit;
+
     float   _baseIntensity;
     Vector3 _flameScale;
     float   _noiseSeed;
     bool    _lit;
+
+    public bool  AlwaysLit { get => alwaysLit; set => alwaysLit = value; }
 
     public float Radius   => radius;
     public float Strength => strength;
@@ -70,6 +83,7 @@ public class LightSource : MonoBehaviour
     void OnEnable()
     {
         All.Add(this);
+        if (alwaysLit) _lit = true;
         Apply();
     }
 

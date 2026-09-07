@@ -71,6 +71,18 @@ public class DungeonCore : MonoBehaviour
     // (`SettlementManager.SetAsActive`가 갈아 끼운다), 부르는 곳이 수십이다.
     public static readonly List<DungeonCore> All = new();
 
+    // **핵이 내는 힘**(2026-09-06). 이 값이 곧 **기지의 크기**다 — 이식 광맥·충전대·제단이
+    // 여기서 나눠 받고, 모자라면 나중에 지은 것부터 멈춘다(`PowerGrid`).
+    //
+    // **늘리는 길은 부핵뿐이다** — 그리고 부핵을 세우려면 밖에 나가 재료를 캐 와야 한다.
+    // 그것이 *탐험이 본류*라는 축을 기지 쪽에서 붙잡는 자리다: 힘이 무한하면 굴에 나갈 이유가
+    // 초반 한 번으로 끝난다.
+    [Header("전력")]
+    [Tooltip("이 핵이 내는 힘의 총량. 영역 안의 건물들이 나눠 받는다.")]
+    [Min(0)] [SerializeField] int energyOutput = 10;
+
+    public int EnergyOutput => Mathf.Max(0, energyOutput);
+
     void Awake()
     {
         Instance = this;

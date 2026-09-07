@@ -4,7 +4,9 @@ using UnityEngine;
 // DroppedItem.Spawn()으로 생성 — 프리팹 불필요.
 // HaulJob 또는 유닛이 PickUp() 호출 시 인벤토리에 추가 후 자신 제거.
 [RequireComponent(typeof(SphereCollider))]
-public class DroppedItem : MonoBehaviour
+// **찍을 수 있는 것 둘 중 하나다**(`IGatherTarget`) — 나머지 하나는 `Forageable`이다.
+// 여기서 *찍혔나*는 곧 `HaulAllowed`다(이름을 하나 더 만들지 않는다).
+public class DroppedItem : MonoBehaviour, IGatherTarget
 {
     public ItemData    Item    { get; private set; }
     public int         Amount  { get; private set; }
@@ -22,7 +24,38 @@ public class DroppedItem : MonoBehaviour
     //
     // 설비가 내놓는 것(자원 노드·작업대 산출물)은 이 축과 무관하다 — 그쪽은 바닥을 거치지
     // 않고 `HaulDispatcher`가 직접 일감을 낸다. **생산 라인은 그대로 자동이다.**
+    // **이 한 개가 찍혔나.** 품목 규칙(`HaulPolicy`)과 **합집합**이다 — 아래 `Hauls` 참조.
     public bool HaulAllowed { get; private set; }
+
+    // ── 실제로 나르나 ───────────────────────────────────────────────────────
+    //
+    // **이 한 개가 찍혔거나, 그 품목이 켜졌거나**(`HaulPolicy`). 둘 다 *"나른다"*만 말하므로
+    // **합집합이고 우선순위 규칙이 없다** — 그래서 "어느 쪽이 이기나"를 정할 일이 없다.
+    //
+    // 다만 **품목이 켜져 있으면 한 개만 빼 둘 수는 없다.** 그건 *품목 규칙*이라는 말의
+    // 뜻 그대로다(빼려면 품목을 끄고 하나씩 찍는다).
+    public bool Hauls => HaulAllowed || HaulPolicy.IsAuto(Item);
+
+    // **정책이 바뀌면 이미 바닥에 있는 것도 따라온다** — 켜 놓고 *"왜 저건 안 나르지"*가
+    // 되면 스위치가 거짓말이 된다. 훑는 쪽을 정책이 알면(`FindObjectsByType`) 정책이 화면을
+    // 아는 꼴이 되므로, **듣는 쪽이 제 것만 다시 맞춘다.**
+    void OnEnable()  => HaulPolicy.OnChanged += OnPolicyChanged;
+    void OnDisable() => HaulPolicy.OnChanged -= OnPolicyChanged;
+
+    void OnPolicyChanged()
+    {
+        RefreshMark();
+        if (Hauls) TryRegisterHaul();
+        else       DropHaulJob();
+    }
+
+    // ── `IGatherTarget` — 지정 모드가 보는 얼굴 ────────────────────────────
+    //
+    // **찍혔나는 이 한 개를 묻는다** — 품목이 켜져 있어도 *이것을 찍었나*는 따로다
+    // (안 그러면 품목을 켠 순간 지정 모드가 **무를 것이 하나도 없다**고 답한다).
+    bool      IGatherTarget.Designated => HaulAllowed;
+    void      IGatherTarget.SetDesignated(bool on) => SetHaulAllowed(on);
+    Transform IGatherTarget.Where => transform;
 
     public void SetHaulAllowed(bool on)
     {
@@ -31,13 +64,20 @@ public class DroppedItem : MonoBehaviour
 
         RefreshMark();
 
-        if (on) { TryRegisterHaul(); return; }
+        if (Hauls) { TryRegisterHaul(); return; }
+        DropHaulJob();
+    }
 
-        // **껐으면 가던 폰도 돌려세운다.** 헛걸음을 아끼려고 하던 것은 끝내게 두는 규약이
-        // 여기엔 안 맞는다 — "여기 둔다"는 **지금 그러지 마라**는 뜻이고, 걸어오는 것을 못
-        // 멈추면 껐는데도 물건이 실려 가서 스위치가 거짓말이 된다.
-        // (`JobBase.Cancel`은 `WorkNode`가 다음 틱에 알아채고 놓는다 — 밖에서 취소된 일감을
-        //  놓는 길은 이미 있다.)
+    // **껐으면 가던 폰도 돌려세운다.** 헛걸음을 아끼려고 하던 것은 끝내게 두는 규약이
+    // 여기엔 안 맞는다 — "여기 둔다"는 **지금 그러지 마라**는 뜻이고, 걸어오는 것을 못
+    // 멈추면 껐는데도 물건이 실려 가서 스위치가 거짓말이 된다.
+    // (`JobBase.Cancel`은 `WorkNode`가 다음 틱에 알아채고 놓는다 — 밖에서 취소된 일감을
+    //  놓는 길은 이미 있다.)
+    //
+    // **부르는 곳이 둘이다** — 개별 지정을 끌 때와 품목 규칙이 꺼질 때. 각자 적으면
+    // 한쪽만 고치는 날이 온다.
+    void DropHaulJob()
+    {
         if (_haulJob != null)
         {
             JobManager.Instance?.RemoveJob(_haulJob);
@@ -105,9 +145,9 @@ public class DroppedItem : MonoBehaviour
 
     void RefreshMark()
     {
-        if (HaulAllowed || _pendingMark)
+        if (Hauls || _pendingMark)
         {
-            if (_mark != null) { Tint(_mark, HaulAllowed ? MarkColor : PendingColor); return; }
+            if (_mark != null) { Tint(_mark, Hauls ? MarkColor : PendingColor); return; }
 
             _mark = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             var col = _mark.GetComponent<Collider>();
@@ -116,7 +156,7 @@ public class DroppedItem : MonoBehaviour
             _mark.transform.SetParent(transform, false);
             _mark.transform.localPosition = new Vector3(0f, MarkHeight, 0f);
             _mark.transform.localScale    = Vector3.one * 0.12f;
-            Tint(_mark, HaulAllowed ? MarkColor : PendingColor);
+            Tint(_mark, Hauls ? MarkColor : PendingColor);
             return;
         }
 
@@ -228,7 +268,7 @@ public class DroppedItem : MonoBehaviour
 
     public void TryRegisterHaul()
     {
-        if (!HaulAllowed) return;   // 체크 안 한 것 — 시키기 전엔 아무도 안 건드린다
+        if (!Hauls) return;   // 안 찍었고 품목도 안 켜졌다 — 시키기 전엔 아무도 안 건드린다
         if (JobManager.Instance == null || Item == null) return;
 
         // **쌓인 만큼·이 등급으로** 물어본다. 개수를 빼먹으면 한 개 자리만 확인하고 50을
@@ -245,7 +285,7 @@ public class DroppedItem : MonoBehaviour
     // 여기서 바로 빠지므로 바닥에 널린 것들이 매 프레임 값을 물리지 않는다.
     void Update()
     {
-        if (!HaulAllowed) return;
+        if (!Hauls) return;
 
         // 일감이 살아 있으면 그만이다. 끝났거나 취소됐거나 애초에 못 걸었을 때만 다시 본다.
         if (_haulJob != null &&

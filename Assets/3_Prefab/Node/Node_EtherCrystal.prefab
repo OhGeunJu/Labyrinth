@@ -282,6 +282,7 @@ GameObject:
   - component: {fileID: 236903682955181164}
   - component: {fileID: 9115083453571581167}
   - component: {fileID: 5974726637344916778}
+  - component: {fileID: 4032952414994074666}
   m_Layer: 0
   m_Name: Node_EtherCrystal
   m_TagString: Untagged
@@ -358,6 +359,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: dc967b62fd3f3984f80d8d810fe3fc8f, type: 2}
   refundRatio: 1
+--- !u!114 &4032952414994074666
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7791925957193019979}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1
 --- !u!1 &8722495374519827311
 GameObject:
   m_ObjectHideFlags: 0

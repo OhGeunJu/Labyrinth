@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 5356397379817572386}
   - component: {fileID: 6373193644850436144}
   - component: {fileID: 405481340366609182}
+  - component: {fileID: 3304472629499715010}
   m_Layer: 0
   m_Name: Node_CoalSeam
   m_TagString: Untagged
@@ -90,6 +91,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: e76ce3562258a1e4cb135781f9055f63, type: 2}
   refundRatio: 1
+--- !u!114 &3304472629499715010
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2861120506468814359}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed2e213a2cd8e44c96e901a558fe517, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PowerUser
+  cost: 2
+  switchedOn: 1
 --- !u!1 &3418425636503089354
 GameObject:
   m_ObjectHideFlags: 0

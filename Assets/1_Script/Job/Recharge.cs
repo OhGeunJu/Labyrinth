@@ -64,6 +64,11 @@ public static class Recharge
         {
             if (r == null || !r.isActiveAndEnabled || r.Fills != kind) continue;
 
+            // **힘을 못 받는 충전대는 고르지 않는다**(2026-09-06). 고르고 나서 못 쓰면
+            // 폰이 **걸어와서 빈손으로 접고 다시 온다** — 재료가 없을 때 안 고르는 것과
+            // 같은 규칙이다(`PowerUser`가 없는 옛 건물은 예전 그대로 참이다).
+            if (!PowerUser.Ok(r)) continue;
+
             float sq = (r.transform.position - from).sqrMagnitude;
             if (sq >= bestSq) continue;
 

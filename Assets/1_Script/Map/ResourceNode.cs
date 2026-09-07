@@ -2,7 +2,23 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ResourceNode : MonoBehaviour, IHaulSource
+// **자연에 있는 것 ↔ 지은 것**(2026-09-06, 사용자 결정: *"미궁핵에 건설된 자원들만 배정을
+// 받는 거로 할까? 미궁핵에서 에너지를 써서 계속 생산되게 하는거라고 하면 말이 되잖아"*).
+//
+// | | 자연에 있는 것 | 미궁핵에 지은 것 |
+// |---|---|---|
+// | 무엇 | 야생 광맥·거대버섯 | `Node_*Vein` 건물(이식 광맥) |
+// | 어떻게 | **찍어서 가져온다**(`H`) | **배정한다** |
+// | 끝 | **캐다 보면 사라진다**(`TotalYields`) | 계속 내놓는다 |
+//
+// **한 문장으로: 자연은 찍고, 기지는 배정한다.** 그전에는 둘이 안 갈려서 야생 광맥에도 폰을
+// 붙일 수 있었고, 그러면 **굴에서 캐 온 것으로 기지에 광맥을 이식할 이유가 없었다**(밖에서
+// 무한히 캐면 되니까). 이식이라는 축이 게임에 있는데 그 축을 쓸 이유를 규칙이 안 만들고 있었다.
+//
+// **가르는 것은 `PlacedBuilding`이 있느냐 하나다**(`IsBuilt`) — 지은 것에만 그것이 붙는다.
+// 저작으로 가르면 노드가 늘 때마다 *"이건 야생인가"*를 사람이 적어야 하고, 하나 빠뜨리면
+// **밖에서 무한히 캐지는 광맥**이 조용히 하나 생긴다.
+public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
 {
     // 배정/해제 통보 — 노드 패널·무리 관리 패널이 즉시 갱신하도록.
     // 해제는 패널 밖(이동 명령·사망)에서도 일어나므로, 폴링만으로는 목록이 낡은 채로 남는다.
@@ -35,11 +51,25 @@ public class ResourceNode : MonoBehaviour, IHaulSource
     static readonly List<ResourceNode> _all = new();
     public static IReadOnlyList<ResourceNode> All => _all;
 
+    void Start()
+    {
+        // **지은 노드는 힘을 먹는다** — 배선을 빠뜨려도 여기서 붙으므로 **공짜로 도는
+        // 건물이 생기지 않는다**(`PowerUser.Ensure`). 야생에는 안 붙인다: 자연은 핵과
+        // 무관하고, 붙이면 **핵이 없을 때 세계의 나무를 아무도 못 베게 된다.**
+        if (IsBuilt) PowerUser.Ensure(this, DefaultPowerCost);
+    }
+
+    // 이식 광맥이 먹는 힘. 저작하고 싶으면 프리팹의 `PowerUser.cost`를 고친다 —
+    // 여기 값은 **아무도 안 적어 뒀을 때의 답**이다.
+    const int DefaultPowerCost = 2;
+
     void OnEnable()  => _all.Add(this);
     void OnDisable() => _all.Remove(this);
 
     // 이 노드를 캐려면 어떤 작업이 켜져 있어야 하나. **여기 하나가 답한다** —
     // `Assign`·`ClaimFreeFor`·`WorkNode`가 각자 `IsTree`를 물으면 하나가 어긋난다.
+    // **채집은 여기 안 온다**(2026-09-06). 한 번 따고 없어지는 것은 노드가 아니라
+    // `Forageable`이고 **큐 작업**이다 — 노드로 두면 폰이 배정되어 눌러앉는다.
     public JobCategory NeededCategory =>
         data != null && data.IsTree ? JobCategory.Logging : JobCategory.Mining;
 
@@ -56,6 +86,11 @@ public class ResourceNode : MonoBehaviour, IHaulSource
         if (brain == null) return false;
         if (_assigned.Contains(brain)) return true;   // 이미 여기 있다 = 원하는 상태
         if (IsFull) return false;
+
+        // **배정은 지은 노드에만**(2026-09-06). 야생은 *찍어서 가져오는 것*이라 붙일 사람이
+        // 없다 — 붙일 수 있으면 **밖에서 무한히 캘 수 있고**, 그러면 기지에 광맥을 이식할
+        // 이유가 사라진다(그 축이 게임에 있는데 규칙이 쓸 이유를 안 만들고 있었다).
+        if (!IsBuilt) return false;
 
         // 다른 노드에 배정돼 있었으면 **거기서 먼저 뗀다.** 폰이 들고 있는
         // `Blackboard.AssignedNode`는 하나뿐이라, 안 떼면 이전 노드의 목록에만
@@ -113,6 +148,7 @@ public class ResourceNode : MonoBehaviour, IHaulSource
         foreach (var node in _all)
         {
             if (node == null || node.data == null || node.IsFull) continue;
+            if (!node.IsBuilt) continue;   // 야생은 배정 대상이 아니다 — 찍어서 가져온다
 
             var need = node.NeededCategory;
             if (!work.IsEnabled(need) || work.IsBlocked(need)) continue;
@@ -165,6 +201,111 @@ public class ResourceNode : MonoBehaviour, IHaulSource
 
     float _gauge;
     int _totalYielded;
+
+    // **지은 것인가.** `Start`에서 한 번만 묻는다 — 매 틱 `GetComponentInParent`를 도는 것은
+    // 이 클래스가 이미 피해 온 일이다(레지스트리를 둔 이유와 같다).
+    bool _built;
+    bool _builtKnown;
+
+    public bool IsBuilt
+    {
+        get
+        {
+            if (!_builtKnown)
+            {
+                _built = GetComponentInParent<PlacedBuilding>() != null;
+                _builtKnown = true;
+            }
+            return _built;
+        }
+    }
+
+    // 야생 노드는 **다 캐면 없어진다.** 지은 것은 이 값을 안 본다.
+    public bool Depleted =>
+        !IsBuilt && data != null && data.TotalYields > 0 && _totalYielded >= data.TotalYields;
+
+    // ── 찍어서 가져온다 (`IGatherTarget`) ──────────────────────────────────
+    //
+    // **야생만 찍힌다** — 지은 노드는 배정이라 찍을 것이 없다. 찍는 문은 바닥 물건·채집물과
+    // 같은 하나다(`H` 지정 모드). **모드를 또 만들지 않는다**: 조작이 한 글자도 안 다르다.
+    GatherNodeJob _job;
+    bool _designated;
+    bool _mark;
+
+    public bool Designated   => _designated;
+    public bool CanDesignate => !IsBuilt;
+
+    public void SetDesignated(bool on)
+    {
+        if (IsBuilt) return;                    // 지은 노드는 배정이지 지정이 아니다
+        if (_designated == on) return;
+
+        _designated = on;
+        RefreshDesignationMark();
+
+        if (on)
+        {
+            if (_job == null && JobManager.Instance != null)
+            {
+                _job = new GatherNodeJob(this);
+                JobManager.Instance.RegisterJob(_job);
+            }
+            return;
+        }
+
+        // **무르면 일감도 거둔다** — 안 거두면 껐는데 폰이 계속 걸어온다.
+        var job = _job;
+        _job = null;
+        if (job != null) JobManager.Instance?.CancelJob(job);
+    }
+
+    public void OnJobCancelled() => _job = null;
+
+    Transform IGatherTarget.Where => transform;
+
+    public void SetPendingHighlight(bool on)
+    {
+        if (_mark == on) return;
+        _mark = on;
+        RefreshDesignationMark();
+    }
+
+    // **바닥 물건·채집물과 같은 초록 구슬** — 같은 모드가 찍는 것이니 같은 말을 해야 한다.
+    GameObject _markGo;
+
+    void RefreshDesignationMark()
+    {
+        bool show = _designated || _mark;
+
+        if (_markGo == null)
+        {
+            if (!show) return;
+
+            _markGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            _markGo.name = "Designated";
+            var col = _markGo.GetComponent<Collider>();
+            if (col != null) Destroy(col);   // 클릭 판정은 노드 콜라이더 하나뿐이어야 한다
+
+            _markGo.transform.SetParent(transform, false);
+            _markGo.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+            _markGo.transform.localScale    = Vector3.one * 0.22f;
+
+            var r = _markGo.GetComponent<Renderer>();
+            if (r != null) r.sharedMaterial = FadeMaterial.Create(new Color(0.35f, 0.95f, 0.45f, 0.95f));
+        }
+
+        _markGo.SetActive(show);
+        if (!show) return;
+
+        var rr = _markGo.GetComponent<Renderer>();
+        if (rr != null) FadeMaterial.SetAlpha(rr.sharedMaterial, _designated ? 0.95f : 0.45f);
+    }
+
+    // 얼마나 남았나 — 살펴보기 창이 적는다(*"몇 번 더 캘 수 있나"*가 안 보이면 유한한 자원이
+    // 무한한 것과 화면에서 구별되지 않는다).
+    public int YieldsLeft =>
+        IsBuilt || data == null || data.TotalYields <= 0
+            ? -1 : Mathf.Max(0, data.TotalYields - _totalYielded);
     readonly List<Vector2Int> _blockedTiles = new();
 
     HaulDispatcher _haul;
@@ -226,13 +367,45 @@ public class ResourceNode : MonoBehaviour, IHaulSource
     {
         if (data == null) return;
 
+        if (Depleted) return;
+
+        // **힘을 못 받으면 안 돈다**(2026-09-06). 이식 광맥은 *핵이 돌리는 것*이라 힘이 곧
+        // 그 산출의 값이다.
+        //
+        // **`IsBuilt`를 먼저 묻는다 — `PowerUser`가 붙어 있나로 묻지 않는다.** 그렇게 뒀더니
+        // 배선 도구가 이름(`Node_`)으로 골라 **야생 거대버섯 프리팹에도 붙였고**, 핵이 없으니
+        // 힘을 못 받아 **폰이 베러 걸어가서는 아무것도 안 했다**(사용자가 본 그것).
+        //
+        // **컴포넌트가 붙어 있느냐는 배선 사고에 흔들린다. 지은 것이냐는 안 흔들린다.**
+        if (IsBuilt && !PowerUser.Ok(this)) return;
+
         _gauge += power * deltaTime;
 
         if (_gauge >= data.GaugeRequired)
         {
             _gauge = 0f;
             DropYield();
+
+            // **다 냈으면 없어진다.** 남은 재고는 이미 인벤토리에 있고 운반 일감도 나갔으므로
+            // 여기서 바로 지우면 **그 짐이 같이 사라진다** — 비고 나서 지운다(`Update`가 본다).
+            if (Depleted) _spent = true;
         }
+    }
+
+    // **다 캤는데 아직 짐이 남았다.** 지우는 것을 미룬다 — 자원 노드는 캔 것을 제 인벤토리에
+    // 쌓고 짐꾼이 와서 가져가므로, 마지막 산출 직후에 지우면 **그 마지막 몫이 증발한다.**
+    bool _spent;
+
+    void LateUpdate()
+    {
+        if (!_spent) return;
+        if (Inventory != null && Inventory.Items.Count > 0) return;   // 아직 실어 갈 것이 있다
+
+        // **표식이 남지 않게 먼저 푼다** — 배정된 폰이 있으면 놓아 준다.
+        for (int i = _assigned.Count - 1; i >= 0; i--)
+            if (_assigned[i] != null) Unassign(_assigned[i]);
+
+        Destroy(gameObject);
     }
 
     void DropYield()

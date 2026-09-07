@@ -133,6 +133,39 @@ public class CameraController : MonoBehaviour
     [Tooltip("잡아 주기가 미끄러지는 시간(초). 배속과 무관한 실제 시간.")]
     [SerializeField] float focusTime = 0.35f;
 
+    [Header("채굴 모드 시야")]
+    // **벽이 24m가 된 뒤로 낮은 시점에서는 찍을 자리가 안 보인다**(2026-09-07, 사용자).
+    // 채굴은 *어디를 팔까*를 정하는 일이라 **덩이의 모양**이 보여야 하는데, 벽 사이에
+    // 들어가 있으면 눈앞의 한 면 말고는 아무것도 안 보인다.
+    //
+    // **눕힌 각도를 바로잡는 것과 같은 갈래다** — 이미 이 모드는 시점을 위에서 내려다보게
+    // 돌린다(`LerpToPitch`). 각도만 돌리고 높이를 안 올리면 **벽 사이에서 천장을 보는 꼴**이라
+    // 그 손질이 반만 된 것이었다.
+    //
+    // **지면 기준이다 — 절대 Y가 아니다**(이 파일의 모든 높이가 그렇다). 지하 바닥이 30m
+    // 언저리라 절대 Y로는 90 언저리가 된다.
+    [Tooltip("채굴 모드로 들어갈 때 최소한 이만큼은 올라간다(지면 기준 m). 이미 더 높으면 안 건드린다.")]
+    [SerializeField] float mineViewHeight = 60f;
+
+    public float MineViewHeight => mineViewHeight;
+
+    // **올리기만 한다.** 이미 더 높으면 아무것도 안 한다 — 내리기까지 하면 *"멀리서 보며
+    // 찍고 싶다"*를 모드가 거절하는 셈이고, 그건 도와주는 것이 아니라 빼앗는 것이다.
+    // (각도를 원래대로 돌려주는 것과 같은 규칙이다.)
+    //
+    // **각도는 안 건드린다** — 부르는 쪽이 이미 `LerpToPitch`로 따로 말한다.
+    public void RiseTo(float aboveGround)
+    {
+        float want = GroundBelow() + Mathf.Min(aboveGround, maxHeight);
+        if (transform.position.y >= want) return;
+
+        DOTween.Kill(transform);
+        transform.DOMoveY(want, focusTime)
+                 .SetEase(Ease.OutCubic)
+                 .SetUpdate(true)        // 멈춰 세운 채로 찍는 일이 흔하다
+                 .SetLink(gameObject);
+    }
+
     // **멀면 시선을 따라 다가간다** — 대상이 화면 한가운데에 그대로 있으므로 커지기만 한다.
     //
     // 가까울 때는 **아무것도 안 한다**: 잡아 주기는 보여 주는 일이지 시점을 정해 주는 일이

@@ -253,5 +253,26 @@ public class WorldMapPanel : MonoBehaviour
         if (panel != null) WindowRaiser.Close(panel);
     }
 
+    // **커서가 짚은 자리가 어디인가.** 지역 좌표와 **바이옴 이름**을 띄운다 — 지도가 색을
+    // 칠해 놓고 이름을 아무 데도 안 적어서, *"균사림이 어디냐"*에 답할 길이 없었다.
+    //
+    // **`LookAt`과 같은 식으로 좌표를 낸다** — 갈리면 짚은 곳과 날아가는 곳이 어긋난다.
+    // 이름과 색의 단일 출처는 `Biome`의 확장 메서드다(`DisplayName`·`Color`).
+    public void Describe(Vector2 normalized)
+    {
+        float x = normalized.x * TerrainGrid.WorldSize;
+        float z = normalized.y * TerrainGrid.WorldSize;
+
+        var region = TerrainGrid.RegionAt(x, z);
+        var biome  = WorldMap.AuthoredBiome(region.x, region.y);
+        var c      = biome.Color();
+        int tier   = BiomeTier.Of(biome);
+
+        HoverTooltipUI.Show(
+            $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{biome.DisplayName()}</color>",
+            $"지역 ({region.x}, {region.y}) · 월드 ({x:F0}, {z:F0})\n" +
+            $"티어 {tier} — {BiomeTier.Label(tier)}");
+    }
+
     void OnDestroy() { if (_tex != null) Destroy(_tex); }
 }

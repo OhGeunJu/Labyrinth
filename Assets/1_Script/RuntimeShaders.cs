@@ -30,6 +30,11 @@ public static class RuntimeShaders
     public const string UrpTerrainLit = "Universal Render Pipeline/Terrain/Lit";
     public const string NatureTerrain = "Nature/Terrain/Standard";
 
+    // 바위 — URP Lit의 사본(가까운 벽을 낮춰 그린다). **Always Included에는 안 넣는다** —
+    // Lit의 사본이라 변형이 폭발한다. 지형과 같은 문으로 들어간다: **재질 에셋이 가리킨다**
+    // (`World → 0. Create Rock Materials`가 만드는 `Rock_Top/Wall/Mark.mat`).
+    public const string RockLit = "DungeonColony/Rock/Lit";
+
     // 일반 표면
     public const string Lit      = "Universal Render Pipeline/Lit";
     public const string Unlit    = "Universal Render Pipeline/Unlit";
@@ -54,6 +59,7 @@ public static class RuntimeShaders
     public static readonly string[] All =
     {
         TerrainLit, UrpTerrainLit, NatureTerrain,
+        RockLit,
         Lit, Unlit, Standard,
         InternalColored, SpritesDefault, UnlitColor, UnlitTexture,
     };
