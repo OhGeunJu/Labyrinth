@@ -126,6 +126,18 @@ public class EventManager : MonoBehaviour
         _rescueAt = _elapsed + Mathf.Max(0f, data.RescueDelay);
     }
 
+    // **칠 것이 있어야 습격이 온다**(2026-09-08, 사용자: *"던전핵이 없으면 습격을 안 오는 게
+    // 맞지 않아?"*). 맞다 — 판이 열릴 때 핵을 안 주기로 했으므로(첫 결정이 *어디에 세울까*다)
+    // 그 전에 오는 습격은 **덮칠 것이 없는 습격**이다.
+    //
+    // 그리고 조용히 이상해진다: 기준점이 없으니 스폰 자리를 빌드존 한복판에서 짐작하게 되어
+    // **눈앞에 튀어나오고**, `RaidLord`는 목적지가 스폰 자리와 같아져 **접근도 돌격도 안 뜬다**
+    // (사용자가 본 그림이 그것이다).
+    //
+    // **묻는 곳이 둘이라 여기 한 벌로 둔다** — 추첨 후보에서 빼고(안 빼면 습격이 **굴림을
+    // 먹고** 아무 일도 안 일어난다), 발동 문에서도 막는다(도구가 직접 부를 수 있다).
+    static bool CanRaid => DungeonCore.Instance != null;
+
     void TryRollEvent()
     {
         var candidates = new List<GameEventData>();
@@ -135,6 +147,7 @@ public class EventManager : MonoBehaviour
         foreach (var e in eventPool)
         {
             if (e == null || _elapsed < e.MinGameTime) continue;
+            if (e.EventType == GameEventType.Raid && !CanRaid) continue;   // 칠 것이 없으면 안 온다
             float w = WeightOf(e);
             open += e.Weight;
             if (w <= 0f) continue;   // 이 때에는 아예 안 오는 것(밤 배율 0)
@@ -180,10 +193,34 @@ public class EventManager : MonoBehaviour
     static float WeightOf(GameEventData e) =>
         GameTimeManager.IsDay ? e.Weight : e.Weight * e.NightWeight;
 
+    // ── 밖에서 부르는 문 (디버그) ────────────────────────────────────────────
+    //
+    // **추첨을 기다리지 않고 지금 이걸 발동시킨다.** 습격 하나를 확인하려면 원래
+    // 이벤트가 뽑힐 때까지 기다려야 하고(`Force Roll Event`는 **아무거나** 뽑는다),
+    // 습격은 하루 두 번 남짓이라 사실상 못 본다.
+    //
+    // **`TriggerEvent`를 그대로 부른다** — 자리 찾기·알림·추상 판정·`RaidLord`까지 전부
+    // 진짜 습격과 **같은 길**을 지난다. 여기서 지름길을 내면 *도구로는 되는데 게임에서는
+    // 안 되는* 것을 만들게 된다.
+    public void TriggerNow(GameEventData data)
+    {
+        if (data != null) TriggerEvent(data);
+    }
+
+    // 저작된 이벤트 목록. 도구가 **여기서** 고른다 — 에셋 폴더를 따로 훑으면 씬이
+    // 안 들고 있는 이벤트까지 부르게 되어, 실제로는 안 나오는 습격을 시험하게 된다.
+    public IReadOnlyList<GameEventData> Pool => eventPool;
+
     void TriggerEvent(GameEventData data)
     {
         // **설 자리를 먼저 찾고 알린다.** 알림이 앞서면 "고블린이 몰려온다"고 해 놓고
         // 아무도 오지 않는(공허에 떨어져 길을 못 찾는) 일이 생긴다.
+        if (data.EventType == GameEventType.Raid && !CanRaid)
+        {
+            Debug.Log($"[이벤트] '{data.EventName}' — 던전 핵이 없어 건너뜁니다(덮칠 거점이 없다).");
+            return;
+        }
+
         Vector3 edge = Vector3.zero;
         bool needsSpawn = data.EventType is GameEventType.Raid
                                          or GameEventType.Merchant
@@ -276,13 +313,12 @@ public class EventManager : MonoBehaviour
 
             var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used));
             arrivals.Add(go);
-
-            // **핵을 향해 걷게 한다.** 적 트리는 탐지(수 미터)와 배회(12m)뿐이라,
-            // 명령이 없으면 침공대가 맵 가장자리에서 서성이다 끝난다 — 습격이 일어나지 않는 것과 같다.
-            // `WanderNode`는 이동 중인 유닛의 목적지를 덮지 않으므로 도착까지 이 명령이 산다.
-            var mover = go.GetComponent<PawnMover>();
-            if (mover != null && core != null) mover.SetMoveTarget(ScatterNear(core.transform.position, 5f));
         }
+
+        // **어디로 갈지는 이제 `RaidLord`가 든다**(2026-09-07 — `docs/design_raid_lord.md`).
+        // 전에는 여기서 폰마다 핵으로 `SetMoveTarget` 한 번을 걸고 끝이었는데, 그러면 무리의
+        // 뜻이 **스폰하는 순간에만** 있어서 습격이 **줄줄이 와서 한 명씩 썰리고**, 한 명 남아도
+        // 끝까지 걸어와 죽었다. 명령을 여기 남겨 두면 **Lord와 두 벌**이 된다.
 
         // **아무도 안 보고 있으면 여기서 끝낸다**(2026-08-31, 사용자 결정: 추상으로 푼다).
         //
@@ -318,6 +354,10 @@ public class EventManager : MonoBehaviour
         // 그 자리에서 일어난다(`Necromancy`). 습격이 가장자리가 아니라 **안쪽에서** 시작된다.
         Necromancy.OnRaidArrived(arrivals);
 
+        // **추상으로 푸는 갈래를 지나온 뒤다** — 아무도 안 보는 습격은 위에서 이미 결과를 내고
+        // 폰을 파괴했으므로 지휘할 무리가 없다.
+        RaidLords.Lead(arrivals, edge, core != null ? core.transform.position : edge);
+
         TryScheduleRescue();
         return true;
     }
@@ -337,6 +377,9 @@ public class EventManager : MonoBehaviour
     {
         edge = Vector3.zero;
         if (band == null || !band.IsAlive) return false;
+
+        // **지도에서 걸어온 무리도 같다** — 한쪽만 막으면 *핵도 없는데 지도에서만 쳐들어온다*.
+        if (!CanRaid) return false;
         if (!TryFindEdgeSpawn(out edge)) return false;
 
         var core     = DungeonCore.Instance;
@@ -355,11 +398,11 @@ public class EventManager : MonoBehaviour
             // 지도에서 본 그 사람을 그대로 세운다(이름·스탯·특성).
             var brain = go.GetComponent<UnitBrain>();
             if (brain != null && m.Spec != null) brain.ApplySpec(m.Spec);
-
-            // 적 트리는 탐지·배회뿐이라 명령이 없으면 가장자리에서 서성이다 끝난다.
-            var mover = go.GetComponent<PawnMover>();
-            if (mover != null && core != null) mover.SetMoveTarget(ScatterNear(core.transform.position, 5f));
         }
+
+        // **여기도 `RaidLord`가 든다.** 이벤트로 온 습격에만 붙이면 *지도에서 걸어온 무리만
+        // 줄줄이 와서 안 물러난다* — 플레이어에게 그 둘은 똑같이 '적이 몰려온 것'이다
+        // (구원과 시체 일으키기를 양쪽에 다 붙인 것과 같은 이유).
 
         // **한 명도 못 세웠으면 실패다.** 무리 데이터에 프리팹이 안 물려 있으면 여기까지
         // 조용히 통과해서, 부르는 쪽이 "N명이 들이닥쳤습니다"라고 알리고는 **아무도 안 왔다.**
@@ -373,6 +416,7 @@ public class EventManager : MonoBehaviour
         // 교단은 시체를 그냥 지나친다 — 플레이어에게 그 둘은 똑같이 '교단이 몰려온 것'이다
         // (구원이 양쪽에 다 붙는 것과 같은 이유).
         if (spawned > 0) Necromancy.OnRaidArrived(arrivals);
+        if (spawned > 0) RaidLords.Lead(arrivals, edge, core != null ? core.transform.position : edge);
 
         // **지도에서 걸어온 습격에도 구원이 온다.** 여기를 빠뜨리면 "이벤트로 온 습격에만
         // 용병이 온다"가 되는데, 플레이어에게 그 둘은 똑같이 '적이 몰려온 것'이다.

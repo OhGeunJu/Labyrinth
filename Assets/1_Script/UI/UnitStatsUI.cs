@@ -113,40 +113,11 @@ public class UnitStatsUI : MonoBehaviour
             return true;
         }
 
-        if (id.StartsWith("story:"))
-        {
-            var story = BackstoryPool.Get(id.Substring(6));
-            if (story == null) return false;
-
-            title = story.DisplayName;
-            string effect = story.EffectSummary();
-            string bans   = BanSummary(story);
-            if (!string.IsNullOrEmpty(bans))
-                effect = string.IsNullOrEmpty(effect) ? bans : effect + "\n" + bans;
-
-            body = string.IsNullOrWhiteSpace(story.Description)
-                 ? effect
-                 : (string.IsNullOrEmpty(effect) ? story.Description
-                                                 : story.Description + "\n" + "<color=#8AC>" + effect + "</color>");
-            return true;
-        }
-
-        if (id.StartsWith("trait:"))
-        {
-            var trait = TraitPool.Get(id.Substring(6));
-            if (trait == null) return false;
-
-            title = trait.DisplayName;
-            string effect = trait.EffectSummary();
-            body = string.IsNullOrWhiteSpace(trait.Description)
-                 ? effect
-                 : (string.IsNullOrEmpty(effect) ? trait.Description
-                                                 : $"{trait.Description}\n<color=#8AC>{effect}</color>");
-            return true;
-        }
-
-        return false;
+        // 나머지(`story:`·`trait:`)는 공용이 답한다 — **살펴보기 창과 같은 글**이어야 한다
+        // (`PawnStoryText`). 여기 남는 것은 스탯 칸뿐이다.
+        return PawnStoryText.Resolve(id, out title, out body);
     }
+
 
     void Refresh()
     {
@@ -241,68 +212,26 @@ public class UnitStatsUI : MonoBehaviour
     // **특성 줄.** 이름 옆에 무엇을 얼마나 얹는지 같이 적는다 — 이름만 있으면 `곰손`이 좋은
     // 건지 나쁜 건지 알 수 없고, 툴팁을 따로 만들면 그걸 띄우려고 마우스를 올려야 한다.
     // 좋고 나쁨은 **색이 아니라 부호**가 말한다(특성 하나가 올리고 내리기를 같이 한다).
+    // **그리는 일은 공용이 한다**(`PawnStoryText`) — 살펴보기 창도 같은 줄을 그린다.
+    // 각자 적으면 갈릴 자리가 셋이다: 줄 모양(`무능력:` 꼬리표) · 링크 id 규약 · 툴팁 본문.
     static void AppendTraits(StringBuilder sb, UnitBrain brain)
     {
         if (brain.Traits == null || brain.Traits.Count == 0) return;
-
-        // **이름만 적는다.** 오프셋(`강인함 +25 · 회피 +5`)을 줄에 붙이면 특성 셋에 성장 배경
-        // 둘이면 **글이 창 밖으로 삐져나간다**(장비를 차서 `든 것` 절이 생기면 바로 그렇게 됐다).
-        // 그리고 그 숫자는 **툴팁이 이미 다 갖고 있다** — 같은 것을 두 곳에 적고 있었던 셈이다.
-        sb.AppendLine(H("■ 특성"));
-        foreach (var t in brain.Traits)
-        {
-            if (t == null) continue;
-            sb.AppendLine($"  {TraitLink(t, $"<b>{t.DisplayName}</b>")}");
-        }
+        PawnStoryText.AppendTraits(sb, brain, H("■ 특성"));
         sb.AppendLine();
     }
 
     // **성장 배경 줄.** 특성 바로 위다 — 특성이 *어떤 기질인가*라면 배경은 *어떻게 살아왔나*라,
-    // 사람을 읽는 순서가 그쪽이 먼저다. 못 하는 일이 있으면 **그 줄에 같이 적는다**(붉게) —
-    // 무능력은 스탯 몇 점보다 훨씬 크게 이 폰을 정하는데, 툴팁을 열어야만 보이면 P패널에서
-    // "왜 이건 못 켜지"를 그때 처음 만나게 된다.
+    // 사람을 읽는 순서가 그쪽이 먼저다.
     static void AppendBackstories(StringBuilder sb, UnitBrain brain)
     {
         if (brain.Childhood == null && brain.Adulthood == null) return;
-
-        sb.AppendLine(H("■ 성장 배경"));
-        AppendStory(sb, "유년기", brain.Childhood);
-        AppendStory(sb, "성년기", brain.Adulthood);
+        PawnStoryText.AppendBackstories(sb, brain, H("■ 성장 배경"));
         sb.AppendLine();
     }
 
-    static void AppendStory(StringBuilder sb, string slot, BackstoryData b)
-    {
-        if (b == null) return;
 
-        // 오프셋은 툴팁 몫이다(특성과 같은 규칙). **다만 금지 작업은 줄에 남긴다** —
-        // 그건 스탯 보정이 아니라 *"이 폰은 이 일을 못 한다"*는 경고라, 올려 봐야 아는
-        // 것이면 P패널에서 `×`를 보고 나서야 알게 된다.
-        string row = $"<color=#888>{slot}</color>  <b>{b.DisplayName}</b>";
-
-        string bans = BanSummary(b);
-        if (!string.IsNullOrEmpty(bans)) row += $"  <color=#D66>{bans}</color>";
-
-        sb.AppendLine($"  {StoryLink(b, row)}");
-    }
-
-    // `무능력: 제작 · 연구`
-    static string BanSummary(BackstoryData b)
-    {
-        if (b?.DisabledJobs == null || b.DisabledJobs.Count == 0) return "";
-
-        var names = new List<string>();
-        foreach (var c in b.DisabledJobs) names.Add(JobCategoryInfo.DisplayName(c));
-        return $"무능력: {string.Join(" · ", names)}";
-    }
-
-    static string StoryLink(BackstoryData b, string body) => $"<link={Q}story:{b.name}{Q}>{body}</link>";
-
+    // 머리말 한 줄. **링크·줄 모양은 `PawnStoryText`가 든다** — 여기 남는 것은 이 창의
+    // 머리말뿐이다(창마다 색을 따로 쓸 수 있어야 한다).
     static string H(string t) => $"<color=#E8C566>{t}</color>";
-
-    // TMP `<link>` — 글자 덩어리 **안에서** 영역을 잡는다. 스탯마다 오브젝트를 두지 않고도
-    // 칸별로 다른 설명을 띄울 수 있는 이유가 이것이다. id는 숫자라 표시명이 바뀌어도 안 깨진다.
-    static string TraitLink(TraitData t, string body) => $"<link={Q}trait:{t.name}{Q}>{body}</link>";
-
-    const string Q = "\"";
 }

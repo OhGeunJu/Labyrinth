@@ -56491,10 +56491,10 @@ RectTransform:
   - {fileID: 1394155243}
   m_Father: {fileID: 724666149}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 320, y: 480}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1292321733
 MonoBehaviour:
@@ -56781,7 +56781,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1302266009
 RectTransform:
   m_ObjectHideFlags: 0
@@ -56803,7 +56803,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 10, y: 0}
+  m_AnchoredPosition: {x: 150, y: 0}
   m_SizeDelta: {x: 660, y: 678}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!114 &1302266010
@@ -59998,7 +59998,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1394155243
 RectTransform:
   m_ObjectHideFlags: 0
@@ -60018,7 +60018,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -863, y: 0}
+  m_AnchoredPosition: {x: -50, y: 0}
   m_SizeDelta: {x: 660, y: 678}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!114 &1394155244
@@ -67023,10 +67023,10 @@ RectTransform:
   - {fileID: 1302266009}
   m_Father: {fileID: 724666149}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 960, y: 680}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1576336282
 MonoBehaviour:
@@ -76047,7 +76047,6 @@ MonoBehaviour:
   cutFrac: 0.4
   cutLow: 2.5
   cutDebug: 0
-  showBackfaces: 0
   rockLayer: 3
   plainRock: {fileID: 11400000, guid: 27a84ee90742b0b41b010fe3bf898a2f, type: 2}
   startClearing: 12

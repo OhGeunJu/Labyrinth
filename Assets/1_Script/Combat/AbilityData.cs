@@ -29,8 +29,30 @@ public class AbilityData : ScriptableObject
     [Header("시간 (초)")]
     [Tooltip("다시 쓸 수 있을 때까지")]
     public float Cooldown = 25f;
+
     [Tooltip("효과가 남아 있는 동안")]
     public float Duration = 8f;
+
+    // **횟수와 쿨다운은 다른 물음이다**(2026-09-08, 사용자: *"그냥 시간으로 걸어서 쿨타임을
+    // 길게하면 되려나?"*).
+    //
+    //   · **쿨다운** = *연달아 못 쓴다*. 한 싸움 안에서 얼마나 자주 쓰나.
+    //   · **횟수**   = *오래 못 버틴다*. 하루에 몇 번을 감당하나.
+    //
+    // 쿨다운만 길게 하면 **한 싸움 안의 결정**만 사라진다 — 습격이 하루 두 번 남짓이라
+    // 다음 싸움에는 어차피 다 차 있고, 그동안 **아무 결정도 안 생긴다.** 반대로 횟수만 두면
+    // 세 번을 연달아 눌러 한 싸움을 통째로 지운다.
+    //
+    // **둘 다 있어야 "지금 쓸까 아껴 둘까"가 생긴다.** 림월드의 정신 충격도 이 모양이다.
+    [Header("횟수")]
+    [Tooltip("가지고 다니는 사용 횟수. **0이면 무제한**(옛 동작 그대로).")]
+    [Min(0)] public int MaxCharges = 0;
+
+    // **게임 시간으로 잰다** — `GameTimeManager`가 허기·작물·연구의 기준 축이라, 여기만
+    // 실시간으로 두면 배속을 올렸을 때 **밥은 세 배로 먹는데 능력만 안 찬다.**
+    // 하루가 1800초이므로 600이면 하루 세 번이다.
+    [Tooltip("한 칸이 차는 데 걸리는 시간(초, 게임 시간). 하루 = 1800초.")]
+    [Min(1f)] public float RechargeSeconds = 600f;
 
     // **패시브가 아니라 능동인 이유**가 여기 있다. 늘 켜져 있으면 ① 탱커를 데려가는 순간
     // 다른 전술이 사라지고 ② *"도발 중"*이 화면에 안 보인다. 지속 + 쿨다운으로 두면
@@ -63,4 +85,8 @@ public class AbilityData : ScriptableObject
                 $"{RangeFor(stat):0.#}m 안의 적 {TargetsFor(stat)}명이 {Duration:0}초 동안 나를 노린다",
             _ => Description,
         };
+
+    // 화면에 뜨는 횟수 한 줄. **여기서 만든다** — 액션 바와 툴팁이 다른 말을 하면 안 된다.
+    public string ChargeLine(int left) =>
+        MaxCharges <= 0 ? "" : $"{left} / {MaxCharges}회 (한 칸 {RechargeSeconds / 60f:0.#}분)";
 }

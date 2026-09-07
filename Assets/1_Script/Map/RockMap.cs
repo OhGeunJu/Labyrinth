@@ -108,6 +108,24 @@ public static class RockMap
     public static bool IsRock(Vector2Int tile)
     {
         if (!Enabled) return false;
+
+        // **세계 밖은 바위다**(2026-09-07). 여유 함수는 세계 밖에서도 값을 내므로, 그냥 두면
+        // **테두리 너머로 굴이 계속 이어진다** — 지형도 바위 메시도 없는 **유령 동굴**이다.
+        //
+        // 그리고 그 유령 굴은 바위가 섞이지 않아 **어디보다 걷기 좋다.** 그래서 *"핵에서
+        // 갈 수 있는 가장 먼 곳"*(`EventManager.TryFindEdgeSpawn` → `FarthestReachable`)이
+        // **언제나 맵 밖**을 골랐고, 습격대가 **지형도 없는 허공에서 걸어 나왔다**
+        // (진단: `[23,-27] 통행가능/바닥있음 · 지면 +0.00m/공중`).
+        //
+        // **여기가 답하는 자리다.** `RockMap.Mark`는 2026-08-30에 이미 같은 가드를 달았는데
+        // (드래그 박스가 지형 끝 너머까지 닿는다) **판정 자체에는 없어서**, 찍는 것만 막히고
+        // 길찾기·건설·일감·스폰은 전부 밖을 열린 곳으로 봤다. 한 곳에서 막으면 그 넷이
+        // 통째로 따라온다(`MapManager.HasHeadroom`이 이걸 부른다).
+        //
+        // **`Enabled` 뒤다** — 지하가 아닌 씬(옛 던전)은 `TerrainGrid`와 무관하므로
+        // 위에서 이미 빠져나간다.
+        if (!TerrainGrid.TileInWorld(tile)) return true;
+
         if (_mined.Contains(tile)) return false;
 
         var map   = MapManager.Instance;
@@ -218,6 +236,11 @@ public static class RockMap
     // 실제로 판다. **찍힌 것도 같이 지운다** — 판 자리에 지정이 남으면 다음 일감이 또 난다.
     public static bool Mine(Vector2Int tile)
     {
+        // **테두리는 못 캔다.** 밖이 바위가 된 지금 `IsRock`은 참을 돌려주므로, 안 막으면
+        // **세계 밖으로 굴을 파고 나갈 수 있다**(`_mined`에 들어가면 그 칸은 영영 열린다).
+        // 찍는 쪽(`Mark`)은 이미 막지만 **파는 문은 여기 하나**라 여기서도 물어야 한다.
+        if (!TerrainGrid.TileInWorld(tile)) return false;
+
         if (!IsRock(tile)) return false;
 
         _mined.Add(tile);

@@ -13,90 +13,86 @@ MonoBehaviour:
   m_Name: Goblin
   m_EditorClassIdentifier: Assembly-CSharp::MinionData
   Id: 
-  RaceName: "고블린"
+  RaceName: "\uACE0\uBE14\uB9B0"
   Icon: {fileID: 0}
   NamePool:
-  - "그르낙"
-  - "스킷"
-  - "즈그"
-  - "카락"
-  - "무르"
-  - "니블"
-  - "크샤"
-  - "도둑니"
-  - "쉬크"
-  - "바그"
-  - "톡톡"
-  - "그림자발"
-  - "우락"
-  - "스넉"
-  - "삐뚤이"
-  - "크르그"
-  - "물쿠"
-  - "티끌"
-  - "짜작"
-  - "흐그"
-  - "부르락"
-  - "깽"
-  - "무투"
-  - "쓴이빨"
-  - "라칵"
-  - "고물"
-  - "시락"
-  - "뾰족귀"
-  - "두르"
-  - "검댕"
-  - "아그락"
-  - "째깍"
-  - "녹슨발"
-  - "쿠샥"
-  - "빈틈"
-  - "흐르작"
-  - "톱니"
-  - "마그"
-  - "우쭐"
-  - "째진눈"
-  - "브록"
-  - "쓰르"
-  - "굽은등"
-  - "코박"
-  - "딱정"
-  - "느르"
-  - "헐렁"
-  - "자갈"
-  - "흙발"
-  - "쉭쉭"
-  - "그물"
-  - "톰박"
-  - "우걱"
-  - "삐끗"
-  - "후르"
-  - "깜장"
-  - "크락"
-  - "무릎"
-  - "스락"
+  - "\uADF8\uB974\uB099"
+  - "\uC2A4\uD0B7"
+  - "\uC988\uADF8"
+  - "\uCE74\uB77D"
+  - "\uBB34\uB974"
+  - "\uB2C8\uBE14"
+  - "\uD06C\uC0E4"
+  - "\uB3C4\uB451\uB2C8"
+  - "\uC26C\uD06C"
+  - "\uBC14\uADF8"
+  - "\uD1A1\uD1A1"
+  - "\uADF8\uB9BC\uC790\uBC1C"
+  - "\uC6B0\uB77D"
+  - "\uC2A4\uB109"
+  - "\uC090\uB6A4\uC774"
+  - "\uD06C\uB974\uADF8"
+  - "\uBB3C\uCFE0"
+  - "\uD2F0\uB04C"
+  - "\uC9DC\uC791"
+  - "\uD750\uADF8"
+  - "\uBD80\uB974\uB77D"
+  - "\uAE7D"
+  - "\uBB34\uD22C"
+  - "\uC4F4\uC774\uBE68"
+  - "\uB77C\uCE75"
+  - "\uACE0\uBB3C"
+  - "\uC2DC\uB77D"
+  - "\uBFB0\uC871\uADC0"
+  - "\uB450\uB974"
+  - "\uAC80\uB315"
+  - "\uC544\uADF8\uB77D"
+  - "\uC9F8\uAE4D"
+  - "\uB179\uC2A8\uBC1C"
+  - "\uCFE0\uC0E5"
+  - "\uBE48\uD2C8"
+  - "\uD750\uB974\uC791"
+  - "\uD1B1\uB2C8"
+  - "\uB9C8\uADF8"
+  - "\uC6B0\uCB50"
+  - "\uC9F8\uC9C4\uB208"
+  - "\uBE0C\uB85D"
+  - "\uC4F0\uB974"
+  - "\uAD7D\uC740\uB4F1"
+  - "\uCF54\uBC15"
+  - "\uB531\uC815"
+  - "\uB290\uB974"
+  - "\uD5D0\uB801"
+  - "\uC790\uAC08"
+  - "\uD759\uBC1C"
+  - "\uC26D\uC26D"
+  - "\uADF8\uBB3C"
+  - "\uD1B0\uBC15"
+  - "\uC6B0\uAC71"
+  - "\uC090\uB057"
+  - "\uD6C4\uB974"
+  - "\uAE5C\uC7A5"
+  - "\uD06C\uB77D"
+  - "\uBB34\uB98E"
+  - "\uC2A4\uB77D"
   MaxHP: 100
   MoveSpeed: 4
   AttackDamage: 10
   AttackRange: 1.5
   DetectRange: 10
   NightVision: 0.7
+  IsUndead: 0
+  IsConstruct: 0
   Resistances:
   - Type: 8
     Amount: 0.25
   - Type: 9
     Amount: -0.2
+  UsesBackstory: 1
   DefaultMinGrade: 7
   DefaultMaxGrade: 7
   StatGrades: []
   StatGrowthRates: []
-  Prefab: {fileID: 6894885055828391614, guid: 1a1d25cfc6ddc214eb329fa90e1e2604, type: 3}
-  SortOrder: 0
-  SummonCostItem: {fileID: 11400000, guid: d72a41f0b8e35c34ea9017c6d5b28401, type: 2}
-  SummonCostAmount: 12
-  AllowedJobs:
-  CanProvideWater: 0
-  RequiredResearch: {fileID: 0}
   ButcherYield:
   - Item: {fileID: 0}
     ItemId: food_toughmeat
@@ -109,3 +105,13 @@ MonoBehaviour:
     Chance: 1
     MinCount: 1
     MaxCount: 3
+  RollStats: 1
+  CanEquip: 1
+  DisabledJobs: 
+  Prefab: {fileID: 6894885055828391614, guid: 1a1d25cfc6ddc214eb329fa90e1e2604, type: 3}
+  SortOrder: 0
+  SummonCostItem: {fileID: 11400000, guid: d72a41f0b8e35c34ea9017c6d5b28401, type: 2}
+  SummonCostAmount: 12
+  RequiredResearch: {fileID: 0}
+  AllowedJobs: 
+  CanProvideWater: 0

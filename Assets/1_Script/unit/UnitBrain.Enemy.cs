@@ -29,6 +29,9 @@ public partial class UnitBrain
         root.Add(new BTSequence()
             .Add(new ConditionNode(_ => EffectiveStance != CombatStance.Flee))
             .Add(new DetectNode())
+            // **표적을 잡은 뒤·때리기 전이다.** 앞이면 겨눌 것이 없어 늘 헛치고,
+            // 뒤면 `FightNode`가 `Running`을 물고 있어 영영 안 온다.
+            .Add(new UseAbilityNode())
             .Add(new FightNode()));
     }
 

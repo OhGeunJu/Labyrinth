@@ -74,6 +74,17 @@ public class AbilityBarSlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExi
         if (!string.IsNullOrEmpty(_ability.Description))
             body = _ability.Description + "\n" + body;
 
+        // **횟수를 같이 띄운다** — 안 보이면 왜 회색인지 알 수가 없다(쿨다운은 마스크로
+        // 보이지만 횟수는 화면에 표시가 없다).
+        if (_ability.MaxCharges > 0 && _user != null)
+        {
+            int n = _user.ChargesLeft(_ability);
+            body += $"\n<color=#88CCFF>{_ability.ChargeLine(n)}</color>";
+
+            float refill = _user.RefillIn(_ability);
+            if (refill > 0f) body += $"\n<color=#88CCFF>다음 한 칸 {refill / 60f:0.#}분</color>";
+        }
+
         float left = _user != null ? _user.CooldownLeft(_ability) : 0f;
         if (left > 0f) body += $"\n<color=#FF8888>{left:0}초 남음</color>";
 

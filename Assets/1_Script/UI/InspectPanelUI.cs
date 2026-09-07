@@ -404,11 +404,17 @@ public class InspectPanelUI : MonoBehaviour
     [SerializeField] float refreshInterval = 0.15f;
     float _refreshTimer;
 
+    // 지금 올라와 있는 링크. **창마다 제 상태다** — 스탯 창과 같이 떠 있을 수 있다.
+    string _hoveredLink;
+
     void Update()
     {
         bool showing = selectionManager.Selected.Count > 0 || _inspected != null
                     || _blueprint != null || _building != null || _core != null || _node != null;
         if (!showing) return;
+
+        // **올린 칸의 설명** — 갱신 주기와 따로 돈다(마우스는 0.5초를 기다려 주지 않는다).
+        PawnStoryText.Tick(infoText, ref _hoveredLink);
 
         _refreshTimer -= Time.unscaledDeltaTime;   // 멈춰 놓고 들여다볼 때도 갱신돼야 한다
         if (_refreshTimer > 0f) return;
@@ -1361,15 +1367,21 @@ public class InspectPanelUI : MonoBehaviour
     static void AppendTraits(StringBuilder sb, UnitBrain brain)
     {
         // **성장 배경 한 줄** — 이름만. 좁은 창이라 오프셋까지 적으면 특성 줄과 함께
-        // 두 줄이 숫자로 가득 찬다(자세한 것은 스탯 창 C가 답한다).
-        string story = BackstoryPool.NameList(brain.Childhood, brain.Adulthood);
+        // 두 줄이 숫자로 가득 찬다.
+        //
+        // **이름마다 링크를 감는다**(2026-09-08) — 자세한 것은 **올렸을 때** 뜬다.
+        // 그전에는 스탯 창(`C`)이 답한다고 적어 두었는데, 그 창은 **내 폰 전용**이라
+        // 붙잡은 산적의 이력을 볼 자리가 아무 데도 없었다(회유할지 몸값을 받을지 정하는
+        // 근거가 그것인데). **아래에 블록을 하나 더 붙였다가 걷어냈다** — 위에 이미 있는
+        // 줄을 못 보고 같은 것을 두 번 그렸다.
+        string story = PawnStoryText.StoryNames(brain);
         if (!string.IsNullOrEmpty(story))
             sb.AppendLine($"<color=#888>배경</color>  {story}");
 
-        string names = TraitPool.NameList(brain.Traits);
+        string names = PawnStoryText.TraitNames(brain);
         if (string.IsNullOrEmpty(names)) return;
 
-        sb.AppendLine($"특성  <color=#D8C89A>{names}</color>");
+        sb.AppendLine($"<color=#D8C89A>특성  {names}</color>");
     }
 
     static string H(string t)    => $"<color=#E8C566>{t}</color>";

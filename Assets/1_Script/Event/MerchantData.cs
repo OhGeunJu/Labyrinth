@@ -9,6 +9,21 @@ public enum MerchantType { General, Weapon, Armor, Material, Food }
 
 public static class MerchantTypeExt
 {
+    // **무엇을 파느냐가 곧 무엇을 하며 살았느냐다**(2026-09-08, 사용자 결정 — 상인의 성년기는
+    // 상인이어야 하고, 무엇을 파는지에 따라 갈려야 한다).
+    //
+    // **여기 한 벌이다** — 만드는 쪽(에디터 도구)과 굴리는 쪽(`Merchant`)이 문자열을 각자
+    // 적으면 **오타 하나로 갈려** 조용히 `civilian` 폴백을 받는다(그러면 무기 상인이
+    // *"사원의 시동"*으로 산 사람이 된다).
+    public static string StoryGroup(this MerchantType t) => t switch
+    {
+        MerchantType.Weapon   => "merchant_weapon",
+        MerchantType.Armor    => "merchant_armor",
+        MerchantType.Material => "merchant_material",
+        MerchantType.Food     => "merchant_food",
+        _                     => "merchant_general",
+    };
+
     public static string DisplayName(this MerchantType t) => t switch
     {
         MerchantType.Weapon   => "무기 상인",

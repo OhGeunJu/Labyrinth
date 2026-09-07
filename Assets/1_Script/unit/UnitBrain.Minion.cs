@@ -14,6 +14,9 @@ public partial class UnitBrain
             .Add(PlayerFleeNode())
             .Add(new BTSequence()
                 .Add(new DetectNode())
+                // **하수인은 명령을 안 받으므로 사람이 눌러 줄 길이 없다** —
+                // `AbilityController`가 `AcceptsOrders`로 거른다. 여기가 유일한 자리다.
+                .Add(new UseAbilityNode())
                 .Add(new FightNode()))
             .Add(new RestNode())
             .Add(new EatNode())

@@ -294,6 +294,24 @@ public class SelectionManager : MonoBehaviour
                 return;
             }
 
+            // **기절한 남의 폰은 시체와 같은 창으로 뒤진다**(2026-09-08).
+            //
+            // `InventoryUI`는 폰 하나에 묶이는 창이라 남의 것을 열면 **내 것이 풀린다** —
+            // 뒤지려면 둘이 같이 떠 있어야 한다. 시체는 이미 그렇게 풀려 있었고, 기절한
+            // 놈만 그 길에 안 걸려 있었다(`Corpse` 컴포넌트가 없다).
+            //
+            // **내 폰은 뺀다** — 내 폰의 소지품은 평소대로 `InventoryUI`가 연다. 여기 걸면
+            // 다친 동료를 누를 때마다 약탈 창이 뜬다.
+            var downed = hit.collider.GetComponentInParent<UnitBrain>();
+            if (downed != null && downed.Blackboard != null && downed.Blackboard.IsKnockedOut
+                && !(downed.Blackboard.Faction != null && downed.Blackboard.Faction.IsPlayer)
+                && CorpseInventoryUI.Instance != null)
+            {
+                OnPawnInspected?.Invoke(downed);           // 살펴보기 창은 평소대로
+                CorpseInventoryUI.Instance.ShowDowned(downed);
+                return;
+            }
+
             // 바닥에 떨어진 물건도 **선택을 유지**한다(노드·시체와 같은 이유). 이걸로 할 일은
             // 우클릭 메뉴에 있고, 그건 고른 폰에게 시키는 것이라 여기서 선택을 지우면
             // 물건을 한 번 누를 때마다 폰을 다시 골라야 한다.

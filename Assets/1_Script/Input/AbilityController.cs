@@ -56,7 +56,9 @@ public class AbilityController : MonoBehaviour
             if (mover == null) continue;
 
             var brain = mover.GetComponent<UnitBrain>();
-            if (brain == null || !brain.AcceptsOrders) continue;
+            // **스스로 쓰는 폰과 같은 줄을 본다**(`UnitBrain.AbilityByHand`) — 갈라 적으면
+            // 사람도 안 누르고 AI도 안 쓰는 폰이나, 둘 다 쓰는 폰이 생긴다.
+            if (brain == null || !brain.AbilityByHand) continue;
 
             var user = brain.GetComponent<AbilityUser>();
             if (user == null) continue;

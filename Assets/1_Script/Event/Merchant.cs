@@ -26,7 +26,21 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
         // **다시 짓지 않고 버린다** — 다음에 물어볼 때 게터가 짓는다. 여기서 바로 지으면
         // 진열 수가 우호도를 타는데(`FactionRelations.SlotBonus`) 스폰 시점엔 세력 판정이
         // 아직 안 설 수 있다.
-        set { _data = value; _shop = null; }
+        set
+        {
+            _data = value;
+            _shop = null;
+
+            // **이력의 성년기를 장사에 맞춘다**(2026-09-08). 종류가 정해지는 순간
+            // *무엇을 하며 살았나*도 정해진다 — 무기 상인인데 성년기가 *"산적"*이면
+            // 살펴보기 창이 딴사람을 말한다.
+            //
+            // **여기가 이음매인 이유**: 이벤트가 종류를 **스폰 뒤에** 주입하므로
+            // (`EventManager.SpawnMerchant`) `UnitBrain.Awake`의 굴림은 그걸 모른다.
+            // 저작한 상인(프리팹에 물린 것)도 같은 setter를 지나므로 한 자리로 족하다.
+            if (_data != null)
+                GetComponent<UnitBrain>()?.RerollAdulthood(_data.MerchantType.StoryGroup());
+        }
     }
 
     Shop _shop;

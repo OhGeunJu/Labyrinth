@@ -58,6 +58,14 @@ public class MoveController : MonoBehaviour
             // **가장 가까운 한 명**을 고르는데, 그 하나가 갇힌 폰이면 아무도 안 간다.
             if (!brain.CanObeyNow) { heldOut = true; continue; }
 
+            // **도발당한 폰도 여기서 빠진다**(2026-09-08). 붙들려 있는 동안은 명령을 안 듣는
+            // 것이 도발의 뜻인데(`ManualOrderNode`가 갈래를 건너뛴다), **여기서 안 빼면
+            // 클릭이 조용히 씹혀** 조작이 고장 난 것으로 보인다.
+            //
+            // **`CanObeyNow`에 안 얹은 이유**: 그건 `PawnMover.SetMoveTarget`도 보는 물음이라
+            // 거기 걸리면 **BT가 도발한 놈에게 걸어갈 수도 없어져 도발이 통째로 죽는다.**
+            if (brain.IsHeldByTaunt) { heldOut = true; continue; }
+
             wanderers.Add(pawn);
         }
 
@@ -129,6 +137,16 @@ public class MoveController : MonoBehaviour
             bb.FinishTarget = null;   // 딴 데로 가라는 명령 = 마무리 지목도 거둔다
             bb.ManualMove   = true;
             bb.FollowTarget = null;   // 다른 데로 가라는 명령 = 따라가기 그만
+
+            // **명령이 도발을 풀지 않는다**(2026-09-08에 풀게 했다가 되돌렸다 — 사용자:
+            // *"움직이면 도발이 풀리는 건 여전해"*). 한 번은 *선은 떠 있는데 폰은 걸어간다*를
+            // **표시가 거짓말하는 것**으로 읽고 표시를 지웠는데, 바란 것은 반대였다:
+            // **도발이 실제로 붙들고 있어야 한다.**
+            //
+            // 그래서 지금은 이렇다 — 명령은 여전히 이긴다(`ManualOrderNode`가 전투보다 위라
+            // 시킨 데로 걸어간다). 다만 **도발은 안 풀리므로**, 그 명령이 끝나는 순간
+            // `DetectNode`가 다시 붙든 놈을 겨눈다. **잠깐 빼낼 수는 있어도 떼어 놓지는
+            // 못한다** — 8초는 그대로 흐른다.
 
             // 업은 사람을 어디에 놓으라던 것도 거둔다. 안 거두면 시킨 자리까지 걸어간 다음
             // **저 혼자 예전 우리로 다시 걸어간다** — 명령을 덮어썼는데 옛 명령이 살아남는다.

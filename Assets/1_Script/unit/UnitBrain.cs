@@ -210,6 +210,26 @@ public partial class UnitBrain : MonoBehaviour
     // 때 그 이력을 들고 온다), 얹는 것은 방랑자가 되는 순간이다.
     BackstoryData _rolledChildhood, _rolledAdulthood;
 
+    // **성년기만 갈아 끼운다**(2026-09-08). 상인은 *무엇을 파느냐*가 곧 *무엇을 하며 살았느냐*라
+    // 그 칸이 장사를 따라가야 하는데, **상인 종류는 스폰 뒤에 주입된다**(`EventManager`가
+    // `merchant.Data = variant`) — `Awake`의 굴림은 그때 그걸 모른다.
+    //
+    // **유년기는 안 건드린다** — 상인도 어디선가 자랐고, 그건 세력의 이력이다. 둘 다 갈면
+    // *"태어날 때부터 무기 상인"*이 된다.
+    //
+    // 굴린 것이 없으면(`_rolledAdulthood`가 null) 아무것도 안 한다 — 배경을 안 쓰는 종족이다.
+    public void RerollAdulthood(string group)
+    {
+        if (string.IsNullOrEmpty(group) || _rolledAdulthood == null) return;
+
+        var rng  = new System.Random(UnityEngine.Random.Range(int.MinValue, int.MaxValue));
+        var next = BackstoryPool.Roll(BackstorySlot.Adulthood, rng, group);
+        if (next == null) return;
+
+        RememberBackstories(_rolledChildhood, next);
+        SetBackstories(_rolledChildhood, next);
+    }
+
     void RememberBackstories(BackstoryData childhood, BackstoryData adulthood)
     {
         _rolledChildhood = childhood;
@@ -370,7 +390,7 @@ public partial class UnitBrain : MonoBehaviour
         Stats = UnitStats.FromData(unitData);
         // 성장이 잠기는 건 **내가 소환한** 하수인이다. 같은 종족 에셋을 쓰는 야생 개체까지
         // 잠그면 "고블린은 성장하지 않는다"가 되는데, 그건 종족의 성질이 아니다.
-        Stats.IsLocked = unitData is MinionData && !UsesEnemyAi;
+        Stats.IsLocked = IsSummoned;
         Stats.Owner    = gameObject;
 
         _maxHp = unitData != null ? unitData.MaxHP : 100f;
@@ -450,9 +470,25 @@ public partial class UnitBrain : MonoBehaviour
             // 이 폰들이 대부분이다(적·NPC·이벤트로 온 사람). 안 굴려 두면 **회유해 온 산적이
             // 배경 없는 사람**이 된다 — 데려오고 나서 굴리면 그건 살아온 이력이 아니라
             // 합류 보너스다. 굴려는 두되 얹는 것은 방랑자가 될 때다(`SetBackstories`).
-            if (unitData != null && unitData.UsesBackstory)
+            // **소환된 것에게는 제 이력이 있다**(2026-09-08, 사용자 결정 — 처음엔 비웠다가
+            // *"그냥 배경을 소환한 하수인 뭐 이런 느낌으로 잡아주면 되잖아"*로 바꿨다).
+            //
+            // 불려 나온 고블린에게 *"굴의 아이"*와 *"약탈꾼"*이 붙으면 **살아온 적 없는 삶이
+            // 스탯 창에 적힌다.** 그렇다고 비워 두면 창에 빈칸이 남는데, 이 저장소의 규칙은
+            // *"공용이라는 것은 없다 — 모든 배경은 어느 무리의 것이다"*이지 *"어떤 무리는
+            // 배경이 없다"*가 아니다. **소환물도 무리다** — `summoned` 묶음이 그 자리다.
+            //
+            // **묶음을 세력이 못 든다.** 소환물은 **플레이어 세력**이라 `FactionData`로 가르면
+            // 내 방랑자까지 같은 묶음을 쓴다 — 여기서 갈라야 한다.
+            //
+            // **`UsesBackstory`를 안 본다.** 그 스위치는 *"늑대에게 사람 유년기를 주지 마라"*는
+            // 뜻인데, 소환물은 **제 무리의 이력**을 받으므로 그 걱정이 아예 없다. 그리고 볼
+            // 수도 없다: `Skeleton`은 야생과 **같은 에셋**이라(`Enemy_Skeleton`·`Minion_Skeleton`)
+            // 켜는 순간 **야생 해골이 `civilian` 폴백으로 사람 이력을 받는다.**
+            if (unitData != null && (IsSummoned || unitData.UsesBackstory))
             {
-                var group = GetComponent<Faction>()?.Data?.BackstoryGroup;
+                var group = IsSummoned ? PawnSpec.SummonedStoryGroup
+                                       : GetComponent<Faction>()?.Data?.BackstoryGroup;
                 RememberBackstories(BackstoryPool.Roll(BackstorySlot.Childhood, rng, group),
                                     BackstoryPool.Roll(BackstorySlot.Adulthood, rng, group));
                 SetBackstories(_rolledChildhood, _rolledAdulthood);
@@ -885,7 +921,7 @@ public partial class UnitBrain : MonoBehaviour
 
         // BT·성장 잠금은 `ChangeFaction`과 **같은 식**이어야 한다(답이 두 벌이면 어긋난다).
         _root = BuildTree();
-        Stats.IsLocked = unitData is MinionData && !UsesEnemyAi;
+        Stats.IsLocked = IsSummoned;
 
         // **일으켜진 몸은 다시 기절하지 않는다** — 이미 한 번 죽은 것이라 잃을 의식이 없다.
         // 종족이 아니라 여기서 켜는 이유: 좀비의 종족은 여전히 사람이다.
@@ -1035,6 +1071,53 @@ public partial class UnitBrain : MonoBehaviour
     // 알릴지 조용히 건너뛸지 정할 수 있다.
     public bool AcceptsOrders => unitData is not MinionData;
 
+    // **내가 불러낸 것인가**(2026-09-08). 이 물음이 **세 곳에 복사돼 있었다**
+    // (`Stats.IsLocked`를 세우는 자리 셋) — 이름을 주고 한 벌로 모은다.
+    //
+    // **종족만으로는 못 가른다**: 같은 `MinionData` 에셋을 야생 개체도 쓴다(`Enemy_Goblin`과
+    // `Minion_Goblin`이 **같은 `Goblin.asset`**이다). 그래서 세력을 같이 봐야 한다 —
+    // 이 저장소가 이미 적어 둔 *"`is MinionData`는 '하수인 종족'이지 '내 편'이 아니다"*가
+    // 바로 이 자리다.
+    //
+    // 답하는 것 둘: **성장이 잠기나**(소환물은 안 자란다) · **이력이 있나**(소환된 것에게는
+    // 유년기가 없다 — 사용자: *"내가 뽑는 고블린에는 백스토리가 달리는게 이상하지 않아?"*).
+    // 둘 다 **종족의 성질이 아니라 어떻게 태어났느냐**의 문제라 같은 물음이다.
+    public bool IsSummoned => unitData is MinionData && !UsesEnemyAi;
+
+    // **이 폰의 능동을 사람이 눌러 주나** — 아니면 스스로 써야 한다(`UseAbilityNode`).
+    //
+    // **`AcceptsOrders` 하나로는 못 가른다**(2026-09-07에 그렇게 짰다가 잡았다). 저건
+    // *하수인 종족인가*만 답하는데 **적도 `UnitData`를 쓰므로 참이 된다** — 그것으로 가르면
+    // 정작 **적이 능동을 안 쓴다**(만들려던 것이 통째로 안 걸린다). `is MinionData`가
+    // *"하수인 종족"이지 "내 편"이 아닌* 것과 **같은 함정**이다.
+    //
+    // **답은 실제로 사람이 누르는 경로에서 나온다** — `SelectionManager`가 **플레이어 세력만**
+    // 고르고, `AbilityController`가 거기서 **명령을 받는 폰만** 남긴다. 그 둘을 이어 붙인 것이
+    // 이 물음이고, 그래서 **누르는 쪽과 스스로 쓰는 쪽이 같은 줄을 본다.**
+    //
+    // 딸려 오는 것 하나: **용병은 스스로 쓴다**(`Faction_Mercenary`는 플레이어 세력이 아니라
+    // 고를 수가 없다). 곁에서 알아서 싸우는 것이 그 계약의 뜻이라 그게 맞다.
+    public bool AbilityByHand
+    {
+        get
+        {
+            if (!AcceptsOrders) return false;
+            var f = Blackboard != null ? Blackboard.Faction : null;
+            return f != null && f.IsPlayer;   // **모르는 것은 플레이어가 아니다**
+        }
+    }
+
+    // **도발당한 폰은 명령을 안 듣는다**(2026-09-08, 사용자 결정: *"도발에 걸렸는데 움직이면
+    // 안 되지 그냥 내 명령을 들으면 안 돼"*).
+    //
+    // **`CanObeyNow`에 얹지 않는다** — 그건 `PawnMover.SetMoveTarget`도 보는 물음이라, 거기
+    // 걸리면 **BT가 도발한 놈에게 걸어갈 수도 없어져 도발이 통째로 죽는다.** 갈리는 자리가
+    // 정확히 이것이다: **사람의 명령은 막고, 트리의 이동은 안 막는다.**
+    //
+    // 묻는 곳은 둘이다 — `ManualOrderNode`(붙들려 있으면 명령 갈래를 건너뛴다)와
+    // `MoveController`(왜 안 되는지 알린다). **조용히 씹으면 조작이 고장 난 것으로 보인다.**
+    public bool IsHeldByTaunt => Taunt.HolderOf(Blackboard) != null;
+
     public bool CanObeyNow
     {
         get
@@ -1139,7 +1222,7 @@ public partial class UnitBrain : MonoBehaviour
         PawnMover.ApplyLayer(gameObject, !UsesEnemyAi);
 
         // ② 성장 잠금 — `Awake`와 **같은 식**이어야 한다(답이 두 벌이면 어긋난다).
-        Stats.IsLocked = unitData is MinionData && !UsesEnemyAi;
+        Stats.IsLocked = IsSummoned;
 
         // ③ 작업 설정 — 적일 땐 안 붙어 있었다. 붙이면서 짐내림 신호도 같이 건다.
         if (!UsesEnemyAi && npcData == null && Work == null)

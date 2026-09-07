@@ -48,6 +48,11 @@ public class PawnSpec
     public StatGrade AverageGrade =>
         (StatGrade)Mathf.Clamp(Mathf.RoundToInt(GradeAverage), 0, (int)StatGrade.SSSPlus);
 
+    // **소환물의 이력 묶음.** 이름을 문자열로 흩어 두면 만드는 쪽(에디터 도구)과 굴리는
+    // 쪽(`UnitBrain`)이 **오타 하나로 갈리고**, 그러면 조용히 `civilian` 폴백으로 떨어져
+    // 골렘이 *"사원의 시동"*이 된다. 답은 여기 한 벌이다.
+    public const string SummonedStoryGroup = "summoned";
+
     // ── 굴리기 ────────────────────────────────────────────────────────────────
 
     // 종족 데이터의 등급 범위를 **덮어쓴다**(min/max). 마을에서 구하는 사람은 종족 기본값이

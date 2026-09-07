@@ -71,6 +71,24 @@ public class CorpseInventoryUI : MonoBehaviour
         => Show(corpse.Inventory, $"{corpse.UnitName}의 시체",
                 corpse.GetComponent<Equipment>());
 
+    // **기절한 남의 폰도 같은 창으로 연다**(2026-09-08, 사용자: *"기절 시킨 고블린의
+    // 인벤토리와 내 폰의 인벤토리가 둘 다 켜지지 않아 하나씩만 켜져"*).
+    //
+    // `InventoryUI`는 **폰 하나에 묶이는 창**이라(`BindTo`) 남의 것을 열면 내 것이 풀린다 —
+    // 뒤지려면 둘이 같이 떠 있어야 하는데 그 구조로는 안 된다. **그 물음은 시체에서 이미
+    // 풀려 있었다**: 저쪽 통을 여기 띄우고 내 배낭을 `SetLootMode`로 같이 연다.
+    //
+    // **창을 새로 안 짓는다** — 하는 일이 글자 그대로 같다. 갈리는 것은 제목뿐이다
+    // (시체냐 아직 숨이 붙었느냐).
+    public void ShowDowned(UnitBrain brain)
+    {
+        if (brain == null) return;
+        var inv = brain.Inventory;
+        if (inv == null) return;
+
+        Show(inv, $"{brain.name} (기절)", brain.GetComponent<Equipment>());
+    }
+
     // **장비 열이 없는 통을 여는 길**(도축대 산출물 등).
     //
     // 창을 새로 안 짓는다 — 하는 일이 글자 그대로 같다: 저쪽 통을 띄우고, 내 배낭을 열고,

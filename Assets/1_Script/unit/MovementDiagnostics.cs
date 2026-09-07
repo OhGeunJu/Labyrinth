@@ -107,7 +107,7 @@ public static class MovementDiagnostics
                          $"로컬경로 {(hasLocalPath ? "있음" : "없음")}{route} · " +
                          $"목표칸 {DescribeTile(goal)}\n" +
                          $"  선 자리: {DescribeTile(pos)}{DescribeFooting(pos, cc)}\n" +
-                         $"  앞을 막은 것: {DescribeBlocker(pos, goal, self)}\n" +
+                         $"  앞을 막은 것: {DescribeBlocker(pos, goal, self, cc)}\n" +
                          $"  곧장 그은 선: {DescribePathTiles(pos, goal)}\n" +
                          $"  선 자리 둘레:\n{DescribeNeighborhood(pos)}" +
                          DescribeCorner(pos, goal));
@@ -115,7 +115,7 @@ public static class MovementDiagnostics
 
     // **"무언가에 막혔다"를 "무엇에 막혔다"로 바꾼다.** 로컬 경로가 있는데도 못 나아가면
     // 남은 건 물리 충돌뿐인데, 이름과 레이어를 모르면 건물인지 다른 폰인지조차 알 수 없다.
-    static string DescribeBlocker(Vector3 pos, Vector3 goal, GameObject self)
+    static string DescribeBlocker(Vector3 pos, Vector3 goal, GameObject self, CharacterController cc)
     {
         Vector3 dir = goal - pos;
         dir.y = 0f;
@@ -127,14 +127,31 @@ public static class MovementDiagnostics
         var probe = pos + Vector3.up * 0.8f + dir * 0.8f;
         var hits  = Physics.OverlapSphere(probe, 0.4f, ~0, QueryTriggerInteraction.Ignore);
 
-        var sb = new System.Text.StringBuilder();
+        // **통과하는 것을 막은 것이라고 적지 않는다**(2026-09-07). `~0`으로 쏘므로 **같은 편
+        // 폰까지 걸리는데**, 걸음은 `excludeLayers`로 그들을 그냥 지나간다
+        // (`PawnMover.ApplyPawnCollisionRule` — 레이어가 곧 "누구를 통과하는가"다).
+        //
+        // 그대로 적었더니 습격대가 맵 밖에서 못 움직이는 진짜 원인(세계 밖이 열려 있었다)을
+        // 두고 **`앞을 막은 것: Enemy_Goblin`**이 범인처럼 읽혔다. **진단이 거짓말을 하면
+        // 없는 사고를 쫓게 된다** — 그래서 지우지 않고 **갈라서** 적는다: 통과하는 것은
+        // 통과한다고.
+        int exclude = cc != null ? cc.excludeLayers.value : 0;
+
+        var blocks = new System.Text.StringBuilder();
+        var passes = new System.Text.StringBuilder();
         foreach (var h in hits)
         {
             if (self != null && h.transform.IsChildOf(self.transform)) continue;
+
+            var sb = (exclude & (1 << h.gameObject.layer)) != 0 ? passes : blocks;
             if (sb.Length > 0) sb.Append(", ");
             sb.Append($"{h.transform.root.name}/{h.name}(레이어 {LayerMask.LayerToName(h.gameObject.layer)})");
         }
-        return sb.Length > 0 ? sb.ToString() : "없음(물리적으로 안 막힘 — 조향/경로 문제)";
+
+        string tail = passes.Length > 0 ? $" · 통과함: {passes}" : "";
+        return blocks.Length > 0
+            ? blocks + tail
+            : "없음(물리적으로 안 막힘 — 조향/경로 문제)" + tail;
     }
 
     // 폰에서 목표까지 **직선을 그어** 그 위의 칸들을 찍는다. **보이지 않는 점유**(모델보다

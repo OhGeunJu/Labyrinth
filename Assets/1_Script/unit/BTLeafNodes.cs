@@ -190,6 +190,16 @@ public class ManualOrderNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
     {
+        // **도발이 명령보다 위다**(2026-09-08). 여기서 실패를 돌려주면 아래 전투 갈래가 받아
+        // 붙든 놈에게 간다. **`ManualMove`도 끈다** — 안 끄면 도발이 풀리는 순간 **8초 전에
+        // 시킨 곳으로 저 혼자 걸어간다**(명령이 살아 있던 것과 같다).
+        if (bb.Brain != null && bb.Brain.IsHeldByTaunt)
+        {
+            bb.ManualMove   = false;
+            bb.HoldPosition = false;
+            return BTStatus.Failure;
+        }
+
         // 제자리 대기 명령(원정 집결 등)은 목적지가 없어도 계속 붙든다.
         // 아래 자동 해제만 있으면 "도착했지만 계속 대기"를 표현할 수 없다 — 도착하는 순간 일하러 간다.
         if (bb.HoldPosition) return BTStatus.Running;
@@ -427,6 +437,47 @@ public class PickUpNode : BTNode
 }
 
 // 전투
+// **스스로 도는 폰이 능동을 쓰는 자리**(2026-09-07 — `docs/design_combat_rework.md`의 마지막
+// 미결이 여기였다: *"적도 능동을 쓰나"*).
+//
+// **그릇은 처음부터 다 있었다** — `AbilityUser`를 `UnitBrain.Awake`가 세력을 안 가리고 모든
+// 폰에 붙이고, 적 로드아웃 여섯이 이미 도발 방패를 든다. **없던 것은 판단 하나**였다.
+//
+// **가르는 축은 `UnitBrain.AbilityByHand` 하나다 — 사람이 눌러 주는 폰인가.**
+//   · 눌러 주는 폰(내 방랑자)은 **여기서 손대지 않는다.** AI가 대신 쓰면 쿨다운을 태워
+//     **누르려던 순간에 회색**이고, 그건 직접 제어가 아니다.
+//   · 나머지(적·경비·용병·**하수인**)는 **스스로 쓴다.** 하수인이 여기 걸리는 것이 특히
+//     중요하다 — `AbilityController`가 걸러서 **사람이 눌러 줄 길이 아예 없다.**
+//
+// **`AcceptsOrders`로 가르면 안 된다**(2026-09-07에 그렇게 짰다가 잡았다) — 그건 *하수인
+// 종족인가*라서 **적도 참이고**, 그러면 만들려던 것이 통째로 안 걸린다.
+//
+// **늘 성공을 돌려준다.** 시퀀스 안에서 전투 **앞**에 서기 때문이다 — 실패를 돌려주면
+// *능력이 없다*는 이유로 시퀀스가 끊겨 **싸움이 통째로 멎는다.** 하는 일이 있으면 하고
+// 없으면 비켜 주는, 곁다리 노드다.
+public class UseAbilityNode : BTNode
+{
+    AbilityUser _user;
+    bool        _looked;
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        if (bb == null || bb.Self == null) return BTStatus.Success;
+
+        var brain = bb.Brain;
+        if (brain == null || brain.AbilityByHand) return BTStatus.Success;
+
+        // `AbilityUser`는 `Awake`가 붙이므로 틱이 도는 시점엔 반드시 있다. 한 번만 찾는다.
+        if (!_looked) { _looked = true; _user = bb.Self.GetComponent<AbilityUser>(); }
+
+        // 쓸 수 있고 쓸 만한 것이 있으면 쓴다. **무엇이 쓸 만한가는 능력의 주인이 답한다**
+        // (`Taunt.Worth`) — 여기서 물으면 능력이 늘 때마다 BT가 전투 규칙을 알게 된다.
+        if (_user != null) _user.TryUseAny();
+
+        return BTStatus.Success;
+    }
+}
+
 public class FightNode : BTNode
 {
     public override BTStatus Tick(UnitBlackboard bb)
