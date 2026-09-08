@@ -649,10 +649,13 @@ public class EventManager : MonoBehaviour
         // 뚫려 있어 맞았지만 지하에서는 **모퉁이를 못 돌아** 대부분의 방향이 몇 m 앞에서
         // 끝난다. 그래서 상인이 기지 코앞의 벽에서 나왔다.
         //
-        // 폰이 실제로 걷는 격자를 따라 **갈 수 있는 가장 먼 칸**을 찾는다 — 그것이 지하에서의
+        // 폰이 실제로 걷는 격자를 따라 **갈 수 있는 먼 칸**을 찾는다 — 그것이 지하에서의
         // *"맵 가장자리"*다. **못 찾으면 직선 방식으로 떨어진다**(지상 씬·격자 밖·좁은 던전).
+        //
+        // **가장 먼 칸이 아니라 충분히 먼 칸 중 하나다**(2026-09-08). 가장 먼 곳은 자리가
+        // 하나라 **습격이 늘 같은 방향에서 왔다**(사용자: *"적이 항상 북동쪽에서만 나와"*).
         var hp = HierarchicalPathfinder.Instance;
-        if (hp != null && hp.FarthestReachable(origin, maxSpawnRadius, out var far))
+        if (hp != null && hp.TryPickReachable(origin, maxSpawnRadius, minSpawnDistance, out var far))
         {
             var t = map.WorldToTile(far);
             if (map.IsWorkable(t) &&

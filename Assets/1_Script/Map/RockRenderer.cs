@@ -85,6 +85,11 @@ public class RockRenderer : MonoBehaviour
     [Tooltip("아무리 당겨도 벽은 이만큼 남는다(m). 경계선 높이와는 다른 축이다.")]
     [SerializeField] float cutLow = 2.5f;
 
+    // 자르기가 뚜껑을 내리는 만큼 **경계를 아래로 늘린다**(m) — 근거는 `Rebuild`에 있다.
+    // 자르는 면은 카메라 발밑에서 재므로 청크 바닥이 그보다 높으면 그 차이만큼 더 내려간다.
+    // 지하 바닥의 기복이 그 폭이라 한 뼘이면 족하다.
+    const float CutBoundsSlack = 4f;
+
     static readonly int IdOn       = Shader.PropertyToID("_RockCutOn");
     static readonly int IdLow      = Shader.PropertyToID("_RockCutLow");
     static readonly int IdFrac     = Shader.PropertyToID("_RockCutFrac");
@@ -432,6 +437,25 @@ public class RockRenderer : MonoBehaviour
         mesh.SetTriangles(_side, 1);
         mesh.SetTriangles(_mark, 2);
         mesh.RecalculateBounds();
+
+        // **경계는 자르기 전이 아니라 자른 뒤를 덮어야 한다**(2026-09-08).
+        //
+        // `RecalculateBounds`는 **굽힌 정점**을 재는데, 화면에 그려지는 자리는 `RockCut`이
+        // **뚜껑을 눈높이까지 내린 뒤**다. 통짜 바위 청크는 **드러난 면이 윗면뿐**이라
+        // (옆면은 뚫린 이웃 쪽만 굽는데 사방이 바위다) 경계가 24m 높이의 **납작한 판**인데
+        // 실제로 그려지는 것은 2.5~10m 언저리다 — **가까이 당기면 그 판이 절두체 위로
+        // 빠져 유니티가 청크를 통째로 컬링한다.**
+        //
+        // 화면에는 *"가까이 가면 가운데가 뻥 비어 보인다"*로만 나타난다. **옆면이 하나라도
+        // 있는 청크는 경계가 이미 바닥까지 닿아 멀쩡하므로** 통짜 바위만 사라지고, 그래서
+        // 원인이 셰이더나 메시가 아니라 **경계**에 있다는 표시가 아무 데도 없다.
+        //
+        // **바닥까지 늘린다** — 옆면이 있는 청크가 이미 갖는 모양이고, 자르기는 **내리기만
+        // 하므로** 그 아래로는 안 간다. 자르는 면의 기준은 **카메라 발밑**이라 이 청크가
+        // 그보다 높으면 조금 더 내려갈 수 있어 여유를 한 뼘 둔다.
+        var b = mesh.bounds;
+        b.SetMinMax(new Vector3(b.min.x, lowest - CutBoundsSlack, b.min.z), b.max);
+        mesh.bounds = b;
 
         // **콜라이더를 단다** — 커서가 바위를 짚어야 캘 자리를 고를 수 있고, 몸도 막아야 한다.
         // (천장에 안 다는 것과 정반대다 — 저쪽은 위에 있어서 짚으면 안 되고, 이쪽은 짚어야 한다.)

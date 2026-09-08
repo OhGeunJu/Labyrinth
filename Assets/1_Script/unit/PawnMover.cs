@@ -186,6 +186,28 @@ public class PawnMover : MonoBehaviour
         _cc = GetComponent<CharacterController>();
         _cc.stepOffset = StepUp;
         _cc.radius     = BodyRadius;
+
+        // **몸이 얼마나 굵은가의 답은 한 벌이다**(2026-09-08).
+        //
+        // 폰 프리팹에는 `CharacterController`와 **똑같은 자리에 `CapsuleCollider`가 하나 더**
+        // 있다(커서가 짚을 자리). 그런데 위에서 `BodyRadius`를 미는 것은 컨트롤러뿐이라,
+        // 그 캡슐만 **프리팹 값(반지름 0.5)** 그대로 남아 있었다 — *"폰 몸통은 한 칸에
+        // 들어가야 한다"*는 규칙이 **절반만 지켜지고 있었다.**
+        //
+        // 값이 갈리면 둘이 다 틀린다: **커서는 굵은 쪽을 짚고**(옆에 선 폰을 누르려다 이놈이
+        // 눌린다) **막는 것도 굵은 쪽이다**(트리거가 아니다 — 길찾기는 0.35로 굽는데 몸은
+        // 0.5로 부딪히니 한 칸 통로에서 서로 낀다).
+        //
+        // **컨트롤러를 정본으로 삼고 그대로 베낀다.** 눕는 동안 쓰는 트리거 캡슐(`_lyingPick`)은
+        // *다른 물음*(누운 몸을 짚는 자리)이라 건드리지 않는다 — 그건 제 값을 스스로 든다.
+        foreach (var cap in GetComponents<CapsuleCollider>())
+        {
+            if (cap.isTrigger) continue;      // `_lyingPick`은 트리거다
+            cap.direction = 1;                // 몸의 긴 축은 로컬 Y
+            cap.radius    = _cc.radius;
+            cap.height    = _cc.height;
+            cap.center    = _cc.center;
+        }
         _currentTarget = transform.position;
         _lastGroundedPos = transform.position;
         _baseMoveSpeed = moveSpeed;

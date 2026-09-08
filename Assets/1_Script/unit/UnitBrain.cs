@@ -895,6 +895,7 @@ public partial class UnitBrain : MonoBehaviour
         _bb.LastAttacker = null;
         _bb.FollowTarget = null;
         _bb.LeavingMap   = false;
+        _bb.Routed       = false;
         _bb.IsPrisoner   = false;
         _bb.HoldPosition = false;
         // 일어난 것은 아무것도 필요하지 않다(적 세력은 어차피 이 축이 안 돈다)
@@ -1157,6 +1158,11 @@ public partial class UnitBrain : MonoBehaviour
         _bb.IsDrafted = true;
         DropCurrentJob();
 
+        // **선 자리가 곧 자리다.** 이동 명령을 받으면 진형이 덮어쓰지만, 그 전에도
+        // `FightNode`가 볼 값이 있어야 한다 — 없으면(0,0,0) 소집하자마자 표적을 문 폰이
+        // **세계 원점을 기준으로 목줄을 재서** 그 자리에서 아예 못 움직인다.
+        _bb.FormationSpot = transform.position;
+
         // **침대는 안 건드린다.** 자던 폰을 일으키는 것은 `RestNode`의 게이트가 이미 한다
         // (`bb.IsDrafted`면 `LeaveBed` — 업고 있을 때와 **같은 줄**이고, 그건 자세와 **점유만**
         // 풀고 **배정은 남긴다**).
@@ -1209,6 +1215,7 @@ public partial class UnitBrain : MonoBehaviour
         _bb.LastAttacker = null;
         _bb.FollowTarget = null;
         _bb.LeavingMap   = false;
+        _bb.Routed       = false;
         ClearStanceOverride();
         GetComponent<CombatHandler>()?.ExitCombat();
         _mover?.StopMovement();

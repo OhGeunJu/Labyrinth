@@ -80,9 +80,6 @@ public class AbilityBarSlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExi
         {
             int n = _user.ChargesLeft(_ability);
             body += $"\n<color=#88CCFF>{_ability.ChargeLine(n)}</color>";
-
-            float refill = _user.RefillIn(_ability);
-            if (refill > 0f) body += $"\n<color=#88CCFF>다음 한 칸 {refill / 60f:0.#}분</color>";
         }
 
         float left = _user != null ? _user.CooldownLeft(_ability) : 0f;

@@ -116,7 +116,7 @@ public class DebugRaidWindow : EditorWindow
         EditorGUILayout.HelpBox(
             "접근: 집결지에 모인다 (산 멤버 6할이 오면 돌격)\n" +
             "돌격: 핵으로 간다\n" +
-            "후퇴: 서 있는 놈이 처음의 1/3 이하 — 걸어 나간다 (다시 안 온다)",
+            "후퇴: 서 있는 놈이 처음의 절반 이하 — 걸어 나간다 (다시 안 온다)",
             MessageType.None);
     }
 

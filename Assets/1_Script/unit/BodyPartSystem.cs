@@ -477,6 +477,14 @@ public class BodyPartSystem : MonoBehaviour
     // ── 혈액 ────────────────────────────────────────────────────────
     void UpdateBleed()
     {
+        // **산 몸만 흘린다**(2026-09-08). 지속 출혈은 *상처가 시간에 걸쳐 피를 흘리는 것*이라
+        // 뼈에도 돌덩이에도 성립하지 않는다 — 그런데 부위가 부서지면 종류를 안 가리고 돌아서,
+        // **가만히 서 있는 해골이 저 혼자 무너졌다.**
+        //
+        // 없앤 것은 *시간에 걸친 감소*뿐이다: 맞으면 여전히 줄고(`Blood -= actualDamage`),
+        // 0에서 부서지는 것도 그대로다. **언데드는 맞은 만큼만 무너진다.**
+        if (_brain != null && Needs.BodyOf(_brain) != BodyKind.Living) return;
+
         // 자연 지혈: 부상 직후 BleedRate로 시작해 clotSeconds에 걸쳐 선형으로 멎는다.
         // 재피격 시 LastWoundTime이 리셋돼 다시 출혈 — 연타당할 때만 출혈이 위험해진다.
         float totalBleed = 0f;

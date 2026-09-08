@@ -42,44 +42,55 @@ public static class ModeBarSetup
         //
         // **다만 자리는 지킨다**(2026-08-29, 사용자가 손으로 옮겼다). 도구를 다시 돌렸다고
         // 손으로 맞춘 자리가 원래대로 돌아가면 **다시 돌릴 엄두가 안 난다** — 뿌리기 규칙과
-        // 장소 배치가 이미 쓰는 판단이다. 모양만 새로 만들고 `RectTransform`은 물려준다.
-        bool  keepPlace = false;
-        Vector2 keepMin = default, keepMax = default, keepPivot = default, keepPos = default;
+        // 장소 배치가 이미 쓰는 판단이다. 모양만 새로 만들고 자리는 물려준다.
+        //
+        // **물려주는 것은 판의 자리다**(2026-09-08, 사용자 결정 — `docs/editor_creators.md`
+        // "뿌리는 화면 전체, 자리는 판이 든다"). 뿌리는 캔버스 전체로 늘려 두고 자리는
+        // `<기준>_Panel`이 드는 것이 씬의 규약이라, **뿌리만 지키면 사람이 옮긴 자리가
+        // 그대로 날아간다** — 실제로 이 바가 손으로 판을 옮겨 둔 상태였다.
+        var placeMin   = new Vector2(0f, 0f);
+        var placeMax   = new Vector2(0f, 0f);
+        var placePivot = new Vector2(0f, 0f);
+        var placePos   = new Vector2(Margin, Margin);
 
         var old = canvas.transform.Find(BarName);
         if (old != null)
         {
-            var ort = (RectTransform)old;
-            keepPlace = true;
-            keepMin   = ort.anchorMin;
-            keepMax   = ort.anchorMax;
-            keepPivot = ort.pivot;
-            keepPos   = ort.anchoredPosition;
+            var oldPanel = old.Find(PanelName) as RectTransform;
+            if (oldPanel != null)
+            {
+                placeMin   = oldPanel.anchorMin;
+                placeMax   = oldPanel.anchorMax;
+                placePivot = oldPanel.pivot;
+                placePos   = oldPanel.anchoredPosition;
+            }
             Undo.DestroyObjectImmediate(old.gameObject);
         }
 
         float h = Modes.Length * ButtonSize.y + (Modes.Length - 1) * Gap;
 
-        // **캔버스의 직속 자식이다** — `GameModeManager`가 필드/월드를 갈아 끼울 때 다루는
-        // 단위가 그것이고, `WindowRaiser`도 "창"을 그렇게 센다.
-        var bar = UIHelper.MakePanel(canvas.transform, BarName,
-                                     new Vector2(ButtonSize.x + Margin, h + Margin),
-                                     new Vector2(0f, 0f),                 // 왼쪽 아래 기준
-                                     new Vector2(Margin, Margin));
+        // **캔버스의 직속 자식이고 화면 전체를 덮는다** — `GameModeManager`가 필드/월드를
+        // 갈아 끼울 때 다루는 단위가 그것이고, `WindowRaiser`도 "창"을 그렇게 센다.
+        var bar = new GameObject(BarName, typeof(RectTransform));
+        bar.transform.SetParent(canvas.transform, false);
+        var brt = (RectTransform)bar.transform;
+        brt.anchorMin = Vector2.zero;
+        brt.anchorMax = Vector2.one;
+        brt.offsetMin = Vector2.zero;
+        brt.offsetMax = Vector2.zero;
         Undo.RegisterCreatedObjectUndo(bar, "모드바");
 
         // **창 규약을 지킨다**(`docs/editor_creators.md`): `<기준>_UI`는 **스크립트만** 든
-        // 늘 켜져 있는 뿌리이고, 보였다 사라지는 그림은 자식 `<기준>_Panel`이 든다.
-        // `MakePanel`이 뿌리에 `Image`를 붙이므로 여기서 떼고 자식에 옮긴다.
-        Object.DestroyImmediate(bar.GetComponent<Image>());
-
+        // 늘 켜져 있는 뿌리이고, 보였다 사라지는 그림은 자식 `<기준>_Panel`이 들며
+        // **자리도 그쪽이 든다.**
         var panel = new GameObject(PanelName, typeof(RectTransform), typeof(Image));
         panel.transform.SetParent(bar.transform, false);
         var prt = (RectTransform)panel.transform;
-        prt.anchorMin = Vector2.zero;
-        prt.anchorMax = Vector2.one;
-        prt.offsetMin = Vector2.zero;
-        prt.offsetMax = Vector2.zero;
+        prt.anchorMin        = placeMin;
+        prt.anchorMax        = placeMax;
+        prt.pivot            = placePivot;
+        prt.anchoredPosition = placePos;
+        prt.sizeDelta        = new Vector2(ButtonSize.x + Margin, h + Margin);
         panel.GetComponent<Image>().color = new Color(0.08f, 0.08f, 0.09f, 0.85f);
 
         var ui = bar.AddComponent<ModeBarUI>();
@@ -110,20 +121,10 @@ public static class ModeBarSetup
         slots.serializedObject.FindProperty("panel").objectReferenceValue = panel;
         so.ApplyModifiedPropertiesWithoutUndo();
 
-        // 옛 **자리**를 물려준다 — 손으로 옮겨 둔 것은 뜻이 있다.
-        //
         // **크기는 안 물려준다**(2026-09-02 수정). 전에는 크기까지 물려줬는데, **버튼이 하나
         // 늘자 판은 셋짜리 그대로라 넷째 버튼이 판 밖으로 삐져나왔다**(사용자 화면). 크기는
         // *손으로 정한 값*이 아니라 **버튼 수에서 나오는 값**이다 — 물려주면 개수를 바꿀
         // 때마다 손으로 다시 맞춰야 하고, 안 맞춘 채로 남는다.
-        if (keepPlace)
-        {
-            var rt = (RectTransform)bar.transform;
-            rt.anchorMin        = keepMin;
-            rt.anchorMax        = keepMax;
-            rt.pivot            = keepPivot;
-            rt.anchoredPosition = keepPos;
-        }
 
         EditorUtility.SetDirty(ui);
         Selection.activeGameObject = bar;

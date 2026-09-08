@@ -34,6 +34,15 @@ public static class PawnCarry
     const float ShoulderHeight = 1.1f;
     const float ShoulderSide   = 0.25f;
 
+    // **머리가 뒤로 간다**(2026-09-08, 사용자: *"머리가 뒤로 내 폰에 등쪽에 있어야지"*).
+    //
+    // 전에는 로컬 Z로 90도 눕혀서 몸이 **좌우로** 뻗었다 — 어깨를 가로지르는 널빤지라
+    // 머리가 옆으로 튀어나왔다. 이제 로컬 X로 −90도라 몸이 **앞뒤로** 눕고, 그 방향에서
+    // 머리(피벗 반대쪽)가 **등 뒤**에 온다.
+    //
+    // 몸 한가운데를 어깨에 딱 맞추면 **발이 앞으로 그만큼 튀어나오므로** 조금 뒤로 민다.
+    const float ShoulderBack = 0.35f;
+
     // ── 무게 ────────────────────────────────────────────────────────────────
 
     // 이 폰을 업으면 몇 kg인가. **그 폰이 지고 있던 짐도 같이 온다** — 어깨에 메는 것이지
@@ -139,6 +148,15 @@ public static class PawnCarry
         var cc = target.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;   // 켜진 채 부모에 붙이면 콜라이더가 제자리로 되민다
 
+        // **콜라이더도 같이 끈다**(2026-09-08). 컨트롤러만 껐더니 **같은 자리의
+        // `CapsuleCollider`가 어깨에 매달린 채 살아 있었다** — 트리거도 아니라서, 업힌 몸이
+        // 지름 0.7m짜리 물리 덩어리로 업은 폰을 따라다닌다(화면에서는 몸보다 훨씬 큰
+        // 초록 캡슐로 보인다). 업힌 것은 **짐이지 몸이 아니다.**
+        //
+        // 클릭 판정은 이걸로 안 바뀐다 — `SelectionManager.PickVisible`이 **업힌 폰을 이미
+        // 건너뛴다**(어깨 위라 업은 폰과 구별이 안 된다). 여기서 없애는 것은 물리 쪽이다.
+        foreach (var col in target.GetComponents<Collider>()) col.enabled = false;
+
         // **부모의 크기를 상쇄한다.** 폰마다 몸집이 다른데(`PawnSpec.BodyScale`), 그냥 자식으로
         // 붙이면 업힌 사람의 월드 크기가 **업은 사람의 크기만큼 곱해진다** — 큰 폰이 업으면
         // 업힌 사람이 커진다. 게다가 내려놓을 때 `SetParent(null, true)`가 그 부푼 크기를
@@ -157,10 +175,17 @@ public static class PawnCarry
         // 그대로 놓으면 업힌 사람이 어깨 **위로** 통째로 솟는다 — 몸 한가운데가 어깨에 오도록
         // 그만큼 내린다. 값은 콜라이더에게 묻는다(높이가 종족마다 다르다).
         //
-        // 90도 눕혔으므로 그 오프셋은 **로컬 X 방향**으로 간다(`Euler(0,0,90)`이 로컬 Y를 −X로 보낸다).
-        float mid = PawnPlacement.CenterOffset(target.gameObject);
-        target.transform.localPosition = new Vector3(ShoulderSide + mid, ShoulderHeight, 0f);
-        target.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);   // 기절 자세 그대로
+        // **앞뒤로 눕혔으므로 그 오프셋은 로컬 Z 방향으로 간다** — `Euler(-90,0,0)`이 로컬
+        // Y(머리 쪽)를 **−Z(등 뒤)**로 보낸다. 그래서 피벗(발밑)을 +Z로 밀어야 몸 한가운데가
+        // 어깨에 온다.
+        //
+        // **업힌 폰의 크기를 태운다**(2026-09-08). `CenterOffset`은 그 폰의 **제 단위**로
+        // 잰 값인데, 방금 `localScale`을 `world/parent`로 맞춰 놨으므로 부모 좌표에서의
+        // 실제 반높이는 그 배율만큼 다르다. 안 태우면 **몸집이 1이 아닌 폰**(고블린처럼
+        // 작은 종족)의 몸 한가운데가 어깨를 빗나가 **옆으로 붕 뜬 채 실린다.**
+        float mid = PawnPlacement.CenterOffset(target.gameObject) * target.transform.localScale.y;
+        target.transform.localPosition = new Vector3(ShoulderSide, ShoulderHeight, mid - ShoulderBack);
+        target.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);   // 머리가 등 뒤로
 
         carrier.Blackboard.Carrying = target;
         target.Blackboard.CarriedBy = carrier;
@@ -207,6 +232,11 @@ public static class PawnCarry
         bool down = IsCorpse(target)
                  || (target.Blackboard != null && target.Blackboard.IsKnockedOut);
         var rot   = facing ?? Quaternion.Euler(0f, target.transform.eulerAngles.y, down ? 90f : 0f);
+
+        // 업을 때 꺼 둔 콜라이더를 되켠다. **컨트롤러는 `PawnPlacement`가 켠다** — 표면 위로
+        // 띄우는 보정과 한 묶음이라 그쪽이 순서를 안다.
+        foreach (var col in target.GetComponents<Collider>())
+            if (!(col is CharacterController)) col.enabled = true;
 
         // 업을 때 꺼 둔 컨트롤러를 **여기서 되켠다.** 표면 위로 띄우는 보정(파묻힘·되밀림)은
         // `PawnPlacement`가 한 곳에서 다룬다 — 스폰·건물 밀어내기와 같은 함정이다.

@@ -248,24 +248,34 @@ public class LeaveMapNode : BTNode
     const float ArrivalDist   = 0.9f;
     const float RepathSeconds = 2f;    // 길이 막혔을 때 다시 잡아 본다
 
-    // **더는 못 가면 거기서 사라진다.** 좁혀지지 않는데 계속 걷게 두면, 나가는 길이 반 칸
-    // 모자란 지형에서 폰이 가장자리에 붙어 영원히 서 있는다(`WorkNode`의 정체 처리와 같은 축).
+    // **더는 못 가면 포기한다.** 좁혀지지 않는데 계속 걷게 두면, 나가는 길이 반 칸 모자란
+    // 지형에서 폰이 가장자리에 붙어 영원히 서 있는다(`WorkNode`의 정체 처리와 같은 축).
     const float StuckSeconds  = 8f;
     const float ProgressEps   = 0.3f;
 
     float _nextRepath;
     float _stuckTimer;
     float _bestDist = float.MaxValue;
+    int   _routeAt  = -1;
 
     public override BTStatus Tick(UnitBlackboard bb)
     {
         // **떠나는 중이 아니면 진행 기록을 지운다.** 노드는 트리에 계속 살아 있어서, 안 지우면
         // 다시 붙잡혔다 풀려났을 때 지난번의 `_bestDist`가 남아 **출발하자마자 "더는 못 간다"로
         // 사라진다.**
-        if (!bb.LeavingMap) { _bestDist = float.MaxValue; _stuckTimer = 0f; return BTStatus.Failure; }
+        if (!bb.LeavingMap)
+        {
+            _bestDist = float.MaxValue; _stuckTimer = 0f; _routeAt = -1;
+            bb.Routed = false;
+            return BTStatus.Failure;
+        }
 
-        // **맞으면 돌아선다.** 여기서 끝내면 아래 전투 분기가 평소대로 받는다.
-        if (bb.HasFreshAttacker)
+        // **맞으면 돌아선다 — 다만 패주는 안 돌아선다**(2026-09-08).
+        //
+        // 이 갈래는 *놓아주어서 나가는 사람*의 것이다: 나가는 길에 맞으면 싸우는 편이 맞다.
+        // 무너진 습격대는 **쫓기며 맞는 중**이라 여기 걸리면 후퇴가 첫 틱에 취소되고,
+        // 그러면 `RaidLord`가 세 상태를 다 갖춰 놓고도 **끝나는 방법이 몰살뿐**으로 되돌아간다.
+        if (bb.HasFreshAttacker && !bb.Routed)
         {
             bb.LeavingMap = false;
             bb.Brain?.ClearStanceOverride();
@@ -281,12 +291,47 @@ public class LeaveMapNode : BTNode
 
         if (d < ArrivalDist) { Object.Destroy(bb.Self); return BTStatus.Running; }
 
-        // 가까워지고 있나 — 아니면 얼마나 오래 제자리인가.
-        if (d < _bestDist - ProgressEps) { _bestDist = d; _stuckTimer = 0f; }
-        else                             _stuckTimer += bb.TickDelta;
+        // **진행은 경로로 잰다 — 직선거리가 아니다**(2026-09-08).
+        //
+        // 직선으로 재면 **굴에서 틀린다**: 나가는 길이 바위를 크게 돌아가면 걷는 내내
+        // 직선거리가 안 줄고, 8초 뒤 *"더는 못 간다"*가 되어 **멀쩡히 걷던 폰이 그 자리에서
+        // 사라진다**(사용자: *"도망치지 않았는데 시간이 지나면 사라져"*). `WorkNode`가 먼저
+        // 겪고 고친 그 눈금이다 — 답은 `PawnMover.RouteRemaining` 하나다.
+        //
+        // **길이 바뀌면 눈금도 다시 낸다**(`RouteVersion`) — 우회로가 더 길게 나오면 옛 기록은
+        // **다시는 못 깨는 값**이라, 재계획 한 번이 8초 뒤의 포기를 예약한다.
+        if (bb.Mover.RouteVersion != _routeAt)
+        {
+            _routeAt   = bb.Mover.RouteVersion;
+            _bestDist  = float.MaxValue;
+            _stuckTimer = 0f;
+        }
+
+        float gauge = bb.Mover.RouteRemaining;
+        if (gauge <= 0f) gauge = d;          // 라우트가 없는 짧은 이동은 직선이 곧 그은 선이다
+
+        if (gauge < _bestDist - ProgressEps) { _bestDist = gauge; _stuckTimer = 0f; }
+        else                                 _stuckTimer += bb.TickDelta;
 
         if (_stuckTimer >= StuckSeconds)
         {
+            // **보고 있는 앞에서는 증발하지 않는다**(2026-09-08). 이 갈래가 있는 이유는
+            // *아무도 안 보는 가장자리에서 영원히 서 있는 것*을 치우려는 것인데, 화면 한복판에서
+            // 폰이 사라지면 그건 정리가 아니라 **속임수로 보인다.**
+            //
+            // 보이는 자리에서는 **떠나기를 포기하고 트리에 넘긴다** — 다음 틱에 위의 첫 줄이
+            // `Routed`까지 지우므로, 무너진 습격대는 궁지에 몰려 **돌아서서 싸우고**(그게 맞는
+            // 그림이다) 풀려난 포로는 도주 성향이 남아 있어 계속 달아난다.
+            if (SimLocality.IsSimulated(pos))
+            {
+                Debug.Log($"[Leave] {bb.Self.name}: 나갈 길이 막혀 떠나기를 포기합니다.");
+                bb.LeavingMap = false;
+                bb.Mover.StopMovement();
+                _bestDist   = float.MaxValue;
+                _stuckTimer = 0f;
+                return BTStatus.Failure;
+            }
+
             Debug.Log($"[Leave] {bb.Self.name}: 더는 가장자리로 다가갈 수 없어 여기서 떠납니다.");
             Object.Destroy(bb.Self);
             return BTStatus.Running;
@@ -296,7 +341,12 @@ public class LeaveMapNode : BTNode
         if (!bb.Mover.IsMoving() && Time.time >= _nextRepath)
         {
             _nextRepath = Time.time + RepathSeconds;
-            if (EventManager.TryFindExit(pos, out var exit)) bb.LeaveTarget = exit;
+
+            // **패주는 문을 다시 안 고른다**(2026-09-08). `TryFindExit`은 **직선**으로 걸어
+            // 가장자리를 찾으므로 지하에서는 **몇 걸음 앞 벽**을 답으로 준다 — 그러면 왔던
+            // 길로 나가라고 준 좌표를 **막힐 때마다 코앞의 벽으로 덮어쓴다.**
+            // 물러나는 무리에게는 이미 *걸어 들어온 자리*라는 답이 있다(`RaidLord`).
+            if (!bb.Routed && EventManager.TryFindExit(pos, out var exit)) bb.LeaveTarget = exit;
             bb.Mover.SetDestination(bb.LeaveTarget);
         }
 

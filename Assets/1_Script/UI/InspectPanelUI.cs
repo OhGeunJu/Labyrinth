@@ -515,7 +515,9 @@ public class InspectPanelUI : MonoBehaviour
         // 혈액 / 보호막 / 부패
         if (body != null)
         {
-            sb.AppendLine($"혈액  {BloodBar(body.Blood, body.MaxBlood)}");
+            // **이름은 몸이 정한다** — 뼈에 흐르는 피도, 돌덩이가 흘리는 피도 없다.
+            sb.AppendLine($"{Needs.VitalName(Needs.BodyOf(brain))}  " +
+                          $"{BloodBar(body.Blood, body.MaxBlood)}");
             if (sfx != null && sfx.ShieldPool > 0f)
                 sb.AppendLine($"보호막  <color=#4AF>{sfx.ShieldPool:F0}</color>");
             if (sfx != null && sfx.CorruptionGauge > 0f)

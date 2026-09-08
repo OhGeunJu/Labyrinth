@@ -194,6 +194,22 @@ public static class Needs
     //
     // **언데드가 먼저다** — 일으켜 세운 골렘 같은 것은 없지만, 순서를 안 정해 두면
     // 둘 다 참인 에셋이 하나 생기는 날 답이 자리에 따라 갈린다.
+    // **그 몸을 붙들고 있는 것의 이름**(2026-09-08, 사용자: *"해골에 혈액이 있는 게 말이
+    // 안 되잖아"*).
+    //
+    // `BodyPartSystem.Blood`는 *이 몸이 얼마나 남았나*라는 하나의 게이지인데, 이름이
+    // **혈액 하나로 못 박혀** 있어서 뼈에도 피가 흐르고 돌덩이도 피를 흘렸다.
+    //
+    // **판정은 안 가른다 — 이름만 가른다.** 하는 일이 실제로 같기 때문이다(줄면 무너진다).
+    // 여기서 축을 갈라 버리면 `BodyPartSystem`이 몸 종류를 알아야 하고, 그때부터 피해·부위·
+    // 치료가 전부 세 갈래가 된다. **`Needs.BodyOf`가 이미 답하는 물음에 이름 하나를 더 얹는다.**
+    public static string VitalName(BodyKind body) => body switch
+    {
+        BodyKind.Construct => "동력",
+        BodyKind.Undead    => "결속",
+        _                  => "혈액",
+    };
+
     public static BodyKind BodyOf(UnitBrain brain)
     {
         if (brain == null) return BodyKind.Living;

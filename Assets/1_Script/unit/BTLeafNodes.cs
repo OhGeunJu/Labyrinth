@@ -178,7 +178,9 @@ public class DetectNode : BTNode
 
     // 소집한 폰이 저 혼자 붙는 거리 — 공격 사거리의 이 배수. 근접(1.5m)이면 4.5m라
     // **한두 걸음**이다. 키우면 소집이 "돌격"이 되고, 1이면 사실상 반격과 같아진다.
-    const float DraftLeash = 3f;
+    // **소집 중의 목줄.** 감지에도 쓰고 `FightNode`의 접근에도 쓴다 — **한 값이어야 한다**:
+    // 갈리면 *볼 수는 있는데 못 가는* 또는 *안 보이는데 쫓아가는* 폰이 생긴다.
+    public const float DraftLeash = 3f;
 
     static float SqrDist(Vector3 from, GameObject go) =>
         (go.transform.position - from).sqrMagnitude;
@@ -489,8 +491,9 @@ public class FightNode : BTNode
         // **지목한 마무리 대상은 기절해 있어도 통과한다** — `bb`를 같이 넘기는 이유다.
         if (!BTTargetUtil.IsAttackable(bb.Target, bb))
         {
-            bb.Target       = null;
-            bb.FinishTarget = null;   // 끝났으면 예외도 같이 거둔다(다음 대상에 새지 않게)
+            bb.Target        = null;
+            bb.FinishTarget  = null;   // 끝났으면 예외도 같이 거둔다(다음 대상에 새지 않게)
+            bb.OrderedTarget = null;   // 명령도 그 표적과 함께 끝난다
             combat.ExitCombat();
             return BTStatus.Failure;
         }
@@ -502,7 +505,7 @@ public class FightNode : BTNode
         if (dist > bb.AttackRange)
         {
             combat.ExitCombat();
-            bb.Mover.SetMoveTarget(bb.Target.transform.position);
+            bb.Mover.SetMoveTarget(Approach(bb));
             return BTStatus.Running;
         }
 
@@ -510,6 +513,37 @@ public class FightNode : BTNode
         bb.Mover.StopMovement();
         combat.EnterCombat();
         return BTStatus.Running;
+    }
+
+    // **어디까지 다가가나 — 소집 중에는 자리를 지킨다**(2026-09-08).
+    //
+    // 진형이 자리를 나눠 주기만 하고 지키게 하지 않으면 **첫 접촉에서 대형이 녹는다**:
+    // 표적을 문 폰이 저마다 그것을 쫓아 걸어 나가므로, 대형은 *출발 직전의 그림*이 된다.
+    //
+    // **`DetectNode.DraftLeash`와 같은 값을 쓴다** — 감지가 이미 *다가온 것만 문다*로
+    // 잘라 두었으므로, 접근도 같은 눈금이어야 **볼 수 있는 것에는 닿는다**가 성립한다.
+    // 갈리면 *보이는데 못 가는* 표적이 생겨 폰이 그 자리에서 헛돈다.
+    //
+    // **소집이 아니면 한 줄도 안 바뀐다** — 평소 전투는 예전 그대로 표적까지 간다.
+    static Vector3 Approach(UnitBlackboard bb)
+    {
+        var to = bb.Target.transform.position;
+        if (!bb.IsDrafted) return to;
+
+        // **사람이 지목한 표적은 목줄을 안 탄다** — 명령이 진형보다 위다. 안 그러면
+        // 소집해 둔 폰에게 20m 밖의 적을 치라고 시켜도 **몇 걸음 나가다 서서** 명령이
+        // 안 먹는 것처럼 보인다.
+        if (bb.OrderedTarget != null && bb.OrderedTarget == bb.Target) return to;
+
+        // 자리를 모르면(소집 밖에서 켜진 표적 등) 지금 선 자리가 곧 자리다.
+        var spot = bb.FormationSpot;
+        if (spot == Vector3.zero) spot = bb.Self.transform.position;
+
+        var d = to - spot;
+        d.y = 0f;
+
+        float leash = bb.AttackRange * DetectNode.DraftLeash;
+        return d.magnitude <= leash ? to : spot + d.normalized * leash;
     }
 }
 

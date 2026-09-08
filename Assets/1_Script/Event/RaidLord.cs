@@ -24,12 +24,47 @@ public class RaidLord
     // 놈**이 있을 때만 걸린다. 짧게 잡으면(45초로 두었었다) 가장자리에서 핵까지 150m를
     // 걷는 동안 그냥 만료되어 **접근이 하는 일이 없어진다.**
     const float ApproachCap = 120f;
-    const float BreakRatio    = 0.34f; // 서 있는 놈이 처음의 이만큼 이하면 무너진 것이다
+    // **서 있는 놈이 처음의 이만큼 이하면 무너진 것이다.**
+    //
+    // 0.34였다(셋 중 둘이 쓰러져야 물러난다). **2026-09-08에 절반으로 올렸다** — 사용자가
+    // *절반이 기절했을 때*를 보고 있었고, 그게 맞다: 이 층을 만든 이유가 **습격이 몰살
+    // 말고 다른 방식으로 끝나게 하는 것**인데, 3분의 2가 쓰러질 때까지 안 물러나면
+    // 남은 셋도 대개 그 자리에서 죽는다(그때는 물러나 봐야 결과가 같다).
+    //
+    // **쓰러진 놈은 이미 안 센다** — `Standing`이 기절·포로·이탈을 다 빼므로 *죽은 수*가
+    // 아니라 **싸울 수 있는 수**로 잰다.
+    const float BreakRatio    = 0.5f;
+
+    // ── 대형을 유지한 채 밀고 들어간다 (2026-09-08) ──────────────────────────
+    //
+    // duty를 얹고도 **돌격이 한 줄로 왔다**(사용자: *"진형을 짜고 돌격한다는 느낌이 안 들어"*).
+    // 당연했다 — 목적지에 슬롯을 주는 것은 **도착했을 때의 모양**이고, 오는 동안에는 각자
+    // 제 슬롯으로 길을 찾으므로 **통로에서 한 줄로 늘어선다.** 대형은 도착해서야 생긴다.
+    //
+    // 그래서 **한 번에 끝까지 안 보낸다** — 무리의 지금 한복판에서 목적지 쪽으로 `AdvanceStep`
+    // 만큼만 대형을 놓고, 주기마다 다시 놓는다. 앵커가 무리를 따라 앞으로 기어가는 셈이라
+    // **오는 내내 모양이 유지되고**, 무엇보다 **앞선 놈이 뒤처진 놈을 기다린다**(앵커를
+    // 한복판에서 내므로 뒤가 처지면 앵커도 같이 처진다).
+    //
+    // **매 틱 덮어쓰지 않는다**(그건 이 파일의 첫 규칙이다) — 틱은 0.5초이고 이건 그보다
+    // 훨씬 뜸하다. 그리고 **싸우는 중인 놈은 안 건드린다**: 자리는 적어 두되 명령은 안 준다
+    // (싸움이 끝나면 `Nudge`가 그 자리로 돌려보낸다).
+    const float ReformSeconds = 2.5f;
+    const float AdvanceStep   = 10f;
+
+    float _reformAt;
 
     readonly List<UnitBrain> _members = new();
     readonly int     _initial;
     readonly Vector3 _goal;
     readonly Vector3 _staging;
+
+    // **들어온 자리.** 후퇴는 여기로 나간다 — 아래 `Enter(Retreat)` 참조.
+    readonly Vector3 _edge;
+
+    // 누가 어느 칸인가. `Order`가 채우고 `Nudge`가 읽는다 — 목적지를 잃은 놈을 **한 점이
+    // 아니라 제 자리로** 돌려보내야 진형이 첫 접촉에서 안 녹는다.
+    readonly Dictionary<UnitBrain, Vector3> _slot = new();
 
     Phase _phase;
     float _phaseAt;
@@ -58,6 +93,7 @@ public class RaidLord
 
         _initial = _members.Count;
         _goal    = goal;
+        _edge    = edge;
         _phaseAt = Time.time;
 
         PromoteLeader();
@@ -195,7 +231,32 @@ public class RaidLord
             return;
         }
 
-        if (_phase == Phase.Assault) Nudge(_goal);
+        if (_phase != Phase.Assault) return;
+
+        if (Time.time >= _reformAt)
+        {
+            _reformAt = Time.time + ReformSeconds;
+            Advance();
+        }
+        else Nudge(_goal);
+    }
+
+    // **한 걸음 앞에 대형을 다시 놓는다.** 목적지가 코앞이면 그냥 목적지에 놓는다 —
+    // 안 그러면 마지막 걸음이 목적지를 지나쳐 무리가 핵을 통과해 걸어 나간다.
+    void Advance()
+    {
+        Vector3 sum = Vector3.zero;
+        int n = 0;
+        foreach (var brain in _members)
+            if (Standing(brain)) { sum += brain.transform.position; n++; }
+        if (n == 0) return;
+
+        var center = sum / n;
+        var toGoal = _goal - center;
+        toGoal.y = 0f;
+
+        float d = toGoal.magnitude;
+        Order(d <= AdvanceStep ? _goal : center + toGoal / d * AdvanceStep);
     }
 
     void Enter(Phase next)
@@ -208,10 +269,34 @@ public class RaidLord
             // **새 노드를 안 만든다** — `LeavingMap` 하나가 이미 답이고 `LeaveMapNode`가 이미
             // 트리 맨 위에 있다(풀려난 포로·떠나는 떠돌이와 **같은 문**). 딸려 오는 것:
             // 떠나는 놈은 **먼저 안 치지만 맞으면 되받아친다** — 그게 후퇴의 옳은 모양이다.
+            // **왔던 길로 나간다**(2026-09-08, 사용자: *"그냥 벽을 뚫고 사라져버려"*).
+            //
+            // 처음에는 `EventManager.TryFindExit`을 썼는데 **그건 직선으로 걷는다** —
+            // 지하에서는 모퉁이를 못 돌아 **대여섯 걸음 앞 벽에서 멈추고**, 폰은 거기에
+            // 도착해 그대로 사라진다(도착 판정이 0.9m다). 화면에는 *벽에 처박혀 없어지는
+            // 것*으로 보인다. 상인이 기지 코앞의 벽에서 튀어나오던 것과 **같은 함수, 같은
+            // 이유**이고, 들어오는 쪽은 이미 고쳤는데 나가는 쪽만 남아 있었다.
+            //
+            // **들어온 자리는 이미 안다** — 그리고 그 자리는 *걸어 들어온 곳*이라 **길이
+            // 이어져 있음이 증명된 유일한 좌표**다. 새로 찾을 이유가 없다.
+            //
+            // `LeavingMap`만 켜서도 안 된다 — `LeaveTarget`이 (0,0,0)이면 세계 원점으로
+            // 걷는다. 노드는 *못 움직일 때만* 다시 잡으므로, 돌격 명령으로 이미 걷는 중인
+            // 폰은 **그 자리를 다시 안 묻고 핵으로 계속 간다.**
+            //
+            // **하던 걸음을 멈춘다** — 안 멈추면 `SetDestination`이 덮이기 전까지 옛 목적지로
+            // 몇 걸음 더 간다(그 몇 걸음이 방어선 안쪽이면 그대로 붙잡힌다).
             foreach (var brain in _members)
             {
                 var bb = brain != null ? brain.Blackboard : null;
-                if (bb != null) bb.LeavingMap = true;
+                if (bb == null) continue;
+
+                bb.LeavingMap = true;
+                bb.Routed     = true;   // 맞아도 안 돌아선다 — 이게 패주다
+                bb.Target     = null;
+                bb.LeaveTarget = _edge;
+
+                bb.Mover?.StopMovement();
             }
             Done = true;
             return;
@@ -225,15 +310,60 @@ public class RaidLord
     // **상태가 바뀔 때 한 번**. 매 틱 부르면 로컬 재계획이 계속 돌고(`RouteVersion`이 오르면
     // 진행 눈금이 다시 시작된다) 폰이 제자리에서 떤다.
     //
-    // **자리를 여기서 고르지 않는다** — `SetMoveTarget`이 이미 `FindWorkableNear`로 접는다.
-    // 여기서 또 고르면 *밖에서 온 것이 설 자리*의 답이 두 벌이 된다.
+    // ── duty — 무리가 어떤 모양으로 서는가 (2026-09-08) ──────────────────────
+    //
+    // 상태(`Phase`)가 *어디로 갈지*를 정했다면 duty는 *어떻게 설지*를 정한다. 이 층을 만든
+    // 이유가 그것이고, 여기까지 와야 습격이 **똑같은 놈 N명이 줄줄이 오는 것**을 면한다.
+    //
+    // **내 폰과 같은 규칙을 쓴다**(`Formation`). 갈라 두면 *같은 무기를 든 무리가 내가 이끌 때와
+    // 적이 이끌 때 다르게 선다* — 그건 규칙이 아니라 두 벌이다. 딸려 오는 것: 앞줄은 여기서도
+    // **사거리가 답한다**(근접이 앞, 활이 뒤). 저작할 것이 없다.
+    //
+    // 상태마다 모양이 다르다:
+    //   · **접근** = 방진. 집결지에 **뭉치는** 것이 이 상태의 뜻이다.
+    //   · **돌격** = 쐐기. 앞이 뾰족해 **근접이 먼저 닿고** 활이 뒤에 남는다.
+    //   · **후퇴** = 진형 없음(각자 나간다). 대형을 유지하며 물러나는 것은 패주가 아니다.
+    //
+    // **바라보는 쪽은 가는 쪽이다** — 무리의 무게중심에서 목적지로. 여기서 카메라를 보면
+    // 아무도 안 보는 습격에서 답이 없어진다(추상으로 푸는 갈래가 그 자리다).
     void Order(Vector3 to)
     {
+        _slot.Clear();
+
+        var movers = new List<PawnMover>();
+        var brains = new List<UnitBrain>();
+        Vector3 sum = Vector3.zero;
+
         foreach (var brain in _members)
         {
             if (!Standing(brain)) continue;
             var mover = brain.GetComponent<PawnMover>();
-            if (mover != null) mover.SetMoveTarget(Spread(to));
+            if (mover == null) continue;
+            movers.Add(mover);
+            brains.Add(brain);
+            sum += brain.transform.position;
+        }
+        if (movers.Count == 0) return;
+
+        var facing = to - sum / movers.Count;
+        var shape  = _phase == Phase.Approach ? Formation.Shape.Box : Formation.Shape.Wedge;
+
+        // **자리를 여기서 고르지 않는다** — 접는 것은 `Formation`이 `FindWorkableNear`로 하고,
+        // 그건 `SetMoveTarget`이 쓰는 문 그대로다(*밖에서 온 것이 설 자리*의 답은 여전히 한 벌).
+        // 다만 **누가 어느 칸인지는 여기서 기억한다** — 아래 `Nudge`가 같은 자리를 다시 주려면
+        // 필요하고, 매번 새로 내면 한 명이 목적지를 잃을 때마다 **무리 전체가 자리를 맞바꾼다**.
+        var spots = Formation.Place(to, facing, movers, shape);
+        for (int i = 0; i < movers.Count; i++)
+        {
+            _slot[brains[i]] = spots[i];
+
+            // **싸우는 중이면 자리만 적고 명령은 안 준다** — 표적을 쫓는 것이 지금의
+            // 명령이고, 여기서 덮으면 붙은 싸움에서 등을 돌린다. 싸움이 끝나면 `Nudge`가
+            // 이 자리로 돌려보낸다(그래서 자리는 적어 두어야 한다).
+            var bb = brains[i].Blackboard;
+            if (bb != null && bb.Target != null) continue;
+
+            movers[i].SetMoveTarget(spots[i]);
         }
     }
 
@@ -249,16 +379,13 @@ public class RaidLord
             var bb = brain.Blackboard;
             if (bb != null && bb.Target != null) continue;
 
+            // **제 자리로 돌려보낸다 — 목적지 한 점이 아니라.** 여기서 `to`를 그냥 주면
+            // 싸우고 돌아온 놈들이 **전부 한 점으로 몰려** 진형이 한 번 붙을 때마다 녹는다
+            // (`Order`가 기억해 둔 칸이 그래서 필요하다).
             var mover = brain.GetComponent<PawnMover>();
-            if (mover != null && !mover.HasTarget()) mover.SetMoveTarget(Spread(to));
+            if (mover != null && !mover.HasTarget())
+                mover.SetMoveTarget(_slot.TryGetValue(brain, out var spot) ? spot : to);
         }
-    }
-
-    // 같은 점을 스무 명에게 주면 한 칸을 두고 밀친다. 스폰이 `ScatterNear`를 쓰는 것과 같은 이유.
-    static Vector3 Spread(Vector3 p)
-    {
-        Vector2 o = Random.insideUnitCircle * 4f;
-        return new Vector3(p.x + o.x, p.y, p.z + o.y);
     }
 
     // **`BecomeCorpse`는 `UnitBrain`을 끄기만 한다** — 그래서 이것이 곧 "살아서 서 있나"다.
@@ -306,6 +433,15 @@ public class RaidLords : MonoBehaviour
         if (_instance == null) Bootstrap();
         if (_instance == null) return;
         var lord = new RaidLord(arrivals, edge, goal);
+
+        // **숫자를 찍는다**(2026-09-08). 화면에서는 폰이 걷는 것만 보여 *접근인지 돌격인지*를
+        // 못 가리고, 무리가 아예 안 섰을 때(`Done`)는 **아무 표시도 안 난다** — 그러면
+        // *"접근이 안 뜬다"*가 **① 무리가 없다 ② 처음부터 돌격이다** 중 어느 쪽인지 알 방법이
+        // 없다. 한 줄이면 갈린다. 습격은 드물게 오므로 로그가 쌓이지 않는다.
+        Debug.Log($"[습격대] {lord.StandingCount}명 · 가장자리→목적지 " +
+                  $"{Vector3.Distance(edge, goal):F0}m · 시작 {lord.Current}" +
+                  (lord.Done ? " · 곧바로 끝남(설 수 있는 멤버가 없다)" : ""));
+
         if (!lord.Done) _instance._lords.Add(lord);
     }
 

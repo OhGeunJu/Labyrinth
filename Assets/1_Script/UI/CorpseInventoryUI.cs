@@ -86,7 +86,19 @@ public class CorpseInventoryUI : MonoBehaviour
         var inv = brain.Inventory;
         if (inv == null) return;
 
-        Show(inv, $"{brain.name} (기절)", brain.GetComponent<Equipment>());
+        // **이름은 `UnitName`이다** — `name`은 날 게임오브젝트 이름이라 창에
+        // `Enemy_Goblin(Clone)`이 뜬다(시체 쪽은 이미 `UnitName`을 쓴다).
+        //
+        // **상태도 적는다.** 이 창으로 오는 길이 셋이라(기절 · 갇힘 · 업힘) *"(기절)"*로
+        // 못 박으면 **갇힌 사람의 배낭을 열 때 거짓말**이 된다.
+        var bb = brain.Blackboard;
+        string state = bb == null                ? ""
+                     : bb.CarriedBy != null      ? " (업힘)"
+                     : bb.IsKnockedOut           ? " (기절)"
+                     : bb.IsPrisoner             ? " (갇힘)"
+                     :                             "";
+
+        Show(inv, brain.UnitName + state, brain.GetComponent<Equipment>());
     }
 
     // **장비 열이 없는 통을 여는 길**(도축대 산출물 등).

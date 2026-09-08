@@ -17,9 +17,14 @@ public class AbilityUser : MonoBehaviour
     readonly List<AbilityData> _abilities = new();
     readonly Dictionary<AbilityData, float> _readyAt = new();
 
-    // 남은 횟수와 **다음 한 칸이 차는 시각**. `MaxCharges`가 0이면 아무것도 안 든다.
-    readonly Dictionary<AbilityData, int>   _left      = new();
-    readonly Dictionary<AbilityData, float> _refillAt  = new();
+    // 남은 횟수. `MaxCharges`가 0이면 아무것도 안 든다.
+    //
+    // **비어 있음 = 가득이다.** 그래서 하루가 바뀌면 `Clear()` 한 줄이 곧 초기화다 —
+    // 능력마다 시각을 들고 하나씩 채우면 **같은 답이 능력 수만큼 생긴다.**
+    readonly Dictionary<AbilityData, int> _left = new();
+
+    // `_left`가 **어느 날의 것인가**. 날짜가 다르면 통째로 버린다.
+    int _leftDay = int.MinValue;
 
     // 장비가 바뀔 때만 다시 모은다 — 매 프레임 여섯 칸을 훑을 이유가 없다.
     bool _dirty = true;
@@ -79,37 +84,18 @@ public class AbilityUser : MonoBehaviour
     {
         if (ability == null || ability.MaxCharges <= 0) return int.MaxValue;
 
-        float now = GameTimeManager.Elapsed;
-        if (!_left.TryGetValue(ability, out int n))
-        {
-            n = ability.MaxCharges;
-            _left[ability]     = n;
-            _refillAt[ability] = now + ability.RechargeSeconds;
-            return n;
-        }
+        // **하루에 한 번 통째로 가득**(2026-09-08, 사용자 결정). 한 칸씩 차는 시계를
+        // 들고 있었는데 그 값이 아무것도 안 정했다 — 근거는 `AbilityData`에 있다.
+        //
+        // **`Elapsed`가 아니라 날짜로 잰다.** 경과 초로 재면 *마지막으로 쓴 뒤 하루*가 되어
+        // 폰마다 초기화되는 순간이 달라지고, 그러면 *오늘 몇 번 남았나*를 폰마다 따로 세야
+        // 한다. 날짜면 **온 무리가 같은 아침에 가득**이다.
+        int today = GameTimeManager.CurrentDay;
+        if (_leftDay != today) { _left.Clear(); _leftDay = today; }
 
-        if (n >= ability.MaxCharges) return n;
-
-        // **한 칸씩 여러 번 찰 수 있다** — 오래 안 보다가 돌아왔을 때 한 칸만 주면
-        // *"세 시간 놀았는데 한 번밖에 못 쓴다"*가 된다.
-        float at = _refillAt.TryGetValue(ability, out float t) ? t : now + ability.RechargeSeconds;
-        while (n < ability.MaxCharges && now >= at)
-        {
-            n++;
-            at += ability.RechargeSeconds;
-        }
-
-        _left[ability]     = n;
-        _refillAt[ability] = at;
-        return n;
-    }
-
-    // 다음 한 칸까지 남은 게임 시간(초). 가득 찼으면 0.
-    public float RefillIn(AbilityData ability)
-    {
-        if (ability == null || ability.MaxCharges <= 0) return 0f;
-        if (ChargesLeft(ability) >= ability.MaxCharges) return 0f;
-        return Mathf.Max(0f, _refillAt[ability] - GameTimeManager.Elapsed);
+        // **안 든 것이 곧 가득이다** — 처음 물을 때 채워 넣지 않는다(그러면 장비를 나중에
+        // 입은 폰이 0으로 남거나, 갈아입는 것이 곧 재충전이 된다).
+        return _left.TryGetValue(ability, out int n) ? n : ability.MaxCharges;
     }
 
     // 남은 쿨다운(초). 0이면 지금 쓸 수 있다.
@@ -189,13 +175,9 @@ public class AbilityUser : MonoBehaviour
         // 되면 *언제 쓰느냐*가 결정이 아니게 된다).
         if (ability.MaxCharges > 0)
         {
-            int n = ChargesLeft(ability);          // 여기서 밀린 충전이 먼저 반영된다
+            // **`ChargesLeft`를 먼저 부른다** — 날이 바뀌었으면 거기서 가득으로 되돌린다.
+            int n = ChargesLeft(ability);
             _left[ability] = Mathf.Max(0, n - 1);
-
-            // **가득 찬 상태에서 쓴 순간부터 시계가 돈다.** 안 다시 걸면 `_refillAt`이
-            // 과거에 머물러 **쓰자마자 도로 가득 찬다.**
-            if (n >= ability.MaxCharges)
-                _refillAt[ability] = GameTimeManager.Elapsed + ability.RechargeSeconds;
         }
 
         // **아무도 안 걸려도 쿨다운은 돈다**(사용자 결정, 2026-08-23). 한때 빈 허공에 쓴 것은

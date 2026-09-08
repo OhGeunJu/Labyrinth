@@ -438,7 +438,18 @@ public class HierarchicalPathfinder : MonoBehaviour
     bool[] _bfsSeen;
     int[]  _bfsQueue;
 
-    public bool FarthestReachable(Vector3 from, float maxRadius, out Vector3 found)
+    // **"가장 먼 곳"이 아니라 "충분히 먼 곳 중 하나"다**(2026-09-08에 바꿨다 — 사용자:
+    // *"적이 항상 북동쪽에서만 나와"*).
+    //
+    // 가장 먼 칸은 **자리가 하나**라, 굴이 안 바뀌는 동안 습격도 상인도 **매번 같은 데서**
+    // 나온다. 그러면 *어느 쪽을 막을까*가 결정이 아니게 된다 — 알림이 8방위를 알리는 이유가
+    // 바로 그건데, 방향이 상수면 그 한 곳만 지켜 놓고 판이 끝난다.
+    //
+    // **후보 중에서 고른다** — `minRadius` 밖의 칸을 훑는 김에 **저수지 표본**으로 하나
+    // 뽑는다(목록으로 담으면 굴이 넓을수록 수천 칸이 쌓이는데, 쓰는 것은 한 칸이다).
+    // 후보가 하나도 없으면 예전처럼 **가장 먼 칸**으로 떨어진다 — 좁은 굴에서 습격이 통째로
+    // 멎는 것이 한쪽에서만 오는 것보다 나쁘다.
+    public bool TryPickReachable(Vector3 from, float maxRadius, float minRadius, out Vector3 found)
     {
         found = from;
         if (_coarse == null || !_coarse.InWorldBounds(from)) return false;
@@ -456,8 +467,12 @@ public class HierarchicalPathfinder : MonoBehaviour
         _bfsQueue[tail++] = si;
 
         float maxSqr = maxRadius * maxRadius;
+        float minSqr  = minRadius * minRadius;
         float bestSqr = -1f;
         int   best    = si;
+
+        int pick   = si;   // 저수지 표본
+        int picked = 0;
 
         while (head < tail)
         {
@@ -471,6 +486,9 @@ public class HierarchicalPathfinder : MonoBehaviour
             // **반경 밖은 더 안 펼친다** — 여기서 안 끊으면 굴이 이어진 만큼 세계 끝까지 훑는다.
             if (d > maxSqr) continue;
             if (d > bestSqr) { bestSqr = d; best = i; }
+
+            // **훑는 김에 뽑는다** — 몇 개가 나올지 모르는 채로 균등하게 하나를 고르는 방법.
+            if (d >= minSqr && Random.Range(0, ++picked) == 0) pick = i;
 
             for (int k = 0; k < 4; k++)
             {
@@ -487,7 +505,8 @@ public class HierarchicalPathfinder : MonoBehaviour
 
         if (bestSqr < 0f) return false;
 
-        var c   = _coarse.CellToWorld(new Vector2Int(best % w, best / w));
+        int chosen = picked > 0 ? pick : best;
+        var c   = _coarse.CellToWorld(new Vector2Int(chosen % w, chosen / w));
         var map = MapManager.Instance;
 
         // **셀 한복판이 바위일 수 있다**(셀은 한 칸이라도 열리면 열린 것으로 친다) —

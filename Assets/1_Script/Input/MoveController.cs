@@ -11,9 +11,86 @@ public class MoveController : MonoBehaviour
 
     void Awake() => _cam = Camera.main;
 
+    // ── 소집 중 우클릭 끌기 (토탈워식 진형 배치) ────────────────────────────
+    //
+    // **진형은 소집의 것이다**(2026-09-08, 사용자 결정). 평소 이동에까지 걸면 짐을 나르러
+    // 보낼 때도 대형을 잡느라 늘어서고, 무엇보다 **우클릭이 상황에 따라 다른 조작**이 된다.
+    // 소집은 이미 *싸울 태세로 서 있어라*라는 상태라 진형이 얹힐 자리가 거기다.
+    //
+    // **짧게 누르면 예전 그대로다** — 끌지 않으면 놓을 때 평소 우클릭(창·공격·이동)으로
+    // 넘어간다. 그래서 *"우클릭하면 뭘 할 수 있는지 뜬다"*가 소집 중에도 깨지지 않는다
+    // (다만 소집 중에는 **누를 때가 아니라 놓을 때** 뜬다 — 끌 것인지를 그때 알기 때문이다).
+    List<PawnMover> _dragPawns;
+    Vector2 _dragScreen;
+    bool    _dragging;
+
+    // 이만큼 움직여야 끈 것으로 친다(픽셀). **월드 거리로 재면 안 된다** — 줌에 따라
+    // 같은 손짓이 다른 뜻이 되어, 물러나서 보고 있을 때는 살짝만 흔들려도 배치가 나간다.
+    const float DragPixels = 14f;
+
     void Update()
     {
+        if (TickDrag()) return;   // 끄는 중이면 이번 프레임은 그것이다
         HandleMove();
+    }
+
+    // 끌고 있는 동안. 돌려주는 값은 **이번 프레임을 가져갔나**.
+    bool TickDrag()
+    {
+        if (!_dragging) return false;
+
+        var screen = Mouse.current.position.ReadValue();
+        bool far    = Vector2.Distance(screen, _dragScreen) >= DragPixels;
+        var  ray    = _cam.ScreenPointToRay(screen);
+        bool ground = Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask);
+
+        if (Mouse.current.rightButton.isPressed)
+        {
+            if (far && ground) ShowPreview(hit.point);
+            else               FormationPreview.Hide();
+            return true;
+        }
+
+        // 놓았다.
+        _dragging = false;
+        FormationPreview.Hide();
+
+        var pawns = _dragPawns;
+        _dragPawns = null;
+        if (pawns == null || pawns.Count == 0) return true;
+
+        if (far && ground)
+            ApplyMove(pawns, Formation.Drag(_dragStart, hit.point,
+                                            pawns, ShapeFor(pawns), out _));
+        else
+        {
+            // 끌지 않았다 — 평소 우클릭 그대로.
+            Resolve(ray, pawns);
+        }
+        return true;
+    }
+
+    void ShowPreview(Vector3 to)
+    {
+        var spots = Formation.Drag(_dragStart, to,
+                                   _dragPawns, ShapeFor(_dragPawns), out var facing);
+        FormationPreview.Show(spots, facing);
+    }
+
+    // **진형은 소집의 것이다** — 안 그러면 짐 나르러 보낼 때도 대형을 잡느라 늘어선다.
+    static Formation.Shape ShapeFor(List<PawnMover> pawns)
+        => AnyDrafted(pawns) ? Formation.Current : Formation.Shape.Box;
+
+    Vector3 _dragStart;
+
+    static bool AnyDrafted(List<PawnMover> pawns)
+    {
+        foreach (var p in pawns)
+        {
+            var brain = p != null ? p.GetComponent<UnitBrain>() : null;
+            if (brain != null && brain.IsDrafted) return true;
+        }
+        return false;
     }
 
     void HandleMove()
@@ -45,7 +122,9 @@ public class MoveController : MonoBehaviour
 
         // 방랑자만 명령 대상 (하수인은 정보 확인만 가능)
         var wanderers = new List<PawnMover>();
-        bool heldOut  = false;   // 갇히거나 업혀서 빠진 폰이 있었나
+        bool heldOut  = false;   // 빠진 폰이 하나라도 있었나 (창은 그래도 연다)
+        int  bound    = 0;       // 갇히거나 업혀서 빠진 수
+        int  taunted  = 0;       // 도발에 붙들려 빠진 수
         foreach (var pawn in selectionManager.Selected)
         {
             if (pawn == null) continue; // 선택 후 파괴된 유닛
@@ -56,7 +135,7 @@ public class MoveController : MonoBehaviour
             // 있으면 이동은 `PawnMover`가 막고 나머지는 BT가 안 돌아 조용히 사라진다 —
             // 그러면 "시켰는데 아무 일도 안 일어난다"가 된다. 게다가 [치료한다]·[업는다]는
             // **가장 가까운 한 명**을 고르는데, 그 하나가 갇힌 폰이면 아무도 안 간다.
-            if (!brain.CanObeyNow) { heldOut = true; continue; }
+            if (!brain.CanObeyNow) { heldOut = true; bound++; continue; }
 
             // **도발당한 폰도 여기서 빠진다**(2026-09-08). 붙들려 있는 동안은 명령을 안 듣는
             // 것이 도발의 뜻인데(`ManualOrderNode`가 갈래를 건너뛴다), **여기서 안 빼면
@@ -64,10 +143,26 @@ public class MoveController : MonoBehaviour
             //
             // **`CanObeyNow`에 안 얹은 이유**: 그건 `PawnMover.SetMoveTarget`도 보는 물음이라
             // 거기 걸리면 **BT가 도발한 놈에게 걸어갈 수도 없어져 도발이 통째로 죽는다.**
-            if (brain.IsHeldByTaunt) { heldOut = true; continue; }
+            if (brain.IsHeldByTaunt) { heldOut = true; taunted++; continue; }
 
             wanderers.Add(pawn);
         }
+
+        // **빠졌으면 말한다**(2026-09-08). 빼기만 하고 아무 말도 안 하면 화면에서는
+        // **클릭이 씹힌 것**과 구별되지 않는다 — 고른 넷 중 하나만 안 움직이는데 이유가
+        // 아무 데도 안 뜬다. 빼는 코드를 넣은 이유가 바로 그것이었는데 **알리는 쪽을 안
+        // 만들어서**, *"명령은 안 먹는데 왜 안 먹는지는 안 나온다"*로 남아 있었다.
+        //
+        // **이유를 가른다** — 갇힘·업힘은 *풀어 주거나 내려놓으면* 되는 일이고, 도발은
+        // *기다리거나 붙든 놈을 잡으면* 되는 일이다. 한 낱말로 뭉뚱그리면 무엇을 해야
+        // 하는지가 안 나온다.
+        if (bound > 0 || taunted > 0)
+            EventNotificationUI.Notify("명령에서 빠졌습니다",
+                bound > 0 && taunted > 0
+                    ? $"{taunted}명이 도발에 붙들렸고, {bound}명이 갇히거나 업혀 있습니다."
+                    : taunted > 0
+                        ? $"{taunted}명이 도발에 붙들려 있습니다."
+                        : $"{bound}명이 갇히거나 업혀 있습니다.");
 
         // **고른 폰이 전부 갇혀 있어도 창은 연다.** [풀어 준다]처럼 **명령 받는 폰이 필요 없는**
         // 선택지가 있는데, 여기서 막으면 마지막 한 명을 가둔 순간 풀어 줄 길이 사라진다.
@@ -75,8 +170,47 @@ public class MoveController : MonoBehaviour
         // (하수인만 고른 경우는 예전 그대로 조용히 끝낸다 — 그건 원래 명령 대상이 아니다.)
         if (wanderers.Count == 0 && !heldOut) return;
 
-        Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
+        var screenPos = Mouse.current.position.ReadValue();
+        Ray ray = _cam.ScreenPointToRay(screenPos);
 
+        // **소집 중이면 우클릭이 진형 배치다.** 누르는 순간에는 아직 모른다 — 끌 것인지
+        // 그냥 누른 것인지는 놓을 때 갈리므로, 여기서는 **붙들어만 두고** 판단을 미룬다.
+        if (AnyDrafted(wanderers) && !HasAim(ray) &&
+            Physics.Raycast(ray, out RaycastHit start, 500f, groundMask))
+        {
+            _dragging   = true;
+            _dragPawns  = wanderers;
+            _dragScreen = screenPos;
+            _dragStart  = start.point;
+            return;
+        }
+
+        Resolve(ray, wanderers);
+    }
+
+    // **겨눌 것이 있으면 끌기를 시작하지 않는다**(2026-09-08).
+    //
+    // 소집 중에도 **적을 우클릭하는 것은 공격이지 진형이 아니다.** 안 가르면 손이 조금만
+    // 흔들려도(14px) 치라는 명령이 **진형 이동**으로 나가고, 화면에는 *"공격이 제대로 안
+    // 된다"*로만 보인다 — 미리보기가 적 위에 뜨는 것도 뜻이 안 맞는다.
+    //
+    // **바닥을 눌렀을 때만 끈다.** `PickVisible`은 지형까지 포함해 *가장 가까운 것*을 주므로
+    // 참·거짓만으로는 못 가른다 — **무엇에 맞았는지**를 봐야 한다.
+    static bool HasAim(Ray ray)
+    {
+        if (!SelectionManager.PickVisible(ray, out var h)) return false;
+
+        var c = h.collider;
+        return c.GetComponentInParent<UnitBrain>()      != null   // 폰(적·아군·NPC)
+            || c.GetComponentInParent<Corpse>()         != null   // 시체
+            || c.GetComponentInParent<PlacedBuilding>() != null   // 건물
+            || c.GetComponentInParent<DroppedItem>()    != null   // 바닥의 물건
+            || c.GetComponentInParent<ResourceNode>()   != null;  // 자원 노드
+    }
+
+    // 평소 우클릭 — 겨눈 것에 따라 공격이거나 창이다.
+    void Resolve(Ray ray, List<PawnMover> wanderers)
+    {
         // **적을 겨눴을 때 우클릭의 뜻은 상황이 정한다 — 붙기 전에는 여럿, 붙고 나면 하나.**
         //
         // 아직 안 싸우는 중이면 물어볼 것이 있다(칠 것인가 / 쓰러진 놈을 마무리할 것인가 /
@@ -121,10 +255,19 @@ public class MoveController : MonoBehaviour
         => SelectionManager.PickVisible(ray, out hit);
 
     // 실제 이동 명령. 창의 [여기로 이동]과 옛 직접 명령이 같은 코드를 쓴다.
+    // **가는 쪽을 본다**(2026-09-08). 예전 격자는 언제나 월드축 정렬이라 **어느 쪽에서
+    // 오든 같은 모양**이었고, 그래서 앞뒤가 아무 뜻도 못 가졌다. 끌지 않았을 때는 무리의
+    // 무게중심에서 찍은 자리로 향하는 방향이 곧 *앞*이다.
     void MoveTo(List<PawnMover> commanders, Vector3 point)
+        => ApplyMove(commanders,
+                     Formation.Place(point, point - Centroid(commanders),
+                                     commanders, ShapeFor(commanders)));
+
+    // 실제 이동 명령. **자리를 어떻게 냈든 여기 하나를 지난다** — 끌어서 세운 것과 그냥
+    // 찍은 것이 갈리면 한쪽만 표적을 거두거나 한쪽만 침대에서 안 일어난다.
+    void ApplyMove(List<PawnMover> commanders, Vector3[] positions)
     {
         Rouse(commanders);   // 딴 데로 가라는 명령 = 침대에서 일어난다
-        Vector3[] positions = CalcFormation(point, commanders.Count);
         for (int i = 0; i < commanders.Count; i++)
         {
             // 이동 명령 = 교전 이탈 + 하던 작업 취소.
@@ -133,8 +276,9 @@ public class MoveController : MonoBehaviour
             var brain = commanders[i].GetComponent<UnitBrain>();
             var bb    = brain.Blackboard;
 
-            bb.Target       = null;
-            bb.FinishTarget = null;   // 딴 데로 가라는 명령 = 마무리 지목도 거둔다
+            bb.Target        = null;
+            bb.OrderedTarget = null;  // 딴 데로 가라는 명령 = 표적 지목도 거둔다
+            bb.FinishTarget  = null;  // 딴 데로 가라는 명령 = 마무리 지목도 거둔다
             bb.ManualMove   = true;
             bb.FollowTarget = null;   // 다른 데로 가라는 명령 = 따라가기 그만
 
@@ -160,6 +304,10 @@ public class MoveController : MonoBehaviour
             // 한 번 옮겼을 뿐인데 캐던 바위가 떨어져 나가고, 소집을 풀어도 안 돌아간다.
             if (brain.IsDrafted) brain.DropCurrentJob();
             else                 brain.AbandonWork();
+
+            // **진형이 준 자리를 기억한다** — 소집 중이면 `FightNode`가 여기서 멀어지지
+            // 않는 선까지만 다가간다(안 기억하면 첫 접촉에서 대형이 녹는다).
+            bb.FormationSpot = positions[i];
 
             commanders[i].GetComponent<CombatHandler>()?.ExitCombat();
             commanders[i].SetMoveTarget(positions[i]);
@@ -215,10 +363,11 @@ public class MoveController : MonoBehaviour
         foreach (var pawn in commanders)
         {
             var bb = pawn.GetComponent<UnitBrain>().Blackboard;
-            bb.Target       = target;
-            bb.FinishTarget = null;    // 멀쩡한 놈을 치는 명령 — 지난 지목이 남아 있으면 안 된다
-            bb.ManualMove   = false;   // 공격 명령이 이동 명령을 대체
-            bb.FollowTarget = null;    // 따라가던 중이었으면 그만둔다
+            bb.Target        = target;
+            bb.OrderedTarget = target;  // **명령이다** — 소집 중이어도 자리 목줄을 안 탄다
+            bb.FinishTarget  = null;    // 멀쩡한 놈을 치는 명령 — 지난 지목이 남아 있으면 안 된다
+            bb.ManualMove    = false;   // 공격 명령이 이동 명령을 대체
+            bb.FollowTarget  = null;    // 따라가던 중이었으면 그만둔다
         }
     }
 
@@ -232,10 +381,11 @@ public class MoveController : MonoBehaviour
         foreach (var pawn in commanders)
         {
             var bb = pawn.GetComponent<UnitBrain>().Blackboard;
-            bb.Target       = target;
-            bb.FinishTarget = target;
-            bb.ManualMove   = false;
-            bb.FollowTarget = null;
+            bb.Target        = target;
+            bb.OrderedTarget = target;
+            bb.FinishTarget  = target;
+            bb.ManualMove    = false;
+            bb.FollowTarget  = null;
         }
     }
 
@@ -750,10 +900,32 @@ public class MoveController : MonoBehaviour
     //
     // **멀쩡히 서 있는 사람은 안 된다** — 그건 뒤지는 것이 아니라 소매치기이고, 저쪽이
     // 가만히 있을 이유가 없다. 쓰러졌거나(`down`) 갇혔을 때(`held`)만이다.
+    //
+    // **남의 배낭을 여는 문은 `CorpseInventoryUI` 하나다**(2026-09-08에 바로잡았다).
+    //
+    // 여기는 `InventoryUI.BindTo`로 열고 있었는데, 그 창은 **폰 하나에 묶이는 창**이라
+    // 남의 것을 열면 **내 것이 풀린다** — 그러면 배낭 하나만 덩그러니 떠서 **물건을 옮길
+    // 데가 없다**(사용자: *"고블린의 소지품만 떠 — 내것도 떠야지 템을 옮기던가 하지"*).
+    //
+    // **그 물음은 시체에서 이미 풀려 있었다**: 저쪽 통을 제 창에 띄우고 내 배낭을
+    // `SetLootMode`로 같이 연다. 좌클릭(쓰러진 놈을 직접 누르기)도 이미 그 길을 쓰고 있었고
+    // **우클릭 메뉴만 옛 길에 남아 있었다** — 그래서 *해골은 [뒤진다]로 둘 다 뜨는데
+    // 업힌 고블린은 [소지품을 본다]로 하나만 뜬다*가 됐다. 같은 일에 문이 둘이면 반드시
+    // 한쪽이 뒤처진다.
     static void AddSearchOption(UnitBrain pawn, List<PawnMenuOption> options)
     {
+        if (pawn.Inventory == null) return;
+
+        var loot = CorpseInventoryUI.Instance;
+        if (loot != null)
+        {
+            options.Add(("소지품을 본다", () => loot.ShowDowned(pawn)));
+            return;
+        }
+
+        // 그 창이 씬에 없는 경우에만 옛 길로 떨어진다(창 하나만 뜬다 — 안 뜨는 것보다 낫다).
         var inv = Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
-        if (inv == null || pawn.Inventory == null) return;
+        if (inv == null) return;
 
         options.Add(("소지품을 본다", () =>
         {
@@ -1282,27 +1454,22 @@ public class MoveController : MonoBehaviour
         foreach (var pawn in commanders)
         {
             var bb = pawn.GetComponent<UnitBrain>().Blackboard;
-            bb.FollowTarget = target;
-            bb.Target       = null;    // 따라가기와 교전은 같이 갈 수 없다
-            bb.FinishTarget = null;
+            bb.FollowTarget  = target;
+            bb.Target        = null;   // 따라가기와 교전은 같이 갈 수 없다
+            bb.OrderedTarget = null;
+            bb.FinishTarget  = null;
             bb.ManualMove   = false;
         }
     }
 
-    static Vector3[] CalcFormation(Vector3 center, int count)
+    // 무리가 지금 서 있는 한복판. **진형의 앞이 어디인지**를 여기서 낸다.
+    static Vector3 Centroid(List<PawnMover> pawns)
     {
-        var positions = new Vector3[count];
-        int cols = Mathf.CeilToInt(Mathf.Sqrt(count));
-        float spacing = 1.2f;
+        if (pawns == null || pawns.Count == 0) return Vector3.zero;
 
-        for (int i = 0; i < count; i++)
-        {
-            int row = i / cols;
-            int col = i % cols;
-            float ox = (col - (cols - 1) * 0.5f) * spacing;
-            float oz = (row - (Mathf.CeilToInt((float)count / cols) - 1) * 0.5f) * spacing;
-            positions[i] = center + new Vector3(ox, 0f, oz);
-        }
-        return positions;
+        Vector3 sum = Vector3.zero;
+        int n = 0;
+        foreach (var p in pawns) { if (p != null) { sum += p.transform.position; n++; } }
+        return n > 0 ? sum / n : Vector3.zero;
     }
 }
