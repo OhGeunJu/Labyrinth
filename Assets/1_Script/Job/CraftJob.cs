@@ -51,6 +51,7 @@ public class CraftJob : JobBase
     float ElapsedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) : 0f;
 
     public override JobCategory Category => _recipe?.Category ?? JobCategory.Crafting;
+    public override WorkAnim    Anim     => WorkAnim.HammerTable;
 
     // ── 진행 상황 (UI 게이지용) — `ResearchJob`과 같은 모양 ────────────────
     public RecipeData Recipe => _recipe;

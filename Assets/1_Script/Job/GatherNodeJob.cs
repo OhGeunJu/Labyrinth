@@ -20,6 +20,8 @@ public class GatherNodeJob : JobBase
     readonly ResourceNode _node;
 
     public override JobCategory Category => _node != null ? _node.NeededCategory : JobCategory.Mining;
+    public override WorkAnim    Anim     =>
+        _node != null && _node.Data != null && _node.Data.IsTree ? WorkAnim.Chopping : WorkAnim.Mining;
 
     // **둘러서서 캔다** — 노드 위에 설 수는 없고, `MaxWorkers`만큼 여럿이 붙는다.
     public override float Reach => NodeReach;

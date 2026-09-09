@@ -804,7 +804,7 @@ public class EventManager : MonoBehaviour
             last = tile;
 
             if (!map.IsStandable(tile)) break;              // 공허 — 여기가 가장자리
-            if (!map.GetTile(tile).IsPassable) continue;    // 건물 — 지나친다
+            if (map.IsOccupied(tile)) continue;             // 건물 — 지나친다
 
             recent.Add((tile, d));
             if (recent.Count > inset + 1) recent.RemoveAt(0);

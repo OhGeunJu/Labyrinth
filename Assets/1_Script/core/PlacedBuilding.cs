@@ -161,7 +161,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         var claimed = new List<Vector2Int>();
         foreach (var t in tiles)
         {
-            MapManager.Instance.SetTile(t, TileData.MakeImpassable());
+            MapManager.Instance.SetOccupied(t, true);
             _occupiedTiles.Add(t);
             claimed.Add(t);
         }
@@ -186,8 +186,10 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
 
         var blocked = new HashSet<Vector2Int>(tiles);
 
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        var all = UnitBrain.All;
+        for (int i = 0; i < all.Count; i++)
         {
+            var brain = all[i];
             var from = map.WorldToTile(brain.transform.position);
             if (!blocked.Contains(from)) continue;
 
@@ -241,7 +243,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     {
         if (MapManager.Instance != null)
             foreach (var t in _occupiedTiles)
-                MapManager.Instance.SetTile(t, TileData.MakePassable());
+                MapManager.Instance.SetOccupied(t, false);
         _occupiedTiles.Clear();
     }
 

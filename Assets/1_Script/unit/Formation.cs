@@ -101,11 +101,7 @@ public static class Formation
     const int FoldRadius = 4;
 
     // 이 방향으로 설 때 한 칸이 몇 m인가 - 끈 길이를 인원으로 옮길 때 쓴다.
-    public static float StepFor(Vector3 facing)
-    {
-        var f = Dir8(facing);
-        return f.x != 0 && f.y != 0 ? Diagonal : Spacing;
-    }
+    static float StepOf(Vector2Int dir8) => dir8.x != 0 && dir8.y != 0 ? Diagonal : Spacing;
 
     // == 자리를 낸다 ========================================================
     //
@@ -176,7 +172,7 @@ public static class Formation
 
         facing = new Vector3(fwd.x, 0f, fwd.y).normalized;
 
-        float step = (right.x != 0 && right.y != 0) ? Diagonal : Spacing;
+        float step = StepOf(right);
         int perRow = Mathf.Clamp(Mathf.RoundToInt(line.magnitude / step) + 1, 1, n);
 
         var cells = Slots(shape, n, perRow, edge: true);

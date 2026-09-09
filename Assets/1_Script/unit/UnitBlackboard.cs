@@ -104,6 +104,11 @@ public class UnitBlackboard
     public JobBase CurrentJob;
     public ResourceNode AssignedNode;
 
+    // **이번 틱에 실제로 하고 있는 동작.** `WorkNode`가 자리에서 일감을 돌릴 때 적고, 뇌가 틱마다
+    // 없음으로 되돌린다 — 걷는 동안·싸우는 동안은 저절로 없음이다. 애니메이터(`PawnAnimator`)와
+    // 손에 드는 도구(`PawnProps`)가 읽는다.
+    public WorkAnim Working;
+
     // **누가 붙였느냐가 배정의 뜻을 가른다**(`Bed.AutoClaimed`와 같은 축).
     //
     // 손으로 붙였으면 *"너는 저기를 캐라"*라는 **명령**이라 작업 설정(P패널 on/off)을 안 본다

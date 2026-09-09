@@ -31,10 +31,6 @@ public class Corpse : MonoBehaviour
         Faction   = faction;
     }
 
-    // 이 시체가 플레이어 세력이었나. 죽은 폰을 살아 있는 폰과 같은 잣대로 물어야 하는 곳
-    // (허기·라벨)이 `Faction.IsPlayer` 대신 쓴다.
-    public bool WasPlayer => Faction != null && Faction.PlayerControlled;
-
     // ── 유품 ─────────────────────────────────────────────────────────────────
     //
     // **지녔던 것을 전부 내놓는다 — 배낭 속의 것과 차고 있던 것 둘 다.**

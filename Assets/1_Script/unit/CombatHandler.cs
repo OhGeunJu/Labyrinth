@@ -5,6 +5,10 @@ public class CombatHandler : MonoBehaviour
 {
     public static event Action<CombatHandler, float> OnDamageDealt;
 
+    // **휘둘렀다·쏘았다** — 맞았는지와 무관하게 몸이 움직인 순간. 애니메이션(`PawnAnimator`)이
+    // 듣는다. 결과 이벤트(`OnDamageDealt`)에 매달면 막힌 공격은 팔이 안 움직인다.
+    public event Action OnStrike;
+
     [Header("공격 설정")]
     [SerializeField] float baseAttackInterval = 2f;  // 무기 미장착 시 폴백
     [SerializeField] float growthRate = 0.1f;
@@ -164,6 +168,7 @@ public class CombatHandler : MonoBehaviour
             _attackTimer = 0f;
             WeaponData weapon = Weapon;
             var target = _brain.Blackboard.Target;
+            OnStrike?.Invoke();
             if (weapon != null && weapon.IsRanged)
             {
                 // BT 틱(0.1s) 사이에 타겟이 파괴될 수 있음 — 매 프레임 도는 여기서도 확인

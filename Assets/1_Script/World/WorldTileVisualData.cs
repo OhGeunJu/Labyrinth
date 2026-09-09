@@ -59,16 +59,6 @@ public class WorldTileVisualData : ScriptableObject
         return null;
     }
 
-    // 에디터 생성기가 바이옴별 항목을 채울 때 쓰는 진입점(없으면 만들어 준다).
-    public BiomeVisual GetOrCreateVisual(Biome b)
-    {
-        var v = GetVisual(b);
-        if (v != null) return v;
-        v = new BiomeVisual { Biome = b };
-        biomes.Add(v);
-        return v;
-    }
-
     public ContentVisual GetContent(WorldNodeContent c)
     {
         for (int i = 0; i < contents.Count; i++)

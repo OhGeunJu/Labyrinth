@@ -12,6 +12,7 @@ using UnityEngine;
 public class MineJob : JobBase
 {
     public override JobCategory Category => JobCategory.Mining;
+    public override WorkAnim    Anim     => WorkAnim.Mining;
 
     // **둘러서서 판다** — 파는 칸 위에 설 수는 없다(거기가 바위다). 자원 노드를 `NodeReach`로
     // 둘러싸게 한 것과 같은 축이고, 값도 같아야 한다.

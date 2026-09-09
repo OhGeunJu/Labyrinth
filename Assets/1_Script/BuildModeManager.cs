@@ -121,7 +121,7 @@ public class BuildModeManager : MonoBehaviour
         if (_demolish) { UpdateDemolish(); return; }
 
         if (Keyboard.current.tabKey.wasPressedThisFrame)
-            ToggleMode();
+            TogglePlacementMode();
 
         if (_mode == PlacementMode.Free)
         {
@@ -153,13 +153,8 @@ public class BuildModeManager : MonoBehaviour
     // *"건설 모드를 켜고 끈다"*인데 실제로는 **격자/자유 배치를 뒤집는다** — 그래서
     // `ModeBarUI`의 `건설` 버튼이 이걸 불렀고, **눌러도 아무 일도 안 일어났다**
     // (게다가 `GridAvailable`이 아니면 그대로 돌아간다). 이름을 물음에 맞춘다.
-    public void TogglePlacementMode() => ToggleMode();
-
-    // 건설 모드를 켜고 끈다 — **`B`가 하는 그것**(`Update`의 `bKey`와 같은 문).
-    // 버튼과 키가 같은 상태를 만져야 *"버튼으로는 켜지는데 키로는 안 꺼진다"*가 안 생긴다.
-    public void ToggleBuildMode() => SetActive(!_active);
-
-    void ToggleMode()
+    // **`Tab`이 하는 그것** — 한때 `ToggleMode`라는 안쪽 이름에 이 이름의 별칭만 얹혀 있었다.
+    public void TogglePlacementMode()
     {
         if (!GridAvailable)
         {
@@ -171,6 +166,10 @@ public class BuildModeManager : MonoBehaviour
         ClearLineAnchor();
         gridRenderer.HidePreview();
     }
+
+    // 건설 모드를 켜고 끈다 — **`B`가 하는 그것**(`Update`의 `bKey`와 같은 문).
+    // 버튼과 키가 같은 상태를 만져야 *"버튼으로는 켜지는데 키로는 안 꺼진다"*가 안 생긴다.
+    public void ToggleBuildMode() => SetActive(!_active);
 
     // **줄 긋기 기준점은 모드를 벗어나면 버린다.**
     //
@@ -1382,9 +1381,6 @@ public class BuildModeManager : MonoBehaviour
     {
         var map = MapManager.Instance;
         if (!map.IsInBuildZone(worldPoint)) return "빌드존 밖 — 핵에서 너무 멀다";
-
-        // 던전형 맵: 자유 배치도 바닥 위에만 (그리드와 동일 게이트).
-        if (map.FloorRequired && !map.IsFloored(worldPoint)) return "바닥이 없다";
 
         // 모델 A: 코어 union은 건설을 차단하지 않음(union 밖은 BuildingDormancy가 휴면 처리).
 

@@ -93,19 +93,7 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySit
     void DropPersuadeJob() => _persuadeSlot?.Drop();
 
     // 빈 우리 중 가장 가까운 것.
-    public static PrisonCage FindNearestFree(Vector3 from)
-    {
-        PrisonCage best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (var cage in All)
-        {
-            if (cage == null || cage.IsOccupied) continue;
-            float d = (cage.transform.position - from).sqrMagnitude;
-            if (d < bestDist) { bestDist = d; best = cage; }
-        }
-        return best;
-    }
+    public static PrisonCage FindNearestFree(Vector3 from) => CarrySites.NearestFree(All, from);
 
     public static PrisonCage HolderOf(UnitBrain brain)
     {

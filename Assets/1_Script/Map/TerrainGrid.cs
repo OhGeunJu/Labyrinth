@@ -126,9 +126,6 @@ public static class TerrainGrid
         Mathf.Clamp(Mathf.FloorToInt(worldX / RegionSize), 0, RegionsPerAxis - 1),
         Mathf.Clamp(Mathf.FloorToInt(worldZ / RegionSize), 0, RegionsPerAxis - 1));
 
-    // 지역 한 변이 몇 청크인가 — 나눠떨어져야 **지역 경계가 청크 경계에 맞는다.**
-    public static float ChunksPerRegion => RegionSize / ChunkSize;
-
     public static Vector2Int RegionAt(Vector3 worldPos) => RegionAt(worldPos.x, worldPos.z);
 
     // 지역의 가운데(월드 좌표). 마을·소굴을 그 지역 어딘가에 세울 때의 기준.
@@ -161,11 +158,6 @@ public static class TerrainGrid
     // 청크의 남서쪽 모서리(월드 좌표). `TerrainData`를 놓는 자리이기도 하다.
     public static Vector3 OriginOf(Vector2Int chunk) =>
         new(chunk.x * ChunkSize, 0f, chunk.y * ChunkSize);
-
-    // 청크 안 정점 인덱스 → 월드 좌표. `vx`·`vz`는 0 ~ 128.
-    public static Vector2 VertexPos(Vector2Int chunk, int vx, int vz) => new(
-        chunk.x * ChunkSize + vx * VertexSpacing,
-        chunk.y * ChunkSize + vz * VertexSpacing);
 
     // 세계 안인가 — 청크·타일·월드 좌표 각각.
     public static bool InWorld(Vector2Int chunk) =>

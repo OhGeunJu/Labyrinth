@@ -28,9 +28,7 @@ public class WindowRaiser : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("WindowRaiser");
-        go.AddComponent<WindowRaiser>();
-        DontDestroyOnLoad(go);
+        SelfStanding.Create<WindowRaiser>("WindowRaiser");
     }
 
     // ── 창을 앞으로 ──────────────────────────────────────────────────────────

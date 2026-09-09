@@ -232,7 +232,6 @@ public class PathGrid
     public void  SetWalkable(int x, int y, bool w)     { if (InBounds(x,y)) _walkable[y*Width+x] = w; }
     public void  SetCost    (int x, int y, float cost) { if (InBounds(x,y)) _cost    [y*Width+x] = Mathf.Max(0.1f, cost); }
     public bool  IsWalkable (int x, int y) => InBounds(x,y) && _walkable[y*Width+x];
-    public float GetCost    (int x, int y) => InBounds(x,y) ? _cost[y*Width+x] : float.MaxValue;
 
     // ── Theta* (any-angle) ─────────────────────────────────────────────
     // 표준 A*와 달리 가시선(LineOfSight)이 확보되면 부모를 건너뛰어 직선 경로를

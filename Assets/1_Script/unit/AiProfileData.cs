@@ -27,9 +27,6 @@ public enum CombatStance
 [CreateAssetMenu(fileName = "AiProfile", menuName = "DungeonColony/AiProfileData")]
 public class AiProfileData : ScriptableObject
 {
-    [Header("표시")]
-    [SerializeField] string profileName = "프로필";
-
     [Header("전투 성향")]
     [Tooltip("적대 상대를 만났을 때의 행동.")]
     [SerializeField] CombatStance stance = CombatStance.Fight;
@@ -55,7 +52,6 @@ public class AiProfileData : ScriptableObject
     [SerializeField] float pauseMin = 2f;
     [SerializeField] float pauseMax = 6f;
 
-    public string       ProfileName     => string.IsNullOrEmpty(profileName) ? name : profileName;
     public CombatStance Stance          => stance;
     public float        FleeBloodRatio  => fleeBloodRatio;
     public float        FleeDistance    => fleeDistance;

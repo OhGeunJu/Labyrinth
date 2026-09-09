@@ -239,9 +239,6 @@ public static class TerrainCeiling
         return ProceduralClearance(gx * TerrainGrid.VertexSpacing, gz * TerrainGrid.VertexSpacing);
     }
 
-    public static float VertexClearance(Vector2Int chunk, int vx, int vz) =>
-        VertexClearanceGlobal(chunk.x * OwnedPerChunk + vx, chunk.y * OwnedPerChunk + vz);
-
     // ── 임의 좌표 ───────────────────────────────────────────────────────────
 
     // 그 자리의 여유(m). **이중선형** — `TerrainHeight.At`과 같은 식이어야 한다. 갈리면

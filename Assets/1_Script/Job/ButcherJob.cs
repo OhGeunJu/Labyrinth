@@ -52,6 +52,7 @@ public class ButcherJob : JobBase
     UnitBrain _brain  => _target != null ? _target.GetComponent<UnitBrain>() : null;
 
     public override JobCategory Category => JobCategory.Butcher;
+    public override WorkAnim    Anim     => _phase == Phase.Work ? WorkAnim.Skinning : WorkAnim.None;
 
     // 시체 옆에 붙어서 한다 — 손만 닿으면 되는 일이 아니라 **거기 서서** 하는 일이다.
     // 다만 **업으러 갈 때는 손이면 된다**(집어 드는 일이다 — `ConstructionJob`이 창고에

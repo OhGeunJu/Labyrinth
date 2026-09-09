@@ -39,7 +39,6 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
     }
 
     public ResourceNodeData Data => data;
-    public bool IsDesignated { get; set; }
     public float GaugeProgress => data != null ? _gauge / data.GaugeRequired : 0f;
 
     readonly List<UnitBrain> _assigned = new();
@@ -188,7 +187,7 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
         // 막을 때와 **같은 목록**으로 푼다(그동안 노드가 움직였어도 어긋나지 않는다).
         if (MapManager.Instance != null)
             foreach (var tile in _blockedTiles)
-                MapManager.Instance.SetTile(tile, TileData.MakePassable());
+                MapManager.Instance.SetOccupied(tile, false);
         _blockedTiles.Clear();
     }
 
@@ -349,7 +348,7 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
         {
             if (!MapManager.Instance.IsInBuildZone(tile)) continue;
             _blockedTiles.Add(tile);
-            MapManager.Instance.SetTile(tile, TileData.MakeImpassable());
+            MapManager.Instance.SetOccupied(tile, true);
         }
     }
 

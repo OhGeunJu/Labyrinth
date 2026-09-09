@@ -49,15 +49,6 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
         RefreshTint();
     }
 
-    // 이 침대에 갇힌 사람을 풀어 준다(용도 전환·철거·석방).
-    public void ReleasePrisoner()
-    {
-        if (_occupant == null) return;
-        Imprisonment.Unbind(_occupant);
-        AssignedUnit = null;
-        _occupant    = null;
-    }
-
     // ── 용도 표시 — **매트리스를 물들인다** ─────────────────────────────────
     //
     // **눈으로 갈려야 한다.** 죄수용인지 아닌지가 우클릭 메뉴를 열어 봐야만 보이면,
@@ -209,7 +200,7 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
         if (map == null) return true;
 
         var tile = map.WorldToTile(world);
-        return map.IsStandable(tile) && map.GetTile(tile.x, tile.y).IsPassable;
+        return map.IsStandable(tile) && !map.IsOccupied(tile);
     }
 
     // **여기에 침대가 아닌 것을 섞지 말 것.** `SleepPosition`(윗면 + `lieHeight`)도

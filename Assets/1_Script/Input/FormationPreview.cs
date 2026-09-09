@@ -41,9 +41,7 @@ public class FormationPreview : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("FormationPreview") { hideFlags = HideFlags.DontSave };
-        go.AddComponent<FormationPreview>();
-        DontDestroyOnLoad(go);
+        SelfStanding.Create<FormationPreview>("FormationPreview");
     }
 
     void Awake()

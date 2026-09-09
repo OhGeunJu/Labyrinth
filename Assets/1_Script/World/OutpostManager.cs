@@ -75,8 +75,6 @@ public class OutpostManager : MonoBehaviour
 
     public static event Action OnChanged;
 
-    public IReadOnlyList<CostEntry> BuildCost => buildCost;
-
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(this); return; }

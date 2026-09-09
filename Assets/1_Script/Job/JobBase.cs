@@ -17,6 +17,11 @@ public abstract class JobBase
     public int Priority { get; protected set; } = 0;
     public virtual JobCategory Category => JobCategory.None;
 
+    // **지금 어떤 동작으로 일하나** — 애니메이터와 손에 드는 도구가 읽는다(`WorkAnim`). 단계가
+    // 있는 일감은 **자리에서 일하는 단계에서만** 답한다(창고에서 재료를 집는 동안 망치질을
+    // 하면 안 된다). 기본값은 없음 — 동작이 없는 일(치료·연구·운반)은 그대로 둔다.
+    public virtual WorkAnim Anim => WorkAnim.None;
+
     // 지금 이 작업을 실제로 수행할 수 있는가 (예: 제작 재료 보유).
     // false면 JobManager가 배정을 미루고 큐에 대기 — 조건 충족 시 자동 재개.
     public virtual bool IsReady => true;

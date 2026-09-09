@@ -179,6 +179,4 @@ public class BandMaterializer : MonoBehaviour
     {
         foreach (var b in new List<WorldBand>(_live.Keys)) Dematerialize(b);
     }
-
-    public int LiveBands => _live.Count;
 }

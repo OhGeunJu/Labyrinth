@@ -57,7 +57,7 @@ public class PawnRosterUI : MonoBehaviour
         // 템플릿은 편집 중 모양 확인용 — 게임에선 숨긴다(비활성 자식은 레이아웃에서도 빠진다)
         if (rowTemplate != null) rowTemplate.gameObject.SetActive(false);
 
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
             AddRow(brain);
         SortRows();
         RefreshAll();
@@ -146,7 +146,7 @@ public class PawnRosterUI : MonoBehaviour
         // 원정에서 **돌아온 폰**을 다시 줍는다. `OnUnitSpawned`는 최초 스폰 때만 오므로
         // 복귀는 이 재탐색이 아니면 잡히지 않는다(비활성은 기본적으로 검색에서 빠진다).
         bool added = false;
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
             if (AddRow(brain)) added = true;
         if (added) SortRows();
 

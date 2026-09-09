@@ -50,9 +50,7 @@ public class HaulDesignator : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("HaulDesignator");
-        _instance = go.AddComponent<HaulDesignator>();
-        DontDestroyOnLoad(go);
+        _instance = SelfStanding.Create<HaulDesignator>("HaulDesignator");
     }
 
     Camera _cam;

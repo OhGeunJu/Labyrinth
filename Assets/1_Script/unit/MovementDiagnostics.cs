@@ -26,7 +26,7 @@ public static class MovementDiagnostics
 
     static int _blockMemoryHits;   // 베이크에서 PathBlockMemory 때문에 막힌 셀 수
     static int _pawnBakeBlocks;    // 베이크에서 다른 폰 때문에 막힌 셀 수
-    static int _occupiedBlocks;    // 베이크에서 건물 점유 타일 때문에 막힌 셀 수
+    static int _occupiedBlocks;    // 베이크에서 점유·바위(광역 1m 표) 때문에 막힌 셀 수
     static int _bakes;             // 로컬 윈도우 베이크 횟수 (위 셀 수를 나눠 볼 기준)
 
     static float _nextSummary;
@@ -184,7 +184,7 @@ public static class MovementDiagnostics
             // **바위를 같이 찍는다**(2026-08-30). `IsPassable`은 점유(건물)만 답하므로
             // 지하에서는 **통짜 바위도 "통행"으로 찍혔다** — 세계의 4분의 3이 바위인데
             // 진단이 그걸 한 번도 말하지 않으니, 벽에 막힌 것이 죄다 *"조향 문제"*로 보였다.
-            string state = !map.GetTile(tile.x, tile.y).IsPassable ? "**점유**"
+            string state = map.IsOccupied(tile) ? "**점유**"
                          : RockMap.IsRock(tile)                    ? "**바위**"
                          : "통행";
             sb.Append($"[{tile.x},{tile.y}]{state}");
@@ -224,7 +224,7 @@ public static class MovementDiagnostics
     static char Mark(MapManager map, Vector2Int t)
     {
         if (RockMap.IsRock(t))                  return '#';
-        if (!map.GetTile(t.x, t.y).IsPassable)  return 'X';
+        if (map.IsOccupied(t))  return 'X';
         if (!map.IsStandable(t))                return '_';
         if (PathBlockMemory.IsBlocked(t))       return '!';
         return '.';
@@ -265,7 +265,7 @@ public static class MovementDiagnostics
 
         var tile = map.WorldToTile(world);
         return $"[{tile.x},{tile.y}] " +
-               $"{(map.GetTile(tile.x, tile.y).IsPassable ? "통행가능" : "점유됨")}/" +
+               $"{(map.IsOccupied(tile) ? "점유됨" : "통행가능")}/" +
                $"{(map.IsStandable(tile) ? "바닥있음" : "바닥없음")}" +
                $"{(RockMap.IsRock(tile) ? "/**바위속**" : "")}" +
                $"{(PathBlockMemory.IsBlocked(tile) ? "/차단기억됨" : "")}";
@@ -305,7 +305,7 @@ public static class MovementDiagnostics
 
         Debug.Log($"[이동진단] 최근 {SummaryInterval:F0}초 — 막힘 {total}회 " +
                   $"(비켜서기 {_stage1} / 로컬재계획 {_stage2} / 전역재계획 {_stage3} / 포기 {_stage4}) · " +
-                  $"베이크 {_bakes}회, 회당 차단 셀: 점유 {_occupiedBlocks * per:F1}, " +
+                  $"베이크 {_bakes}회, 회당 차단 셀: 점유·바위 {_occupiedBlocks * per:F1}, " +
                   $"차단기억 {_blockMemoryHits * per:F1}, 폰 {_pawnBakeBlocks * per:F1} · " +
                   $"폰 {PawnMover.All.Count}" +
                   (_giveUpSuppressed > 0 ? $" · 포기 상세 생략 {_giveUpSuppressed}건" : ""));

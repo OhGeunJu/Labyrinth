@@ -161,18 +161,5 @@ public class Pyre : MonoBehaviour, IWorldClickable, ICarrySite
 
     public void OnWorldClick() => OnSelected?.Invoke(this);
 
-    public static Pyre FindNearestFree(Vector3 from)
-    {
-        Pyre best = null;
-        float bestSq = float.MaxValue;
-        foreach (var p in All)
-        {
-            if (p == null || p.IsOccupied) continue;
-            float sq = (p.transform.position - from).sqrMagnitude;
-            if (sq >= bestSq) continue;
-            best   = p;
-            bestSq = sq;
-        }
-        return best;
-    }
+    public static Pyre FindNearestFree(Vector3 from) => CarrySites.NearestFree(All, from);
 }

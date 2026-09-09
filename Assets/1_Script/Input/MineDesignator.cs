@@ -44,9 +44,7 @@ public class MineDesignator : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("MineDesignator");
-        _instance = go.AddComponent<MineDesignator>();
-        DontDestroyOnLoad(go);
+        _instance = SelfStanding.Create<MineDesignator>("MineDesignator");
     }
 
     Camera  _cam;

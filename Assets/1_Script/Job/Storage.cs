@@ -20,8 +20,6 @@ public class Storage : MonoBehaviour, IWorldClickable
     [SerializeField] List<ItemData> allowedItems = new();
 
     public Inventory Inventory { get; private set; }
-    public IReadOnlyList<ResourceGroup> AllowedGroups => allowedGroups;
-    public IReadOnlyList<ItemData>      AllowedItems  => allowedItems;
 
     // 필터가 하나도 없으면 "전부 허용"이다. 이 정규형이 여러 곳에서 쓰이므로 한 곳에서 답한다.
     public bool AllowsEverything => allowedGroups.Count == 0 && allowedItems.Count == 0;
@@ -59,9 +57,6 @@ public class Storage : MonoBehaviour, IWorldClickable
     public void AddFilter(ResourceGroup g)    { if (!allowedGroups.Contains(g)) allowedGroups.Add(g); }
     public void RemoveFilter(ResourceGroup g) => allowedGroups.Remove(g);
     public bool HasFilter(ResourceGroup g)    => allowedGroups.Contains(g);
-
-    public void AddItemFilter(ItemData item)    { if (item != null && !allowedItems.Contains(item)) allowedItems.Add(item); }
-    public void RemoveItemFilter(ItemData item) => allowedItems.Remove(item);
 
     // ── 입고 필터 ─────────────────────────────────────────────────────
     public bool CanAccept(ItemData item)

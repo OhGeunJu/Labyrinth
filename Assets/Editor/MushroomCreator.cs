@@ -257,7 +257,7 @@ public static class MushroomCreator
         // **데이터를 물려서 굽는다** — 뿌리기는 이 프리팹을 그대로 세우므로, 비어 있으면
         // 나오는 것도 게이지도 이름도 없는 노드가 세계에 선다.
         var node = root.AddComponent<ResourceNode>();
-        FireArt.Set(node, so => so.FindProperty("data").objectReferenceValue = data);
+        SerializedWrite.Set(node, so => so.FindProperty("data").objectReferenceValue = data);
 
         return Save(root, "Node_GiantMushroom");
     }
@@ -325,7 +325,7 @@ public static class MushroomCreator
 
         var src = root.AddComponent<LightSource>();
         src.AlwaysLit = true;
-        FireArt.Set(src, so =>
+        SerializedWrite.Set(src, so =>
         {
             so.FindProperty("radius").floatValue   = radius;
             so.FindProperty("strength").floatValue = strength;

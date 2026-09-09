@@ -69,8 +69,6 @@ public class WallTorch : MonoBehaviour, IPlacementPose
     bool _onWall;
     bool _applied;
 
-    public bool OnWall => _onWall;
-
     void OnEnable()
     {
         RockMap.OnChanged        += OnTile;
@@ -179,5 +177,5 @@ public class WallTorch : MonoBehaviour, IPlacementPose
     // **벽은 바위만이 아니다** — 지은 벽·오두막 껍데기도 걸 면이다. 통행을 막는 칸이면
     // 그 자리에 무언가 서 있다는 뜻이고, 그것이 곧 면이다.
     static bool IsWall(MapManager map, Vector2Int tile)
-        => RockMap.IsRock(tile) || !map.GetTile(tile).IsPassable;
+        => RockMap.IsRock(tile) || map.IsOccupied(tile);
 }

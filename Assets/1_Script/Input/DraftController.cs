@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 // **소집 토글(R).** 고른 폰들을 싸울 태세로 붙들거나 풀어 준다.
@@ -27,9 +26,7 @@ public class DraftController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("DraftController");
-        go.AddComponent<DraftController>();
-        DontDestroyOnLoad(go);
+        SelfStanding.Create<DraftController>("DraftController");
     }
 
     SelectionManager _selection;
@@ -45,22 +42,13 @@ public class DraftController : MonoBehaviour
         // **"고른 것이 있나"로 물으면 안 된다** — uGUI는 누른 **버튼**도 다음 클릭까지 고른
         // 채로 둔다. 그러면 창고 필터나 작업 설정을 한 번 누른 뒤로는 R이 조용히 안 먹는다.
         // 글자를 치는 칸인지를 물어야 한다.
-        if (IsTyping()) return;
+        if (InputFocus.IsTyping()) return;
 
         // **월드맵에서는 안 먹는다** — 거기서 R은 아무 뜻이 없고, 지도에 나가 있는 사이에
         // 필드의 폰들이 소집되면 돌아왔을 때 아무도 일을 안 하고 있다.
         if (!GameModeManager.IsField) return;
 
         Toggle();
-    }
-
-    static bool IsTyping()
-    {
-        var sel = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
-        if (sel == null) return false;
-
-        return sel.GetComponent<TMPro.TMP_InputField>() != null
-            || sel.GetComponent<UnityEngine.UI.InputField>() != null;
     }
 
     void Toggle()

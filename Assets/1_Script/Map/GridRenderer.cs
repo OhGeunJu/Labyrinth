@@ -46,8 +46,7 @@ public class GridRenderer : MonoBehaviour
 
     void RefreshBlockOverlay(Vector2Int pos)
     {
-        var tile = MapManager.Instance.GetTile(pos);
-        if (!tile.IsPassable)
+        if (MapManager.Instance.IsOccupied(pos))
         {
             if (_blockOverlays.ContainsKey(pos)) return;
             // 표면 높이 기준 — 바닥이 깔린 타일은 슬래브 윗면 위에 떠야 한다(밑에 깔리지 않게).

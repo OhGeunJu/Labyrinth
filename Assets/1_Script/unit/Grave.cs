@@ -99,18 +99,5 @@ public class Grave : MonoBehaviour, IWorldClickable, ICarrySite
         return null;
     }
 
-    public static Grave FindNearestFree(Vector3 from)
-    {
-        Grave best = null;
-        float bestSq = float.MaxValue;
-        foreach (var g in All)
-        {
-            if (g == null || g.IsOccupied) continue;
-            float sq = (g.transform.position - from).sqrMagnitude;
-            if (sq >= bestSq) continue;
-            best   = g;
-            bestSq = sq;
-        }
-        return best;
-    }
+    public static Grave FindNearestFree(Vector3 from) => CarrySites.NearestFree(All, from);
 }

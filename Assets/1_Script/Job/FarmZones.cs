@@ -56,8 +56,6 @@ public static class FarmZones
         return plot != null && _zoneOf.TryGetValue(plot, out int i) ? _colors[i] : Color.white;
     }
 
-    public static int CountOf(FarmPlot plot) => Of(plot).Count;
-
     // ── 다시 세기 ───────────────────────────────────────────────────────────
 
     static void Rebuild()

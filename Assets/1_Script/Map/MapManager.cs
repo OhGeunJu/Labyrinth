@@ -38,13 +38,6 @@ public class MapManager : MonoBehaviour
              "손으로 조각한 Terrain 한 장짜리 맵은 꺼 둘 것.")]
     [SerializeField] bool proceduralTerrain = false;
 
-    public bool ProceduralTerrain => proceduralTerrain;
-
-    [Header("바닥 (던전형 맵)")]
-    [Tooltip("건물을 바닥(floored) 위에만 배치하도록 강제. 공허 던전 씬은 켤 것 — " +
-             "바닥이 하나도 없는 상태에서도 게이트가 걸린다. 꺼도 바닥이 1개 이상 깔리면 자동으로 강제됨.")]
-    [SerializeField] bool requireFloor = false;
-
     [Header("지형 샘플")]
     [Tooltip("지면 높이 레이캐스트 마스크. Terrain이 있으면 불필요. 평면 바닥 씬은 바닥 레이어만 지정. " +
              "Everything/Nothing이면 레이캐스트 생략(평지 y=0 처리) — 건물/유닛 오인 방지.")]
@@ -150,22 +143,14 @@ public class MapManager : MonoBehaviour
         if (_gridProposed) _gridSet = true;
     }
 
-    public int BuildZoneSize => buildZoneSize;
     public int Width  => buildZoneSize;
     public int Height => buildZoneSize;
-    public float BuildHeightTolerance => buildHeightTolerance;
     public Vector2Int ZoneOriginTile => _zoneOriginTile;
 
     void Awake()
     {
         _allZones.Add(this);
         if (Instance == null) Instance = this;
-
-        // **모순은 조용히 넘기지 않는다** — 위의 `FloorRequired` 설명 참고.
-        if (proceduralTerrain && requireFloor)
-            Debug.LogWarning("[지도] `proceduralTerrain`과 `requireFloor`가 같이 켜져 있다 — " +
-                             "지형 위에는 어디에나 땅이 있으므로 바닥 요구를 안 건다. " +
-                             "인스펙터에서 `requireFloor`를 끌 것(던전 씬이 아니라면).");
     }
 
     void OnDestroy()
@@ -246,27 +231,23 @@ public class MapManager : MonoBehaviour
         return lx >= 0 && lx < buildZoneSize && ly >= 0 && ly < buildZoneSize;
     }
 
-    // ── 타일 접근 ─────────────────────────────────────────────────────────────
+    // ── 점유 ─────────────────────────────────────────────────────────────────
+    //
+    // **칸이 든 것은 "막혔나" 하나다.** 전에는 `TileData`(종류·이동 벌점·높이·법선)를 돌려줬는데
+    // 읽는 쪽은 전부 `IsPassable`만 봤고 나머지 셋은 아무도 안 채웠다(2026-09-09에 걷어냈다).
+    // 빌드존 경계와 무관한 절대좌표 희소 저장이라 핵 이동에도 유지된다.
+    public bool IsOccupied(Vector2Int tile) => _occupied.Contains(tile);
+    public bool IsOccupied(int x, int y)   => _occupied.Contains(new Vector2Int(x, y));
 
-    // 점유 집합에 있으면 Impassable, 아니면 Passable. 빌드존 경계와 무관(절대좌표).
-    public TileData GetTile(Vector2Int tile) =>
-        _occupied.Contains(tile) ? TileData.MakeImpassable() : TileData.MakePassable();
-
-    public TileData GetTile(int x, int y) => GetTile(new Vector2Int(x, y));
-
-    // 통행 가능 여부만 희소 저장에 반영. 핵 이동에도 유지됨.
-    public void SetTile(Vector2Int tile, TileData data)
+    // 값이 실제로 바뀔 때만 알린다 — 같은 값을 다시 넣는 것은 소식이 아니다.
+    public void SetOccupied(Vector2Int tile, bool occupied)
     {
-        bool changed = data.IsPassable ? _occupied.Remove(tile) : _occupied.Add(tile);
+        bool changed = occupied ? _occupied.Add(tile) : _occupied.Remove(tile);
         if (changed) OnTileChanged?.Invoke(tile);
     }
 
-    public void SetTile(int x, int y, TileData data) => SetTile(new Vector2Int(x, y), data);
-
     // ── 바닥(floor) ────────────────────────────────────────────────────────────
     // 코어와 무관한 substrate. Floor 컴포넌트가 자기 footprint를 등록/해제한다.
-
-    public bool HasFloorSystem => _floored.Count > 0;
 
     // 깔린 바닥 칸 수. **격자가 다시 그릴 때를 아는 데 쓴다** — 바닥이 늘거나 줄면
     // 격자가 앉을 면이 바뀐다(`GridOverlay`).
@@ -274,33 +255,24 @@ public class MapManager : MonoBehaviour
 
     // 깔린 칸 전부. `FloorRenderer`가 처음 설 때 한 번 훑는다.
     public IEnumerable<Vector2Int> FloorTiles => _floored.Keys;
-    // 건물의 "바닥 위에만" 강제 여부: 명시 플래그(공허 씬, 바닥 0장이어도 게이트) 또는 바닥 존재 시 자동.
-    //
-    // **절차 지형이 켜져 있으면 안 건다**(2026-08-27). 바닥 요구는 *"발밑이 공허다"*라는
-    // 뜻인데, `proceduralTerrain`은 **어디에나 땅이 있다**는 뜻이라 둘은 같이 설 수 없다.
-    // 그런데 씬에 `requireFloor: 1`이 저작돼 남아 있었고(옛 던전 씬의 잔재), 그 한 줄이
-    // **세계 전체에서 건설을 막고 있었다** — 화면에는 그냥 *"빨간 격자"*로만 보였다.
-    // `IsStandable`도 같은 값을 보므로 **설 수 있는 칸이 하나도 없는 상태**이기도 했다.
-    //
-    // **코드 기본값은 씬이 값을 들면 아무 힘이 없다** — 그래서 끄는 것이 아니라 **파생시킨다.**
-    public bool FloorRequired  => !proceduralTerrain && (requireFloor || _floored.Count > 0);
+    // **바닥은 기단이지 발판이 아니다**(2026-09-09). 한때 *"바닥 위에만 서고 짓는다"*는
+    // 요구(`FloorRequired`)가 있었다 — 발밑이 공허인 던전 씬의 것이고, 그 설계를 접은 뒤에도
+    // 씬의 `requireFloor: 1` 잔재 하나가 세계 전체의 건설을 막은 적이 있다(2026-08-27).
+    // 지하는 어디에나 땅이 있으므로 그 축을 통째로 걷어냈다.
     public bool IsFloored(Vector2Int tile) => _floored.ContainsKey(tile);
-    public bool IsFloored(Vector3 world)   => IsFloored(WorldToTile(world));
 
     // 바닥 윗면 Y (바닥 없으면 false). 배치 높이 계산용.
     public bool TryGetFloorSurface(Vector2Int tile, out float surfaceY) => _floored.TryGetValue(tile, out surfaceY);
 
-    // 유닛이 설 수 있는 타일인가 — 공허 게이트. 던전형 맵(FloorRequired)에서만 바닥을 요구하고
-    // 필드/지형 맵은 항상 true. 점유(IsPassable)와는 별개 축이므로 필요 시 둘 다 검사할 것.
+    // 유닛이 설 수 있는 타일인가. 점유(IsOccupied)와는 별개 축이므로 필요 시 둘 다 검사할 것.
     //
-    // **머리 위도 여기서 본다**(2026-08-29). 지하에서 *"설 수 있나"*는 발밑과 머리 위 **둘 다**의
+    // **머리 위를 본다**(2026-08-29). 지하에서 *"설 수 있나"*는 발밑과 머리 위 **둘 다**의
     // 물음이다 — 여유가 폰 키보다 작으면 바위 속이다. 묻는 자리를 여기 하나로 두면 길찾기도
     // 건설도 일감 고르기도 **같은 답**을 쓴다(`IsWorkable`이 이걸 부르고 `LocalGridManager`도
     // 이걸 본다). 갈라 두면 *"경로는 있는데 서 있을 자리가 없다"*가 생긴다.
     //
     // **천장이 꺼져 있으면 언제나 참이라 지상 판정은 한 줄도 안 바뀐다.**
-    public bool IsStandable(Vector2Int tile) =>
-        (!FloorRequired || _floored.ContainsKey(tile)) && HasHeadroom(tile);
+    public bool IsStandable(Vector2Int tile) => HasHeadroom(tile);
 
     // 그 칸을 지나갈 수 있나 — **지하에서는 곧 "바위가 아닌가"다**(2026-08-29).
     //
@@ -311,7 +283,7 @@ public class MapManager : MonoBehaviour
     public bool IsStandable(Vector3 world)   => IsStandable(WorldToTile(world));
 
     // 폰이 **실제로 설 수 있는** 칸인가 — 통행 가능 + 바닥 있음.
-    public bool IsWorkable(Vector2Int tile) => GetTile(tile.x, tile.y).IsPassable && IsStandable(tile);
+    public bool IsWorkable(Vector2Int tile) => !IsOccupied(tile) && IsStandable(tile);
 
     // 두 칸 사이의 **직선이 뚫려 있나.** 길찾기가 아니라 **어림값**이다 — 막혀 있으면
     // *"실제로는 돌아가야 한다"*는 뜻이고, 뚫려 있어도 지형 턱까지 봐 주지는 않는다.
@@ -337,7 +309,11 @@ public class MapManager : MonoBehaviour
             if (e2 <  dx) { err += dx; z += sz; }
 
             if (x == b.x && z == b.y) break;      // 도착 칸 자체는 안 본다(일감이 거기 있다)
-            if (!GetTile(x, z).IsPassable) return false;
+
+            // **바위도 막는 것이다**(2026-09-10). 여기서 점유(`IsOccupied`)만 보던 시절은
+            // 지상이었다 — 지하에서는 통행을 막는 것의 거의 전부가 바위라, 안 보면 이 함수가
+            // **통짜 바위를 뚫린 것으로** 답한다. `IsWorkable` = 통행 가능 + 설 수 있음.
+            if (!IsWorkable(new Vector2Int(x, z))) return false;
         }
         return true;
     }
@@ -367,8 +343,14 @@ public class MapManager : MonoBehaviour
     //
     // `exclude`는 **지금은 지나갈 수 있지만 서면 안 되는 칸**이다 — 청사진 발자국이 그렇다.
     // 통행 판정만으로는 못 거른다(청사진은 일부러 칸을 안 막는다).
+    //
+    // `prefer`는 **거르는 조건이 아니라 고르는 눈금이다**(2026-09-10). 같은 고리 안에 후보가
+    // 여럿일 때 이것을 만족하는 쪽이 이긴다 — 없으면 예전처럼 가장 가까운 것. 걸러 버리면
+    // *"조건에 맞는 자리가 없으면 아예 못 간다"*가 되는데, 그건 서 있을 자리를 잃는 것이라
+    // 훨씬 나쁘다(폰을 부르는 쪽이 이 함수에 기대는 것은 **어디든 설 자리 하나**다).
     public Vector2Int FindWorkableNear(Vector2Int center, int maxRadius = 2,
-                                       ICollection<Vector2Int> exclude = null)
+                                       ICollection<Vector2Int> exclude = null,
+                                       System.Func<Vector2Int, bool> prefer = null)
     {
         // **낭떠러지 건너편은 가까워도 후보가 아니다**(2026-08-28). 기단 가장자리에 건물을
         // 지으면 *가장 가까운* 설 자리가 **기단 아래**로 뽑혔고, 폰은 거기로 가려다 못 가서
@@ -382,6 +364,7 @@ public class MapManager : MonoBehaviour
         {
             Vector2Int best = center;
             float bestDist = float.MaxValue;
+            bool  bestPref = false;
 
             for (int dx = -r; dx <= r; dx++)
             for (int dy = -r; dy <= r; dy++)
@@ -393,7 +376,10 @@ public class MapManager : MonoBehaviour
                 if (!Allowed(t)) continue;
 
                 float d = dx * dx + dy * dy;      // 같은 고리 안에서는 대각선보다 직선이 가깝다
-                if (d < bestDist) { bestDist = d; best = t; }
+                bool  p = prefer == null || prefer(t);
+
+                // 선호가 먼저, 그다음 가까움. 갈라 두면 *바위 건너편의 더 가까운 칸*이 이긴다.
+                if (p != bestPref ? p : d < bestDist) { bestDist = d; best = t; bestPref = p; }
             }
 
             if (bestDist < float.MaxValue) return best;
@@ -559,12 +545,10 @@ public class MapManager : MonoBehaviour
     // 지을 수 있으면 `null`.
     public string WhyNotBuildable(IEnumerable<Vector2Int> footprint)
     {
-        bool floorRequired = FloorRequired;
         foreach (var pos in footprint)
         {
             if (!IsInBuildZone(pos)) return "빌드존 밖 — 핵에서 너무 멀다";
-            if (floorRequired && !_floored.ContainsKey(pos)) return "바닥이 없다";
-            if (!GetTile(pos).IsPassable) return "무언가 자리를 막고 있다";
+            if (IsOccupied(pos)) return "무언가 자리를 막고 있다";
 
             // **파야 지을 수 있다.** *"못 짓는다"*가 아니라 **무엇을 하면 되는지**를 말한다 —
             // 지하에서는 자리가 없는 것이 아니라 아직 안 판 것이다.
@@ -594,7 +578,7 @@ public class MapManager : MonoBehaviour
         {
             if (!IsInBuildZone(pos)) return false;      // 최대 경계 클램프
             if (_floored.ContainsKey(pos)) return false;   // 이미 바닥
-            if (!GetTile(pos).IsPassable) return false; // 점유
+            if (IsOccupied(pos)) return false; // 점유
         }
         return level || IsFlatEnough(footprint);
     }

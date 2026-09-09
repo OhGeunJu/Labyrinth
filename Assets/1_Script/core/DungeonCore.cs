@@ -57,8 +57,6 @@ public class DungeonCore : MonoBehaviour
     public void RegisterSubCore(SubCore sc)   { if (!_subCores.Contains(sc)) { _subCores.Add(sc); RaiseTerritoryChanged(); } }
     public void UnregisterSubCore(SubCore sc) { if (_subCores.Remove(sc)) RaiseTerritoryChanged(); }
 
-    public IReadOnlyList<SubCore> SubCores => _subCores;
-
     [SerializeField] Color selectedColor = new Color(1f, 0.9f, 0.2f, 0.8f);
 
     RangeCircle _circle;
@@ -171,7 +169,7 @@ public class DungeonCore : MonoBehaviour
         if (_occupiedTile == tile) return;
 
         Release();
-        map.SetTile(tile, TileData.MakeImpassable());
+        map.SetOccupied(tile, true);
         _occupiedTile = tile;
     }
 
@@ -179,7 +177,7 @@ public class DungeonCore : MonoBehaviour
     {
         var map = MapManager.Instance;
         if (map != null && _occupiedTile.HasValue)
-            map.SetTile(_occupiedTile.Value, TileData.MakePassable());
+            map.SetOccupied(_occupiedTile.Value, false);
         _occupiedTile = null;
     }
 
@@ -332,15 +330,6 @@ public class DungeonCore : MonoBehaviour
 
         Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 ({CurrentMinionCount}/{TotalMinionCap})");
         return true;
-    }
-
-    // 메인 코어 또는 서브 코어 범위 내 여부
-    public bool IsWithinAnyRange(Vector2Int tile)
-    {
-        if (IsWithinRange(tile)) return true;
-        foreach (var sc in _subCores)
-            if (sc != null && sc.IsWithinRange(tile)) return true;
-        return false;
     }
 
     public bool IsWithinAnyRangeWorld(Vector3 worldPos)

@@ -34,8 +34,6 @@ public static class DamageTypeExt
     public static bool IsPhysical(this DamageType t)
         => t is DamageType.Slash or DamageType.Pierce or DamageType.Blunt;
 
-    public static bool IsElemental(this DamageType t) => !t.IsPhysical();
-
     public static string DisplayName(this DamageType t) => t switch
     {
         DamageType.Slash     => "베기",

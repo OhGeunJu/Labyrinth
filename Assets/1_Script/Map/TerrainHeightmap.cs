@@ -71,8 +71,6 @@ public class TerrainHeightmap : ScriptableObject
 
     public bool IsUsable => Data != null && Resolution > 1;
 
-    public float MetersPerCell => TerrainGrid.WorldSize / (float)Resolution;
-
     // 다시 구운 뒤 부른다. 안 비우면 **에디터가 옛 높이를 계속 쓴다.**
     public void Forget() { _cells = null; _masks = null; }
 

@@ -274,7 +274,7 @@ public class CraftingTableUI : MonoBehaviour
     static List<UnitBrain> EligibleCrafters()
     {
         var list = new List<UnitBrain>();
-        foreach (var brain in Object.FindObjectsByType<UnitBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
         {
             var faction = brain.GetComponent<Faction>();
             if (faction == null || !faction.IsPlayer) continue;

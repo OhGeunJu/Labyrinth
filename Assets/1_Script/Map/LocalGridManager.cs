@@ -5,6 +5,7 @@ using UnityEngine;
 public class LocalGridManager
 {
     LayerMask _obstacleLayer;
+    WideGraph _graph;      // 1m 걸음 표의 주인 — 아래 `BakeGrid` 설명
 
     // 벼랑 옆 칸의 이동 비용 배율.
     //
@@ -47,7 +48,11 @@ public class LocalGridManager
     bool[] _blockHasWall;
     int    _blocksPerAxis;
 
-    public void Initialize(LayerMask obstacleLayer) => _obstacleLayer = obstacleLayer;
+    public void Initialize(LayerMask obstacleLayer, WideGraph graph)
+    {
+        _obstacleLayer = obstacleLayer;
+        _graph         = graph;
+    }
 
     // 유닛 중심 윈도우 그리드를 해당 위치로 재배치·재베이크해 target까지 Theta* 경로 반환.
     // 매번 재베이크하므로 런타임에 생긴 벽(Wall 콜라이더)도 항상 반영된다.
@@ -181,12 +186,7 @@ public class LocalGridManager
     // 넓은 길은 벽에서 떨어져 지나가게 한다(콜라이더 끼임 방지).
     void BakeGrid(PathGrid grid, int size, float clearance)
     {
-        // 공허 게이트(던전형 맵): 바닥 없는 셀은 이동 불가 — 경로가 바닥 위로만 나온다.
-        var  map      = MapManager.Instance;
-        bool voidGate = map != null && map.FloorRequired;
-
-        // 천장이 꺼져 있으면 재지도 않는다 — 지상 씬에서 칸마다 여유를 뽑을 이유가 없다.
-        bool ceilingGate = map != null && TerrainCeiling.Enabled;
+        var  map = MapManager.Instance;
 
         // 셀(1m) 안에 장애물이 있는지만 본다 — **타일 단위 판정**.
         // 예전엔 여기에 에이전트 반경을 통째로 더해(0.45+0.5=0.95) 벽에 직교로 붙은 셀이
@@ -226,42 +226,22 @@ public class LocalGridManager
 
                 grid.SetSurface(x, y, map.SurfaceHeight(here), map.ClimbLimitAt(here));
 
-                // **머리 위가 막힌 칸은 못 지나간다**(2026-08-29). 지하에서 바위는 따로 세운
-                // 벽이 아니라 **천장이 내려앉은 자리**라, 격자가 그것을 안 보면 경로는 태연히
-                // 바위 속으로 난다 — 폰은 그 직선을 따라 걷다 천장에 머리를 박고 밀고 선다.
-                // 기단에서 겪은 것과 같은 사고이고, 그때는 발밑이었고 이번엔 머리 위다.
-                //
-                // **답은 `MapManager.HasHeadroom` 하나를 쓴다** — 건설 판정도 같은 것을 보므로
-                // *"경로는 있는데 지을 수는 없다"*(또는 그 반대)가 안 생긴다.
-                if (ceilingGate && !map.HasHeadroom(here))
-                {
-                    grid.SetWalkable(x, y, false);
-                    continue;
-                }
-            }
-
-            if (voidGate && !map.IsFloored(here))
-            {
-                grid.SetWalkable(x, y, false);
-                continue;
-            }
-
-            // 1m 셀은 정수 좌표로 스냅돼 맵 타일과 1:1로 겹친다.
-            if (map != null)
-            {
-                var tile = here;
-
-                // 건물 점유 타일 — 콜라이더 레이어와 무관하게 통행 불가.
-                // (이게 빠져 있으면 건물이 U자로 둘러싼 자리를 플래너가 못 보고 직선으로 관통시킨다.)
-                if (!map.GetTile(tile.x, tile.y).IsPassable)
+                // **걸을 수 있나는 광역 그래프의 1m 표가 답한다**(2026-09-09). 그 표는
+                // `IsWorkable`(점유 아님 · 머리 위 여유 — 바위는 천장이 내려앉은 자리라 여기서
+                // 걸린다)을 **담아 둔 것**이고, 점유·바닥·채굴이 바뀔 때마다 그 자리만 다시
+                // 굽는다. 전에는 창 1,600칸마다 점유와 머리 위를 각자 다시 물었다 — 같은 1m
+                // 사실을 두 곳이 따로 뽑으면 언젠가 한쪽만 고쳐진다(`OnFloorChanged`가 광역만
+                // 알던 날이 실제로 있었다). 그래프가 없는 씬은 칸에 직접 묻는다.
+                bool walk = _graph != null ? _graph.WalkableTile(here.x, here.y) : map.IsWorkable(here);
+                if (!walk)
                 {
                     grid.SetWalkable(x, y, false);
                     MovementDiagnostics.RecordOccupiedBlock();
                     continue;
                 }
 
-                // 최근에 막혔던 자리 — 잠시 피해 간다
-                if (PathBlockMemory.IsBlocked(tile))
+                // 최근에 막혔던 자리 — 잠시 피해 간다(다른 폰 등 그래프에 없는 것에 막힌 기억)
+                if (PathBlockMemory.IsBlocked(here))
                 {
                     grid.SetWalkable(x, y, false);
                     MovementDiagnostics.RecordBlockMemoryHit();

@@ -73,11 +73,7 @@ public static class RockMap
     // 그리는 쪽이 듣는다. **바닥과 같은 이름·같은 모양**(`MapManager.OnFloorChanged`).
     public static event System.Action<Vector2Int> OnChanged;
 
-    public static IEnumerable<Vector2Int> MinedTiles => _mined;
     public static IEnumerable<Vector2Int> MarkedTiles => _marked;
-
-    public static int MinedCount  => _mined.Count;
-    public static int MarkedCount => _marked.Count;
 
     // ── 묻기 ────────────────────────────────────────────────────────────────
 
@@ -300,16 +296,9 @@ public static class RockMap
             OnChanged?.Invoke(t);
         }
 
-        var m = MapManager.Instance;
-        if (m != null)
-        {
-            // 길찾기에 한 번만 알린다 — 칸마다 부르면 격자를 반경 제곱만큼 다시 굽는다.
-            var t = m.WorldToTile(center);
-            m.SetTile(t, m.GetTile(t));
-        }
-
-        // **연 넓이만큼 다시 굽는다**(2026-08-31). 위의 `SetTile` 한 번은 **칸 하나**를
-        // 알리는 것이라 광역 셀 하나와 코스 몇 칸만 고쳐진다 — 공터는 12m다. 안 고치면
+        // **연 넓이만큼 다시 굽는다**(2026-08-31). 칸 하나만 알리면 광역 셀 하나와 코스
+        // 몇 칸만 고쳐진다 — 공터는 12m다(한때 여기서 `SetTile(t, GetTile(t))`로 *한 칸만*
+        // 알렸는데, 그건 값이 안 바뀌어 아무것도 안 했다 — 2026-09-05). 안 고치면
         // 격자에 **기지가 바위에 둘러싸인 섬**으로 남아, 멀리 찍었을 때 광역 경로가 아예
         // 안 나오고 폰이 조용히 선다.
         HierarchicalPathfinder.Instance?.RebakeArea(center, radius + 2f);
@@ -342,11 +331,10 @@ public static class RockMap
         }
 
         int dug = Carve(from, to, width);
-        if (map != null) map.SetTile(from, map.GetTile(from));   // 길찾기에 한 번만 알린다
 
-        // **뚫은 길 전체를 다시 굽는다**(2026-08-31). 이 길은 최대 90m인데 위의 알림은
-        // **출발 칸 하나**다 — 그러면 격자는 길이 없는 세계를 계속 들고 있고, 진입로를
-        // 뚫어 둔 뜻이 통째로 사라진다(공터가 섬으로 남는다).
+        // **뚫은 길 전체를 다시 굽는다**(2026-08-31). 이 길은 최대 90m라 출발 칸 하나만
+        // 알리면 격자는 길이 없는 세계를 계속 들고 있고, 진입로를 뚫어 둔 뜻이 통째로
+        // 사라진다(공터가 섬으로 남는다).
         var mid  = new Vector3((from.x + to.x) * 0.5f, 0f, (from.y + to.y) * 0.5f);
         float rr = Vector2.Distance(new Vector2(from.x, from.y), new Vector2(to.x, to.y)) * 0.5f
                  + width + 2f;

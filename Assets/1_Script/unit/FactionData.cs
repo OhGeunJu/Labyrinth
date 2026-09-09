@@ -96,8 +96,6 @@ public class FactionData : ScriptableObject
     public bool   RaisesDead      => raisesDead;
     public bool   ExhumesGraves   => exhumesGraves;
     public GameObject RisenBones  => risenBones;
-    public FactionStance DefaultStance => defaultStance;
-    public IReadOnlyList<Relation> Relations => relations;
 
     // 이 세력이 other를 어떻게 대하는가 (방향별 — other가 나를 어떻게 보는지와 다를 수 있다).
     public FactionStance StanceTo(FactionData other)

@@ -22,9 +22,7 @@ public class TauntOverlay : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("TauntOverlay") { hideFlags = HideFlags.DontSave };
-        go.AddComponent<TauntOverlay>();
-        DontDestroyOnLoad(go);
+        SelfStanding.Create<TauntOverlay>("TauntOverlay");
     }
 
     // **한 줄이 아니라 흐르는 토막들이다**(2026-09-08, 사용자: *"레이캐스트 선보다는 좀 더

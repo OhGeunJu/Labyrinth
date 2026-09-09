@@ -44,9 +44,6 @@ public class NpcData : ScriptableObject
     [Tooltip("EventMerchant 머무는 시간(초)")]
     public float StayDuration = 120f;
 
-    [Tooltip("EventMerchant 목적지 — 비우면 던전 코어 위치 사용")]
-    public Vector3 ArrivalOffset = Vector3.zero;
-
     // **역할의 기본 상품일 뿐이다.** 무엇을 파는가는 폰에 붙인 `Merchant` 컴포넌트가 들고,
     // 그쪽이 비어 있을 때만 이 값이 쓰인다(`UnitBrain.EnsureMerchant`). 여기에만 적을 수
     // 있으면 종류마다 역할 에셋이 하나씩 필요해진다 — 역할 × 상품의 곱셈이 된다.

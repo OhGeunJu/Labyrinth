@@ -60,7 +60,7 @@ public class ColonyUI : MonoBehaviour
         BuildHeader();
         if (panel != null) panel.SetActive(false);
 
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
             AddRow(brain);
         SortRows();
     }

@@ -106,8 +106,6 @@ public class CorpseInventoryUI : MonoBehaviour
     // 창을 새로 안 짓는다 — 하는 일이 글자 그대로 같다: 저쪽 통을 띄우고, 내 배낭을 열고,
     // 사이에서 물건을 옮긴다. 다른 것은 **장비 열이 있느냐**뿐이라 그 줄만 껐다 켠다
     // (`InventoryGridUI`를 새 패널에 또 배선하면 우클릭 보내기·드래그 규칙이 두 벌이 된다).
-    public void ShowContainer(Inventory inv, string title) => Show(inv, title, null);
-
     void Show(Inventory inv, string title, Equipment equip)
     {
         if (_gridUI == null || inv == null) return;

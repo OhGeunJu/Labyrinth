@@ -11,7 +11,7 @@ public class PawnMover : MonoBehaviour
     [Header("Ground")]
     public float gravity = -20f;
     public float groundStickForce = -2f;
-    [Tooltip("이 높이 아래로 떨어지면 마지막 접지 위치로 복귀 (공허 던전 맵 낙하 안전망)")]
+    [Tooltip("이 높이 아래로 떨어지면 마지막 접지 위치로 복귀 (낙하 안전망)")]
     public float fallRecoveryY = -10f;
 
     CharacterController _cc;
@@ -99,8 +99,6 @@ public class PawnMover : MonoBehaviour
     public float replanDistance = 15f;
     [Tooltip("새 목표가 기존 목표와 이 거리 안이면 재계획 생략 (매 틱 같은 목표 재지정 시 재베이크 방지)")]
     public float goalEpsilon = 1.5f;
-    [Tooltip("공허 낭떠러지 가드 전방 확인 거리(m). 던전형 맵에서 이만큼 앞이 바닥 밖이면 정지")]
-    public float ledgeLookahead = 0.6f;
 
     [Header("장애물 회피")]
     [Tooltip("이 거리 안의 다른 폰을 피해 조향한다. 0이면 회피 없음")]
@@ -332,9 +330,67 @@ public class PawnMover : MonoBehaviour
     void BuildRoute()
     {
         _routePending = false;
-        SetCoarseRoute(Pathfinder.ComputeCoarseRoute(transform.position, _finalGoal));
+        Reroute();
         ResetProgress();
+    }
+
+    // ── 길을 다시 낸다 · 알린다 · 포기한다 — 각각 문 하나 ─────────────────
+    //
+    // 막혔을 때의 사다리가 세 갈래(`AdvanceWaypoint` · `TrackGoalGain` · `OnBlocked`)인데,
+    // 셋이 같은 세 걸음(광역에 알림 → 라우트 재계산 → 로컬 재계획 → 포기)을 **각자 적고
+    // 있었다**(2026-09-09에 접었다). 그러면 한 갈래만 뒤처진다 — 실제로 `OnBlocked`의 포기
+    // 로그만 조향 목표와 라우트 점 수를 안 찍어 그 갈래에 걸린 날은 진단이 얇았고, **새 길에
+    // 새 시계**(아래)는 `TrackGoalGain` 한 갈래에만 있었다.
+
+    // 라우트를 다시 내고 로컬도 다시 굽는다.
+    //
+    // **눈금이 길어지면 기록도 따라 올린다 — 다만 시계는 안 만진다**(2026-09-10에 바로잡았다).
+    //
+    // 다시 낸 길은 대개 더 긴 우회라(광역 덩어리를 20초 닫으면 그렇게 된다) 옛 기록이 **다시는
+    // 못 깨는 값**이 되고, 멀쩡히 걷는 폰이 정확히 시계만큼 뒤에 포기한다 — 그래서 기록은 올린다
+    // (`WorkNode`가 `RouteVersion`으로 지키는 그 규칙).
+    //
+    // **그런데 시계까지 되돌리면 포기하는 그물이 통째로 풀린다.** 09-09에 사다리 셋을 이 함수
+    // 하나로 접으면서 그렇게 했더니, 막힐 때마다(`OnBlocked` 3단계) 시계가 0으로 돌아가
+    // `TrackGoalGain`이 **영영 안 걸렸다** — 폰이 거점 둘레를 하염없이 돌았다(사용자:
+    // *"막 던전핵 근처를 뱅글뱅글 돌아"*). 기록만 올려도 새 길에 기회는 준다: 그 길로 25cm만
+    // 나아가면 기록을 깨서 시계가 저절로 되돌아간다.
+    void Reroute()
+    {
+        Vector3 pos = transform.position;
+        SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
         ReplanLocal();
+
+        float now = RemainingRouteDistance(pos);
+        if (now > _bestGoalDist) _bestGoalDist = now;
+    }
+
+    // **광역에게 거짓말이었다고 알리고** 길을 다시 낸다. 조향 목표는 광역이 낸 라우트 위의
+    // 점이라, 그냥 포기하면 다음 명령도 같은 라우트를 받아 같은 벽 앞에 선다 — 광역 셀은
+    // 6.4m 안의 1m짜리 구석 하나로도 열려 있을 수 있다(2026-08-31).
+    //
+    // **한 벽에 한 번**이다(`_reportedUnreachable` — 다시 나아가기 시작하면 `TrackGoalGain`이
+    // 자격을 되돌린다). 돌려주는 것은 *알렸는가*. 목적지 자신은 못 막으므로(`CanReportSteer`)
+    // 그때는 거짓이다.
+    bool ReportAndReroute(Vector3 steer)
+    {
+        if (_reportedUnreachable || !CanReportSteer(steer)) return false;
+        _reportedUnreachable = true;
+        Pathfinder.ReportUnreachable(steer);
+        Reroute();
+        return true;
+    }
+
+    // 갈 수 없는 곳이다. **말하고 멈춘다** — 포기하는 자리가 어디든 같은 진단을 남긴다
+    // (한 자리만 조용해도 그 자리에 걸린 날은 진단이 없는 것과 같다). 멈추면 BT가 다음
+    // 행동을 고른다 — 여기서 계속 붙들면 그 폰은 다른 일을 영영 못 한다.
+    void GiveUp()
+    {
+        Vector3 pos = transform.position;
+        MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
+                                      pos, _finalGoal, _localPath != null, gameObject, _cc,
+                                      RoutePoints, SelectSteeringTarget(pos));
+        StopMovement();
     }
 
     // **못 서는 자리를 겨누면 폰은 영영 도착하지 못한다.**
@@ -358,7 +414,14 @@ public class PawnMover : MonoBehaviour
         var tile = map.WorldToTile(point);
         if (map.IsWorkable(tile)) return point;
 
-        var near = map.FindWorkableNear(tile);
+        // **바위 건너편으로 접지 않는다**(2026-09-10). 캘 바위 둘레에서 *가장 가까운* 설 자리를
+        // 고르면 그것이 **폰의 반대쪽**일 수 있다 — 한 칸 옆인데 돌아가는 길이 없어, 폰은 거기까지
+        // 못 가고 일감을 집었다 놓기를 되풀이한다(10초에 포기 275건이 그 그림이었다).
+        //
+        // 그래서 **내 쪽으로 뚫린 자리를 먼저 고른다**(`LineIsClear` — 어림값이라 굽은 굴에서는
+        // 놓칠 수 있지만, 놓쳐도 예전과 같은 답이 나온다: 거르는 것이 아니라 고르는 눈금이다).
+        var from = map.WorldToTile(transform.position);
+        var near = map.FindWorkableNear(tile, 2, null, t => map.LineIsClear(from, t, 6));
         if (near == tile) return point;      // 둘레까지 다 막혔다 — 여기서 더 해 줄 것이 없다
 
         var snapped = map.TileToWorld(near);
@@ -529,8 +592,8 @@ public class PawnMover : MonoBehaviour
 
         // **마지막 구간은 코스 웨이포인트가 아니라 진짜 목적지를 향한다.**
         //
-        // 코스 라우트는 코스(4m)·L2(100m) **셀 중심**들의 나열이라, 마지막 점이 목적지와
-        // 최대 셀 반쪽만큼 어긋난다. 그걸 그대로 조향 목표로 쓰면 폰은 **셀 중심에 서서 멈추고**,
+        // 라우트는 광역 그래프의 **경계 통과점**들의 나열이라(옛 코스 격자에서는 셀 중심),
+        // 마지막 점이 목적지와 어긋난다. 그걸 그대로 조향 목표로 쓰면 폰은 **거기 서서 멈추고**,
         // `AdvanceWaypoint`가 다시 계획해도 같은 셀 중심이 나와 제자리를 맴돈다 —
         // 그래서 목적지를 2~3m 앞에 두고 영영 못 좁혔다(연구대에 2.6m 앞에서 멈추던 것,
         // "물리적으로 안 막힘 / 경로 있음 / 가는 길 전부 통행"이 나온 이유가 이것이다).
@@ -571,51 +634,16 @@ public class PawnMover : MonoBehaviour
         ReplanLocal();
         if (!IsStuck(pos)) return;
 
-        // 로컬이 막힘 — 전역 재계획(현재 위치 기준 코스 라우트 갱신: 코스 벽 지식 반영)
-        SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
-        ReplanLocal();
-
-        // 그래도 제자리면 정지 (제자리 떨림/무한 루프 방지).
-        //
-        // **말하고 멈춘다**(2026-08-31). 포기하는 자리가 셋인데(`OnBlocked` 마지막 ·
-        // `TrackGoalGain` · 여기) **여기만 조용했다** — 그래서 이 경로에 걸리면 화면에
-        // 아무 단서도 안 남고 *"가다 말고 서는데 포기 메시지도 없다"*로만 보였다.
-        // 진단이 있는데 한 자리만 빠져 있으면, 그 자리에 걸린 날은 진단이 없는 것과 같다.
+        // 로컬이 막힘 — 라우트부터 다시(코스 벽 지식 반영).
+        Reroute();
         if (!IsStuck(pos)) return;
 
-        // **광역에게 거짓말이었다고 알린다**(2026-08-31).
-        //
-        // 여기까지 온 것은 *조향 목표까지 한 발짝도 못 간다*는 뜻이다. 그 목표는 광역이
-        // 낸 라우트 위의 점이므로, 그냥 포기하면 **다음 명령도 같은 라우트를 받아 같은 벽
-        // 앞에 선다**(사용자가 본 그것 — 다시 찍어도 꿈쩍 안 한다). 광역 셀은 3×3로 성기게
-        // 찍어 *하나라도 지나갈 수 있으면 열어 두므로*, **6.4m 셀 안의 1m짜리 구석 하나**가
-        // 라우트를 만들 수 있다. 그 사실을 배우는 길이 이때까지 없었다.
-        //
-        // 알리고 **한 번만 더 해 본다** — 그래도 안 되면 그때 포기한다(무한 재시도는
-        // 이 자리에서 프레임을 먹는다).
-        var steer = SelectSteeringTarget(pos);
-        if (!_reportedUnreachable && CanReportSteer(steer))
-        {
-            _reportedUnreachable = true;
-            Pathfinder.ReportUnreachable(steer);
-            SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
-            ReplanLocal();
-            if (!IsStuck(pos)) return;
-        }
+        // 알리고 **한 번만 더** 해 본다 — 무한 재시도는 이 자리에서 프레임을 먹는다.
+        if (ReportAndReroute(SelectSteeringTarget(pos)) && !IsStuck(pos)) return;
 
-        MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
-                                      pos, _finalGoal, _localPath != null, gameObject, _cc,
-                                      _coarseRoute != null ? _coarseRoute.Count : 0, steer);
-        StopMovement();
-    }
-
-    // 던전형 맵(FloorRequired)에서 다음 스텝이 바닥 밖이면 true.
-    // 현재 타일이 바닥일 때만 발동 — 어쩌다 바닥 밖에 놓인 유닛의 복귀 이동은 막지 않는다.
-    bool IsVoidAhead(Vector3 pos, Vector3 dir)
-    {
-        var map = MapManager.Instance;
-        if (map == null || !map.FloorRequired) return false;
-        return map.IsFloored(pos) && !map.IsFloored(pos + dir * ledgeLookahead);
+        // 그래도 제자리면 정지(제자리 떨림·무한 루프 방지). 2026-08-31까지 여기만 조용해서
+        // *"가다 말고 서는데 포기 메시지도 없다"*로만 보이던 자리다.
+        GiveUp();
     }
 
     // **목적지 자신은 못 막는다**(2026-08-31). `ReportUnreachable`은 광역 셀을 잠시 닫는
@@ -796,27 +824,9 @@ public class PawnMover : MonoBehaviour
         //
         // `AdvanceWaypoint` 쪽에만 알림을 달아 뒀더니 **이 갈래로 빠지는 경우가 통째로
         // 안 배웠다** — 포기하는 자리가 여럿이면 **배우는 자리도 여럿이어야 한다.**
-        var stalledAt = SelectSteeringTarget(pos);
-        if (!_reportedUnreachable && CanReportSteer(stalledAt))
-        {
-            _reportedUnreachable = true;
-            Pathfinder.ReportUnreachable(stalledAt);
-            SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
-            ReplanLocal();
+        if (ReportAndReroute(SelectSteeringTarget(pos))) return;
 
-            // **새 길에는 새 시계를 준다** — 안 그러면 다시 뽑자마자 그 자리에서 포기한다.
-            _noGainTimer  = 0f;
-            _bestGoalDist = RemainingRouteDistance(pos);
-            return;
-        }
-
-        // 갈 수 없는 곳이다. **BT가 다음 행동을 고르게 놓아 준다** — 막혔을 때의 마지막
-        // 단계와 같은 자리이고, 여기서 계속 붙들면 그 폰은 다른 일을 영영 못 한다.
-        MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
-                                      pos, _finalGoal, _localPath != null, gameObject, _cc,
-                                      _coarseRoute != null ? _coarseRoute.Count : 0,
-                                      SelectSteeringTarget(pos));
-        StopMovement();
+        GiveUp();
     }
 
     // 막혔을 때의 대응. **좌우로 번갈아 비켜서지 않는다** — U자로 둘러싸인 자리에서
@@ -845,14 +855,11 @@ public class PawnMover : MonoBehaviour
 
             case 3:   // 로컬 윈도우 밖으로 돌아야 하는 규모 — 전역 경로부터 다시
                 RememberBlockedSpot(pos, desired);
-                SetCoarseRoute(Pathfinder.ComputeCoarseRoute(pos, _finalGoal));
-                ReplanLocal();
+                Reroute();
                 break;
 
             default:  // 포기 — BT가 다른 행동을 고르거나 다음 틱에 다시 명령한다
-                MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
-                                              pos, _finalGoal, _localPath != null);
-                StopMovement();
+                GiveUp();
                 break;
         }
     }
@@ -1017,13 +1024,14 @@ public class PawnMover : MonoBehaviour
         {
             _verticalVel += gravity * Time.deltaTime;
 
-            // 공허 낙하 안전망: 바닥 밖으로 떨어지면 마지막 접지 위치로 복귀
+            // 낙하 안전망: 지형 이음매로 빠져 떨어지면 마지막 접지 위치로 복귀.
+            // (공허 던전의 *바닥 밖*을 잡던 그물인데, 그 설계를 접은 뒤에도 값이 싸서 둔다.)
             if (transform.position.y < fallRecoveryY)
             {
                 StopMovement();
                 _verticalVel = 0f;
                 _cc.enabled = false;
-                transform.position = SafeRecoveryPoint();
+                transform.position = _lastGroundedPos;
                 _cc.enabled = true;
                 return;
             }
@@ -1061,13 +1069,6 @@ public class PawnMover : MonoBehaviour
             {
                 AdvanceWaypoint();
             }
-            else if (_localPath == null && IsVoidAhead(pos, to / dist))
-            {
-                // 공허 낭떠러지 가드: 경로 실패 직선 폴백이 공허를 향할 때만 발동.
-                // 유효한 로컬 경로는 이미 바닥 게이트를 통과했으므로 검사하지 않는다
-                // (좁은 다리에서 전방 샘플이 대각 공허 타일을 찍는 오발 방지).
-                StopMovement();
-            }
             else
             {
                 float weightCorrection = CalcWeightCorrection();
@@ -1089,9 +1090,6 @@ public class PawnMover : MonoBehaviour
 
                 Vector3 desired = to / dist;
                 Vector3 steer   = Steer(pos, desired);
-
-                // 회피/비켜서기로 방향이 틀어졌으니 공허 검사도 실제 진행 방향으로 다시 한다
-                if (_localPath == null && IsVoidAhead(pos, steer)) steer = desired;
 
                 move += steer * effectiveSpeed;
                 TrackProgress(pos, desired, effectiveSpeed);
@@ -1306,32 +1304,6 @@ public class PawnMover : MonoBehaviour
     public Vector3 Goal      => _finalGoal;
     public int     RoutePoints => _coarseRoute != null ? _coarseRoute.Count : 0;
 
-    // 낙하 복구를 **어디로** 할 것인가.
-    //
-    // 마지막 접지 위치를 그냥 쓰면 **무한 낙하**가 된다: 한 번도 땅을 밟은 적 없는 폰은
-    // `_lastGroundedPos`가 태어난 자리(= 바닥 밖)라 되돌려 놔도 다시 떨어지고, 그게 영원히
-    // 반복된다("바닥보다 살짝 밖에서 나와서 계속 떨어져", 2026-08-08).
-    //
-    // 그래서 되돌릴 자리가 **설 수 있는 곳인지 확인**하고, 아니면 가장 가까운 바닥으로 보낸다.
-    Vector3 SafeRecoveryPoint()
-    {
-        var map = MapManager.GetForPosition(_lastGroundedPos);
-        if (map == null || !map.FloorRequired) return _lastGroundedPos;
-
-        var tile = map.WorldToTile(_lastGroundedPos);
-        if (map.IsStandable(tile)) return _lastGroundedPos;
-
-        var safe = map.FindWorkableNear(tile, 10);
-        if (!map.IsWorkable(safe))
-        {
-            Debug.LogWarning($"[낙하복구] {name}: {tile} 주변에 설 수 있는 칸이 없습니다.");
-            return _lastGroundedPos;
-        }
-
-        // 표면 **위에** 세운다 — 표면 Y에 그대로 놓으면 캡슐 아래 절반이 파묻혀 또 밀려난다.
-        // 띄우는 값은 `PawnPlacement`가 답한다(스폰·밀어내기·업기와 같은 한 벌).
-        return PawnPlacement.StandingPos(gameObject, map.TileToGround(safe));
-    }
     // 지금 로컬 정밀 경로를 들고 있는가. 없으면 직선 폴백으로 가는 중이라 물체에 처박힌다 —
     // 포기 진단이 "길을 못 찾은 것"과 "길은 있는데 못 간 것"을 가르는 데 쓴다.
     public bool HasLocalPath => _localPath != null && _localPath.Count > 0;

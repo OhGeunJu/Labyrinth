@@ -116,10 +116,10 @@ public class DroppedItem : MonoBehaviour, IGatherTarget
     // **여럿을 고를 수 있으면 무엇이 골렸는지 보여야 한다.** 패널이 "물건 7개"라고 적어도
     // 어느 일곱인지 모르면 [전부 창고로 옮긴다]를 누르기가 무섭다.
     //
-    // 폰의 발밑 원(`SelectionIndicator`)과 **같은 모양**을 쓴다 — 납작한 원통. 고르는 것이
-    // 폰이든 물건이든 "골렸다"는 신호가 같아야 한다. 다만 색은 다르다(폰=초록, 물건=하늘색):
-    // 운반 지정 구슬이 이미 초록이라 겹치면 둘을 구별할 수 없다.
-    static readonly Color SelectColor = new(0.45f, 0.8f, 1f);
+    // 폰의 발밑 고리(`SelectionIndicator`)와 **같은 모양**을 쓴다(`GroundRing`). 고르는 것이
+    // 폰이든 물건이든 "골렸다"는 신호가 같아야 한다. 다만 색은 다르다(폰=미색, 물건=하늘색):
+    // 운반 지정 구슬과 같은 색이면 *골렸다*와 *찍혔다*를 구별할 수 없다.
+    static readonly Color SelectColor = new(0.45f, 0.8f, 1f, 0.9f);
 
     GameObject _ring;
 
@@ -127,16 +127,7 @@ public class DroppedItem : MonoBehaviour, IGatherTarget
     {
         if (on)
         {
-            if (_ring != null) return;
-
-            _ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            var col = _ring.GetComponent<Collider>();
-            if (col != null) Destroy(col);   // 클릭 판정은 부모 트리거 하나뿐이어야 한다
-
-            _ring.transform.SetParent(transform, false);
-            _ring.transform.localPosition = new Vector3(0f, 0.02f, 0f);
-            _ring.transform.localScale    = new Vector3(0.55f, 0.01f, 0.55f);
-            Tint(_ring, SelectColor);
+            if (_ring == null) _ring = GroundRing.Create(transform, 0.03f, 0.3f, SelectColor, "SelectRing");
             return;
         }
 

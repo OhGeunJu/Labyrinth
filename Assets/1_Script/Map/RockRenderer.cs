@@ -212,8 +212,10 @@ public class RockRenderer : MonoBehaviour
         if (!RockMap.Enabled || startClearing <= 0f) return;
 
         int opened = 0;
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        var all = UnitBrain.All;
+        for (int i = 0; i < all.Count; i++)
         {
+            var brain = all[i];
             var f = brain.GetComponent<Faction>();
             if (f == null || !f.IsPlayer) continue;
 

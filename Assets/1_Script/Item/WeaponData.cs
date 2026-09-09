@@ -44,5 +44,4 @@ public class WeaponData : ItemData
     [Range(0f, 1f)]
     public float EffectChance = 0.2f;
 
-    public bool IsMagicWeapon => Type == WeaponType.Staff;
 }

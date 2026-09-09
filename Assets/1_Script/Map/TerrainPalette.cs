@@ -178,7 +178,6 @@ public class TerrainPalette : ScriptableObject
     int _cliffChannel = -1;
 
     public TerrainLayer[] Layers { get { Build(); return _layers; } }
-    public int CliffChannel      { get { Build(); return _cliffChannel; } }
 
     public int ChannelOf(Biome b)
     {

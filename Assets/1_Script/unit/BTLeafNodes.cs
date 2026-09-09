@@ -826,6 +826,14 @@ public class WorkNode : BTNode
         {
             ResetProgress();
             bb.Mover.StopMovement();
+
+            // **일하는 쪽을 본다**(2026-09-10, 사용자: *"돌을 캐야하는데 허공을 캐"*). 걷는 동안은
+            // `PawnMover`가 가는 쪽을 보게 하는데, 멈춰 서서 일할 때는 **아무도 안 돌려 준다** —
+            // 마지막으로 걷던 방향 그대로 곡괭이를 휘두른다. 겨누는 문은 `FaceTowards` 하나다
+            // (싸우는 중에는 표적이 이기는데, 일하는 폰은 멈춰 있어 다툴 일이 없다).
+            bb.Mover.FaceTowards(jobCenter);
+
+            bb.Working = currentJob.Anim;
             currentJob.Tick(bb.Brain);
             if (currentJob.IsComplete())
             {
@@ -876,8 +884,11 @@ public class WorkNode : BTNode
         else
         {
             bb.Mover.StopMovement();
+            bb.Mover.FaceTowards(nodeCenter);   // 캐는 쪽을 본다 — 일감 쪽과 같은 규칙
+
             var brain = bb.Brain;
             bool isCutting = node.Data != null && node.Data.IsTree;
+            bb.Working = isCutting ? WorkAnim.Chopping : WorkAnim.Mining;
             StatName workStat = isCutting ? StatName.Cutting : StatName.Mining;
             float skill = brain.Stats.GetStat(workStat);
             node.Work(skill, bb.TickDelta);

@@ -126,16 +126,4 @@ public static class WorldSites
         return best;
     }
 
-    public static IEnumerable<Site> Within(WorldNodeContent kind, Vector3 from, float radius)
-    {
-        Ensure();
-        float sqr = radius * radius;
-
-        foreach (var s in _all)
-        {
-            if (s.Kind != kind) continue;
-            float dx = s.Position.x - from.x, dz = s.Position.y - from.z;
-            if (dx * dx + dz * dz <= sqr) yield return s;
-        }
-    }
 }

@@ -38,13 +38,6 @@ public static class CarryCapacity
 
     public static float Free(UnitBrain brain) => Mathf.Max(0f, For(brain) - Load(brain));
 
-    // 한도 대비 얼마나 실었나. 1을 넘으면 과적이다(막지는 않는다 — 아래 주석 참조).
-    public static float LoadRatio(UnitBrain brain)
-    {
-        float cap = For(brain);
-        return cap <= 0f ? 0f : Load(brain) / cap;
-    }
-
     // ── 몇 개나 더 실을 수 있나 ───────────────────────────────────────────────
     // **한도는 자동 운반에만 강제된다.** 플레이어가 배낭에 직접 끌어다 넣는 것은 막지 않고,
     // 대신 무거울수록 느려진다(`PawnMover` / `CombatHandler`의 무게 보정). 손으로 한 일을
@@ -67,10 +60,4 @@ public static class CarryCapacity
         return sum;
     }
 
-    public static float TotalLoad(IEnumerable<UnitBrain> members)
-    {
-        float sum = 0f;
-        if (members != null) foreach (var m in members) sum += Load(m);
-        return sum;
-    }
 }

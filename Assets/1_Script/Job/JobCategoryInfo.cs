@@ -60,18 +60,6 @@ public static class JobCategoryInfo
         JobCategory.Unload,
     };
 
-    // 큐를 타지 않고 플레이어가 대상에 폰을 직접 붙이는 카테고리.
-    //
-    // **채굴은 둘 다다**(2026-08-29) — 자원 노드는 여기(폰을 콕 집어 붙인다), **칸을 찍어
-    // 파는 것은 큐**다(`MineJob`). 지하에서 파는 칸은 수백이라 하나씩 붙일 수가 없다.
-    // 한쪽만 남기면 다른 쪽이 통째로 죽으므로 **두 목록에 다 있는 것이 맞다.**
-    public static readonly JobCategory[] DirectAssign =
-    {
-        JobCategory.Mining,
-        JobCategory.Logging,
-        JobCategory.Guard,
-    };
-
     public static bool IsQueued(JobCategory category)
         => Array.IndexOf(QueueOrder, category) >= 0;
 

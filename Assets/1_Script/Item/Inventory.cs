@@ -171,23 +171,6 @@ public class Inventory : MonoBehaviour
         return true;
     }
 
-    // 외부 인벤토리 출신 아이템이 이 인벤토리 특정 위치에 들어갈 수 있는지 확인
-    public bool CanPlaceExtern(ItemData data, int x, int y, bool rotated)
-    {
-        if (data == null) return false;
-        int w = rotated ? data.Height : data.Width;
-        int h = rotated ? data.Width  : data.Height;
-        return CanPlace(x, y, w, h, null);
-    }
-
-    public bool CanPlaceItem(ItemInstance inst, int x, int y, bool rotated)
-    {
-        if (inst == null || !_items.Contains(inst)) return false;
-        int w = rotated ? inst.Data.Height : inst.Data.Width;
-        int h = rotated ? inst.Data.Width  : inst.Data.Height;
-        return CanPlace(x, y, w, h, inst);
-    }
-
     // 그 자리에 **놓는다. 하나가 걸리면 그것을 밀어낸다**(밀려난 것은 손에 들린다).
     //
     // 격자에서 하는 일은 결국 이것 하나다 — 빈자리면 놓고, 뭔가 걸리면 그것과 바뀐다.

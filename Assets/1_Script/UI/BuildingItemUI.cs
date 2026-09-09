@@ -23,8 +23,6 @@ public class BuildingItemUI : MonoBehaviour, IPointerEnterHandler, IPointerExitH
     [SerializeField] TextMeshProUGUI nameLabel;
     [SerializeField] TextMeshProUGUI costLabel;
 
-    public Image Background => background;
-
     string              _tipTitle;
     System.Func<string> _tipBody;
     bool                _hovering;

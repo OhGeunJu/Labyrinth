@@ -79,12 +79,6 @@ public class StatusEffectSystem : MonoBehaviour
         Debug.Log($"[Status] {gameObject.name} 디버프 제거");
     }
 
-    public void ClearCorruption()
-    {
-        CorruptionGauge = 0f;
-        Debug.Log($"[Status] {gameObject.name} 부패 게이지 초기화");
-    }
-
     void TickDurations()
     {
         for (int i = _active.Count - 1; i >= 0; i--)

@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 // **능동 능력 단축키(1~4).** 고른 폰들이 그 칸의 능력을 쓴다.
@@ -18,9 +17,7 @@ public class AbilityController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("AbilityController");
-        go.AddComponent<AbilityController>();
-        DontDestroyOnLoad(go);
+        SelfStanding.Create<AbilityController>("AbilityController");
     }
 
     SelectionManager _selection;
@@ -31,7 +28,7 @@ public class AbilityController : MonoBehaviour
         if (kb == null) return;
 
         // 글자를 치는 중이거나 지도를 보는 중이면 명령이 아니다 — `DraftController`와 같은 규칙.
-        if (IsTyping() || !GameModeManager.IsField) return;
+        if (InputFocus.IsTyping() || !GameModeManager.IsField) return;
 
         for (int i = 0; i < SlotCount; i++)
         {
@@ -70,9 +67,4 @@ public class AbilityController : MonoBehaviour
         }
     }
 
-    static bool IsTyping()
-    {
-        var sel = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
-        return sel != null && sel.GetComponent<TMPro.TMP_InputField>() != null;
-    }
 }

@@ -17,6 +17,7 @@ using UnityEngine;
 public class FarmHarvestJob : JobBase
 {
     public override JobCategory Category => JobCategory.Farming;
+    public override WorkAnim    Anim     => WorkAnim.Gathering;
 
     // 밭에서 거두기만 한다 — **손만 닿으면 된다.**
     public override float Reach => HandReach;

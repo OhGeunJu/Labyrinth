@@ -23,9 +23,7 @@ public class FormationController : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("FormationController") { hideFlags = HideFlags.DontSave };
-        go.AddComponent<FormationController>();
-        DontDestroyOnLoad(go);
+        SelfStanding.Create<FormationController>("FormationController");
     }
 
     void Update()
@@ -43,7 +41,7 @@ public class FormationController : MonoBehaviour
         if (pick == null) return;
 
         // 글자를 치는 중이면 단축키가 아니다(`DraftController`와 같은 규칙).
-        if (IsTyping()) return;
+        if (InputFocus.IsTyping()) return;
 
         Formation.Current = pick.Value;
 
@@ -53,14 +51,4 @@ public class FormationController : MonoBehaviour
                 $"{Formation.NameOf(Formation.Current)} — 소집(R)한 뒤 우클릭으로 끌어 세운다");
     }
 
-    static bool IsTyping()
-    {
-        var sel = UnityEngine.EventSystems.EventSystem.current != null
-            ? UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject
-            : null;
-        if (sel == null) return false;
-
-        return sel.GetComponent<TMPro.TMP_InputField>() != null
-            || sel.GetComponent<UnityEngine.UI.InputField>() != null;
-    }
 }

@@ -10,6 +10,7 @@ using UnityEngine;
 public class ForageJob : JobBase
 {
     public override JobCategory Category => JobCategory.Foraging;
+    public override WorkAnim    Anim     => WorkAnim.Gathering;
     public override float       Reach    => HandReach;
 
     // **없어졌으면 일감이 아니다** — 다른 폰이 먼저 땄거나 청크가 내려갔다.

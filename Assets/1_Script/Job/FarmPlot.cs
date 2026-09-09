@@ -245,9 +245,6 @@ public class FarmPlot : MonoBehaviour, IWorldClickable
     // 다시 심었다**(화면에는 버튼이 안 먹는 것으로만 보인다).
     bool _clearNext;
 
-    // 거두고 나면 비워지나 — 패널이 그 상태를 띄울 수 있게 열어 둔다(`NextSeed`와 같은 자리).
-    public bool ClearQueued => _clearNext;
-
     // 지금 자라는 것을 거둔 뒤에 바뀔 씨앗. 없으면 그대로 간다.
     public SeedData NextSeed { get; private set; }
 

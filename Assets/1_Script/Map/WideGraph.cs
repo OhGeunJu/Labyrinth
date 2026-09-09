@@ -77,7 +77,6 @@ public class WideGraph
 
     public float CellSize => _cellTiles;
     public int   Cells    => _cells;
-    public int   TileSpan => _tiles;
 
     public WideGraph(int worldTiles, int cellTiles)
     {
@@ -111,6 +110,10 @@ public class WideGraph
     int LinkBase(int cx, int cz, int dir) => (((cz * _cells + cx) * 2) + dir) * MaxLinks;
 
     bool Walk(int tx, int tz) => InTiles(tx, tz) && _walk[TileIdx(tx, tz)] != 0;
+
+    // **1m 걸음 표를 밖에서 읽는 문** — 가장자리 스폰 자리를 뽑는 BFS(`HierarchicalPathfinder.
+    // PickReachableSpread`)가 쓴다. `IsWorkable`을 담아 둔 것이라 같은 답을 다시 뽑을 이유가 없다.
+    public bool WalkableTile(int tx, int tz) => Walk(tx, tz);
 
     // ── 굽기 ─────────────────────────────────────────────────────────────
 

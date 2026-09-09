@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // **업은 것을 받는 자리.**
@@ -34,4 +35,25 @@ public interface ICarrySite
 
     // 알림 문구에 쓸 이름("우리에 이미 다른 사람이 있어…").
     string SiteName { get; }
+}
+
+// **빈 자리 중 가장 가까운 것** — 무덤·우리·화장터가 같은 열 줄을 세 벌 들고 있었다(2026-09-09).
+// 침대는 여기 안 온다(죄수용인지를 같이 물어서 물음이 다르다 — `Bed.FindNearestFreePrison`).
+public static class CarrySites
+{
+    public static T NearestFree<T>(IReadOnlyList<T> all, Vector3 from) where T : Component, ICarrySite
+    {
+        T best = null;
+        float bestSq = float.MaxValue;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var s = all[i];
+            if (s == null || s.IsFull) continue;
+            float sq = (s.transform.position - from).sqrMagnitude;
+            if (sq >= bestSq) continue;
+            best   = s;
+            bestSq = sq;
+        }
+        return best;
+    }
 }

@@ -523,8 +523,6 @@ public class SelectionManager : MonoBehaviour
     // 선택 상태의 주인은 여기 하나뿐이므로 목록도 이 메서드들을 거쳐야 한다 —
     // UI가 제 목록을 따로 들면 월드 선택과 어긋난다.
 
-    public void AddPawn(PawnMover pawn) => AddToSelection(pawn);
-
     // Ctrl+클릭: 이미 있으면 빼고 없으면 더한다.
     public void TogglePawn(PawnMover pawn)
     {
@@ -540,8 +538,6 @@ public class SelectionManager : MonoBehaviour
         if (pawns == null) return;
         foreach (var p in pawns) AddToSelection(p);
     }
-
-    public void ClearPawnSelection() => ClearSelection();
 
     void ClearSelection()
     {

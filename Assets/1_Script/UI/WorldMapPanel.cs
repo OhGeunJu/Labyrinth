@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
@@ -14,7 +13,7 @@ using UnityEngine.UI;
 // 계산된다** — 그래서 가 본 적 없는 데까지 한 번에 그릴 수 있다. 안개는 없다(2026-06-20 결정).
 //
 // **한 번 굽고 캐싱한다** — 256×256이면 `Procedural()`을 65,536번 부르는데, 그건 열 때마다
-// 할 일이 아니다. 지형 프로필이 바뀌면 `Rebake()`.
+// 할 일이 아니다.
 public class WorldMapPanel : MonoBehaviour
 {
     [SerializeField] GameObject panel;
@@ -75,19 +74,9 @@ public class WorldMapPanel : MonoBehaviour
         // **New Input System을 쓴다** — 이 프로젝트는 Player Settings에서 옛 `Input`을 껐다.
         // `UnityEngine.Input`을 부르면 예외가 난다(`DraftController`·`ColonyUI`와 같은 규약).
         var kb = Keyboard.current;
-        if (kb != null && kb.mKey.wasPressedThisFrame && !IsTyping()) Toggle();
+        if (kb != null && kb.mKey.wasPressedThisFrame && !InputFocus.IsTyping()) Toggle();
 
         if (IsOpen) RefreshMarkers();
-    }
-
-    // 글자를 치는 중이면 단축키를 안 먹는다 — 이름 칸에 'm'을 쓰다가 지도가 열리면 안 된다.
-    static bool IsTyping()
-    {
-        var sel = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
-        if (sel == null) return false;
-
-        return sel.GetComponent<TMPro.TMP_InputField>() != null
-            || sel.GetComponent<InputField>() != null;
     }
 
     public void Toggle()
@@ -100,8 +89,6 @@ public class WorldMapPanel : MonoBehaviour
     }
 
     // ── 굽기 ────────────────────────────────────────────────────────────────
-
-    public void Rebake() { if (_tex != null) { Destroy(_tex); _tex = null; } Bake(); }
 
     void Bake()
     {

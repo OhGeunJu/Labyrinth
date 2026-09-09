@@ -39,9 +39,7 @@ public class FarmZoneDesignator : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("FarmZoneDesignator");
-        _instance = go.AddComponent<FarmZoneDesignator>();
-        DontDestroyOnLoad(go);
+        _instance = SelfStanding.Create<FarmZoneDesignator>("FarmZoneDesignator");
     }
 
     // **버튼도 이 문으로 온다**(`ModeBarUI`) — 키로 켠 것과 같은 상태여야 한다.

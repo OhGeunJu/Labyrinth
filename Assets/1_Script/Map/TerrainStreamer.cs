@@ -148,8 +148,6 @@ public class TerrainStreamer : MonoBehaviour
     Vector2Int _sortCenter;
     System.Comparison<Vector2Int> _byDistance;
 
-    public int LiveCount => _live.Count;
-
     // **청크 목록의 주인은 여기 하나다.** 나무·바위·마을을 스트리밍하는 쪽이 반경 계산을
     // 따로 하면 **둘의 답이 어긋나** 지형은 있는데 나무가 없는(또는 그 반대) 칸이 생긴다.
     // 그쪽은 이 소식만 듣는다.

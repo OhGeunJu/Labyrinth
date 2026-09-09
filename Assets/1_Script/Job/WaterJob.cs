@@ -3,6 +3,7 @@ using UnityEngine;
 public class WaterJob : JobBase
 {
     public override JobCategory Category => JobCategory.Farming;
+    public override WorkAnim    Anim     => _phase == Phase.GoToPlot ? WorkAnim.Watering : WorkAnim.None;
 
     // 물을 긷고 붓는 일이라 **손만 닿으면 된다** — 우물이든 밭이든 서 있을 자리가 아니다.
     public override float Reach => HandReach;

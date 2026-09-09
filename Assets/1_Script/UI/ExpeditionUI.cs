@@ -105,7 +105,7 @@ public class ExpeditionUI : MonoBehaviour
         if (content == null || rowTemplate == null) return;
 
         var brains = new List<UnitBrain>();
-        foreach (var b in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        foreach (var b in UnitBrain.All)
         {
             if (b == null) continue;
             var faction = b.GetComponent<Faction>();

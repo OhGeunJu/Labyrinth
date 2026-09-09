@@ -102,17 +102,6 @@ public class SettlementManager : MonoBehaviour
         WorldMap.Instance?.RegisterSettlement(s.WorldNode);
     }
 
-    // 런타임 코어 박기용 편의 진입점: 노드+루트로 정착지를 만들어 등록.
-    public Settlement RegisterAt(Vector2Int node, GameObject root, string name = "정착지")
-    {
-        var existing = FindByNode(node);
-        if (existing != null) return existing;
-
-        var s = new Settlement { Name = name, WorldNode = node, Root = root };
-        Register(s);
-        return s;
-    }
-
     // 현재 활성 정착지의 바이옴 (바이옴 콘텐츠 게이팅용, step 7).
     public Biome ActiveBiome =>
         (WorldMap.Instance != null && Active != null)

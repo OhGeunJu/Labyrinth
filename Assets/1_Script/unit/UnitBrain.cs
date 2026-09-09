@@ -16,6 +16,16 @@ public partial class UnitBrain : MonoBehaviour
     public static event Action<UnitBrain> OnFactionChanged;
     public event Action<float> OnDamaged;
 
+    // **살아 있는 뇌 전부.** 폰을 훑어야 할 때 `FindObjectsByType<UnitBrain>`을 도는 대신 쓴다
+    // (`Faction.All`과 같은 자리) — 여덟 곳이 각자 씬을 훑고 있었다(2026-09-09).
+    // `OnDisable`로 빠지므로 **시체**(`BecomeCorpse`가 끈다)와 꺼진 폰(원정)은 여기 없다.
+    // 씬 훑기는 꺼진 컴포넌트도 돌려줘서, 핵 창의 하수인 수에 시체와 **적 고블린**까지 섞였다.
+    static readonly List<UnitBrain> _all = new();
+    public static IReadOnlyList<UnitBrain> All => _all;
+
+    void OnEnable()  => _all.Add(this);
+    void OnDisable() => _all.Remove(this);
+
     [Header("틱 주기")]
     [SerializeField] float tickInterval = 0.1f;
 
@@ -299,8 +309,6 @@ public partial class UnitBrain : MonoBehaviour
 
     public IReadOnlyList<TraitData> Traits => _traits;
 
-    public bool HasTrait(TraitData trait) => trait != null && _traits.Contains(trait);
-
     // 명세가 들고 온 특성으로 **갈아 끼운다**(스폰 시 한 번). 이미 얹은 것이 있으면 되돌린다 —
     // 안 그러면 `ApplySpec`이 두 번 불릴 때 보정이 두 겹으로 쌓인다.
     void SetTraits(IEnumerable<TraitData> traits)
@@ -325,13 +333,6 @@ public partial class UnitBrain : MonoBehaviour
 
         _traits.Add(trait);
         TraitPool.Apply(trait, Stats);
-        return true;
-    }
-
-    public bool RemoveTrait(TraitData trait)
-    {
-        if (!_traits.Remove(trait)) return false;
-        TraitPool.Remove(trait, Stats);
         return true;
     }
 
@@ -562,6 +563,7 @@ public partial class UnitBrain : MonoBehaviour
         UpdateUnload();
 
         _bb.RestTicked = false;
+        _bb.Working    = WorkAnim.None;   // 이번 틱에 일하면 `WorkNode`가 다시 적는다
         _root.Tick(_bb);
 
         // 전투·소집 등 상위 분기가 휴식을 밀어냈는데 폰이 아직 누워 있으면 일으켜 세운다.
@@ -1188,13 +1190,6 @@ public partial class UnitBrain : MonoBehaviour
     {
         if (_bb == null) return;
         _bb.IsDrafted = false;
-    }
-
-    // 켜고 끄는 문이 하나여야 명령 내는 쪽마다 짝을 안 맞춰도 된다.
-    public void ToggleDraft()
-    {
-        if (_bb == null) return;
-        if (_bb.IsDrafted) Undraft(); else Draft();
     }
 
     public bool IsDrafted => _bb != null && _bb.IsDrafted;

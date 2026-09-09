@@ -5,12 +5,12 @@ using UnityEngine;
 // 실제 계산은 HierarchicalPathfinder에 위임.
 public static class Pathfinder
 {
-    // 코스 라우트 (코스/L2 경로). 없으면 직선 1점.
     // 길찾기가 장애물로 치는 레이어. **진단이 실제 굽기와 같은 것을 봐야** 그림이
     // 거짓말을 안 한다.
     public static LayerMask ObstacleLayer =>
         HierarchicalPathfinder.Instance != null ? HierarchicalPathfinder.Instance.ObstacleLayer : 0;
 
+    // 광역 라우트(복도 안내). 없으면 직선 1점.
     public static List<Vector3> ComputeCoarseRoute(Vector3 from, Vector3 to)
         => HierarchicalPathfinder.Instance != null
             ? HierarchicalPathfinder.Instance.ComputeCoarseRoute(from, to)

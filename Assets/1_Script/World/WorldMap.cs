@@ -203,12 +203,18 @@ public class WorldMap : MonoBehaviour
     // 자동 배치가 *"시작 둘레는 비워 둔다"*를 지키려면 에디터에서도 이걸 알아야 한다.
     public static Vector2Int AuthoredStart
     {
+        get { var src = AuthoredData; return src != null ? src.StartNode : Vector2Int.zero; }
+    }
+
+    // 저작 데이터 — 인스턴스가 있으면 그것, 없으면(에디터) 씬에서 찾는다.
+    // 넷이 각자 이 식을 들고 있었다(2026-09-09).
+    static WorldMapData AuthoredData
+    {
         get
         {
             var inst = Instance;
-            var src  = inst != null ? inst.mapData
-                     : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
-            return src != null ? src.StartNode : Vector2Int.zero;
+            return inst != null ? inst.mapData
+                 : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
         }
     }
 
@@ -219,25 +225,11 @@ public class WorldMap : MonoBehaviour
             var inst = Instance;
             if (inst != null && inst.width > 0) return inst.width;
 
-            var src = inst != null ? inst.mapData
-                    : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
+            var src = AuthoredData;
             return src != null && src.Width > 0 ? src.Width : 16;
         }
     }
 
-    // 저작한 칸 내용물 — 바이옴과 같은 이유로 인스턴스 없이도 읽힌다(도구가 쓴다).
-    public static WorldNodeContent AuthoredContent(int x, int y)
-    {
-        var inst = Instance;
-        if (inst != null && inst._tiles != null && inst.InBounds(new Vector2Int(x, y)))
-            return inst._tiles[x, y].Content;
-
-        var src = inst != null ? inst.mapData
-                : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
-        if (src != null && src.IsSized && src.InBounds(x, y)) return src.Get(x, y).Content;
-
-        return WorldNodeContent.Empty;
-    }
 
     // **월드 좌표의 바이옴.** 장소가 칸이 아니라 좌표가 되면서 묻는 곳이 셋이 됐다
     // (소굴·시장·모집). 각자 지역을 계산하면 반 칸 밀리는 실수가 세 번 난다.
@@ -253,21 +245,13 @@ public class WorldMap : MonoBehaviour
         if (inst != null && inst._tiles != null && inst.InBounds(new Vector2Int(x, y)))
             return inst._tiles[x, y].Biome;
 
-        var src = inst != null ? inst.mapData
-                : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
+        var src = AuthoredData;
         if (src != null && src.IsSized && src.InBounds(x, y)) return src.Get(x, y).Biome;
 
         return Biome.Plains;
     }
 
     // ── 변경 ─────────────────────────────────────────────────────────────────
-
-    public void SetContent(Vector2Int node, WorldNodeContent content)
-    {
-        if (!InBounds(node)) return;
-        _tiles[node.x, node.y].Content = content;
-        OnNodeChanged?.Invoke(node);
-    }
 
     // 코어를 박아 정착지로 승격 (step 4의 코어 배치에서 호출).
     public void RegisterSettlement(Vector2Int node)

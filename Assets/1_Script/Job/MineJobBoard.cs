@@ -34,9 +34,7 @@ public class MineJobBoard : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("MineJobBoard");
-        _instance = go.AddComponent<MineJobBoard>();
-        DontDestroyOnLoad(go);
+        _instance = SelfStanding.Create<MineJobBoard>("MineJobBoard");
     }
 
     static MineJobBoard _instance;

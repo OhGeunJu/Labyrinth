@@ -32,9 +32,7 @@ public class FarmZoneOverlay : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("FarmZoneOverlay") { hideFlags = HideFlags.DontSave };
-        _instance = go.AddComponent<FarmZoneOverlay>();
-        DontDestroyOnLoad(go);
+        _instance = SelfStanding.Create<FarmZoneOverlay>("FarmZoneOverlay");
     }
 
     MeshRenderer _renderer;

@@ -13,6 +13,7 @@ using UnityEngine;
 public class ConstructionJob : JobBase
 {
     public override JobCategory Category => JobCategory.Construction;
+    public override WorkAnim    Anim     => _phase == Phase.Fetch ? WorkAnim.None : WorkAnim.HammerWall;
 
     enum Phase { Fetch, Deliver }
 

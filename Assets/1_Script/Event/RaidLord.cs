@@ -540,9 +540,7 @@ public class RaidLords : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
-        var go = new GameObject("RaidLords") { hideFlags = HideFlags.DontSave };
-        _instance = go.AddComponent<RaidLords>();
-        DontDestroyOnLoad(go);
+        _instance = SelfStanding.Create<RaidLords>("RaidLords");
     }
 
     // 습격을 세운 쪽이 부른다. **아무도 안 보는 습격은 안 부른다** — 그쪽은 세우자마자

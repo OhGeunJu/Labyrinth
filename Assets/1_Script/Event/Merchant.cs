@@ -67,8 +67,6 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
     // 고정 상인(고블린 방어구 상인 등)을 프리팹 하나로 세울 수 있다.
     public bool HasAuthoredData { get; private set; }
 
-    public List<MerchantStockEntry> CurrentStock => Shop.Stock;
-
     // 이 상인의 지갑은 **거점 창고**다. 상인이 선 자리에서 가장 가까운 창고로 넣고 뺀다.
     public TradeAccount Account => new StorageAccount(transform.position);
 

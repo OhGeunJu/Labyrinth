@@ -88,7 +88,7 @@ public class DungeonCoreUI : MonoBehaviour
 
         if (minionCountText != null)
         {
-            int count = CountActiveMinions();
+            int count = _core.CurrentMinionCount;   // 한도를 재는 것과 같은 수
             minionCountText.text = $"하수인: {count}명 활성";
         }
     }
@@ -125,11 +125,4 @@ public class DungeonCoreUI : MonoBehaviour
             child.GetComponent<MinionEntryUI>()?.Refresh();
     }
 
-    static int CountActiveMinions()
-    {
-        int count = 0;
-        foreach (var brain in Object.FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
-            if (brain.Data is MinionData) count++;
-        return count;
-    }
 }

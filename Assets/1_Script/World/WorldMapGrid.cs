@@ -178,13 +178,6 @@ public class WorldMapGrid : MonoBehaviour
         BuildObjects(node);
     }
 
-    public void SetGridVisible(bool on)
-    {
-        showGrid = on;
-        if (_gridLines != null) _gridLines.SetActive(on);
-        else if (on && _built && WorldMap.Instance != null) BuildGridLines(WorldMap.Instance);
-    }
-
     // ── 격자선 ───────────────────────────────────────────────────────────────
 
     // 선분 메시 한 장. 각 선을 칸당 `lineSubdivisions` 조각으로 잘라 지형 표면을 따라가게 한다.

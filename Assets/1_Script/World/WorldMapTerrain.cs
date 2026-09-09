@@ -33,7 +33,6 @@ public class WorldMapTerrain : MonoBehaviour
     Material   _mat;
     float      _spacing = 4f;
 
-    public bool Built => _go != null;
 
     // `WorldMapGrid`가 자기 칸 크기를 넘겨준다 — 지형과 격자가 같은 축척을 써야 한다.
     public void Build(float nodeSpacing)

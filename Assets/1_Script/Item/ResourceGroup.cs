@@ -51,13 +51,4 @@ public static class ResourceGroupExt
         _                      => g.ToString(),
     };
 
-    // 그 묶음에 속한 자원 아이템 전부. **레지스트리에서 훑는다** —
-    // 그래서 모드가 넣은 자원도 자동으로 딸려 온다(enum을 훑던 시절엔 불가능했다).
-    public static System.Collections.Generic.List<ResourceItemData> ItemsIn(ResourceGroup g)
-    {
-        var list = new System.Collections.Generic.List<ResourceItemData>();
-        foreach (var kv in DataManager.AllItems)
-            if (kv.Value is ResourceItemData r && r.Group == g) list.Add(r);
-        return list;
-    }
 }
