@@ -811,10 +811,13 @@ public class WorldBandManager : MonoBehaviour
 
         // ① **지금 보고 있는 거점** — 진짜 적이 필드맵에 선다. 여기가 이 기능의 요점이다:
         //    예고됐던 것이 실제로 문 앞에 나타난다.
+        var edges = new List<Vector3>();
         if (mine && watched && EventManager.Instance != null &&
-            EventManager.Instance.SpawnArrivingBand(band, out var edge))
+            EventManager.Instance.SpawnArrivingBand(band, edges))
         {
-            string dir  = EventManager.CompassFromCore(edge);
+            // **갈래가 여럿이면 여럿을 말한다**(2026-09-09 — 포위). 한 방향만 알리면
+            // 플레이어가 그쪽만 막고, 나머지 갈래는 알림이 거짓말을 한 것이 된다.
+            string dir  = EventManager.CompassFromCore(edges);
             string line = dir != null ? $"{dir}쪽에 들이닥쳤습니다." : "거점에 들이닥쳤습니다.";
             EventNotificationUI.Notify(band.Name, $"{band.Count}명이 {line}", holdWhenHidden: true);
         }

@@ -72,9 +72,9 @@ public class MoveController : MonoBehaviour
 
     void ShowPreview(Vector3 to)
     {
-        var spots = Formation.Drag(_dragStart, to,
-                                   _dragPawns, ShapeFor(_dragPawns), out var facing);
-        FormationPreview.Show(spots, facing);
+        var shape = ShapeFor(_dragPawns);
+        var spots = Formation.Drag(_dragStart, to, _dragPawns, shape, out var facing);
+        FormationPreview.Show(spots, facing, shape);
     }
 
     // **진형은 소집의 것이다** — 안 그러면 짐 나르러 보낼 때도 대형을 잡느라 늘어선다.

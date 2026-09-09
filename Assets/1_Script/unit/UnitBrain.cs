@@ -223,11 +223,22 @@ public partial class UnitBrain : MonoBehaviour
         if (string.IsNullOrEmpty(group) || _rolledAdulthood == null) return;
 
         var rng  = new System.Random(UnityEngine.Random.Range(int.MinValue, int.MaxValue));
-        var next = BackstoryPool.Roll(BackstorySlot.Adulthood, rng, group);
-        if (next == null) return;
+        SetAdulthood(BackstoryPool.Roll(BackstorySlot.Adulthood, rng, group));
+    }
 
-        RememberBackstories(_rolledChildhood, next);
-        SetBackstories(_rolledChildhood, next);
+    // **성년기를 지정해서 갈아 끼운다.** 굴려서 바꾸는 쪽(`RerollAdulthood`)과 **같은 문을
+    // 지난다** — 갈라 두면 한쪽만 `RememberBackstories`를 빠뜨려, 그 뒤에 한 번 더 갈 때
+    // **되돌릴 이전 값이 틀린다**(보정이 두 겹으로 남는다).
+    //
+    // 지금 쓰는 자리는 습격대의 두목이다(`RaidLord.PromoteLeader` — 세게 만들려고 다시
+    // 굴리면 *"무리를 이끈"*이 날아간다).
+    public void SetAdulthood(BackstoryData story)
+    {
+        if (story == null || _rolledAdulthood == null) return;   // 배경을 안 쓰는 종족
+        if (story == Adulthood) return;
+
+        RememberBackstories(_rolledChildhood, story);
+        SetBackstories(_rolledChildhood, story);
     }
 
     void RememberBackstories(BackstoryData childhood, BackstoryData adulthood)

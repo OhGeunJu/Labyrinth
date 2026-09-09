@@ -23,7 +23,7 @@ public static class WorldContentMigrator
     // `5. Place Sites`가 짓는 이름 — `"적 소굴 12,12"`.
     static readonly Regex ToolName = new(@"\s\d+,\d+$");
 
-    [MenuItem("DungeonColony/World/1. Migrate Sites To Chunk Assets")]
+    [MenuItem("DungeonColony/World/Legacy/Migrate Sites To Chunk Assets")]
     static void Migrate()
     {
         var streamer = Object.FindFirstObjectByType<WorldContentStreamer>(FindObjectsInactive.Include);
@@ -139,7 +139,7 @@ public static class WorldContentMigrator
 
     // ── 확인용 ──────────────────────────────────────────────────────────────
 
-    [MenuItem("DungeonColony/World/2. Report World Content")]
+    [MenuItem("DungeonColony/World/Legacy/Report World Content")]
     static void Report()
     {
         var chunks = WorldContentAssets.AllChunks();

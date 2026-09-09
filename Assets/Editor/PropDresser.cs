@@ -77,7 +77,7 @@ public static class PropDresser
         new Dress { Building = "ButcherTable",        Props = new[]{ "furniture/P_PROP_table_dungeon_02" } },
     };
 
-    [MenuItem("DungeonColony/Building/2. Dress Buildings (모델 입히기)")]
+    [MenuItem("DungeonColony/Building/1. Dress Buildings (모델 입히기)")]
     static void Run()
     {
         int done = 0, missing = 0;
@@ -118,7 +118,7 @@ public static class PropDresser
     //
     // 정확히 반대로 한다: `[Art]`를 지우고 렌더러를 켠다. **입힐 때 꺼진 렌더러가 하나도
     // 없었으므로**(그것을 `Run`이 확인하고 경고한다) *"전부 켠다"*가 곧 원래대로다.
-    [MenuItem("DungeonColony/Building/3. Undress Buildings (원래대로)")]
+    [MenuItem("DungeonColony/Building/2. Undress Buildings (원래대로)")]
     static void Undo()
     {
         int done = 0;

@@ -67,6 +67,23 @@ public class BackstoryData : ScriptableObject
     [Tooltip("이 배경이 속한 무리(civilian · bandit · cult · mercenary). 비우면 civilian으로 친다.")]
     public string Group;
 
+    // **이 이력의 주인은 무리를 이끌었다.**
+    //
+    // 습격대의 두목을 뽑는 자리가 이걸 본다(`RaidLord.PromoteLeader`). 그전에는 **스탯만**
+    // 봐서, *"무리를 이끈"* 고블린이 부하로 서고 옆의 힘센 놈이 두목이 됐다 — 그러면
+    // **스탯 창과 머리 위 표식이 서로 다른 말을 한다**(사용자가 판에서 보고 물었다,
+    // 2026-09-09).
+    //
+    // **파생시킬 수 없어서 저작한다.** *"패거리 두목"*이 이끄는 이력이고 *"길잡이"*는
+    // 아니라는 것은 **글에만 있는 사실**이라, 이름이나 스탯 보정에서 짜낼 방법이 없다
+    // (짜내면 제목을 다듬는 날 두목이 사라진다).
+    //
+    // **묶음마다 하나씩 있어야 뜻이 산다** — 없는 묶음(지금은 `cult`)에서는 규칙이 조용히
+    // 안 걸리고 예전처럼 가장 센 놈이 두목이 된다. 틀리지는 않지만 **그 무리만 이력이
+    // 잡졸이다.**
+    [Tooltip("이 이력의 주인은 무리를 이끌었다. 습격대의 두목을 뽑을 때 먼저 본다.")]
+    public bool Leads;
+
     public string DisplayName => !string.IsNullOrWhiteSpace(Title) ? Title : name;
 
     // 스탯 창 툴팁용 — `근력 +8 · 사교 -4`.

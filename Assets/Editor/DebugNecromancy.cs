@@ -10,20 +10,20 @@ using UnityEngine;
 // `Assets/Editor/`에 있으므로 **빌드에 아예 안 들어간다**(`DebugGiveItems`와 같은 자리).
 public static class DebugNecromancy
 {
-    [MenuItem("DungeonColony/Debug: Raise the Dead (검은 교단)")]
+    [MenuItem("DungeonColony/Debug/Raise the Dead (검은 교단)")]
     static void RaiseAsCult() => Raise("Faction_Cult");
 
-    [MenuItem("DungeonColony/Debug: Raise the Dead (망자)")]
+    [MenuItem("DungeonColony/Debug/Raise the Dead (망자)")]
     static void RaiseAsUndead() => Raise("Faction_Undead");
 
     // ── 삭히기 ───────────────────────────────────────────────────────────────
     //
     // 뼈가 되기까지 **게임 내 나흘**(1배속 실기 두 시간)이라, 그냥 두고는 *뼈에서 해골이
     // 선다*를 눈으로 볼 수가 없다. 단계만 앞당긴다 — 규칙은 그대로다.
-    [MenuItem("DungeonColony/Debug: Age Corpses → 썩음")]
+    [MenuItem("DungeonColony/Debug/Age Corpses → 썩음")]
     static void AgeToRotten() => Age(Corpse.FreshDays + 0.1f, "썩음");
 
-    [MenuItem("DungeonColony/Debug: Age Corpses → 뼈")]
+    [MenuItem("DungeonColony/Debug/Age Corpses → 뼈")]
     static void AgeToBones() => Age(Corpse.RottenDays + 0.1f, "뼈");
 
     static void Age(float days, string what)

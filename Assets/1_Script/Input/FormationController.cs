@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// **진형을 고른다 — `F1`~`F4`**(2026-09-08, 사용자 결정).
+// **진형을 고른다 — `F1`~`F5`**(2026-09-08, 사용자 결정. `F5`(사각형)는 2026-09-09에 붙었다).
 //
 // 한 키로 **순환**하게 만들었다가 바꿨다. 순환은 *지금 무엇인지*를 알아야 다음이 뭔지
 // 알 수 있어서, 화면에 상태가 안 보이면 **누를 때마다 무엇이 나올지 모른다.** 번호 키는
@@ -38,6 +38,7 @@ public class FormationController : MonoBehaviour
           : kb.f2Key.wasPressedThisFrame ? Formation.Shape.Line
           : kb.f3Key.wasPressedThisFrame ? Formation.Shape.Column
           : kb.f4Key.wasPressedThisFrame ? Formation.Shape.Wedge
+          : kb.f5Key.wasPressedThisFrame ? Formation.Shape.Ring
           : null;
         if (pick == null) return;
 

@@ -34,7 +34,7 @@ public static class UnderworldSetup
         (Biome.Abyss,     5),   // 심연
     };
 
-    [MenuItem("DungeonColony/World/0. Create Underworld Biomes")]
+    [MenuItem("DungeonColony/World/0a. Create Underworld Biomes")]
     public static void CreateBiomes()
     {
         Directory.CreateDirectory(BiomeDir);
@@ -88,7 +88,7 @@ public static class UnderworldSetup
     const string MatDir  = "Assets/2_Material/Underworld";
     const string RockTex = "Assets/assetsss/Yughues/YughuesFreeRockMaterials/Textures/T_YFRM_02";
 
-    [MenuItem("DungeonColony/World/0. Create Rock Materials")]
+    [MenuItem("DungeonColony/World/0b. Create Rock Materials")]
     public static void CreateRockMaterials()
     {
         System.IO.Directory.CreateDirectory(MatDir);
@@ -246,7 +246,7 @@ public static class UnderworldSetup
     const string WoodItemGuid = "889bd169115baac4f9de284d7066cadc";   // Res_Wood
     const string FungalNodePath = "Assets/5_Data/Resource/FungalWood.asset";
 
-    [MenuItem("DungeonColony/World/0. Create Fungal Wood Source")]
+    [MenuItem("DungeonColony/World/0c. Create Fungal Wood Source")]
     public static void CreateFungalWood()
     {
         var wood = AssetDatabase.LoadAssetAtPath<ItemData>(AssetDatabase.GUIDToAssetPath(WoodItemGuid));
@@ -321,7 +321,7 @@ public static class UnderworldSetup
     const string WoodGuid  = "889bd169115baac4f9de284d7066cadc";   // Res_Wood
     const string StoneGuid = "1bbfcbce39cb01d4fa76acec6a0b64a0";   // Res_Stone
 
-    [MenuItem("DungeonColony/World/0. Swap Wood Costs To Stone")]
+    [MenuItem("DungeonColony/World/0d. Swap Wood Costs To Stone")]
     public static void SwapWoodToStone()
     {
         var wood  = AssetDatabase.LoadAssetAtPath<ItemData>(AssetDatabase.GUIDToAssetPath(WoodGuid));
@@ -361,7 +361,7 @@ public static class UnderworldSetup
 
     // ── 지상 굽기 산출물 지우기 ─────────────────────────────────────────────
 
-    [MenuItem("DungeonColony/World/0. Clear Surface Bakes")]
+    [MenuItem("DungeonColony/World/0e. Clear Surface Bakes")]
     public static void ClearSurfaceBakes()
     {
         // **높이맵과 마스크** — 비가 깎은 지형이다. 지하에는 비가 안 온다.
@@ -487,9 +487,9 @@ public static class UnderworldSetup
         {
             "DungeonColony/Terrain/0. Setup World Streaming",   // 천장 켜기 · 높이맵 떼기 · 렌더러 붙이기
             "DungeonColony/Terrain/9. Create Terrain Palette (지하)",  // 바닥 텍스처를 지하 것으로
-            "DungeonColony/World/0. Create Rock Materials",     // 벽 텍스처도 같은 세트로
-            "DungeonColony/World/0. Swap Wood Costs To Stone",  // 지하에는 나무가 없다 — 돌로
-            "DungeonColony/World/0. Create Fungal Wood Source", // 목재는 균사림에서 캔다
+            "DungeonColony/World/0b. Create Rock Materials",     // 벽 텍스처도 같은 세트로
+            "DungeonColony/World/0d. Swap Wood Costs To Stone",  // 지하에는 나무가 없다 — 돌로
+            "DungeonColony/World/0c. Create Fungal Wood Source", // 목재는 균사림에서 캔다
             "DungeonColony/Terrain/8. Generate Biome Map",      // 지하 바이옴을 깐다
             "DungeonColony/World/3. Open Authoring Scene",      // **장소는 저작 씬에 놓인다**
         };

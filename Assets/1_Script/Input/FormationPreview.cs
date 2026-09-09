@@ -79,12 +79,16 @@ public class FormationPreview : MonoBehaviour
 
     // `spots`는 **진형이 낸 자리 그대로**다 — 여기서 다시 계산하면 미리보기와 실제로 서는
     // 자리가 갈린다(*"보이는 것과 놓이는 것이 다르다"*가 가장 나쁘다).
-    public static void Show(IReadOnlyList<Vector3> spots, Vector3 facing)
+    //
+    // **모양을 같이 받는다** — 사각형만은 *앞줄*이라는 것이 없어서 그림이 달라진다(아래).
+    // `Formation.Current`를 여기서 읽지 않는 이유는 `Formation.Place`와 같다: 그러면
+    // *언제 진형을 쓰는가*(= 소집했나)의 답이 화면 쪽에 숨는다.
+    public static void Show(IReadOnlyList<Vector3> spots, Vector3 facing, Formation.Shape shape)
     {
-        if (Instance != null) Instance.Build(spots, facing);
+        if (Instance != null) Instance.Build(spots, facing, shape);
     }
 
-    void Build(IReadOnlyList<Vector3> spots, Vector3 facing)
+    void Build(IReadOnlyList<Vector3> spots, Vector3 facing, Formation.Shape shape)
     {
         if (spots == null || spots.Count == 0) { _renderer.enabled = false; return; }
 
@@ -95,17 +99,39 @@ public class FormationPreview : MonoBehaviour
 
         _verts.Clear(); _cols.Clear(); _idx.Clear();
 
-        // **가장 앞줄만 다른 색이다.** 자리를 전부 같은 색으로 찍으면 *어디가 앞인가*를
-        // 화살 하나로만 읽어야 하는데, 그건 무리가 커질수록 안 읽힌다.
-        float front = float.MinValue;
-        for (int i = 0; i < spots.Count; i++)
-            front = Mathf.Max(front, Vector3.Dot(spots[i], facing));
-
-        for (int i = 0; i < spots.Count; i++)
+        // **사각형은 전부가 앞이고 각자 바깥을 본다**(2026-09-09). 여기서 앞줄 규칙을 그대로
+        // 쓰면 고리의 앞쪽 한두 칸에만 화살이 붙어 **없는 앞을 있다고 그린다** — 사방에서
+        // 들어올 때 쓰라고 만든 모양인데 그림이 *한 방향을 보고 선다*고 말하는 셈이다.
+        if (shape == Formation.Shape.Ring)
         {
-            bool isFront = Vector3.Dot(spots[i], facing) >= front - Formation.Spacing * 0.5f;
-            Square(spots[i], facing, side, isFront ? FrontColor : SlotColor);
-            if (isFront) Arrow(spots[i], facing, side);
+            var center = Vector3.zero;
+            foreach (var s in spots) center += s;
+            center /= spots.Count;
+
+            foreach (var s in spots)
+            {
+                var out3 = s - center;
+                out3.y = 0f;
+                // 한가운데에 선 사람(고리가 한 칸일 때)은 바라볼 바깥이 없다 — 끈 방향을 준다.
+                var f = out3.sqrMagnitude < 0.01f ? facing : out3.normalized;
+                Square(s, f, Vector3.Cross(Vector3.up, f), FrontColor);
+                Arrow(s, f, Vector3.Cross(Vector3.up, f));
+            }
+        }
+        else
+        {
+            // **가장 앞줄만 다른 색이다.** 자리를 전부 같은 색으로 찍으면 *어디가 앞인가*를
+            // 화살 하나로만 읽어야 하는데, 그건 무리가 커질수록 안 읽힌다.
+            float front = float.MinValue;
+            for (int i = 0; i < spots.Count; i++)
+                front = Mathf.Max(front, Vector3.Dot(spots[i], facing));
+
+            for (int i = 0; i < spots.Count; i++)
+            {
+                bool isFront = Vector3.Dot(spots[i], facing) >= front - Formation.Spacing * 0.5f;
+                Square(spots[i], facing, side, isFront ? FrontColor : SlotColor);
+                if (isFront) Arrow(spots[i], facing, side);
+            }
         }
 
         _mesh.Clear();

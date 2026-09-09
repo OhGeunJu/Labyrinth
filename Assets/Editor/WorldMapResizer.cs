@@ -15,10 +15,10 @@ using UnityEngine;
 // (16 / 32 / 64).
 public static class WorldMapResizer
 {
-    [MenuItem("DungeonColony/Terrain/7. Resize World Map (x2)")]
+    [MenuItem("DungeonColony/Terrain/7a. Resize World Map (x2)")]
     static void Double() => Resize(2);
 
-    [MenuItem("DungeonColony/Terrain/7. Resize World Map (x4)")]
+    [MenuItem("DungeonColony/Terrain/7b. Resize World Map (x4)")]
     static void Quad() => Resize(4);
 
     static void Resize(int factor)

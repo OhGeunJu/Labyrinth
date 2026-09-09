@@ -75,18 +75,18 @@ public static class WorldSceneTerrain
         set { EditorPrefs.SetBool(PrefKey, value); if (!value) Clear(); }
     }
 
-    [MenuItem("DungeonColony/World/6. Terrain In Authoring Scene")]
+    [MenuItem("DungeonColony/Authoring/Terrain In Authoring Scene")]
     static void Toggle() => Enabled = !Enabled;
 
-    [MenuItem("DungeonColony/World/6. Terrain In Authoring Scene", true)]
+    [MenuItem("DungeonColony/Authoring/Terrain In Authoring Scene", true)]
     static bool ToggleCheck()
     {
-        Menu.SetChecked("DungeonColony/World/6. Terrain In Authoring Scene", Enabled);
+        Menu.SetChecked("DungeonColony/Authoring/Terrain In Authoring Scene", Enabled);
         return true;
     }
 
     // 반경은 눈으로 맞추는 값이라 **메뉴에 둔다** — 숫자를 코드에서 고치게 하면 안 맞춘다.
-    const string RadiusMenu = "DungeonColony/World/6a. Scene Terrain Radius/";
+    const string RadiusMenu = "DungeonColony/Authoring/Scene Terrain Radius/";
 
     [MenuItem(RadiusMenu + "2 — 1,280m (좁게)")] static void R2() => Radius = 2;
     [MenuItem(RadiusMenu + "3 — 1,792m")]        static void R3() => Radius = 3;

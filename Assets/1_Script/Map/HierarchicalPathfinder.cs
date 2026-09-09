@@ -445,17 +445,51 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 나온다. 그러면 *어느 쪽을 막을까*가 결정이 아니게 된다 — 알림이 8방위를 알리는 이유가
     // 바로 그건데, 방향이 상수면 그 한 곳만 지켜 놓고 판이 끝난다.
     //
-    // **후보 중에서 고른다** — `minRadius` 밖의 칸을 훑는 김에 **저수지 표본**으로 하나
-    // 뽑는다(목록으로 담으면 굴이 넓을수록 수천 칸이 쌓이는데, 쓰는 것은 한 칸이다).
     // 후보가 하나도 없으면 예전처럼 **가장 먼 칸**으로 떨어진다 — 좁은 굴에서 습격이 통째로
     // 멎는 것이 한쪽에서만 오는 것보다 나쁘다.
+    //
+    // **한 자리를 묻는 것은 여러 자리를 묻는 것의 특수한 경우다**(2026-09-09) — 아래
+    // `PickReachableSpread`가 답하고 여기는 그중 하나를 꺼낸다. 갈라 두면 *상인이 나오는
+    // 자리*와 *습격이 나오는 자리*가 두 벌이 되어, 한쪽만 고치는 날이 반드시 온다.
     public bool TryPickReachable(Vector3 from, float maxRadius, float minRadius, out Vector3 found)
     {
         found = from;
-        if (_coarse == null || !_coarse.InWorldBounds(from)) return false;
+        _picked.Clear();
+        if (PickReachableSpread(from, maxRadius, minRadius, 1, _picked) == 0) return false;
+        found = _picked[0];
+        return true;
+    }
+
+    readonly List<Vector3> _picked = new();
+
+    // ── 여러 방향에서 온다 (2026-09-09) ─────────────────────────────────────
+    //
+    // **포위는 *어디에 서나*가 아니라 *어느 쪽으로 접근하나*다** — 그래서 진형이 아니라
+    // 여기서 시작한다. 가장자리를 하나만 고르는 동안에는 습격이 몇 명이든 **한 줄기**라,
+    // 방어선을 한 곳에 세워 두면 판이 끝났다.
+    //
+    // **한 번의 BFS로 8방위를 한꺼번에 뽑는다** — 방향마다 따로 훑으면 굴을 여덟 번 훑게
+    // 되고(반경 150m면 그것만으로 프레임을 먹는다), 무엇보다 **같은 굴을 여덟 번 훑어도
+    // 답은 한 벌**이다. 훑는 김에 **방위마다 저수지 표본**을 하나씩 든다.
+    //
+    // **고르는 것은 서로 먼 방위다** — 아무렇게나 `count`개를 뽑으면 북과 북동이 같이
+    // 뽑혀 **두 갈래가 나란히 걸어온다**(그건 포위가 아니라 그냥 한 무리다). 처음 하나를
+    // 굴리고, 그다음부터는 **이미 고른 것들에서 가장 먼 방위**를 집는다.
+    //
+    // **모자라면 있는 만큼만 돌려준다** — 굴이 좁아 방위가 하나뿐이면 갈래도 하나다.
+    // 여기서 포기하면 *좁은 굴에서는 습격이 안 온다*가 되는데, 그건 한쪽에서만 오는 것보다
+    // 훨씬 나쁘다(`TryFindEdgeSpawn`이 직선 방식으로 떨어지는 것과 같은 규칙).
+    public int PickReachableSpread(Vector3 from, float maxRadius, float minRadius,
+                                   int count, List<Vector3> into)
+    {
+        if (into == null) return 0;
+        into.Clear();
+        count = Mathf.Max(1, count);
+
+        if (_coarse == null || !_coarse.InWorldBounds(from)) return 0;
 
         var start = _coarse.WorldToCell(from);
-        if (!_coarse.IsWalkable(start.x, start.y)) return false;
+        if (!_coarse.IsWalkable(start.x, start.y)) return 0;
 
         int w = _coarse.Width, h = _coarse.Height, n = w * h;
         if (_bfsSeen == null || _bfsSeen.Length != n) { _bfsSeen = new bool[n]; _bfsQueue = new int[n]; }
@@ -467,12 +501,14 @@ public class HierarchicalPathfinder : MonoBehaviour
         _bfsQueue[tail++] = si;
 
         float maxSqr = maxRadius * maxRadius;
-        float minSqr  = minRadius * minRadius;
+        float minSqr = minRadius * minRadius;
         float bestSqr = -1f;
         int   best    = si;
 
-        int pick   = si;   // 저수지 표본
-        int picked = 0;
+        // 방위마다 저수지 표본 하나. `-1`은 그쪽에 후보가 없다는 뜻이다.
+        var sectorPick   = new int[Sectors];
+        var sectorSeen   = new int[Sectors];
+        for (int s = 0; s < Sectors; s++) sectorPick[s] = -1;
 
         while (head < tail)
         {
@@ -488,7 +524,11 @@ public class HierarchicalPathfinder : MonoBehaviour
             if (d > bestSqr) { bestSqr = d; best = i; }
 
             // **훑는 김에 뽑는다** — 몇 개가 나올지 모르는 채로 균등하게 하나를 고르는 방법.
-            if (d >= minSqr && Random.Range(0, ++picked) == 0) pick = i;
+            if (d >= minSqr)
+            {
+                int sec = SectorOf(dx, dz);
+                if (Random.Range(0, ++sectorSeen[sec]) == 0) sectorPick[sec] = i;
+            }
 
             for (int k = 0; k < 4; k++)
             {
@@ -503,18 +543,73 @@ public class HierarchicalPathfinder : MonoBehaviour
             }
         }
 
-        if (bestSqr < 0f) return false;
+        if (bestSqr < 0f) return 0;
 
-        int chosen = picked > 0 ? pick : best;
-        var c   = _coarse.CellToWorld(new Vector2Int(chosen % w, chosen / w));
-        var map = MapManager.Instance;
+        // **최소 거리를 채운 방위가 하나도 없으면 가장 먼 칸이라도 쓴다.**
+        int available = 0;
+        for (int s = 0; s < Sectors; s++) if (sectorPick[s] >= 0) available++;
+        if (available == 0)
+        {
+            into.Add(Resolve(best, w, from.y));
+            return 1;
+        }
 
-        // **셀 한복판이 바위일 수 있다**(셀은 한 칸이라도 열리면 열린 것으로 친다) —
-        // 코스 waypoint와 같은 이유로 설 수 있는 자리로 옮긴다.
-        found = map != null ? OpenSpotNear(map, new Vector3(c.x, from.y, c.z))
-                            : new Vector3(c.x, from.y, c.z);
-        return true;
+        // **서로 먼 방위부터 집는다.** 첫 하나는 굴리고(늘 같은 방위에서 시작하면 갈래가
+        // 하나일 때 방향이 다시 상수가 된다), 그다음부터는 이미 고른 것들에서 가장 먼 것.
+        var chosen = new List<int>(Mathf.Min(count, available));
+        int seed = Random.Range(0, Sectors);
+        for (int s = 0; s < Sectors && chosen.Count == 0; s++)
+        {
+            int cand = (seed + s) % Sectors;
+            if (sectorPick[cand] >= 0) chosen.Add(cand);
+        }
+
+        while (chosen.Count < count && chosen.Count < available)
+        {
+            int pickSec = -1, pickGap = -1;
+            for (int s = 0; s < Sectors; s++)
+            {
+                if (sectorPick[s] < 0 || chosen.Contains(s)) continue;
+
+                int gap = Sectors;
+                foreach (int c in chosen) gap = Mathf.Min(gap, SectorGap(s, c));
+                if (gap > pickGap) { pickGap = gap; pickSec = s; }
+            }
+            if (pickSec < 0) break;
+            chosen.Add(pickSec);
+        }
+
+        foreach (int s in chosen) into.Add(Resolve(sectorPick[s], w, from.y));
+        return into.Count;
     }
+
+    // 8방위. `EventManager`가 알림에 쓰는 나눔과 같은 수다 — 갈리면 *두 방향에서 온다*고
+    // 알려 놓고 실제로는 같은 방위에서 나오는 일이 생긴다.
+    const int Sectors = 8;
+
+    static int SectorOf(float dx, float dz)
+    {
+        int i = Mathf.RoundToInt(Mathf.Atan2(dz, dx) * Mathf.Rad2Deg / (360f / Sectors));
+        return ((i % Sectors) + Sectors) % Sectors;
+    }
+
+    // 방위 사이의 거리 — 원형이라 반대로 도는 쪽이 짧을 수 있다.
+    static int SectorGap(int a, int b)
+    {
+        int d = Mathf.Abs(a - b);
+        return Mathf.Min(d, Sectors - d);
+    }
+
+    // **셀 한복판이 바위일 수 있다**(셀은 한 칸이라도 열리면 열린 것으로 친다) —
+    // 코스 waypoint와 같은 이유로 설 수 있는 자리로 옮긴다.
+    Vector3 Resolve(int index, int w, float y)
+    {
+        var c   = _coarse.CellToWorld(new Vector2Int(index % w, index / w));
+        var map = MapManager.Instance;
+        var at  = new Vector3(c.x, y, c.z);
+        return map != null ? OpenSpotNear(map, at) : at;
+    }
+
 
     // ── 코스 waypoint를 벽에서 뗀다 ─────────────────────────────────────────
     //

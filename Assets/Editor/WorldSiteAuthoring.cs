@@ -20,7 +20,7 @@ public static class WorldSiteAuthoring
 
     // ── 1. 땅을 띄운다 ──────────────────────────────────────────────────────
 
-    [MenuItem("DungeonColony/Terrain/A. Show Terrain Here (3x3)")]
+    [MenuItem("DungeonColony/Authoring/Show Terrain Here (3x3)")]
     static void ShowHere()
     {
         TerrainAuthoring.SyncFromScene();
@@ -66,7 +66,7 @@ public static class WorldSiteAuthoring
                   "여기에 프리팹을 놓고 `B. Save Selection As Site`. 끝나면 `C. Hide Terrain`.");
     }
 
-    [MenuItem("DungeonColony/Terrain/C. Hide Terrain")]
+    [MenuItem("DungeonColony/Authoring/Hide Terrain")]
     static void HideHere()
     {
         var root = GameObject.Find(TerrainAuthoring.PreviewRoot);
@@ -75,7 +75,7 @@ public static class WorldSiteAuthoring
 
     // ── 3. 고른 것을 장소로 굽는다 ──────────────────────────────────────────
 
-    [MenuItem("DungeonColony/Terrain/B. Save Selection As Site")]
+    [MenuItem("DungeonColony/Authoring/Save Selection As Site")]
     static void SaveSelection()
     {
         var sel = Selection.activeGameObject;

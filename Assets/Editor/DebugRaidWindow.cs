@@ -13,7 +13,7 @@ using UnityEngine;
 // `Assets/Editor/`에 있으므로 **빌드에 아예 안 들어간다**.
 public class DebugRaidWindow : EditorWindow
 {
-    [MenuItem("DungeonColony/Debug: 습격 부르기")]
+    [MenuItem("DungeonColony/Debug/습격 부르기")]
     static void Open()
     {
         var w = GetWindow<DebugRaidWindow>("습격");
@@ -108,15 +108,26 @@ public class DebugRaidWindow : EditorWindow
             if (lord == null) continue;
 
             // **지휘관을 같이 적는다** — 안 보이면 스탯만 조용히 오른 것이라 뜻이 없다.
-            string boss = lord.Leader != null ? $"   지휘관: {lord.Leader.name}" : "";
+            // **이력까지 적는다**(2026-09-09). 두목을 뽑는 기준이 스탯 하나가 아니게 됐으므로
+            // (`무리를 이끈` 이력이 먼저다) *왜 저놈이 두목인가*를 이름만으로는 못 읽는다.
+            string story = lord.Leader != null && lord.Leader.Adulthood != null
+                ? $"({lord.Leader.Adulthood.DisplayName})" : "";
+            string boss = lord.Leader != null ? $"   지휘관: {lord.Leader.name} {story}" : "";
+
+            // **갈래 수도 적는다**(2026-09-09 — 포위). 화면에서는 폰이 걷는 것만 보여
+            // *한 갈래로 왔나 나뉘어 왔나*를 못 가리고, 안 나뉘었을 때는 **아무 표시도
+            // 안 난다** — 그러면 *"포위가 안 된다"*가 ① 무리가 작아서 ② 방위를 못 찾아서
+            // 중 어느 쪽인지 알 방법이 없다.
+            string prongs = lord.ProngCount > 1 ? $"   {lord.ProngCount}갈래" : "   한 갈래";
             EditorGUILayout.LabelField(
-                $"{i + 1}. {Label(lord.Current)}   {lord.StandingCount} / {lord.Initial}명{boss}");
+                $"{i + 1}. {Label(lord.Current)}   {lord.StandingCount} / {lord.Initial}명{prongs}{boss}");
         }
 
         EditorGUILayout.HelpBox(
             "접근: 집결지에 모인다 (산 멤버 6할이 오면 돌격)\n" +
             "돌격: 핵으로 간다\n" +
-            "후퇴: 서 있는 놈이 처음의 절반 이하 — 걸어 나간다 (다시 안 온다)",
+            "후퇴: 서 있는 놈이 처음의 절반 이하 — 걸어 나간다 (제가 들어온 문으로)\n" +
+            $"갈래: {RaidLord.ProngSize}명당 하나, 최대 {RaidLord.MaxProngs} — 서로 먼 방위에서 들어온다",
             MessageType.None);
     }
 

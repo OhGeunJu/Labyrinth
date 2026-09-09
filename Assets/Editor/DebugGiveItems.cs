@@ -30,7 +30,7 @@ public static class DebugGiveItems
 
     static readonly List<Storage> _chests = new();
 
-    [MenuItem("DungeonColony/Debug: Give All Items")]
+    [MenuItem("DungeonColony/Debug/Give All Items")]
     static void GiveAllToStorage()
     {
         if (!EnsurePlaying()) return;
@@ -100,7 +100,7 @@ public static class DebugGiveItems
     //
     // `Debug: Give All Items`와 다른 축이다 — 그건 **내 창고**를 채우고, 이건 **저 폰**을 채운다.
     // 상대에게 물건을 쥐여 주는 길은 그것 말고는 없다.
-    [MenuItem("DungeonColony/Debug: Arm Selected Pawn")]
+    [MenuItem("DungeonColony/Debug/Arm Selected Pawn")]
     static void ArmSelectedPawn()
     {
         if (!EnsurePlaying()) return;
@@ -180,7 +180,7 @@ public static class DebugGiveItems
     // 하는 건 시험이 아니라 준비 작업이다.
     const int DebugGold = 5000;
 
-    [MenuItem("DungeonColony/Debug: Add Gold")]
+    [MenuItem("DungeonColony/Debug/Add Gold")]
     static void AddGold()
     {
         if (!EnsurePlaying()) return;
@@ -189,7 +189,7 @@ public static class DebugGiveItems
         Debug.Log($"[Debug] 골드 +{DebugGold} → 잔고 {Wallet.Balance} G");
     }
 
-    [MenuItem("DungeonColony/Debug: Complete All Research")]
+    [MenuItem("DungeonColony/Debug/Complete All Research")]
     static void CompleteAllResearch()
     {
         if (!EnsurePlaying()) return;

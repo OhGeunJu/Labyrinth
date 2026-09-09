@@ -267,7 +267,7 @@ public WorldNodeContent Content;  // ← 저작 표면으로서는 죽는다
 - **`WorldSitePlacer` (`5.`)** — 배열이 아니라 **저작 씬에 인스턴스를 놓는다**(`FromMap` 태그를
   달아서). `FromMap` 규칙은 그대로 살아야 한다 — 손으로 놓은 것을 도구가 지나가는 것이 이
   도구를 다시 돌릴 수 있게 하는 유일한 이유다.
-- **`WorldSiteAuthoring` (`A/B.`)** — `B. Save Selection As Site`(마을을 프리팹으로 묶기)는
+- **`WorldSiteAuthoring` (`A/B.`)** — `Authoring → Save Selection As Site`(마을을 프리팹으로 묶기)는
   **남는다.** 다만 **좌표를 등록하는 일은 없어진다** — 씬에 있는 그 자리가 곧 좌표다.
 - **`TerrainDeltaBaker` (`1~3.`)** — 그대로 쓰되 `Bake World`가 같이 부른다.
 - **이행 도구 (일회성)** — 지금 `sites` 배열 → 저작 씬 인스턴스. 옮긴 뒤 **배열은 비운다.**
@@ -321,7 +321,7 @@ public WorldNodeContent Content;  // ← 저작 표면으로서는 죽는다
    - **시드 하나에서 전부 나온다.** 마음에 안 들면 시드를 바꿔 다시 굴린다.
 
    (아래는 대체되기 전의 기록이다.) `5. Place Sites`와
-   `B. Save Selection As Site`가 **저작 씬에 놓는다.** 청크 에셋에 쓰는 문은 이제
+   `Authoring → Save Selection As Site`가 **저작 씬에 놓는다.** 청크 에셋에 쓰는 문은 이제
    `5. Bake World` **하나뿐**이다.
    - **`B.`가 청크 에셋에 직접 쓰면 안 되는 이유**: 그러면 저작 씬이 모르는 물건이 되고,
      다음 굽기가 *"씬에 없으니 지워진 것"*으로 보아 **없애 버린다**(굽기는 지우기까지 한다).

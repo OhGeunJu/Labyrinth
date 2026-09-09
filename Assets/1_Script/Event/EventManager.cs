@@ -93,11 +93,13 @@ public class EventManager : MonoBehaviour
 
         // 자리를 못 찾으면 조용히 접는다 — **알림이 먼저 나가면** "지원군이 온다"고 해 놓고
         // 아무도 안 온다(`TryRollEvent`가 지키는 것과 같은 순서).
-        if (!TryFindEdgeSpawn(out var edge)) return;
+        // 구원은 **한 무리가 걸어 들어오는 것**이라 갈래가 하나다.
+        _edgeBuf.Clear();
+        if (TryFindEdgeSpawns(1, _edgeBuf) == 0) return;
 
-        SpawnReinforcement(data, edge);
+        SpawnReinforcement(data, _edgeBuf[0]);
         OnEventTriggered?.Invoke(data);
-        NotifyDirection(data, edge);
+        NotifyDirection(data, _edgeBuf);
     }
 
     // 습격이 벌어졌다 — 구원이 올지 굴린다. **먼저 예고하지 않는다**: 올지 모르는 채로
@@ -221,7 +223,7 @@ public class EventManager : MonoBehaviour
             return;
         }
 
-        Vector3 edge = Vector3.zero;
+        var edges = new List<Vector3>();
         bool needsSpawn = data.EventType is GameEventType.Raid
                                          or GameEventType.Merchant
                                          or GameEventType.Reinforcement;
@@ -231,12 +233,18 @@ public class EventManager : MonoBehaviour
             return;
         }
 
-        if (needsSpawn && !TryFindEdgeSpawn(out edge))
+        // **습격만 여러 갈래를 묻는다**(2026-09-09 — 포위). 상인도 지원군도 *한 무리가
+        // 걸어 들어오는 것*이라 나눌 뜻이 없다 — 나누면 상인 하나가 두 방향에서 온다.
+        // **갈래 수는 `RaidLord`가 답한다**(여기서 또 정하면 규칙이 두 벌이 된다).
+        if (needsSpawn && TryFindEdgeSpawns(
+                data.EventType == GameEventType.Raid ? RaidLord.ProngsFor(data.EnemyCount) : 1,
+                edges) == 0)
         {
             Debug.LogWarning($"[이벤트] '{data.EventName}' — 유닛이 설 수 있는 맵 가장자리를 " +
                              "못 찾아 건너뜁니다(바닥이 너무 좁거나 전부 막혔습니다).");
             return;
         }
+        Vector3 edge = edges.Count > 0 ? edges[0] : Vector3.zero;
 
         OnEventTriggered?.Invoke(data);
 
@@ -245,7 +253,7 @@ public class EventManager : MonoBehaviour
         bool stood = true;
         switch (data.EventType)
         {
-            case GameEventType.Raid:          stood = SpawnRaid(data, edge);  break;
+            case GameEventType.Raid:          stood = SpawnRaid(data, edges); break;
             case GameEventType.Merchant:      SpawnMerchant(data, edge);      break;
             case GameEventType.Reinforcement: SpawnReinforcement(data, edge); break;
             case GameEventType.Discovery:     SpawnDiscovery(data);           break;
@@ -255,15 +263,17 @@ public class EventManager : MonoBehaviour
         // 훑어 찾아야 한다 — 습격은 어느 쪽을 막을지가 곧 대응이다.
         // `Notify`는 같은 창을 다시 쓰므로 위에서 뜬 설명 위에 방향까지 얹힌다
         // (`SpawnDiscovery`가 얻은 물건을 알리는 것과 같은 길).
-        if (needsSpawn && stood) NotifyDirection(data, edge);
+        if (needsSpawn && stood) NotifyDirection(data, edges);
     }
 
-    void NotifyDirection(GameEventData data, Vector3 edge)
+    void NotifyDirection(GameEventData data, List<Vector3> edges)
     {
         var core = DungeonCore.Instance;
         if (core == null) return;
 
-        string dir = DirectionFrom(core.transform.position, edge);
+        // **갈래가 여럿이면 여럿을 말한다**(2026-09-09) — 포위인데 한 방향만 알리면
+        // 플레이어는 그쪽만 막고, 나머지 갈래는 **알림이 거짓말을 한 것**이 된다.
+        string dir = DirectionsFrom(core.transform.position, edges);
         if (dir == null) return;
 
         // 상인은 **무엇을 파는지**가 갈 이유를 만든다 — 무기 상인이면 가고 재료 상인이면
@@ -282,6 +292,21 @@ public class EventManager : MonoBehaviour
 
     static readonly string[] Compass = { "북", "북동", "동", "남동", "남", "남서", "서", "북서" };
 
+    // 여러 자리를 하나의 말로 — **같은 방위는 한 번만 적는다**(갈래 둘이 같은 방위로
+    // 떨어지면 *"북동·북동쪽"*이 된다). 순서는 나침반 순서로 고정한다 — 뽑힌 순서대로
+    // 적으면 같은 습격을 다시 봐도 말이 달라진다.
+    static string DirectionsFrom(Vector3 origin, List<Vector3> points)
+    {
+        if (points == null || points.Count == 0) return null;
+
+        var seen = new List<string>();
+        foreach (var name in Compass)
+            foreach (var p in points)
+                if (DirectionFrom(origin, p) == name) { seen.Add(name); break; }
+
+        return seen.Count == 0 ? null : string.Join("·", seen);
+    }
+
     // 핵에서 본 8방위. +Z가 북, 시계 방향.
     static string DirectionFrom(Vector3 origin, Vector3 point)
     {
@@ -298,21 +323,32 @@ public class EventManager : MonoBehaviour
 
     // **참을 돌려주면 진짜로 섰다는 뜻이다.** 거짓이면 그 자리에서 추상으로 끝났다 —
     // 부르는 쪽이 방향 알림을 건너뛴다.
-    bool SpawnRaid(GameEventData data, Vector3 edge)
+    bool SpawnRaid(GameEventData data, List<Vector3> edges)
     {
         if (data.EnemyPrefabs == null || data.EnemyPrefabs.Count == 0) return false;
+        if (edges == null || edges.Count == 0) return false;
 
         var core     = DungeonCore.Instance;
         var used     = new HashSet<Vector2Int>();   // 한 칸에 둘을 낳지 않는다
         var arrivals = new List<GameObject>();
+
+        // **갈래마다 한 무리씩 세운다**(2026-09-09 — 포위).
+        //
+        // **돌아가며 넣는다** — 앞에서부터 뭉텅이로 자르면 프리팹 목록의 앞쪽이 한 갈래에
+        // 몰려 **한 갈래는 전부 궁수, 다른 갈래는 전부 근접**이 된다. 그러면 갈래마다
+        // 삼각형을 세워도 뾰족한 쪽에 설 근접이 아예 없는 무리가 생긴다.
+        var prongs = new List<RaidLord.Prong>(edges.Count);
+        foreach (var e in edges) prongs.Add(new RaidLord.Prong(e));
 
         for (int i = 0; i < data.EnemyCount; i++)
         {
             var prefab = data.EnemyPrefabs[Random.Range(0, data.EnemyPrefabs.Count)];
             if (prefab == null) continue;
 
-            var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used));
+            var prong = prongs[i % prongs.Count];
+            var go = SpawnPawn(prefab, ScatterNear(prong.Edge, 3f, used));
             arrivals.Add(go);
+            prong.Members.Add(go);
         }
 
         // **어디로 갈지는 이제 `RaidLord`가 든다**(2026-09-07 — `docs/design_raid_lord.md`).
@@ -332,7 +368,7 @@ public class EventManager : MonoBehaviour
         //
         // **구원군도 시체 일으키기도 안 붙인다** — 둘 다 *현장에서 벌어지는 일*이라
         // 아무도 안 보는 판정에 얹으면 결과에 안 나타나고 알림만 늘어난다.
-        var home = core != null ? core.transform.position : edge;
+        var home = core != null ? core.transform.position : edges[0];
         if (!SimLocality.IsSimulated(home))
         {
             var brains = new List<UnitBrain>();
@@ -356,7 +392,7 @@ public class EventManager : MonoBehaviour
 
         // **추상으로 푸는 갈래를 지나온 뒤다** — 아무도 안 보는 습격은 위에서 이미 결과를 내고
         // 폰을 파괴했으므로 지휘할 무리가 없다.
-        RaidLords.Lead(arrivals, edge, core != null ? core.transform.position : edge);
+        RaidLords.Lead(prongs, core != null ? core.transform.position : edges[0]);
 
         TryScheduleRescue();
         return true;
@@ -373,26 +409,36 @@ public class EventManager : MonoBehaviour
     //
     // 자리를 못 찾으면 **거짓을 돌려준다** — 호출자가 그때는 알림 대신 다른 처리를 한다
     // (알림만 띄우고 아무도 안 오면 "왜 아무 일도 없지"가 된다).
-    public bool SpawnArrivingBand(WorldBand band, out Vector3 edge)
+    public bool SpawnArrivingBand(WorldBand band, List<Vector3> edges)
     {
-        edge = Vector3.zero;
+        if (edges == null) return false;
+        edges.Clear();
         if (band == null || !band.IsAlive) return false;
 
         // **지도에서 걸어온 무리도 같다** — 한쪽만 막으면 *핵도 없는데 지도에서만 쳐들어온다*.
         if (!CanRaid) return false;
-        if (!TryFindEdgeSpawn(out edge)) return false;
+
+        // **포위도 양쪽에 다 붙인다**(2026-09-09) — 한쪽만 붙이면 *이벤트 습격만 갈라져
+        // 온다*가 되는데, 플레이어에게 그 둘은 똑같이 '적이 몰려온 것'이다(구원·시체
+        // 일으키기를 양쪽에 붙인 것과 같은 이유).
+        if (TryFindEdgeSpawns(RaidLord.ProngsFor(band.Count), edges) == 0) return false;
 
         var core     = DungeonCore.Instance;
         var used     = new HashSet<Vector2Int>();
         var arrivals = new List<GameObject>();
         int spawned  = 0;
 
+        var prongs = new List<RaidLord.Prong>(edges.Count);
+        foreach (var e in edges) prongs.Add(new RaidLord.Prong(e));
+
         foreach (var m in band.Members)
         {
             if (m == null || m.Prefab == null) continue;
 
-            var go = SpawnPawn(m.Prefab, ScatterNear(edge, 3f, used));
+            var prong = prongs[spawned % prongs.Count];
+            var go = SpawnPawn(m.Prefab, ScatterNear(prong.Edge, 3f, used));
             arrivals.Add(go);
+            prong.Members.Add(go);
             spawned++;
 
             // 지도에서 본 그 사람을 그대로 세운다(이름·스탯·특성).
@@ -416,7 +462,7 @@ public class EventManager : MonoBehaviour
         // 교단은 시체를 그냥 지나친다 — 플레이어에게 그 둘은 똑같이 '교단이 몰려온 것'이다
         // (구원이 양쪽에 다 붙는 것과 같은 이유).
         if (spawned > 0) Necromancy.OnRaidArrived(arrivals);
-        if (spawned > 0) RaidLords.Lead(arrivals, edge, core != null ? core.transform.position : edge);
+        if (spawned > 0) RaidLords.Lead(prongs, core != null ? core.transform.position : edges[0]);
 
         // **지도에서 걸어온 습격에도 구원이 온다.** 여기를 빠뜨리면 "이벤트로 온 습격에만
         // 용병이 온다"가 되는데, 플레이어에게 그 둘은 똑같이 '적이 몰려온 것'이다.
@@ -430,6 +476,14 @@ public class EventManager : MonoBehaviour
     {
         var core = DungeonCore.Instance;
         return core != null ? DirectionFrom(core.transform.position, point) : null;
+    }
+
+    // **갈래가 여럿이면 여럿을 말한다** — 이벤트 습격이 쓰는 것과 같은 말이라야
+    // *"북동·남서"*가 어느 문으로 왔는지에 따라 달라지지 않는다.
+    public static string CompassFromCore(List<Vector3> points)
+    {
+        var core = DungeonCore.Instance;
+        return core != null ? DirectionsFrom(core.transform.position, points) : null;
     }
 
     // ── 지원군 ───────────────────────────────────────────────────────────────
@@ -625,17 +679,30 @@ public class EventManager : MonoBehaviour
         return false;
     }
 
-    bool TryFindEdgeSpawn(out Vector3 spawn)
+    readonly List<Vector3> _edgeBuf = new();
+
+    // **밖에서 오는 것이 설 자리 — 답은 여기 한 벌이다**(2026-09-09에 여러 방향을 받도록
+    // 넓혔다). 상인도 지원군도 구원도 습격도 같은 문을 지난다: 갈라 두면 *상인이 나오는
+    // 자리*와 *습격이 나오는 자리*가 두 벌이 되어, 한쪽만 고치는 날이 반드시 온다.
+    //
+    // **몇 갈래로 나눠 들어올지는 무리의 크기가 정한다** — 규칙은 `RaidLord.ProngsFor`가
+    // 답하고 여기는 자리만 찾는다.
+    //
+    // **모자라면 있는 만큼만 돌려준다.** 굴이 좁아 갈 수 있는 방위가 하나뿐이면 갈래도
+    // 하나다 — 여기서 포기하면 *좁은 굴에서는 습격이 안 온다*가 되는데, 그건 한쪽에서만
+    // 오는 것보다 훨씬 나쁘다.
+    int TryFindEdgeSpawns(int want, List<Vector3> into)
     {
-        spawn = Vector3.zero;
+        into.Clear();
+        want = Mathf.Max(1, want);
 
         var core = DungeonCore.Instance;
         var map  = core != null ? MapManager.GetForPosition(core.transform.position)
                                 : MapManager.Instance;
         if (map == null)
         {
-            spawn = TerrainEdgeFallback();   // 맵이 없으면 지형밖에 볼 것이 없다
-            return true;
+            into.Add(TerrainEdgeFallback());   // 맵이 없으면 지형밖에 볼 것이 없다
+            return 1;
         }
 
         // 기준점은 핵. 핵이 없으면 빌드존 한복판에서 나간다.
@@ -654,17 +721,22 @@ public class EventManager : MonoBehaviour
         //
         // **가장 먼 칸이 아니라 충분히 먼 칸 중 하나다**(2026-09-08). 가장 먼 곳은 자리가
         // 하나라 **습격이 늘 같은 방향에서 왔다**(사용자: *"적이 항상 북동쪽에서만 나와"*).
+        //
+        // **여러 갈래를 물으면 서로 먼 방위에서 하나씩 준다**(2026-09-09) — 그것이 포위다.
         var hp = HierarchicalPathfinder.Instance;
-        if (hp != null && hp.TryPickReachable(origin, maxSpawnRadius, minSpawnDistance, out var far))
+        if (hp != null && hp.PickReachableSpread(origin, maxSpawnRadius, minSpawnDistance,
+                                                 want, _spreadBuf) > 0)
         {
-            var t = map.WorldToTile(far);
-            if (map.IsWorkable(t) &&
-                Vector3.Distance(new Vector3(origin.x, 0f, origin.z), new Vector3(far.x, 0f, far.z))
-                    >= minSpawnDistance)
+            var flatOrigin = new Vector3(origin.x, 0f, origin.z);
+            foreach (var far in _spreadBuf)
             {
-                spawn = map.TileToGround(t);
-                return true;
+                var t = map.WorldToTile(far);
+                if (!map.IsWorkable(t)) continue;
+                if (Vector3.Distance(flatOrigin, new Vector3(far.x, 0f, far.z)) < minSpawnDistance)
+                    continue;
+                into.Add(map.TileToGround(t));
             }
+            if (into.Count > 0) return into.Count;
         }
 
         // 방향을 고르게 나눠 굴린다 — 한쪽이 막혀도 반대쪽엔 길이 있다.
@@ -681,7 +753,7 @@ public class EventManager : MonoBehaviour
             var dir   = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
             if (!WalkToEdge(map, origin, dir, out var tile, out float dist)) continue;
 
-            if (dist >= minSpawnDistance) { spawn = map.TileToGround(tile); return true; }
+            if (dist >= minSpawnDistance) { into.Add(map.TileToGround(tile)); return 1; }
 
             // **가장 멀리 걸은 방향을 남긴다**(2026-08-30). 전에는 *처음* 찾은 것을 붙들었는데,
             // 지하에서는 대부분의 방향이 몇 m 앞에서 바위에 막혀 **상인과 습격이 기지 코앞의
@@ -693,9 +765,11 @@ public class EventManager : MonoBehaviour
 
         // 최소 거리를 채우는 방향이 하나도 없으면(좁은 던전·사방이 바위) 가장 먼 칸이라도 쓴다 —
         // 여기서 포기하면 작은 맵에서는 습격이 영영 일어나지 않는다.
-        if (hasFallback) { spawn = map.TileToGround(fallback); return true; }
-        return false;
+        if (hasFallback) { into.Add(map.TileToGround(fallback)); return 1; }
+        return 0;
     }
+
+    readonly List<Vector3> _spreadBuf = new();
 
     // origin에서 dir 방향으로 한 칸씩 나아가며 **설 수 있는 마지막 칸**을 찾는다.
     // 설 수 없는 칸(공허)이나 지형 밖을 만나면 멈춘다. 건물에 점유된 칸은 지나치기만 한다 —
