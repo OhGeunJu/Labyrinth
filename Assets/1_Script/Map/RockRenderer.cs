@@ -49,6 +49,11 @@ public class RockRenderer : MonoBehaviour
     [Tooltip("한 프레임에 다시 굽는 청크 수. 드래그로 넓게 찍으면 여러 장이 한꺼번에 더러워진다.")]
     [SerializeField, Range(1, 8)] int rebuildsPerFrame = 2;
 
+    [Tooltip("한 프레임에 버리는 청크 수. **세우는 쪽과 짝이다** — 지형 하나가 바위 열여섯 " +
+             "장이라 예산이 없으면 서른두 장이 한 프레임에 몰린다. 평소 churn(달릴 때 초당 " +
+             "150장 안팎)을 따라잡을 만큼은 되어야 밀리지 않는다.")]
+    [SerializeField, Range(1, 32)] int dropsPerFrame = 4;
+
     // ── 벽 자르기 (`2_Material/RockShader/RockCut.hlsl`) ─────────────────────
     //
     // **벽이 24m가 된 값이 여기서 치러진다.** 깊이는 벌었는데 비스듬한 카메라에서 앞쪽
@@ -175,6 +180,34 @@ public class RockRenderer : MonoBehaviour
     readonly Dictionary<Vector2Int, Chunk> _chunks = new();
     readonly HashSet<Vector2Int>           _dirty  = new();
 
+    // **버리는 것도 나눠서 한다**(2026-09-12). 지형 청크(64m) 하나가 바위 청크(16m) **열여섯
+    // 장**이라, 지형이 둘 내려가는 프레임에 **서른두 장이 한꺼번에** 파괴됐다 — 세우는 쪽은
+    // `rebuildsPerFrame`이 나눠 주는데(측정: 최악 프레임에도 **두 장**) **버리는 쪽만 예산이
+    // 없었다.** 좋은 기계에서는 안 보이지만 **몇 배 느린 기계에서는 그 프레임만 통째로 튄다.**
+    //
+    // **미뤄도 되는 이유**: 내려가는 청크는 이미 **화면 밖**이다(지형이 먼저 내려갔다).
+    // 몇 프레임 더 서 있어도 아무도 안 본다.
+    readonly HashSet<Vector2Int> _doomed = new();
+
+    // ── 청크가 들고 나는 값을 잰다 ──────────────────────────────────────────
+    //
+    // **손질이 값을 하는지는 숫자가 답한다**(`WideGraph`가 덩어리 수·간선 수·ms를 찍는 것과
+    // 같은 자리). 2026-09-12에 풀링을 **안 재고 넣었다가** 되돌린 적이 있다 — 그때 알고
+    // 싶었던 것이 정확히 이 넷이다: **몇 장이 생기고 몇 장이 사라지나 · 만드는 데 얼마나
+    // 걸리나 · 굽는 데 얼마나 걸리나.**
+    //
+    // 풀링이 줄이는 것은 **만드는 값**뿐이다(`new GameObject` + `AddComponent` + `new Mesh`).
+    // **굽는 값은 그대로다** — 정점을 다시 채우는 일은 풀이 있든 없든 돈다. 그래서 굽는 값이
+    // 만드는 값을 압도하면 **풀은 잡음이다.**
+    [Header("진단")]
+    [Tooltip("청크가 들고 나는 값을 1초마다 찍는다. 풀링 같은 손질을 재려면 이것부터 켠다.")]
+    [SerializeField] bool churnDebug;
+
+    static readonly System.Diagnostics.Stopwatch _churnSw = new();
+    int    _made, _dropped, _frameMade, _frameDropped, _peakMade, _peakDropped;
+    double _makeMs, _bakeMs;
+    float  _churnAt;
+
     readonly List<Vector3> _verts = new();
     readonly List<Vector3> _norms = new();
     readonly List<Vector2> _uvs   = new();
@@ -273,18 +306,56 @@ public class RockRenderer : MonoBehaviour
         TerrainStreamer.ChunkLoaded   -= OnTerrainChunk;
         TerrainStreamer.ChunkUnloaded -= OnTerrainGone;
 
+        _doomed.Clear();   // 떠날 때는 예산이 없다 — 아래에서 전부 버린다
         foreach (var c in new List<Vector2Int>(_chunks.Keys)) Drop(c);
-        if (_root != null) Destroy(_root.gameObject);
+        if (_root != null) Toss(_root.gameObject);
 
         // **런타임에 만든 재질을 버린다** — 인스펙터에 물린 것은 에셋이라 안 건드리고,
         // 비어서 여기가 만든 것만 거둔다. 안 버리면 씬을 다시 열 때마다 쌓인다
         // (`TerrainStreamer`가 `TerrainData`에 대해 지키는 규칙과 같다).
-        if (_topMat  != null) { Destroy(_topMat);  _topMat  = null; }
-        if (_sideMat != null) { Destroy(_sideMat); _sideMat = null; }
-        if (_markMat != null) { Destroy(_markMat); _markMat = null; }
+        if (_topMat  != null) { Toss(_topMat);  _topMat  = null; }
+        if (_sideMat != null) { Toss(_sideMat); _sideMat = null; }
+        if (_markMat != null) { Toss(_markMat); _markMat = null; }
 
 
     }
+
+#if UNITY_EDITOR
+    // **씬 뷰에서도 벽을 세운다**(2026-09-12) — 에디터 지형(`WorldSceneRock`)이 청크를
+    // 세울 때 여기를 두드린다. **런타임과 같은 문이다** — 따로 그리면 *에디터에서 보이는
+    // 벽*과 *게임에서 막는 벽*이 갈린다.
+    //
+    // 그릴 것을 밀어 넣는 일까지만 한다 — 실제로 굽는 것은 `LateUpdate`가 아니라
+    // 부르는 쪽이 `EditorFlush`로 돌린다(에디터에서는 프레임이 안 돈다).
+    public void EditorShow(Vector2Int terrainChunk) => OnTerrainChunk(terrainChunk);
+    public void EditorHide(Vector2Int terrainChunk) => OnTerrainGone(terrainChunk);
+
+    // 예약된 청크를 실제로 굽는다 — **에디터에는 프레임이 없어서** `LateUpdate`가 안 돈다.
+    // 돌려주는 것은 *남은 것*이라 부르는 쪽이 계속 부를지 정한다.
+    //
+    // **자르기 유니폼은 안 민다**(`PushCutUniforms`) — 그건 게임 카메라 높이로 벽 윗부분을
+    // 깎는 장치인데, 씬 뷰는 제 카메라로 보므로 엉뚱한 높이에서 잘린다. 저작할 때는
+    // **안 잘린 24m 벽**을 보는 것이 맞다(무엇이 막혀 있는지가 그것이다).
+    public int EditorFlush(int budget)
+    {
+        while (budget-- > 0 && _dirty.Count > 0)
+        {
+            Vector2Int chunk = default;
+            foreach (var c in _dirty) { chunk = c; break; }
+            _dirty.Remove(chunk);
+            Rebuild(chunk);
+        }
+        return _dirty.Count;
+    }
+
+    public void EditorClear()
+    {
+        foreach (var c in new List<Vector2Int>(_chunks.Keys)) Drop(c);
+        _dirty.Clear();
+        _doomed.Clear();
+        if (_root != null) { Toss(_root.gameObject); _root = null; ChunkRoot = null; }
+    }
+#endif
 
     // **지형 청크를 따라간다.** 바위는 세계 전체에 있으므로 반경을 여기서 다시 재면
     // `TerrainStreamer`와 답이 어긋나 **땅은 있는데 벽이 없는** 칸이 생긴다.
@@ -304,6 +375,7 @@ public class RockRenderer : MonoBehaviour
             var c = new Vector2Int(baseTile.x / ChunkTiles + x, baseTile.y / ChunkTiles + y);
             _live.Add(c);
             _dirty.Add(c);
+            _doomed.Remove(c);   // **되돌아왔으면 안 버린다** — 아직 서 있으니 굽기만 하면 된다
         }
     }
 
@@ -320,7 +392,7 @@ public class RockRenderer : MonoBehaviour
             var c = new Vector2Int(baseTile.x / ChunkTiles + x, baseTile.y / ChunkTiles + y);
             _live.Remove(c);
             _dirty.Remove(c);      // **예약도 거둔다** — 안 거두면 내린 청크가 다음 프레임에 되살아난다
-            Drop(c);
+            _doomed.Add(c);        // 버리는 것도 예산을 탄다(`LateUpdate`)
         }
     }
 
@@ -360,6 +432,16 @@ public class RockRenderer : MonoBehaviour
     {
         PushCutUniforms();
 
+        // **버리는 것이 먼저다** — 굽는 것보다 싸고, 안 쓰는 것을 들고 있을 이유가 없다.
+        int reap = dropsPerFrame;
+        while (reap-- > 0 && _doomed.Count > 0)
+        {
+            Vector2Int gone = default;
+            foreach (var c in _doomed) { gone = c; break; }
+            _doomed.Remove(gone);
+            Drop(gone);
+        }
+
         int budget = rebuildsPerFrame;
         while (budget-- > 0 && _dirty.Count > 0)
         {
@@ -368,12 +450,39 @@ public class RockRenderer : MonoBehaviour
             _dirty.Remove(chunk);
             Rebuild(chunk);
         }
+
+        if (churnDebug) ReportChurn();
+    }
+
+    // **한 프레임에 몰리는 것이 값이다** — 누계만 보면 *"초당 서른 장"*이 고르게 퍼진 것처럼
+    // 읽히는데, 실제로는 지형 청크가 내려가는 프레임에 **열여섯 장씩** 몰린다.
+    void ReportChurn()
+    {
+        if (_frameMade    > _peakMade)    _peakMade    = _frameMade;
+        if (_frameDropped > _peakDropped) _peakDropped = _frameDropped;
+        _frameMade = _frameDropped = 0;
+
+        _churnAt += Time.unscaledDeltaTime;
+        if (_churnAt < 1f) return;
+        _churnAt = 0f;
+
+        if (_made == 0 && _dropped == 0) return;   // 가만히 서 있으면 조용하다
+
+        Debug.Log($"[바위] 초당 만듦 {_made}장({_makeMs:F1}ms) · 버림 {_dropped}장 · " +
+                  $"구움 {_bakeMs:F1}ms · 최악 프레임 만듦 {_peakMade}/버림 {_peakDropped} · " +
+                  $"살아 있는 청크 {_chunks.Count}\n" +
+                  $"풀링이 줄이는 것은 **만드는 값**뿐이다 — 굽는 값({_bakeMs:F1}ms)과 견줄 것.");
+
+        _made = _dropped = _peakMade = _peakDropped = 0;
+        _makeMs = _bakeMs = 0d;
     }
 
     // ── 굽기 ────────────────────────────────────────────────────────────────
 
     void Rebuild(Vector2Int chunk)
     {
+        double bakeAt = churnDebug ? Now() : 0d;
+
         _verts.Clear(); _norms.Clear(); _uvs.Clear(); _top.Clear(); _side.Clear(); _mark.Clear();
 
         var map = MapManager.Instance;
@@ -398,7 +507,7 @@ public class RockRenderer : MonoBehaviour
             // 전부이므로, 거기서 또 갈라 봐야 색만 늘고 읽히지는 않는다.
             bool marked = RockMap.IsMarked(tile);
 
-            float floor = map != null ? map.SurfaceHeight(tile) : 0f;
+            float floor = RockMap.SurfaceOf(tile);   // **`MapManager` 없이도 답한다**(씬 뷰)
             float top   = floor + RockMap.Height;
 
             if (floor < lowest)  lowest  = floor;
@@ -462,7 +571,14 @@ public class RockRenderer : MonoBehaviour
         // **콜라이더를 단다** — 커서가 바위를 짚어야 캘 자리를 고를 수 있고, 몸도 막아야 한다.
         // (천장에 안 다는 것과 정반대다 — 저쪽은 위에 있어서 짚으면 안 되고, 이쪽은 짚어야 한다.)
         FitBoxes(ch, chunk, lowest, highest);
+
+        // **굽는 값에는 만드는 값이 들어 있다**(`Ensure`가 그 안이다) — 빼서 재면 풀이
+        // 줄일 몫과 그대로 남을 몫이 갈린다.
+        if (churnDebug) _bakeMs += Now() - bakeAt;
     }
+
+    static double Now() => System.Diagnostics.Stopwatch.GetTimestamp()
+                         * 1000d / System.Diagnostics.Stopwatch.Frequency;
 
     // ── 막는 것은 박스다 ────────────────────────────────────────────────────
     //
@@ -557,8 +673,7 @@ public class RockRenderer : MonoBehaviour
         if (RockMap.IsRock(neighbor)) return;   // 맞닿은 바위 — 안 보인다
 
         // 이웃 바닥이 더 낮으면 거기까지 내려 세운다. 안 내리면 **벽 밑이 뚫려 보인다.**
-        var map = MapManager.Instance;
-        float bottom = map != null ? Mathf.Min(floor, map.SurfaceHeight(neighbor)) : floor;
+        float bottom = Mathf.Min(floor, RockMap.SurfaceOf(neighbor));
 
         Quad(list,
              new Vector3(x1, bottom, z1), new Vector3(x1, top, z1),
@@ -614,9 +729,20 @@ public class RockRenderer : MonoBehaviour
             ChunkRoot = _root;
         }
 
+        if (churnDebug) _churnSw.Restart();
+
         var go = new GameObject($"Rock_{chunk.x}_{chunk.y}");
         go.transform.SetParent(_root, false);
         go.layer = Mathf.Clamp(rockLayer, 0, 31);
+
+        // **에디터에서 세운 것은 씬에 저장되지 않는다**(2026-09-12). 씬 뷰에서도 벽을
+        // 보여 주게 되면서(`WorldSceneRock`) 이 길이 편집 중에도 돈다 — 안 걸면 수백
+        // 청크가 `Scene1`에 박히고, 판이 열리면 런타임이 세운 것과 **두 벌**이 된다.
+        if (!Application.isPlaying)
+        {
+            go.hideFlags     = HideFlags.DontSave;
+            _root.gameObject.hideFlags = HideFlags.DontSave;
+        }
 
         var mesh = new Mesh { name = go.name };
         go.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -635,6 +761,13 @@ public class RockRenderer : MonoBehaviour
 
         c = new Chunk { Go = go, Mesh = mesh };
         _chunks[chunk] = c;
+
+        if (churnDebug)
+        {
+            _churnSw.Stop();
+            _makeMs += _churnSw.Elapsed.TotalMilliseconds;
+            _made++; _frameMade++;
+        }
         return c;
     }
 
@@ -696,8 +829,20 @@ public class RockRenderer : MonoBehaviour
     {
         if (!_chunks.TryGetValue(chunk, out var c)) return;
         _chunks.Remove(chunk);
-        if (c.Go != null) Destroy(c.Go);
-        if (c.Mesh != null) Destroy(c.Mesh);   // **메시도 같이 버린다** — 안 버리면 샌다
+        if (churnDebug) { _dropped++; _frameDropped++; }
+
+        if (c.Go != null) Toss(c.Go);
+        if (c.Mesh != null) Toss(c.Mesh);   // **메시도 같이 버린다** — 안 버리면 샌다
+    }
+
+    // **버리는 문은 하나다** — `Destroy`는 **편집 모드에서 에러**이고(씬 뷰에도 벽을 세우면서
+    // 이 길이 편집 중에 돈다), `DestroyImmediate`는 플레이 중에 쓰면 안 된다. 부르는 쪽마다
+    // 갈라 적으면 그중 하나가 반드시 틀린 쪽을 부른다.
+    static void Toss(Object o)
+    {
+        if (o == null) return;
+        if (Application.isPlaying) Destroy(o);
+        else                       DestroyImmediate(o);
     }
 
     // **안 판 자리는 어둠이다.** 완전한 0으로는 안 내린다 — 그러면 벽 윗면과 화면 배경이

@@ -252,9 +252,20 @@ public static class WorldStreamingSetup
     // 높이의 뜻은 오직 *"파였나 안 파였나"*뿐이고, **기복은 바닥이 아니라 바위가 만든다.**
     // 조금이라도 물결치면 벽 높이가 칸마다 달라져 **파낸 방이 울퉁불퉁한 웅덩이**로 보인다.
     // 주기 값은 안 건드린다 — 진폭이 0이면 곱해질 것이 없다.
+    //
+    // **바닥은 y = 0이다**(2026-09-12, 사용자 결정 — 전에는 30이었다). 지하 바이옴이 전부
+    // `Flat`이라(`BiomeTerrain` — `Base`가 0이다) **높이를 만드는 것이 이 값 하나뿐**이고,
+    // 그래서 30은 *아무것도 아닌 30*이었다. 0이면 씬에서 읽는 좌표가 곧 바닥이고,
+    // 무엇이 떠 있고 묻혔는지를 눈이 아니라 숫자로 잴 수 있다.
+    //
+    // **딸려 오는 것 하나** — 바닥이 0이면 *바닥 높이를 0으로 가정한 코드*가 **틀린 채로
+    // 맞아 보인다**(`RockMap.SurfaceOf`가 2026-09-12에 그 함정에서 잡혔다: `MapManager`가
+    // 없을 때 0으로 떨어뜨려 벽이 전부 y=0에 섰는데, 바닥이 30이라 **화면에 드러났다**).
+    // 그러니 폴백은 **0이 아니라 함수가 답하게** 둘 것 — 여기서 값을 내린다고 그 규칙이
+    // 느슨해지는 것이 아니다.
     static void WriteUnderworldProfiles(SerializedObject st)
     {
-        Set(st, "profile.BaseHeight",        30f);
+        Set(st, "profile.BaseHeight",         0f);
         Set(st, "profile.ContinentAmplitude", 0f);
         Set(st, "profile.HillAmplitude",      0f);
         Set(st, "profile.DetailAmplitude",    0f);
@@ -383,19 +394,11 @@ public static class WorldStreamingSetup
         // 안개도 절반으로 — 짙으면 **가까운 것까지 회색으로 덮여** 바닥 텍스처가 안 보인다.
         RenderSettings.fogDensity = 0.006f;
 
-        // **하루 주기 조명이 이걸 도로 덮어쓴다** — 지상용이라 아침이 되면 주변광을 밝은
-        // 하늘색으로 되돌린다. 지하에는 해가 없으므로 재워 둔다(2단계에서 지하용으로 다시 쓴다).
-        int slept = 0;
-        foreach (var d in Object.FindObjectsByType<DayNightLighting>(FindObjectsInactive.Include,
-                                                                    FindObjectsSortMode.None))
-        {
-            if (!d.enabled) continue;
-            Undo.RecordObject(d, "하루 조명 재우기");
-            d.enabled = false;
-            EditorUtility.SetDirty(d);
-            slept++;
-        }
-
+        // **하루 주기 조명(`DayNightLighting`)은 2026-09-12에 지웠다** — 방향광을 하루에 한
+        // 바퀴 돌리는 물건인데 **지하에는 해가 없다.** 어두워지는 일은 `UnderworldLighting`이
+        // 밀물·썰물로 하고, 그쪽은 주변광과 안개만 만진다. 씬에 껍데기가 남아 있으면 위의
+        // `RemoveMonoBehavioursWithMissingScript`가 걷어낸다(스트리밍 루트에 붙어 있을 때).
+        //
         // **방향광도 재운다.** 하루 조명 컴포넌트를 껐어도 **등 자체는 마지막 값 그대로**라,
         // 아침에 멈춰 있었으면 지하가 **대낮**이다. 지하의 빛은 화톳불에서 와야 한다.
         int suns = 0;
@@ -409,8 +412,8 @@ public static class WorldStreamingSetup
             suns++;
         }
 
-        Debug.Log($"[월드] 지하 조명 — 하늘 제거 · 방향광 {suns}개 · 푸른 주변광 · **검은 안개**(짙기 0.006) · " +
-                  $"하루 주기 조명 {slept}개 재움.\n" +
+        Debug.Log($"[월드] 지하 조명 — 하늘 제거 · 방향광 {suns}개 재움 · 푸른 주변광 · " +
+                  "**검은 안개**(짙기 0.006).\n" +
                   "밝기는 `Window → Rendering → Lighting`에서 바로 만질 것.");
     }
 

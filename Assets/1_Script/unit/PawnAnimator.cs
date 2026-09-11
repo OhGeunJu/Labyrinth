@@ -1,6 +1,7 @@
 using UnityEngine;
 
-// **폰의 상태를 애니메이터에 옮긴다.** 걷나(`Speed`) · 휘두르나(`Attack`) · 누웠나(`Lying`).
+// **폰의 상태를 애니메이터에 옮긴다.** 걷나(`Speed`) · 휘두르나(`Attack`) · 누웠나(`Lying`) ·
+// **무엇으로 휘두르나**(`Style`).
 //
 // 애니메이터 자체는 `Model`에 있고 컨트롤러·클립은 에셋이다(`Assets/Controller/`). 이 컴포넌트가
 // 하는 일은 **판정을 안 만드는 것**이다 — 걷는지는 실제 변위로, 휘두르는지는 `CombatHandler`의
@@ -19,14 +20,17 @@ public class PawnAnimator : MonoBehaviour
     static readonly int AttackId = Animator.StringToHash("Attack");
     static readonly int LyingId  = Animator.StringToHash("Lying");
     static readonly int WorkId   = Animator.StringToHash("Work");
+    static readonly int StyleId  = Animator.StringToHash("Style");
 
-    // 네발 컨트롤러에는 `Work`가 없다 — 없는 매개변수를 넣으면 유니티가 매 프레임 경고한다.
-    bool _hasWork;
+    // 네발 컨트롤러에는 `Work`·`Style`이 없다 — 없는 매개변수를 넣으면 유니티가 매 프레임
+    // 경고한다(늑대가 장병기를 들 일도 없다).
+    bool _hasWork, _hasStyle;
 
     Animator      _anim;
     PawnMover     _mover;
     UnitBrain     _brain;
     CombatHandler _combat;
+    Equipment     _equip;
     Vector3       _last;
     float         _speed;
 
@@ -36,11 +40,15 @@ public class PawnAnimator : MonoBehaviour
         _mover  = GetComponent<PawnMover>();
         _brain  = GetComponent<UnitBrain>();
         _combat = GetComponent<CombatHandler>();
+        _equip  = GetComponent<Equipment>();
         _last   = transform.position;
 
         if (_anim != null)
             foreach (var p in _anim.parameters)
-                if (p.nameHash == WorkId) { _hasWork = true; break; }
+            {
+                if (p.nameHash == WorkId)  _hasWork  = true;
+                if (p.nameHash == StyleId) _hasStyle = true;
+            }
     }
 
     void OnEnable()  { if (_combat != null) _combat.OnStrike += OnStrike; }
@@ -72,5 +80,17 @@ public class PawnAnimator : MonoBehaviour
         _anim.SetBool (LyingId, lying);
         _anim.SetFloat(SpeedId, lying ? 0f : _speed);
         if (_hasWork) _anim.SetInteger(WorkId, lying || bb == null ? 0 : (int)bb.Working);
+
+        // **무기가 공격 동작을 정한다** — 트리거가 올 때 어느 상태로 갈지를 이 값이 가른다.
+        // 스타일은 **무기 종류에서 파생된다**(`WeaponTypeExt.AttackStyle`) — 여기서 갈라 적으면
+        // 같은 물음에 답이 둘이 된다. 주손이 비면 맨손이다.
+        //
+        // **매 프레임 넣는다** — 장비를 바꿀 때 알려 주는 자리를 따로 들면 갈아입히는 길(로드아웃·
+        // 상점·시체 털기)마다 한 줄이 늘고, 하나를 빠뜨리면 *전에 들던 무기로 휘두르는* 폰이 생긴다.
+        if (_hasStyle)
+        {
+            var main = _equip != null ? _equip.MainHand : null;
+            _anim.SetInteger(StyleId, (int)(main != null ? main.Type.AttackStyle() : AttackStyle.Unarmed));
+        }
     }
 }

@@ -13,7 +13,17 @@ using UnityEngine;
 public class ConstructionJob : JobBase
 {
     public override JobCategory Category => JobCategory.Construction;
-    public override WorkAnim    Anim     => _phase == Phase.Fetch ? WorkAnim.None : WorkAnim.HammerWall;
+    // **바닥을 깔 때는 발밑을 두들긴다** — 벽 망치질로 바닥을 깔면 허공을 친다.
+    // 가르는 것은 `LevelFloor`(바닥·기단·계단이 그 축이다) 하나다.
+    public override WorkAnim Anim
+    {
+        get
+        {
+            if (_phase == Phase.Fetch) return WorkAnim.None;
+            var data = _blueprint != null ? _blueprint.Data : null;
+            return data != null && data.LevelFloor ? WorkAnim.HammerGround : WorkAnim.HammerWall;
+        }
+    }
 
     enum Phase { Fetch, Deliver }
 

@@ -29,6 +29,11 @@ public partial class UnitBrain : MonoBehaviour
     [Header("틱 주기")]
     [SerializeField] float tickInterval = 0.1f;
 
+    // 한 프레임에 몰아서 돌 수 있는 틱 수의 천장. **10배·30fps까지는 여기 안 닿는다**
+    // (0.333초 / 0.1초 = 3.3틱) — 닿는 것은 프레임이 튀었을 때뿐이고, 그때는 조각을
+    // 늘려 시간을 지킨다. `PawnMover.MaxBakesPerFrame`·`StepMove`의 천장과 같은 자리.
+    const int MaxTicksPerFrame = 4;
+
     [Header("유닛 데이터")]
     [Tooltip("**종족** — 스탯 범위·이름 풀·기본 능력치. 무엇을 하는 사람인지는 여기 없다.")]
     [SerializeField] UnitData unitData;
@@ -387,6 +392,15 @@ public partial class UnitBrain : MonoBehaviour
 
     void Awake()
     {
+        // **0이면 조용히 멈춘다 — 한 프레임에 몰아 도는 길이 0으로 나눈다**(밀린 틱 수를
+        // 세는 식이라). 전에는 0이면 매 프레임 돌았으니 **틀려도 티가 안 났다**.
+        if (tickInterval <= 0f)
+        {
+            Debug.LogWarning($"[UnitBrain] {name}의 틱 주기가 {tickInterval}초입니다 — " +
+                             "0.1초로 되돌립니다(0이면 BT가 아예 안 돕니다).", this);
+            tickInterval = 0.1f;
+        }
+
         _mover    = GetComponent<PawnMover>();
         _body     = GetComponent<BodyPartSystem>();
         Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
@@ -557,19 +571,53 @@ public partial class UnitBrain : MonoBehaviour
         // **타이머는 흘려보낸 뒤에 판단한다** — 위에서 막으면 `_tickTimer`가 쌓여 있다가
         // 가까이 간 순간 델타가 몇 초짜리로 한 번에 들어온다.
         if (!SimLocality.ShouldTick(this)) { _tickTimer = 0f; return; }
-        _bb.TickDelta = _tickTimer;   // 노드가 쓸 실제 경과 시간 (한 프레임이 아니라 틱 간격)
-        _tickTimer = 0f;
 
-        UpdateUnload();
+        // **배속에서는 한 프레임이 틱 간격보다 길어진다 — 밀린 만큼 나눠서 돈다**
+        // (2026-09-11). `Time.deltaTime`이 `timeScale`을 타므로 **10배·60fps면 한 프레임이
+        // 0.167초**인데, 전에는 쌓인 것을 통째로 한 틱에 쏟고 타이머를 비웠다. 그래서 BT가
+        // **게임 시간으로 0.167초마다** 돌았다(0.1초가 아니다).
+        //
+        // 누적하는 값은 `TickDelta`가 정직해서 맞았다(허기·수면·채굴 진행·경험치). 틀린
+        // 것은 **판단의 간격**이다 — 적을 알아보는 것·일감을 집는 것·막혔다고 포기하는 것이
+        // 배속에 따라 늦어지고, **프레임이 떨어지면 더 늦어진다**(30fps·10배면 0.33초).
+        // 배속과 프레임레이트는 화면의 축이지 행동의 축이 아니다.
+        //
+        // `PawnMover.StepMove`와 **같은 모양**이다: 시간은 그대로 두고 나눠서 민다.
+        // 남는 것은 버리지 않고 다음 프레임으로 넘긴다 — 버리면 10배에서 틱이 성긴 채로
+        // 그대로다(그것이 고치려던 것이다).
+        int steps = (int)(_tickTimer / tickInterval);
+        float slice;
+        if (steps > MaxTicksPerFrame)
+        {
+            // **천장은 악순환을 막는 것이다** — 프레임이 한 번 튀면(로드·히치) 수십 번이
+            // 밀리는데 그만큼 돌면 그 프레임이 더 길어져 다음 프레임이 더 밀린다.
+            // 걸렸을 때 **남은 시간을 나눠 갖는다** — 버리면 배속에서 허기·작업이 느려진다
+            // (`TickDelta`의 합이 실제로 흐른 시간이어야 한다).
+            steps      = MaxTicksPerFrame;
+            slice      = _tickTimer / MaxTicksPerFrame;
+            _tickTimer = 0f;
+        }
+        else
+        {
+            slice       = tickInterval;
+            _tickTimer -= steps * tickInterval;
+        }
 
-        _bb.RestTicked = false;
-        _bb.Working    = WorkAnim.None;   // 이번 틱에 일하면 `WorkNode`가 다시 적는다
-        _root.Tick(_bb);
+        for (int i = 0; i < steps; i++)
+        {
+            _bb.TickDelta = slice;   // 노드가 쓸 실제 경과 시간 (한 프레임이 아니라 틱 간격)
 
-        // 전투·소집 등 상위 분기가 휴식을 밀어냈는데 폰이 아직 누워 있으면 일으켜 세운다.
-        // (BT 노드에는 중단 콜백이 없어 RestNode가 스스로 정리할 기회를 못 얻는다.)
-        if (!_bb.RestTicked && _mover != null && _mover.IsSleeping)
-            _mover.SetSleeping(false);
+            UpdateUnload();
+
+            _bb.RestTicked = false;
+            _bb.Working    = WorkAnim.None;   // 이번 틱에 일하면 `WorkNode`가 다시 적는다
+            _root.Tick(_bb);
+
+            // 전투·소집 등 상위 분기가 휴식을 밀어냈는데 폰이 아직 누워 있으면 일으켜 세운다.
+            // (BT 노드에는 중단 콜백이 없어 RestNode가 스스로 정리할 기회를 못 얻는다.)
+            if (!_bb.RestTicked && _mover != null && _mover.IsSleeping)
+                _mover.SetSleeping(false);
+        }
     }
 
     // ── 짐 내리기 ────────────────────────────────────────────────────────────

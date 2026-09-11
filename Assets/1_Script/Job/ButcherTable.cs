@@ -73,6 +73,11 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
     {
         All.Remove(this);
         _slot?.Drop();
+
+        // **꺼질 때 상판을 비운다**(철거·휴면). `Drop`은 **아직 시작 안 한 일감만** 끊으므로
+        // 손질 중이던 몸은 아무도 안 풀어 준다 — 붙들린 채 남으면 `SetSleeping`이 자세를
+        // 붙들고 기절 시계까지 멈춰 있어(`Restrained`) **도마 위에서 영영 굳는다.**
+        ReleaseLaid();
     }
 
     JobBase MakeJob(UnitBrain worker)
@@ -164,6 +169,9 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
         var spot = tableAnchor != null ? tableAnchor.position : transform.position;
         var rot  = Quaternion.Euler(0f, transform.eulerAngles.y, 90f);
 
+        // **묶어 두는 동안은 기절에서 안 깨어난다**(2026-09-11) — 상판은 쉬는 자리가 아니다.
+        if (body.Blackboard != null) body.Blackboard.Restrained = true;
+
         // ── 산 몸 — 붙들어 눕힌다 ───────────────────────────────────────────
         var mover = body.GetComponent<PawnMover>();
         if (mover != null && mover.enabled)
@@ -192,13 +200,22 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
         Laid = null;
         if (body == null) return;
 
+        // 풀었으면 기절 시계도 다시 간다 — 놓아 준 몸은 깨어나도 된다.
+        if (body.Blackboard != null) body.Blackboard.Restrained = false;
+
         var mover = body.GetComponent<PawnMover>();
         if (mover != null && mover.enabled && mover.IsSleeping) mover.SetSleeping(false);
     }
 
     // 손질이 끝나 몸이 사라졌을 때 — 풀어 줄 것이 없으므로 잊기만 한다
     // (`ReleaseLaid`는 **산 것을 도로 움직이게** 하는 짝이라 여기서는 안 쓴다).
-    public void ClearLaid() => Laid = null;
+    public void ClearLaid()
+    {
+        // 몸이 사라졌으니 풀어 줄 것은 없지만 **표시는 지운다** — 일으켜진 시체
+        // (`UnitBrain.Rise`)처럼 같은 오브젝트가 다시 서는 길이 있다.
+        if (Laid != null && Laid.Blackboard != null) Laid.Blackboard.Restrained = false;
+        Laid = null;
+    }
 
     // 상판에서 내린 몸을 놓을 자리 — **폰이 서는 칸**(`WorkSpot`). 도축대 발밑에 두면
     // 이번엔 건물 발자국 안에 눕는다.

@@ -165,10 +165,25 @@ public static class RockMap
     public static bool IsMarked(Vector2Int tile) => _marked.Contains(tile);
 
     // 바위 윗면 높이(m) — 그리는 쪽과 커서가 쓴다.
-    public static float TopOf(Vector2Int tile)
+    public static float TopOf(Vector2Int tile) => SurfaceOf(tile) + Height;
+
+    // **벽이 딛고 선 높이 — `MapManager`가 없어도 답한다**(2026-09-12).
+    //
+    // 전에는 인스턴스가 없으면 **0**으로 떨어뜨렸다. 런타임에는 늘 있으니 안 드러났는데,
+    // 씬 뷰에도 벽을 세우게 되면서 터졌다 — 에디터에는 `Instance`가 없고(`Awake`가 세운다)
+    // 지하 바닥은 **0이 아니라 몇 m**라, 벽이 전부 y=0에 서서 **땅에 박혀 보였다**
+    // (사용자: *"벽이 땅에 박혀있어"*).
+    //
+    // 지면은 **함수가 답한다**(`TerrainHeight`) — 그래서 인스턴스 없이도 같은 값을 낼 수
+    // 있다. 갈리는 것은 **깔린 바닥**뿐이고(그건 런타임 상태다) 편집 중에는 그것이 맞다.
+    //
+    // **격자 위상을 안 얹는다** — 지하에서는 0으로 못 박혀 있다(`MapManager.ProposeGrid`가
+    // `RockMap.Enabled`면 안 건드린다). 그 전제가 바뀌면 여기도 같이 바뀌어야 한다.
+    public static float SurfaceOf(Vector2Int tile)
     {
         var map = MapManager.Instance;
-        return (map != null ? map.SurfaceHeight(tile) : 0f) + Height;
+        return map != null ? map.SurfaceHeight(tile)
+                           : TerrainHeight.At(tile.x + 0.5f, tile.y + 0.5f);
     }
 
     // **밖에서 온 것이 설 자리는 어디인가 — 답은 여기 하나다**(2026-08-30).

@@ -104,18 +104,21 @@ public static class TerrainAuthoring
     //
     // **조각 중인 청크(`__TerrainEdit`)는 절대 안 건드린다** — 거기엔 아직 안 구운 붓질이
     // 들어 있어, 다시 그리면 그 작업이 통째로 날아간다.
+    //
+    // **세계 한 장 미리보기(`WorldPreview`)는 2026-09-12에 지웠다** — 높이를
+    // `TerrainHeight.MapHeight`에서 뽑아 **잔기복도 델타도 빠진 값**을 기본 6배로 부풀려
+    // 그렸다. 지상에서는 *산맥이 어디서 끝나나*를 보는 눈이었지만, 지하는 바닥이 거의
+    // 평지고(대륙 3m) **굴은 바위가 만드는데 그건 런타임 물건이라 애초에 안 그려진다** —
+    // 그래서 남는 것이 *실제 지형과 다른 판판한 판 한 장*뿐이었다. 굴의 모양은
+    // `World → 2. Preview Cave Map`이 답한다(판정과 같은 함수를 쓴다).
     public static int RefreshPreview()
     {
         int n = 0;
 
-        // ① 세계 한 장(`WorldPreview`) — **띄워 둔 것이 있을 때만** 다시 굽는다. 없는데
-        // 만들어 주면, 산 하나 옮겼다고 26만 정점이 난데없이 화면에 선다.
-        if (WorldPreview.Rebuild()) n++;
-
-        // ② 저작 씬에 서 있는 진짜 해상도 지형(`WorldSceneTerrain`) — 세워 둔 것이 있을 때만.
+        // ① 저작 씬에 서 있는 진짜 해상도 지형(`WorldSceneTerrain`) — 세워 둔 것이 있을 때만.
         WorldSceneTerrain.Refresh();
 
-        // ③ 조각용 3×3 미리보기
+        // ② 조각용 3×3 미리보기
         var root = GameObject.Find(PreviewRoot);
         if (root == null) return n;
 

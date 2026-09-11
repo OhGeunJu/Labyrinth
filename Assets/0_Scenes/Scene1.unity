@@ -14,19 +14,19 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
-  m_Fog: 0
-  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  m_Fog: 1
+  m_FogColor: {r: 0.015, g: 0.018, b: 0.022, a: 1}
   m_FogMode: 3
-  m_FogDensity: 0.01
+  m_FogDensity: 0.006
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
-  m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
-  m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
-  m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
+  m_AmbientSkyColor: {r: 0.3, g: 0.38, b: 0.45, a: 1}
+  m_AmbientEquatorColor: {r: 0.2, g: 0.26, b: 0.32, a: 1}
+  m_AmbientGroundColor: {r: 0.1, g: 0.12, b: 0.14, a: 1}
   m_AmbientIntensity: 1
-  m_AmbientMode: 0
+  m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 0}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -10721,7 +10721,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 242817132}
-  - component: {fileID: 242817131}
   m_Layer: 0
   m_Name: CoreManager
   m_TagString: Untagged
@@ -10729,18 +10728,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &242817131
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 242817130}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 90b08078158f32c45b6b843a8b8a42ea, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DungeonCoreManager
 --- !u!4 &242817132
 Transform:
   m_ObjectHideFlags: 0
@@ -18990,7 +18977,6 @@ GameObject:
   - component: {fileID: 410887834}
   - component: {fileID: 410887833}
   - component: {fileID: 410887835}
-  - component: {fileID: 410887836}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -19107,41 +19093,6 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
---- !u!114 &410887836
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 410887832}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4ba413ae450381549b31d0d95aa4c716, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DayNightLighting
-  sun: {fileID: 0}
-  blendHours: 1.5
-  disableShadowsAtNight: 1
-  dawn:
-    sun: {r: 0.55, g: 0.6, b: 0.85, a: 1}
-    intensity: 0.18
-    ambient: {r: 0.16, g: 0.18, b: 0.26, a: 1}
-  morning:
-    sun: {r: 1, g: 0.87, b: 0.7, a: 1}
-    intensity: 0.95
-    ambient: {r: 0.42, g: 0.43, b: 0.46, a: 1}
-  day:
-    sun: {r: 1, g: 0.97, b: 0.9, a: 1}
-    intensity: 1.25
-    ambient: {r: 0.52, g: 0.54, b: 0.58, a: 1}
-  evening:
-    sun: {r: 1, g: 0.7, b: 0.45, a: 1}
-    intensity: 0.7
-    ambient: {r: 0.34, g: 0.3, b: 0.3, a: 1}
-  night:
-    sun: {r: 0.45, g: 0.52, b: 0.8, a: 1}
-    intensity: 0.06
-    ambient: {r: 0.12, g: 0.14, b: 0.22, a: 1}
 --- !u!1 &411058622
 GameObject:
   m_ObjectHideFlags: 0
@@ -42902,14 +42853,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HierarchicalPathfinder
   localWindowSize: 40
-  coarseTileSize: 2
-  coarseAreaSize: 160
   agentRadius: 0.5
   obstacleLayer:
     serializedVersion: 2
     m_Bits: 64
-  slopeCostMult: 0.05
-  maxWalkableSlope: 45
 --- !u!4 &956863289
 Transform:
   m_ObjectHideFlags: 0
@@ -76788,7 +76735,6 @@ MonoBehaviour:
   buildHeightTolerance: 0.5
   buildSlopeTolerance: 0.2
   proceduralTerrain: 1
-  requireFloor: 0
   groundMask:
     serializedVersion: 2
     m_Bits: 8
@@ -76907,77 +76853,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fb07a5d5b35429646912b55572715654, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WorldContentStreamer
-  scatter:
-  - Name: "\uAC13\uBC84\uC12F"
-    Prefab: {fileID: 5845306310139502835, guid: c93d0ee5b828bcf45926bb4194918380, type: 3}
-    PerChunk: 5
-    MaxSlope: 35
-    MinHeight: -1000
-    MaxHeight: 1000
-    ScaleRange: {x: 0.85, y: 1.25}
-    MinSpacing: 12
-    RequireOpenTile: 1
-    RegrowDays: 3
-    Biomes: 09000000
-    ClusterMin: 3
-    ClusterMax: 5
-    ClusterSpread: 1
-  - Name: "\uAC70\uB300\uBC84\uC12F"
-    Prefab: {fileID: 512620292774099003, guid: 4daa77b3c47be094fb8889ab0aef6a51, type: 3}
-    PerChunk: 4
-    MaxSlope: 35
-    MinHeight: -1000
-    MaxHeight: 1000
-    ScaleRange: {x: 0.85, y: 1.25}
-    MinSpacing: 14
-    RequireOpenTile: 1
-    RegrowDays: 0
-    Biomes: 09000000
-    ClusterMin: 1
-    ClusterMax: 1
-    ClusterSpread: 0
-  - Name: "\uAD74\uBC84\uC12F"
-    Prefab: {fileID: 443072945411621352, guid: c1d655f5178d2bb4ab7c34f82f00e28c, type: 3}
-    PerChunk: 4
-    MaxSlope: 35
-    MinHeight: -1000
-    MaxHeight: 1000
-    ScaleRange: {x: 0.85, y: 1.25}
-    MinSpacing: 14
-    RequireOpenTile: 1
-    RegrowDays: 3
-    Biomes: 08000000060000000a0000000c0000000b000000
-    ClusterMin: 2
-    ClusterMax: 4
-    ClusterSpread: 1
-  - Name: "\uC591\uC1A1\uC774"
-    Prefab: {fileID: 443072945411621352, guid: c1d655f5178d2bb4ab7c34f82f00e28c, type: 3}
-    PerChunk: 4
-    MaxSlope: 35
-    MinHeight: -1000
-    MaxHeight: 1000
-    ScaleRange: {x: 0.85, y: 1.25}
-    MinSpacing: 14
-    RequireOpenTile: 1
-    RegrowDays: 3
-    Biomes: 08000000060000000a0000000c0000000b000000
-    ClusterMin: 2
-    ClusterMax: 4
-    ClusterSpread: 1
-  - Name: "\uBC14\uB2E5 \uB3CC"
-    Prefab: {fileID: 7541210491878161960, guid: 2ac8acebcaa080344bc0c12a71b11c44, type: 3}
-    PerChunk: 7
-    MaxSlope: 35
-    MinHeight: -1000
-    MaxHeight: 1000
-    ScaleRange: {x: 0.85, y: 1.25}
-    MinSpacing: 9
-    RequireOpenTile: 1
-    RegrowDays: 0
-    Biomes: 
-    ClusterMin: 2
-    ClusterMax: 4
-    ClusterSpread: 1
+  scatter: []
   sites: []
   townPrefab: {fileID: 897856290311823943, guid: c3958ce0f807fa64881453ec54672ef9, type: 3}
   lairPrefab: {fileID: 6010210845120405373, guid: 27770ac4459120c4abad09d1cb392901, type: 3}
@@ -76997,7 +76873,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TerrainStreamer
   profile:
     Seed: 1337
-    BaseHeight: 30
+    BaseHeight: 0
     ContinentPeriod: 700
     ContinentAmplitude: 0
     HillPeriod: 120
@@ -77021,28 +76897,7 @@ MonoBehaviour:
     RoughPeriod: 18
     RoughAmplitude: 0.6
     SinkDepth: 2
-  ceilingFeatures:
-  - Name: site:Town_0
-    Center: {x: 652.7487, y: 682.9022}
-    Radius: 28
-    Height: 16.8
-    Plateau: 0.6
-    Ridge: 0
-    RidgePeriod: 0
-  - Name: site:EnemyLair_0
-    Center: {x: 199.95006, y: 965.2211}
-    Radius: 16.8
-    Height: 16.8
-    Plateau: 0.6
-    Ridge: 0
-    RidgePeriod: 0
-  - Name: site:ResourceSite_0
-    Center: {x: 702.1728, y: 895.9934}
-    Radius: 11.2
-    Height: 16.8
-    Plateau: 0.6
-    Ridge: 0
-    RidgePeriod: 0
+  ceilingFeatures: []
   radius: 2
   buildsPerFrame: 1
   unloadsPerFrame: 2
@@ -89204,7 +89059,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 6159615938043507716, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 21.468468
+      value: 24.52
       objectReference: {fileID: 0}
     - target: {fileID: 6159615938043507716, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
       propertyPath: m_LocalPosition.y

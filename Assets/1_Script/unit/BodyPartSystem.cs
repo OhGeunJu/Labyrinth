@@ -424,17 +424,61 @@ public class BodyPartSystem : MonoBehaviour
     float _koTimer;
     Quaternion _preKoRotation;
 
+    // 붙들려 있었나 — **놓이는 순간**을 잡는다(한 프레임짜리 사건이라 상태로 기억해야 한다).
+    bool _wasHeld;
+
+    // 몸이 깨어날 준비가 됐나 — **시간을 빼고** 피와 코어만 본다. 두 곳이 묻는다(놓이는 순간·
+    // 시계가 다 찼을 때)라 답이 한 벌이어야 한다.
+    //
+    // `BloodCap`이 기준 밑까지 깎인 몸은 **캡까지 찼으면** 깨어난다 — 기절 중엔 침대를 못 가서
+    // 그 위로는 영영 안 차기 때문이다.
+    bool CanWakeNow =>
+        (Blood >= maxBlood * wakeBloodRatio || Blood >= BloodCap)
+        && !_parts[BodyPartType.Head].IsDisabled
+        && !_parts[BodyPartType.Chest].IsDisabled
+        && !_parts[BodyPartType.Abdomen].IsDisabled;
+
     void UpdateKnockOutRecovery()
     {
         if (!_brain.Blackboard.IsKnockedOut) return;
 
+        // **붙들려 있는 동안은 회복이 아니다**(2026-09-11) — 어깨에 메였거나 도축대 상판에
+        // 묶인 몸은 쉬는 중이 아니다. **시계를 멈춘다**(넘어가게 두면 그 시간이 회복으로
+        // 쳐져, 놓는 순간 이미 다 찬 시계가 곧바로 깨운다).
+        //
+        // 없을 때 실제로 이랬다: 때려눕힌 짐승을 도축대까지 업고 가는 데 십수 초가 걸리고,
+        // 상판에 눕혀 죽이는 데 7초가 더 걸린다 — 최소 기절 20초가 **그 사이에 지나가서**
+        // 사냥한 것이 도마 위에서 깨어나 걸어 나갔다(*"눕히는 순간 적 폰이 일어나"*).
+        // `ButcherJob`은 깨어난 것을 보고 *"가는 사이에 깨어났으면 그만둔다"*는 규칙대로
+        // 물러났으므로, **두 규칙이 각자 옳은데 겹쳐서 사냥이 성립하지 않았다.**
+        //
+        // **침대는 안 걸린다** — 눕혀 두는 것이 곧 회복이라 시계가 가야 한다. 둘 다
+        // `SetSleeping`을 쓰므로 **자세로는 구별할 수 없어** 붙드는 쪽이 적어 준다.
+        if (_brain.Blackboard.CarriedBy != null || _brain.Blackboard.Restrained)
+        {
+            _wasHeld = true;
+            return;
+        }
+
+        // **놓이면 곧바로 깨어난다 — 몸이 나았다면**(2026-09-12, 사용자 결정).
+        //
+        // 붙들린 동안 시계를 멈춘 것만으로는 **놓은 뒤가 너무 느렸다**: 쓰러뜨리자마자 업었으면
+        // 시계가 2초에서 멈춰 있어 내려놓고도 18초를 더 서 있었다. 20초라는 바닥은 *맞자마자
+        // 벌떡 일어나지 않는다*는 뜻이지 **놓인 뒤에 그만큼 더 누워 있으라는 뜻이 아니다** —
+        // 업혀 다니는 동안 정신을 차릴 시간은 이미 지났다. 그래서 **시계를 통째로 없앤다.**
+        //
+        // **몸이 이미 나았을 때만이다** — 피가 모자라거나 코어가 망가진 몸은 제 시계를 그대로
+        // 쓴다(그건 *붙들려서 못 일어나는 것*이 아니라 *아직 못 일어나는 것*이다). 그래서
+        // 놓아 주는 쪽에는 손잡이가 하나 남는다: **덜 나은 채로 놓으면 그만큼 더 누워 있는다.**
+        if (_wasHeld)
+        {
+            _wasHeld = false;
+            if (CanWakeNow) _koTimer = minKnockOutSeconds;   // 아래에서 이번 틱에 깨어난다
+        }
+
         _koTimer += Time.deltaTime;
         if (_koTimer < minKnockOutSeconds) return;
-        // BloodCap이 기준 밑까지 깎인 유닛은 캡까지 찼으면 기상 허용 (기절 중엔 침대를 못 가므로)
-        if (Blood < maxBlood * wakeBloodRatio && Blood < BloodCap) return;
-        if (_parts[BodyPartType.Head].IsDisabled
-         || _parts[BodyPartType.Chest].IsDisabled
-         || _parts[BodyPartType.Abdomen].IsDisabled) return;
+        if (!CanWakeNow) return;
 
         _brain.Blackboard.IsKnockedOut = false;
 

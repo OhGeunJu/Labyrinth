@@ -131,6 +131,24 @@ public class CombatHandler : MonoBehaviour
     {
         if (!IsInCombat) return;
 
+        // **칠 것이 없으면 싸우는 중이 아니다**(2026-09-11).
+        //
+        // 전투를 끄는 자리는 `FightNode`인데 **그 노드는 탐지가 성공해야 돈다** — 마지막 적을
+        // 기절시키면 `IsAttackable`이 그를 빼므로 탐지가 실패하고, 그러면 **끄러 갈 노드 자체가
+        // 안 돈다.** 그대로 두면 이 `Update`는 계속 돌아 `OnStrike`를 쏘고, 폰은 **아무도 없는
+        // 허공을 영원히 휘두른다**(피해는 표적이 없어 안 들어가므로 화면에만 보인다 — 사용자:
+        // *"기절을 시키고 다른 적이 없으면 멈춰야 하는데 계속해"*).
+        //
+        // **답은 `BTTargetUtil.IsAttackable` 하나를 같이 쓰는 것이다** — 여기서 조건을 다시
+        // 적으면 *트리는 그만뒀는데 팔은 움직이는* 그 상태가 다른 이유로 또 생긴다.
+        // 지목한 마무리 대상은 기절해 있어도 통과한다(`bb`를 같이 넘기는 이유).
+        var board = _brain != null ? _brain.Blackboard : null;
+        if (board == null || !BTTargetUtil.IsAttackable(board.Target, board))
+        {
+            ExitCombat();
+            return;
+        }
+
         // **싸우는 동안에는 표적을 본다**(2026-08-24). 폰은 그전까지 아예 안 돌아서 태어난
         // 방향을 보고 섰고, 그래서 **석궁을 옆으로 쏘고 칼을 등 뒤로 휘둘렀다.** 확률을 아무리
         // 맞춰도 화면에서 무슨 일이 벌어지는지 안 보이는 것이 이 자리였다.

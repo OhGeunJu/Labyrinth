@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
-// **저작 씬에서도 땅을 밟는다**(2026-08-27).
+// **씬 뷰에서 땅을 밟는다**(2026-08-27, 2026-09-12에 게임 씬까지 넓혔다).
 //
 // 저작 씬에 세계를 펼쳐 놓고 열면 **마을이 허공에 떠 있었다.** 데이터로는 맞다 — 물건은
 // 높이를 저장하지 않고(XZ + `YOffset`), 런타임이 지면에 붙인다. 하지만 **저작하는 사람이
@@ -22,7 +22,8 @@ using UnityEngine;
 // · **조각 중인 청크는 건너뛴다**(`__TerrainEdit`). 같은 자리에 둘이 서면 z-파이팅이 나고,
 //   무엇을 조각하고 있는지 안 보인다.
 // · **플레이 중에는 안 돈다.** 그때는 진짜 `TerrainStreamer`가 세운다.
-// · **저작 루트가 없는 씬에서는 안 돈다.** 게임 씬만 열어 놓고 작업할 때 끼어들면 안 된다.
+// · **`TerrainStreamer`가 없는 씬에서는 안 돈다.** 프로필이 없으면 기본값으로 **게임과 다른
+//   땅**이 서고, 그 위에 놓은 마을이 게임에서 뜨거나 묻힌다.
 [InitializeOnLoad]
 public static class WorldSceneTerrain
 {
@@ -57,6 +58,7 @@ public static class WorldSceneTerrain
 
     static readonly Dictionary<Vector2Int, Terrain> _live = new();
     static double _next;
+    static bool _stopped;          // 플레이에 들어가며 한 번 치웠나
     static Vector2Int _center = new(int.MinValue, int.MinValue);
 
     static WorldSceneTerrain()
@@ -75,13 +77,13 @@ public static class WorldSceneTerrain
         set { EditorPrefs.SetBool(PrefKey, value); if (!value) Clear(); }
     }
 
-    [MenuItem("DungeonColony/Authoring/Terrain In Authoring Scene")]
+    [MenuItem("DungeonColony/Authoring/Terrain In Scene View")]
     static void Toggle() => Enabled = !Enabled;
 
-    [MenuItem("DungeonColony/Authoring/Terrain In Authoring Scene", true)]
+    [MenuItem("DungeonColony/Authoring/Terrain In Scene View", true)]
     static bool ToggleCheck()
     {
-        Menu.SetChecked("DungeonColony/Authoring/Terrain In Authoring Scene", Enabled);
+        Menu.SetChecked("DungeonColony/Authoring/Terrain In Scene View", Enabled);
         return true;
     }
 
@@ -110,11 +112,25 @@ public static class WorldSceneTerrain
 
     static void Tick()
     {
-        if (EditorApplication.isPlayingOrWillChangePlaymode) { Clear(); return; }
+        // **들어갈 때 한 번만 치운다.** 이 `Tick`은 게임이 도는 내내 함께 돌므로, 매번
+        // 치우면 `GameObject.Find`가 **수천 개짜리 씬을 매 에디터 프레임 훑는다**(그리고
+        // 예전에는 그 김에 런타임 바위까지 지웠다 — `ClearRock` 참고).
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            if (!_stopped) { Clear(); _stopped = true; }
+            return;
+        }
+        _stopped = false;
         if (!Enabled) return;                                    // 끌 때 이미 치웠다
 
-        // **저작 루트가 있는 씬에서만.** 게임 씬만 열어 놓고 작업할 때 끼어들면 안 된다.
-        if (WorldAuthoringScene.FindRoot() == null) { Clear(); return; }
+        // **씬을 안 가린다**(2026-09-12). 전에는 저작 루트가 있는 씬에서만 돌았다 — *"게임 씬만
+        // 열어 놓고 작업할 때 끼어들면 안 된다"*였는데, 실제로는 **게임 씬에서 땅이 아예 안
+        // 보였다.** 지형이 함수에서 나와 런타임에만 서므로, 에디터에서 `Scene1`을 열면 폰과
+        // 가구가 **허공에 떠 있고** 무엇을 어디에 놓는지가 안 보인다(사용자: *"땅을 돌려줘"*).
+        //
+        // 끼어들 걱정이 없는 이유는 셋이다: **플레이에 들어가면 치우고**(위) · **`DontSave`라
+        // 씬에 저장되지 않으며** · **`TerrainStreamer`가 없는 씬에서는 아무것도 안 세운다**
+        // (바로 아래 `SyncValues`가 null을 주면 치운다). 끄고 싶으면 메뉴에서 끈다.
 
         var view = SceneView.lastActiveSceneView;
         if (view == null) return;
@@ -124,14 +140,21 @@ public static class WorldSceneTerrain
 
         var center = TerrainGrid.ChunkAt(view.pivot);
 
+        // 지형 프로필이 없으면 **아무것도 세우지 않는다** — 기본값으로 세우면 게임과 다른
+        // 땅이 서고, 그 위에 놓은 마을이 게임에서 뜨거나 묻힌다.
+        //
+        // **아래 이른 반환보다 위다** — 여유·바이옴을 여기서 밀어 넣으므로, 벽을 세우려면
+        // 지형이 다 찬 뒤에도 이 줄이 돌아야 한다.
+        var streamer = TerrainAuthoring.SyncValues();
+        if (streamer == null) { Clear(); return; }
+
+        // **벽은 지형이 다 선 뒤에도 계속 돌봐야 한다** — 예약된 청크를 굽는 것이 여기고,
+        // 에디터에는 프레임이 없어 아무도 대신 해 주지 않는다.
+        SyncRock(center);
+
         // 자리도 그대로고 빠진 것도 없으면 아무것도 안 한다 — 매 틱 사전을 훑을 이유가 없다.
         if (center == _center && _live.Count == Wanted(center).Count) return;
         _center = center;
-
-        // 지형 프로필이 없으면 **아무것도 세우지 않는다** — 기본값으로 세우면 게임과 다른
-        // 땅이 서고, 그 위에 놓은 마을이 게임에서 뜨거나 묻힌다.
-        var streamer = TerrainAuthoring.SyncValues();
-        if (streamer == null) { Clear(); return; }
 
         var wanted = Wanted(center);
 
@@ -211,6 +234,77 @@ public static class WorldSceneTerrain
         _live[chunk] = terrain;
     }
 
+    // ── 벽 ──────────────────────────────────────────────────────────────────
+    //
+    // **땅만 보면 반만 보는 것이다**(2026-09-12, 사용자: *"하는 김에 벽도?"*). 지하에서
+    // 화면의 절반 이상이 벽이고, 무엇보다 **어디가 막혔는지**를 모르면 무엇을 어디에 놓을지
+    // 정할 수가 없다.
+    //
+    // **런타임과 같은 문을 쓴다**(`RockRenderer.OnTerrainChunk`) — 바위는 원래 지형 청크를
+    // 따라가므로, 에디터 지형이 청크를 세울 때 같이 두드리기만 하면 된다. 따로 그리면
+    // *에디터에서 보이는 벽*과 *게임에서 막는 벽*이 갈린다.
+    //
+    // **반경은 지형보다 좁다** — 지형 청크 하나(64m)가 바위 청크(16m) **열여섯 장**이라,
+    // 지형과 같은 반경 4로 두면 1,296장이 선다. 벽은 *지금 놓는 자리의 맥락*이라 가까이만
+    // 있으면 된다.
+    const int RockRadius = 1;   // 3×3 지형 청크 = 바위 청크 144장
+
+    static readonly HashSet<Vector2Int> _rock = new();
+
+    static RockRenderer _rr;
+
+    // **매 틱 씬을 훑지 않는다** — 0.1초마다 도는 자리라 훑으면 그것만으로 값이 붙는다.
+    static RockRenderer Rock()
+    {
+        if (!RockMap.Enabled) return null;
+        if (_rr == null) _rr = Object.FindFirstObjectByType<RockRenderer>();
+        return _rr;
+    }
+
+    static void SyncRock(Vector2Int center)
+    {
+        var rr = Rock();
+        if (rr == null) { ClearRock(); return; }
+
+        // 세운 지형 안에서, 가운데 가까운 것만.
+        var wanted = new HashSet<Vector2Int>();
+        for (int dz = -RockRadius; dz <= RockRadius; dz++)
+        for (int dx = -RockRadius; dx <= RockRadius; dx++)
+        {
+            var c = new Vector2Int(center.x + dx, center.y + dz);
+            if (_live.ContainsKey(c)) wanted.Add(c);
+        }
+
+        var stale = new List<Vector2Int>();
+        foreach (var c in _rock) if (!wanted.Contains(c)) stale.Add(c);
+        foreach (var c in stale) { rr.EditorHide(c); _rock.Remove(c); }
+
+        foreach (var c in wanted)
+            if (_rock.Add(c)) rr.EditorShow(c);
+
+        // **에디터에는 프레임이 없다** — 예약만 해 두면 아무도 굽지 않는다.
+        rr.EditorFlush(8);
+    }
+
+    static void ClearRock()
+    {
+        _rock.Clear();
+
+        // **플레이 중에는 손도 대지 않는다**(2026-09-12). 이 `Tick`은 `EditorApplication.update`라
+        // **게임이 도는 동안에도 계속 돌고**, 첫 줄에서 `Clear()`를 부른다 — 거기에 바위를
+        // 매달았더니 `FindFirstObjectByType`가 **런타임 렌더러**를 찾아 매 에디터 프레임마다
+        // 청크와 루트를 통째로 파괴했다. 세우자마자 지워지니 화면에는 *"실행하면 벽이 없다"*로만
+        // 보이고, **씬 뷰의 벽은 멀쩡해서** 원인이 에디터 쪽이라는 표시가 아무 데도 없다.
+        //
+        // **`isPlaying`으로 묻는다 — `isPlayingOrWillChangePlaymode`가 아니다.** 들어가기
+        // 직전(`WillChangePlaymode`)에는 **에디터가 세운 것을 치워야** 한다(`DontSave`는
+        // 씬을 다시 읽어도 안 죽어서, 안 치우면 런타임 것과 두 벌이 된다).
+        if (EditorApplication.isPlaying) { _rr = null; return; }
+
+        if (_rr == null) _rr = Object.FindFirstObjectByType<RockRenderer>();
+        if (_rr != null) _rr.EditorClear();
+    }
+
     static void Unload(Vector2Int chunk)
     {
         if (!_live.TryGetValue(chunk, out var t)) return;
@@ -236,6 +330,7 @@ public static class WorldSceneTerrain
 
     public static void Clear()
     {
+        ClearRock();
         foreach (var c in new List<Vector2Int>(_live.Keys)) Unload(c);
         _live.Clear();
         _center = new Vector2Int(int.MinValue, int.MinValue);

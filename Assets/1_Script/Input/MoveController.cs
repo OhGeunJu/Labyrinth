@@ -1103,10 +1103,23 @@ public class MoveController : MonoBehaviour
             var mgr = JobManager.Instance;
             if (mgr == null) return;
 
+            // **하던 일을 놓아야 이 명령이 돈다**(2026-09-11). 예약만 걸어 두면 그 폰은 하던
+            // 일감을 마칠 때까지 안 오고, 화면에는 *"눌렀는데 아무도 안 온다"*로만 보인다 —
+            // 놀고 있을 때만 되니 **가끔 되는 것**처럼 보여서 더 나쁘다. 우클릭 명령 여덟이
+            // 전부 이걸 부르는데(치료·먹이기·설득·업기·줍기·호송) 도축만 빠져 있었다.
+            //
+            // **이미 하고 있으면 안 건드린다** — 그 폰의 지금 일감이 바로 이것일 수 있고,
+            // 그때 놓으면 시킨 일을 스스로 취소하는 꼴이 된다.
+            if (mgr.FindButcherJobFor(target)?.Status == JobStatus.InProgress) return;
+
+            doer.AbandonWork();
+
+            // **놓은 뒤에 다시 찾는다** — 그 폰이 막 집어 든 참이었으면 방금 취소되면서
+            // 큐에서 빠졌다(`CancelJob`이 목록에서 지운다). 그걸 모르고 예약하면 아무도 못
+            // 찾는 일감을 들려 주는 셈이라 **화면에는 또 "아무도 안 온다"로 보인다.**
             var existing = mgr.FindButcherJobFor(target);
             if (existing != null)
             {
-                if (existing.Status == JobStatus.InProgress) return;
                 existing.ReleaseReservation();
                 existing.Reserve(doer);
                 return;
@@ -1280,7 +1293,14 @@ public class MoveController : MonoBehaviour
             if (mgr == null) return;
 
             var existing = mgr.FindButcherJobFor(body.gameObject);
-            if (existing != null) { if (existing.Status != JobStatus.InProgress) { existing.ReleaseReservation(); existing.Reserve(carrier); } return; }
+            if (existing != null && existing.Status == JobStatus.InProgress) return;
+
+            // 업고 있는 동안에는 일감을 안 집지만(`WorkNode` 게이트) **업기 자체가 일감일 수
+            // 있다** — 도축대 A로 메고 가는 중에 B에서 손질하라고 시키는 경우다. 안 놓으면
+            // 옛 일감이 그대로 돌아 새 예약이 영영 안 걸린다.
+            carrier.AbandonWork();
+
+            if (existing != null) { existing.ReleaseReservation(); existing.Reserve(carrier); return; }
 
             mgr.ReserveFor(new ButcherJob(body.gameObject, table), carrier);
         }));
