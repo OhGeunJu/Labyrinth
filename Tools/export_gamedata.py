@@ -117,7 +117,8 @@ def ref(s, key):
     return aname(guid2path[m.group(1)]) if m and m.group(1) in guid2path else ""
 
 
-GROUP = {0: "석재", 1: "원석", 2: "보석", 3: "주괴", 4: "목재", 5: "화폐"}
+GROUP = {0: "석재", 1: "원석", 2: "보석", 3: "주괴", 4: "목재", 5: "화폐",
+         6: "뼈", 7: "가죽", 8: "천"}
 SLOT = {0: "머리", 1: "몸통", 2: "손", 3: "다리"}
 SLOT_JSON = {"Head": 0, "Chest": 1, "Hands": 2, "Legs": 3}
 WTYPE = {0: "맨손", 1: "방패", 2: "한손 검", 3: "한손 도끼", 4: "한손 둔기",
@@ -181,7 +182,8 @@ for f in glob.glob("Assets/StreamingAssets/Data/items/*.json"):
         resale = 0.5
     elif t == "resource":
         kind = {"Stone": "석재", "Ore": "원석", "Gem": "보석", "Ingot": "주괴",
-                "Wood": "목재", "Currency": "화폐"}.get(d.get("resourceGroup", ""), "자원")
+                "Wood": "목재", "Currency": "화폐", "Bone": "뼈", "Hide": "가죽",
+                "Cloth": "천"}.get(d.get("resourceGroup", ""), "자원")
         resale = 1.0
     elif t == "food":
         kind, resale = "음식", 1.0
@@ -262,6 +264,22 @@ for f in glob.glob("Assets/1_Script/**/*.cs", recursive=True):
 enums.sort(key=lambda e: e["enum"])
 
 # ── 표 만들기 ─────────────────────────────────────────────────────────────
+# **찾는 규칙은 런타임과 같아야 한다.** `DataManager`의 사전이 `OrdinalIgnoreCase`라
+# 대소문자만 다른 `ItemId`도 게임에서는 멀쩡히 풀린다(`Res_Bone` -> `res_bone`).
+# 여기서만 대소문자를 가리면 그 재료가 **조용히 0원**이 되어 재료비가 낮게 잡히고,
+# 그러면 **손해 레시피가 표에서 이득으로 보인다** — 표가 있는 이유가 그것인데.
+_by_lower = {k.lower(): v for k, v in items.items()}
+_missing  = set()
+
+
+def item_of(iid):
+    """ItemId -> 아이템. 못 찾은 것은 모아 뒀다 끝에 알린다(조용히 0원이 되지 않게)."""
+    v = items.get(iid) or _by_lower.get(iid.lower())
+    if v is None:
+        _missing.add(iid)
+    return v or {}
+
+
 item_rows = []
 for iid, it in items.items():
     r = made.get(iid)
@@ -269,7 +287,7 @@ for iid, it in items.items():
     if r:
         mat_txt = " + ".join("%s x%d" % (i, n) for i, n in r["ings"])
         for i, n in r["ings"]:
-            mat_cost += items.get(i, {}).get("value", 0) * n
+            mat_cost += item_of(i).get("value", 0) * n
         mat_cost /= max(1, r["amt"])
 
     sell = max(1, round(it["value"] * 0.5 * it["resale"])) if it["value"] else 0
@@ -287,14 +305,14 @@ for iid, it in items.items():
         # **설명은 맨 끝이다.** 유일하게 긴 칸이라 가운데 두면 숫자 칸들이 화면 밖으로 밀린다.
         "설명": it["desc"],
     })
-order = {"화폐": 0, "석재": 1, "목재": 1, "원석": 2, "주괴": 3, "보석": 4,
-         "씨앗": 5, "음식": 6, "잡화": 7}
+order = {"화폐": 0, "석재": 1, "목재": 1, "뼈": 1, "원석": 2, "주괴": 3, "보석": 4,
+         "가죽": 4, "천": 4, "씨앗": 5, "음식": 6, "잡화": 7}
 item_rows.sort(key=lambda x: (order.get(x["종류"], 8), -x["기준값(G)"]))
 
 recipe_rows = []
 for r in sorted(recipes, key=lambda x: (x["skill"], x["lvl"])):
-    cost = sum(items.get(i, {}).get("value", 0) * n for i, n in r["ings"])
-    out_val = items.get(r["result"], {}).get("value", 0) * r["amt"]
+    cost = sum(item_of(i).get("value", 0) * n for i, n in r["ings"])
+    out_val = item_of(r["result"]).get("value", 0) * r["amt"]
     recipe_rows.append({
         "Id": r["id"], "이름": r["name"],
         "결과": r["result"], "개수": r["amt"],
@@ -501,3 +519,7 @@ print("%s : items %d / recipes %d / buildings %d / traits %d / backstories %d / 
          len(traits), len(stories), len(enums)))
 if not stories:
     print("  (성장 배경 에셋이 없습니다 — 유니티에서 DungeonColony > Create Backstories 를 한 번 도세요)")
+# **못 찾은 ItemId는 반드시 알린다.** 오타는 조용히 아무것도 안 나오는 것으로 나타나고
+# (레시피는 재료가 0원이 되고 게임에서는 재료가 없는 것이 된다) 표만 보면 티가 안 난다.
+if _missing:
+    print("  못 찾은 ItemId %d개: %s" % (len(_missing), ", ".join(sorted(_missing))))

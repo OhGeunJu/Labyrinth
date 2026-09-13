@@ -229,7 +229,7 @@ public static class DebugGiveItems
 
         // 던전 핵 옆에 **한 줄로** 늘어놓는다 — 폰이 운반해 갈 수 있어야 하므로 손 닿는 곳이어야
         // 하고, 겹쳐 놓으면 어느 것을 클릭했는지 알 수 없다.
-        go.transform.position = SpotNearCore(index);
+        go.transform.position = SpotNearBase(index);
 
         // 눈에 보이고 클릭도 되게 — 안 그러면 어디 생겼는지 알 수 없다.
         var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -303,6 +303,67 @@ public static class DebugGiveItems
         return st;
     }
 
+    // **기준은 내 폰이다 — 핵이 아니다**(2026-09-12).
+    //
+    // 전에는 `DungeonCore`를 찾아 그 자리에 놓았다. 그런데 **판이 열릴 때 핵을 안 준다**
+    // (2026-08-27 결정 — 어디에 거점을 세울까가 첫 결정이어야 하므로). 그래서 아직 안 꽂았으면
+    // `FindFirstObjectByType`이 **null**이고 기준이 조용히 `Vector3.zero`로 떨어져,
+    // 상자가 **세계 원점 옆**에 선다. `Scene1`의 방랑자들이 (21.5, 25.6)에서 시작하므로
+    // **30m쯤 떨어진 곳**이다 — 화면에는 *"상자가 폰들이 있는 데랑 좀 다른 데 뜬다"*로만 보이고,
+    // 원인이 *"핵이 없다"*라는 표시가 어디에도 없다(폰은 좌표만 보므로 운반은 멀쩡히 된다).
+    //
+    // **`RockRenderer.Start`가 이미 같은 물음에 답해 두었다** — 판이 열릴 때 굴을 어디에 뚫을지를
+    // 정하면서 **내 폰 둘레**를 열고, 아무도 없으면 카메라 앞을 연다. 기준을 거기에 맞춘다:
+    // **내 폰 → (없으면) 핵 → (그것도 없으면) 원점.**
+    //
+    // **무게중심이 아니라 거기서 가장 가까운 폰의 자리를 쓴다** — 무리가 흩어져 있으면
+    // 무게중심이 바위 한복판에 떨어질 수 있고, 그러면 `FindWorkableNear`가 8칸 안에서
+    // 아무것도 못 찾아 **center를 그대로 돌려줘 상자가 바위에 박힌다.** 폰이 선 자리는
+    // 설 수 있는 자리임이 이미 증명돼 있다.
+    static Vector3 Anchor()
+    {
+        var all = UnitBrain.All;
+
+        var  sum = Vector3.zero;
+        int  n   = 0;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var brain = all[i];
+            if (brain == null) continue;
+            var f = brain.GetComponent<Faction>();
+            if (f == null || !f.IsPlayer) continue;
+
+            sum += brain.transform.position;
+            n++;
+        }
+
+        if (n > 0)
+        {
+            var center = sum / n;
+            var best   = center;
+            float bestSqr = float.MaxValue;
+
+            for (int i = 0; i < all.Count; i++)
+            {
+                var brain = all[i];
+                if (brain == null) continue;
+                var f = brain.GetComponent<Faction>();
+                if (f == null || !f.IsPlayer) continue;
+
+                float d = (brain.transform.position - center).sqrMagnitude;
+                if (d < bestSqr) { bestSqr = d; best = brain.transform.position; }
+            }
+            return best;
+        }
+
+        // 폰이 하나도 없는 판(전멸했거나 아직 합류 전) — 그때는 핵이라도 있으면 그것.
+        var core = Object.FindFirstObjectByType<DungeonCore>();
+        if (core != null) return core.transform.position;
+
+        Debug.LogWarning("[Debug] 내 폰도 핵도 없어 상자를 세계 원점 옆에 놓습니다.");
+        return Vector3.zero;
+    }
+
     // **바닥 위에 놓는다 — 핵의 Y를 베끼지 않는다**(2026-09-05).
     //
     // 전에는 핵의 자리에 `(3 + index*2, 0, 3)`을 더했다. 그러면 **높이가 핵의 것**이라, 세 칸
@@ -313,11 +374,9 @@ public static class DebugGiveItems
     // 그래서 **설 수 있는 칸을 찾아 그 윗면에 앉힌다**(`TileToGround` — 기단을 깔았으면
     // 슬래브 윗면이다). 지하에서는 세 칸 옆이 바위일 수도 있으므로 `FindWorkableNear`가
     // 답하게 두고, **이미 놓인 상자 칸은 뺀다**(겹쳐 놓으면 어느 것을 눌렀는지 모른다).
-    static Vector3 SpotNearCore(int index)
+    static Vector3 SpotNearBase(int index)
     {
-        var core   = Object.FindFirstObjectByType<DungeonCore>();
-        var anchor = core != null ? core.transform.position : Vector3.zero;
-        var want   = anchor + new Vector3(3f + index * 2f, 0f, 3f);
+        var want = Anchor() + new Vector3(3f + index * 2f, 0f, 3f);
 
         var map = MapManager.Instance;
         if (map == null) return want;

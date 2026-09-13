@@ -50414,7 +50414,7 @@ Transform:
   m_GameObject: {fileID: 1125184005}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 30, z: 0}
+  m_LocalPosition: {x: 0, y: 1, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -76897,7 +76897,28 @@ MonoBehaviour:
     RoughPeriod: 18
     RoughAmplitude: 0.6
     SinkDepth: 2
-  ceilingFeatures: []
+  ceilingFeatures:
+  - Name: site:Town_0
+    Center: {x: 652.7487, y: 684.9022}
+    Radius: 28
+    Height: 16.8
+    Plateau: 0.6
+    Ridge: 0
+    RidgePeriod: 0
+  - Name: site:EnemyLair_0
+    Center: {x: 673.1422, y: 176.4271}
+    Radius: 16.8
+    Height: 16.8
+    Plateau: 0.6
+    Ridge: 0
+    RidgePeriod: 0
+  - Name: site:ResourceSite_0
+    Center: {x: 203.13174, y: 198.78387}
+    Radius: 11.2
+    Height: 16.8
+    Plateau: 0.6
+    Ridge: 0
+    RidgePeriod: 0
   radius: 2
   buildsPerFrame: 1
   unloadsPerFrame: 2
@@ -76953,11 +76974,13 @@ MonoBehaviour:
   wallMaterial: {fileID: 2100000, guid: 969f6ea510a1d58488d501035a35a16b, type: 2}
   markedMaterial: {fileID: 2100000, guid: feaa21de75b3b3041acfd7bd4d064c06, type: 2}
   rebuildsPerFrame: 2
+  dropsPerFrame: 4
   cutNearWalls: 1
   cutFrac: 0.4
   cutLow: 2.5
   cutDebug: 0
   rockLayer: 3
+  churnDebug: 1
   plainRock: {fileID: 11400000, guid: 27a84ee90742b0b41b010fe3bf898a2f, type: 2}
   startClearing: 12
   pathToCave: 90

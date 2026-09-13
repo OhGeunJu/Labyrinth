@@ -13,8 +13,20 @@
 유년기,cult,교단 마을에서 자람,1.1,암흑 마법 +7 · 인지력 +5 · 사교 -4,,마을 사람 모두가 같은 것을 믿었다. 다른 믿음은 본 적이 없다.,Back_Child_CultTown
 유년기,cult,밤에 끌려간 아이,0.8,강인함 +8 · 암흑 마법 +6 · 사교 -8,,누군가 데려갔고 아무도 찾지 않았다. 그 뒤의 일은 말하지 않는다.,Back_Child_Taken
 유년기,cult,제단에 놓인 아이,1.0,암흑 마법 +8 · 강인함 +5 · 원예 -5,,누가 두고 갔는지 아무도 모른다. 교단이 거두어 길렀다.,Back_Child_Foundling
+유년기,goblin,굴의 아이,1.4,채굴 +7 · 육상 +4 · 사교 -5,,빛을 본 적이 없다. 좁은 데를 무서워하지 않는다.,Back_Child_Gob_CaveBorn
+유년기,goblin,덫 놓는 법,0.8,활 +7 · 정밀사격 +5 · 근력 -4,,형들을 따라다니며 덫을 배웠다. 기다릴 줄 안다.,Back_Child_Gob_Trapper
+유년기,goblin,돌을 던지던,0.7,투창 +8 · 인지력 +4 · 연구 -6,,던질 것이 돌밖에 없었다. 그래서 잘 던진다.,Back_Child_Gob_Stones
+유년기,goblin,무리의 막내,1.0,강인함 +8 · 회피 +4 · 인지력 -5,,맞으면서 자리를 배웠다. 맞는 데는 이골이 났다.,Back_Child_Gob_Runt
+유년기,goblin,버섯밭에서,0.9,원예 +8 · 의료 +4 · 근접공격 -4,,균사림 가장자리에서 컸다. 먹을 것과 못 먹을 것을 안다.,Back_Child_Gob_Mushroom
+유년기,goblin,찌꺼기 줍기,1.2,손재주 +6 · 요리 +5 · 강인함 -4,,큰 놈들이 먹고 남긴 것을 주워 먹으며 컸다. 손이 빠르다.,Back_Child_Gob_Scraps
 유년기,mercenary,고아원 출신,1.0,방어 +7 · 강인함 +5 · 인지력 -4,,열여섯이 되자 나가라고 했다. 받아 주는 곳은 용병단뿐이었다.,Back_Child_Orphan
 유년기,mercenary,병영에서 자람,0.9,근접공격 +8 · 강인함 +5 · 연구 -5,,아버지의 부대를 따라다녔다. 검을 장난감으로 알고 컸다.,Back_Child_Barrack
+유년기,summoned,깊은 데서 끌려온,1.0,채굴 +7 · 암흑 마법 +5 · 의료 -5,,더 아래에 있던 것이 불려 올라왔다. 어둠을 어려워하지 않는다.,Back_Child_Sum_Deep
+유년기,summoned,남은 것으로,1.1,강인함 +8 · 육상 -5 · 인지력 +4,,먼저 스러진 것들의 조각을 모아 세웠다. 어딘가 삐걱인다.,Back_Child_Sum_Remnant
+유년기,summoned,누군가의 메아리,0.6,인지력 +8 · 비전 마법 +6 · 근력 -5,,부를 때 딸려 온 것이 있다. 가끔 제 것이 아닌 것을 안다.,Back_Child_Sum_Echo
+유년기,summoned,단단히 묶인,0.8,근력 +8 · 방어 +5 · 육상 -6,,풀리지 않게 여러 번 눌러 새겼다. 무겁고 느리다.,Back_Child_Sum_Bound
+유년기,summoned,설익은 소환,0.9,손재주 +7 · 회피 +5 · 강인함 -6,,부르는 손이 떨렸다. 그래서 조금 다르게 나왔다.,Back_Child_Sum_Flawed
+유년기,summoned,핵이 빚었다,1.3,강인함 +6 · 노동 +5 · 사교 -8,,부르는 소리 말고는 아무것도 모르는 채로 섰다.,Back_Child_Sum_Forged
 성년기,bandit,노상강도,1.1,활 +10 · 회피 +5 · 사교 -5,,숲길 모퉁이에서 기다렸다. 활을 먼저 보이면 대개 짐만 두고 갔다.,Back_Adult_Highway
 성년기,bandit,도굴꾼,0.9,손재주 +10 · 회피 +6 · 사교 -6,,무덤을 열어 먹고살았다. 그 일로 잃은 것은 손이 아니라 이름이다.,Back_Adult_Robber
 성년기,bandit,밀수꾼,0.9,사교 +8 · 손재주 +6 · 육상 +4,,검문을 피해 물건을 옮겼다. 값이 되는 것이라면 무엇이든.,Back_Adult_Smuggler
@@ -31,7 +43,44 @@
 성년기,cult,교단의 신도,1.2,암흑 마법 +12 · 인지력 +6 · 사교 -8,,밤마다 무언가를 불렀다. 대답이 있었는지는 말하지 않는다.,Back_Adult_Cultist
 성년기,cult,시신을 나르던 자,0.9,의료 +8 · 근력 +6 · 사교 -6,,교단이 원하는 것을 구해다 주었다. 무엇에 쓰는지는 묻지 않았다.,Back_Adult_Graverob
 성년기,cult,주문 필사자,0.8,암흑 마법 +10 · 연구 +8 · 근력 -5,,읽어서는 안 되는 것을 베껴 적었다. 손은 아직도 가끔 떨린다.,Back_Adult_Scribe
+성년기,goblin,굴 파는 손,1.2,채굴 +10 · 근력 +5 · 활 -5,,무리의 길을 냈다. 어디를 파야 무너지지 않는지 안다.,Back_Adult_Gob_Digger
+성년기,goblin,무리를 이끈,0.7,근접공격 +9 · 강인함 +6 · 사교 +5,,더 큰 놈을 이겨 자리를 얻었다. 그 자리를 지키는 데 힘을 쓴다.,Back_Adult_Gob_Chief
+성년기,goblin,뼈 손질,0.9,벌목 +8 · 무기제작 +6 · 원예 -4,,죽은 것에서 쓸 것을 발라냈다. 손이 거칠고 정확하다.,Back_Adult_Gob_Bones
+성년기,goblin,샤먼의 시중,0.6,불 마법 +9 · 암흑 마법 +5 · 근력 -5,,불을 다루는 법을 곁눈질로 배웠다. 제대로 배우지는 못했다.,Back_Adult_Gob_Shaman
+성년기,goblin,약탈꾼,1.4,한손도끼 +8 · 육상 +5 · 사교 -6,,가진 것을 빼앗는 쪽에 섰다. 도망치는 것도 배웠다.,Back_Adult_Gob_Raider
+성년기,goblin,창잡이,1.0,장창 +9 · 방어 +5 · 회피 -4,,앞에 서는 자리를 받았다. 그 자리는 오래 사는 자리가 아니다.,Back_Adult_Gob_Spear
 성년기,mercenary,야영 취사병,0.9,요리 +12 · 강인함 +5 · 근접공격 -5,,부대의 배를 채웠다. 싸운 적은 없지만 싸움터에는 늘 있었다.,Back_Adult_Camp
 성년기,mercenary,용병,1.3,근접공격 +10 · 강인함 +6 · 사교 -4,,값을 받고 싸웠다. 누구 편이었는지는 그때마다 달랐다.,Back_Adult_Merc
 성년기,mercenary,용병단 소속,1.2,근접공격 +9 · 방어 +7 · 사교 +4,,계약서대로 싸웠고 계약서대로 물러났다. 그 이상도 이하도 아니다.,Back_Adult_Company
 성년기,mercenary,창병 대열,1.0,장창 +12 · 방어 +8 · 회피 -4,,줄을 맞춰 서서 버티는 법을 배웠다. 혼자 싸우는 법은 배우지 않았다.,Back_Adult_Pikeman
+성년기,merchant_armor,공방의 심부름,0.9,노동 +7 · 제련 +5 · 연구 -4,,가죽과 쇠를 나르며 값을 외웠다.,Back_Adult_MArm_Guildhand
+성년기,merchant_armor,전장 뒤,1.0,갑옷제작 +6 · 인지력 +6 · 사교 +4,,벗겨 온 것을 손질해 팔았다. 흠집을 잘 본다.,Back_Adult_MArm_Salvage
+성년기,merchant_armor,천을 다루던,0.6,갑옷제작 +8 · 손재주 +5 · 근력 -5,,가죽보다 천을 먼저 만졌다. 손이 곱다.,Back_Adult_MArm_Tailor
+성년기,merchant_armor,치수를 재던,1.2,갑옷제작 +7 · 사교 +6 · 활 -5,,몸에 맞춰 파는 법을 배웠다. 눈대중이 정확하다.,Back_Adult_MArm_Fitter
+성년기,merchant_armor,호위를 서던,0.8,방어 +8 · 방패 +6 · 요리 -5,,맞아 본 사람이 파는 갑옷이 잘 팔린다.,Back_Adult_MArm_Bodyguard
+성년기,merchant_food,굶어 본 사람,0.6,사교 +9 · 강인함 +5 · 인지력 -4,,없을 때의 값을 안다. 그래서 잘 안 깎아 준다.,Back_Adult_MFood_Famine
+성년기,merchant_food,말리고 절이던,0.9,요리 +7 · 연금 +5 · 육상 -4,,오래 가게 만드는 법이 곧 밑천이었다.,Back_Adult_MFood_Preserve
+성년기,merchant_food,밭에서 왔다,1.1,원예 +8 · 노동 +5 · 사교 +4,,기른 것을 제가 내다 팔았다.,Back_Adult_MFood_Farmhand
+성년기,merchant_food,솥 앞에서,1.2,요리 +9 · 의료 +4 · 근접공격 -5,,팔기 전에 먼저 끓였다. 상한 것을 냄새로 안다.,Back_Adult_MFood_Cook
+성년기,merchant_food,약초를 섞던,0.8,의료 +8 · 연금 +6 · 근력 -5,,먹는 것과 듣는 것 사이에서 팔았다.,Back_Adult_MFood_Herb
+성년기,merchant_general,길에서 자랐다,0.8,사교 +6 · 육상 +6 · 원예 -4,,실려 다니며 컸다. 어디서 무엇이 비싼지 안다.,Back_Adult_MGen_Roadwise
+성년기,merchant_general,등짐 장수,1.3,육상 +7 · 사교 +6 · 근접공격 -4,,무엇이든 지고 다녔다. 길을 잘 안다.,Back_Adult_MGen_Peddler
+성년기,merchant_general,시장 한 칸,1.1,사교 +8 · 인지력 +5 · 육상 -4,,같은 자리에서 오래 팔았다. 얼굴을 기억한다.,Back_Adult_MGen_Stall
+성년기,merchant_general,장부를 맡던,0.9,인지력 +8 · 연구 +6 · 근력 -5,,남의 셈을 대신했다. 숫자에 밝다.,Back_Adult_MGen_Ledger
+성년기,merchant_general,한 번 망해 본,0.6,사교 +7 · 강인함 +6 · 회피 +4,,크게 잃고 다시 시작했다. 조심스럽다.,Back_Adult_MGen_Ruined
+성년기,merchant_material,광석을 보던,1.2,채굴 +7 · 인지력 +6 · 사교 +4,,돌만 보고 값을 맀다. 속는 일이 드물다.,Back_Adult_MMat_Assay
+성년기,merchant_material,나무를 대던,0.8,목공 +8 · 벌목 +5 · 사교 +4,,베어 온 것을 골라 팔았다. 결을 읽는다.,Back_Adult_MMat_Woodman
+성년기,merchant_material,보석을 갈던,0.6,보석가공 +9 · 손재주 +5 · 근력 -6,,작은 것에 값이 붙는 이유를 안다.,Back_Adult_MMat_Gemcut
+성년기,merchant_material,용광로 곁,0.9,제련 +9 · 강인함 +5 · 회피 -5,,무엇이 잘 녹는지를 몸으로 안다.,Back_Adult_MMat_Smelter
+성년기,merchant_material,짐만 날랐다,1.1,근력 +8 · 노동 +6 · 연구 -5,,무거운 것을 오래 졌다. 등이 단단하다.,Back_Adult_MMat_Hauler
+성년기,merchant_weapon,군의 병참,0.9,인지력 +7 · 사교 +6 · 회피 -5,,남의 목숨을 셈으로 다뤘다. 숫자가 빠르다.,Back_Adult_MWpn_Quartermaster
+성년기,merchant_weapon,대장간 앞에서,1.2,무기제작 +7 · 사교 +6 · 원예 -5,,벼려 나오는 것을 옆에서 보며 값을 배웠다.,Back_Adult_MWpn_Forge
+성년기,merchant_weapon,뒷골목 거래,0.6,사교 +9 · 회피 +5 · 의료 -6,,묻지 않고 팔았다. 값은 늘 두 배였다.,Back_Adult_MWpn_Blackmarket
+성년기,merchant_weapon,무기 짐수레,1.1,사교 +7 · 제련 +5 · 의료 -4,,날붙이만 싣고 다녔다. 녹을 제일 먼저 알아본다.,Back_Adult_MWpn_Caravan
+성년기,merchant_weapon,팔다 남은 것으로,0.8,한손검 +8 · 근접공격 +5 · 요리 -5,,안 팔린 검을 제가 썼다. 그래서 쓸 줄도 안다.,Back_Adult_MWpn_Duelist
+성년기,summoned,굴을 팠다,1.4,채굴 +10 · 근력 +5 · 사교 -6,,세운 날부터 벽만 보았다. 어디가 무를지 손이 안다.,Back_Adult_Sum_Digging
+성년기,summoned,문을 지켰다,1.2,방어 +9 · 방패 +6 · 육상 -4,,오래 서 있는 것이 하는 일의 전부였다. 잘 안 밀린다.,Back_Adult_Sum_Gate
+성년기,summoned,앞에 세워졌다,0.9,강인함 +9 · 근접공격 +6 · 인지력 -5,,맞는 자리에 놓였다. 그 자리에 오래 있었다.,Back_Adult_Sum_Vanguard
+성년기,summoned,여러 번 다시 세워졌다,0.7,강인함 +7 · 회피 +6 · 원예 -5,,부서질 때마다 도로 불렸다. 부서지는 데 익숙하다.,Back_Adult_Sum_Relit
+성년기,summoned,오래 서 있었다,0.6,손재주 +6 · 연구 +5 · 근접공격 -5,,부를 일이 없어 구석에 세워 두었다. 아직 새것에 가깝다.,Back_Adult_Sum_Idle
+성년기,summoned,지고 날랐다,1.0,근력 +9 · 노동 +6 · 근접공격 -4,,무거운 것을 옮기는 데 쓰였다. 등이 단단해졌다.,Back_Adult_Sum_Hauling
