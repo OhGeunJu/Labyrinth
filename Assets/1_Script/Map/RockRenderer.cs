@@ -170,8 +170,9 @@ public class RockRenderer : MonoBehaviour
 
     class Chunk
     {
-        public GameObject Go;
-        public Mesh       Mesh;
+        public GameObject   Go;
+        public Mesh         Mesh;
+        public MeshRenderer Renderer;
 
         // **박스로 막는다 — 메시가 아니다**(2026-08-30). 근거는 `FitBoxes` 위에 적었다.
         public readonly List<BoxCollider> Boxes = new();
@@ -215,6 +216,35 @@ public class RockRenderer : MonoBehaviour
     readonly List<int>     _mark  = new();   // 캘 것으로 찍힌 칸
 
     readonly List<int>     _side  = new();   // 옆면 — 밝다
+
+    // ── 벽에 박힌 광맥 (2026-09-14) ────────────────────────────────────────
+    //
+    // 광맥은 **여태 안 보였다.** `RockMap.VeinAt`이 바이옴별로 덩어리째 심어 두는데 그리는
+    // 쪽이 한 번도 안 물어서, 어디에 무엇이 박혔는지는 **벽을 하나씩 눌러 살펴봐야만** 알 수
+    // 있었다 — 그러면 *어디를 팔까*가 판단이 아니라 뽑기다.
+    //
+    // **드러난 옆면에만 그린다.** 윗면은 *안 판 자리 = 어둠*이라 거기 알갱이를 얹으면
+    // 세계의 경계가 흐려지고, 무엇보다 **아직 안 판 바위 속이 통째로 들여다보인다**(광맥을
+    // 따라 파는 일이 사라진다). 파낸 방의 벽에만 보이면 **판 만큼 드러난다.**
+    //
+    // **서브메시를 광맥 종류마다 하나씩** 붙인다. 색이 종류마다 다른데
+    // `MaterialPropertyBlock`은 **렌더러 단위**라(바이옴 색조가 그걸 쓴다) 한 청크에 두
+    // 종류가 박히면 한 색으로 눌린다. 청크가 16m이고 광맥 덩어리가 22m라 **한 청크에
+    // 대개 한 종류**이므로 늘어나는 드로콜은 한둘이다.
+    readonly List<ResourceNodeData> _oreKinds = new();
+    readonly List<List<int>>        _oreTris  = new();
+    static   readonly List<Material> _mats    = new();
+
+    // **천장을 둔다** — 넘치면 그 종류는 안 그린다(`WideGraph`의 덩어리 천장과 같은 규칙:
+    // 이어 붙이면 *없는 것을 있다고* 하게 되므로 버리는 쪽이 낫다). 22m 덩어리가 16m 청크에
+    // 넷이나 겹치는 일은 없다.
+    const int MaxOreKinds = 4;
+
+    // 알갱이를 어디에 몇 개 박나. **눈높이 아래에 둔다** — 벽은 24m인데 `RockCut`이
+    // 눈높이의 비율로 뚜껑을 내리므로(`cutLow` 2.5m가 바닥) 위쪽에 박으면 **잘려서 안 보인다.**
+    const int   OreSpecks = 5;
+    const float OreBand   = 2.2f;    // 바닥에서 이 높이까지
+    const float OreOut    = 0.03f;   // 벽면에서 이만큼 띄운다(z-파이팅)
 
     Transform _root;
     Material  _topMat, _sideMat, _markMat;
@@ -484,6 +514,7 @@ public class RockRenderer : MonoBehaviour
         double bakeAt = churnDebug ? Now() : 0d;
 
         _verts.Clear(); _norms.Clear(); _uvs.Clear(); _top.Clear(); _side.Clear(); _mark.Clear();
+        _oreKinds.Clear();
 
         var map = MapManager.Instance;
         int x0 = chunk.x * ChunkTiles, y0 = chunk.y * ChunkTiles;
@@ -526,10 +557,26 @@ public class RockRenderer : MonoBehaviour
 
             // 옆면 — **뚫린 이웃 쪽만.**
             var sideList = marked ? _mark : _side;
-            Side(sideList, tile + Vector2Int.left,  xa, za, xa, zb, floor, top, Vector3.left);
-            Side(sideList, tile + Vector2Int.right, xb, zb, xb, za, floor, top, Vector3.right);
-            Side(sideList, tile + Vector2Int.down,  xb, za, xa, za, floor, top, Vector3.back);
-            Side(sideList, tile + Vector2Int.up,    xa, zb, xb, zb, floor, top, Vector3.forward);
+            bool wL = Side(sideList, tile + Vector2Int.left,  xa, za, xa, zb, floor, top, Vector3.left);
+            bool wR = Side(sideList, tile + Vector2Int.right, xb, zb, xb, za, floor, top, Vector3.right);
+            bool wD = Side(sideList, tile + Vector2Int.down,  xb, za, xa, za, floor, top, Vector3.back);
+            bool wU = Side(sideList, tile + Vector2Int.up,    xa, zb, xb, zb, floor, top, Vector3.forward);
+
+            // **광맥은 드러난 옆면에만 박힌다.** 찍힌 칸에는 안 그린다 — *"여기를 판다"*가
+            // 그 칸의 전부라, 거기서 또 갈라 봐야 색만 늘고 읽히지는 않는다(윗면·옆면을
+            // 한 벌로 보내는 것과 같은 규칙).
+            if (marked || !(wL || wR || wD || wU)) continue;
+
+            var vein = RockMap.VeinAt(tile);
+            if (vein == null || !vein.IsVein) continue;
+
+            var ore = OreList(vein);
+            if (ore == null) continue;                      // 종류가 천장을 넘었다
+
+            if (wL) Specks(ore, tile, 0, xa, za, xa, zb, floor, Vector3.left);
+            if (wR) Specks(ore, tile, 1, xb, zb, xb, za, floor, Vector3.right);
+            if (wD) Specks(ore, tile, 2, xb, za, xa, za, floor, Vector3.back);
+            if (wU) Specks(ore, tile, 3, xa, zb, xb, zb, floor, Vector3.forward);
         }
 
         if (_top.Count == 0 && _side.Count == 0 && _mark.Count == 0) { Drop(chunk); return; }
@@ -543,10 +590,11 @@ public class RockRenderer : MonoBehaviour
         mesh.SetVertices(_verts);
         mesh.SetNormals(_norms);
         mesh.SetUVs(0, _uvs);
-        mesh.subMeshCount = 3;
+        mesh.subMeshCount = 3 + _oreKinds.Count;
         mesh.SetTriangles(_top,  0);
         mesh.SetTriangles(_side, 1);
         mesh.SetTriangles(_mark, 2);
+        for (int k = 0; k < _oreKinds.Count; k++) mesh.SetTriangles(_oreTris[k], 3 + k);
         mesh.RecalculateBounds();
 
         // **경계는 자르기 전이 아니라 자른 뒤를 덮어야 한다**(2026-09-08).
@@ -567,6 +615,18 @@ public class RockRenderer : MonoBehaviour
         var b = mesh.bounds;
         b.SetMinMax(new Vector3(b.min.x, lowest - CutBoundsSlack, b.min.z), b.max);
         mesh.bounds = b;
+
+        // **재질은 청크마다 다시 맞춘다** — 광맥 서브메시가 늘고 줄기 때문이다(한 칸을
+        // 파내면 드러나는 벽이 바뀌어 굽기마다 종류가 달라질 수 있다). 개수가 어긋나면
+        // 유니티가 남는 서브메시를 **첫 재질로** 그려 **광맥이 바위색 알갱이**가 된다.
+        _mats.Clear();
+        _mats.Add(TopMat()); _mats.Add(SideMat()); _mats.Add(MarkMat());
+        for (int k = 0; k < _oreKinds.Count; k++) _mats.Add(OreMat(_oreKinds[k]));
+        ch.Renderer.SetSharedMaterials(_mats);
+
+        // **색조는 재질을 갈아 끼운 뒤에 얹는다** — `MaterialPropertyBlock`은 슬롯에 붙는데
+        // 슬롯 수가 방금 바뀌었다.
+        TintForBiome(ch.Renderer, chunk);
 
         // **콜라이더를 단다** — 커서가 바위를 짚어야 캘 자리를 고를 수 있고, 몸도 막아야 한다.
         // (천장에 안 다는 것과 정반대다 — 저쪽은 위에 있어서 짚으면 안 되고, 이쪽은 짚어야 한다.)
@@ -667,10 +727,12 @@ public class RockRenderer : MonoBehaviour
             if (ch.Boxes[i] != null) ch.Boxes[i].enabled = false;
     }
 
-    void Side(List<int> list, Vector2Int neighbor,
+    // **그렸는지 돌려준다** — 광맥 알갱이는 *드러난* 면에만 박히는데, 그 판정을 부르는
+    // 쪽에서 다시 하면 `IsRock`을 칸마다 두 번 묻게 되고 무엇보다 **답이 두 벌**이 된다.
+    bool Side(List<int> list, Vector2Int neighbor,
               float x1, float z1, float x2, float z2, float floor, float top, Vector3 n)
     {
-        if (RockMap.IsRock(neighbor)) return;   // 맞닿은 바위 — 안 보인다
+        if (RockMap.IsRock(neighbor)) return false;   // 맞닿은 바위 — 안 보인다
 
         // 이웃 바닥이 더 낮으면 거기까지 내려 세운다. 안 내리면 **벽 밑이 뚫려 보인다.**
         float bottom = Mathf.Min(floor, RockMap.SurfaceOf(neighbor));
@@ -678,6 +740,98 @@ public class RockRenderer : MonoBehaviour
         Quad(list,
              new Vector3(x1, bottom, z1), new Vector3(x1, top, z1),
              new Vector3(x2, top, z2),    new Vector3(x2, bottom, z2), n);
+        return true;
+    }
+
+    // ── 벽면에 광석 알갱이 ──────────────────────────────────────────────────
+    //
+    // 면을 통째로 물들이지 않는다 — **박힌 것**으로 보여야 *"이 벽에 구리가 있다"*로 읽히고,
+    // 면을 칠하면 *바이옴이 바뀐 것*처럼 보인다(벽 색조가 이미 그 축을 쓰고 있다).
+    //
+    // **자리는 좌표 해시다** — 저장하는 것이 없고, 청크를 다시 구워도 알갱이가 안 움직인다
+    // (뿌리기·광맥 심기와 같은 규칙). 움직이면 한 칸을 팔 때마다 옆 벽의 무늬가 흔들린다.
+    void Specks(List<int> list, Vector2Int tile, int dir,
+                float x1, float z1, float x2, float z2, float floor, Vector3 n)
+    {
+        float tx = x2 - x1, tz = z2 - z1;           // 면을 따라가는 방향(길이 1m)
+        float baseY = floor + 0.12f;
+
+        for (int k = 0; k < OreSpecks; k++)
+        {
+            float u = 0.14f + Hash(tile, dir, k * 3 + 0) * 0.72f;
+            float y = baseY + Hash(tile, dir, k * 3 + 1) * OreBand;
+            float h = 0.10f + Hash(tile, dir, k * 3 + 2) * 0.16f;   // 반쪽 크기
+
+            float cx = x1 + tx * u + n.x * OreOut;
+            float cz = z1 + tz * u + n.z * OreOut;
+
+            float ax = tx * h, az = tz * h;         // 면을 따라 +-h
+            Quad(list,
+                 new Vector3(cx - ax, y - h, cz - az), new Vector3(cx - ax, y + h, cz - az),
+                 new Vector3(cx + ax, y + h, cz + az), new Vector3(cx + ax, y - h, cz + az), n);
+        }
+    }
+
+    // 0~1. **`string.GetHashCode`를 안 쓴다** — 실행마다 달라지면 알갱이가 판마다 옮겨 다닌다.
+    static float Hash(Vector2Int tile, int dir, int salt)
+    {
+        unchecked
+        {
+            int h = tile.x * 73856093 ^ tile.y * 19349663 ^ dir * 83492791 ^ salt * 1376312589;
+            return (h & 0xFFFFFF) / (float)0x1000000;
+        }
+    }
+
+    // ── 광맥 서브메시 ───────────────────────────────────────────────────────
+    //
+    // 종류마다 삼각형 목록 하나. **목록은 다시 쓴다** — 청크가 초당 백 장 넘게 구워지므로
+    // 굽기마다 `new List`를 내면 그것이 곧 GC다.
+    List<int> OreList(ResourceNodeData vein)
+    {
+        for (int i = 0; i < _oreKinds.Count; i++)
+            if (_oreKinds[i] == vein) return _oreTris[i];
+
+        if (_oreKinds.Count >= MaxOreKinds) return null;
+
+        _oreKinds.Add(vein);
+        while (_oreTris.Count < _oreKinds.Count) _oreTris.Add(new List<int>());
+
+        var l = _oreTris[_oreKinds.Count - 1];
+        l.Clear();
+        return l;
+    }
+
+    // **재질은 광맥마다 한 벌이고 판 전체가 같이 쓴다** — 청크마다 만들면 세계를 걸어
+    // 다니는 동안 재질이 수천 개 생긴다.
+    //
+    // **값은 `ResourceNodeData`가 든다**(`VeinArt`가 써 넣는다) — 여기서 색을 또 적으면
+    // **같은 광맥이 벽에서와 바닥에서 다른 색**이 된다.
+    static readonly Dictionary<ResourceNodeData, Material> _oreMats = new();
+
+    // **판이 열릴 때 비운다** — 도메인 리로드를 끄면 지난 판에서 만든 재질(이미 파괴된
+    // 것)을 들고 시작한다. 아래 `m != null`이 받아 주기는 하지만, 죽은 항목이 계속 쌓인다.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetOreMats() => _oreMats.Clear();
+
+    static Material OreMat(ResourceNodeData vein)
+    {
+        if (_oreMats.TryGetValue(vein, out var m) && m != null) return m;
+
+        m = Lit("Vein " + vein.name + " (runtime)", vein.VeinColor);
+        m.SetFloat("_Metallic",   vein.VeinMetallic);
+        m.SetFloat("_Smoothness", vein.VeinSmoothness);
+
+        // **어두운 굴에서는 색만으로는 안 읽힌다** — 빛 배율이 어느 때에도 1이 아니라
+        // (0.30~0.62) 알갱이가 벽과 함께 눌린다. 아주 약하게 스스로 빛나게 두면 *박힌 것*이
+        // 그대로 보이고, **빛나는 광물은 더 세게** 빛난다(미스릴·마법 결정).
+        //
+        // **키워드를 같이 켜야 한다** — 색만 넣으면 URP가 조용히 그 패스를 안 돈다.
+        m.EnableKeyword("_EMISSION");
+        m.SetColor("_EmissionColor", vein.VeinColor * (vein.VeinGlow ? 0.9f : 0.22f));
+        m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+
+        _oreMats[vein] = m;
+        return m;
     }
 
     // 텍스처가 몇 미터에 한 번 반복하나. **칸 크기(1m)와 안 떨어지는 값**으로 둔다 —
@@ -757,9 +911,10 @@ public class RockRenderer : MonoBehaviour
         // 지하에는 해가 없어 방향광 그림자가 정보를 나르지 않고, 24m 벽 수천 개가
         // 그림자맵에 들어가는 값도 만만치 않다. **잃는 것이 없다.**
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        TintForBiome(mr, chunk);
 
-        c = new Chunk { Go = go, Mesh = mesh };
+        // **색조는 여기서 안 얹는다** — 광맥 서브메시 때문에 재질 슬롯 수가 굽기마다
+        // 달라지므로, 재질을 갈아 끼운 **뒤에** `Rebuild`가 얹는다.
+        c = new Chunk { Go = go, Mesh = mesh, Renderer = mr };
         _chunks[chunk] = c;
 
         if (churnDebug)

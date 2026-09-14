@@ -192,6 +192,17 @@ public class WorldMapEditorWindow : EditorWindow
     {
         using (new EditorGUILayout.HorizontalScope())
         {
+            // **칠한 지도인지 여기서 보이고 여기서 끈다.** 인스펙터에만 있으면 왜 생성기가
+            // 거절하는지를 창 밖에서 찾게 된다.
+            bool hand = GUILayout.Toggle(_data.HandPainted, "손으로 칠함", "Button",
+                                         GUILayout.Width(90f));
+            if (hand != _data.HandPainted)
+            {
+                Undo.RecordObject(_data, "손으로 칠함");
+                _data.HandPainted = hand;
+                Save();
+            }
+
             if (GUILayout.Button("전체 채우기", GUILayout.Width(90f)))
             {
                 Undo.RecordObject(_data, "Fill World Map");
@@ -302,6 +313,12 @@ public class WorldMapEditorWindow : EditorWindow
 
     void Paint(int x, int y)
     {
+        // **한 칸이라도 칠하면 손으로 칠한 지도다**(2026-09-15). 그래야
+        // `8. Generate Biome Map`이 거절하고, **`1. Rebuild Underworld`가 묶음 한 번에
+        // 칠한 것을 통째로 지우지 않는다.** 끄는 것은 아래 버튼으로 사람만 한다 —
+        // *"다시 굴려도 좋다"*는 사람만 아는 사실이다.
+        _data.HandPainted = true;
+
         switch (_brush)
         {
             case Brush.Biome:

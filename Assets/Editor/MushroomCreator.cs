@@ -53,14 +53,20 @@ public static class MushroomCreator
     // 만드는 것이 빛인데 그 빛이 어디에나 있으면 신호가 아니다. 그렇다고 먹을 것을 한
     // 바이옴에만 두면 *거기로 가는 길*이 유일한 공략이 되므로, **평범한 양송이**을 따로 낸다.
     static readonly Biome[] FungalOnly = { Biome.Fungal };
+    static readonly Biome[] MossOnly   = { Biome.Mossgrotto };
+    static readonly Biome[] SwampOnly  = { Biome.Swamp };
+    // **전부에 체크하면 바이옴을 나눈 뜻이 없어진다.** 마르거나 독하거나 갈라진 곳
+    // (소금굴·유황굴·균열대)은 애초에 뺐고, **이끼굴도 뺐다**(2026-09-15, 사용자:
+    // *"이끼굴에 양송이가 날 필요는 없을 거 같은데"*) — 이끼굴은 이끼와 나무가 나는
+    // 곳이라, 거기에 양송이까지 얹으면 **바닥에 나는 것이 다 있는 바이옴**이 된다.
     static readonly Biome[] PlainCaves =
     {
-        Biome.Limestone, Biome.Cavern, Biome.Flooded, Biome.Mine, Biome.Crystal,
+        Biome.Cavern, Biome.Glacier, Biome.Mine, Biome.Crystal, Biome.Ossuary,
     };
 
     // **번호를 7로 옮겼다**(2026-09-06) — `World/6`에 이미 셋이 있어(`Resnap` ·
     // `Terrain In Authoring Scene`) *"6번 돌리세요"*가 어느 것인지 안 가려졌다.
-    [MenuItem("DungeonColony/World/7. Create Mushrooms (버섯 · 바닥 돌)")]
+    [MenuItem("DungeonColony/World/7. Create Flora (버섯 · 바닥 돌 · 단단한 나무)")]
     static void Create()
     {
         var wood = AssetDatabase.LoadAssetAtPath<ItemData>(ItemDir + "/Res_Wood.asset");
@@ -111,16 +117,117 @@ public static class MushroomCreator
         else
             Debug.LogWarning("[버섯] Res_Stone을 못 찾아 바닥 돌은 안 만들었습니다.");
 
+        // ── 단단한 나무 — **원목의 다음 티어**(2026-09-15, 사용자 결정) ──────
+        //
+        // 사용자: *"단단한 나무는 팰월드 처럼 나무 다음 트리야"* — 쓰임이 새로운 것이
+        // 아니라 **같은 쓰임의 더 좋은 것**이고, 2층(지저늪)에서만 난다.
+        //
+        // **무엇이 먹는지는 아직 안 정했다**(사용자가 적기로 했다). 그래서 **재료와 나무만**
+        // 만들어 두고 레시피·연구는 한 줄도 안 건드린다 — 지금 이건 *팔면 돈이 되는 목재*다.
+        var hardItem   = Hardwood();
+        var hardNode   = Node("HardwoodTrunk", hardItem, prefab: null,
+                              gauge: 320f, min: 3, max: 6, workers: 2, totalYields: 5,
+                              displayName: "물먹은 둥치",
+                              description: "지저늪에 잠겼다 굳은 검은 나무. 가지는 삭아 없어지고 " +
+                                           "둥치만 남았다. 물을 먹고 굳어 **원목보다 단단하다**. " +
+                                           "**다섯 번 베면 없어진다.**");
+        // ── 1층의 약초 사슬 (2026-09-15, 사용자 결정) ────────────────────────
+        //
+        // **허브가 지하에 안 났다.** 열 개 레시피의 뿌리인데(정수·치유 물약·해독제·습포·
+        // 구급낭·약초차·에일·치즈·천) 노드에도 밭에도 뿌리기에도 없어서, **사는 것과
+        // 뺏는 것**뿐이었다 — 1층에서 치료가 자급이 안 됐다.
+        //
+        // **이끼가 그 자리다**(사용자: *"이끼로는 뭐해? 물약 만들어야하나?"*). 새 아이템도
+        // 새 레시피도 안 만든다 — **기다리고 있던 재료에 지하 원천을 주는 것**이 전부다.
+        //
+        // **푸른 곰팡이는 정수 그 자체다**(사용자: *"정수를 푸른곰팡이로 바꿔 페니실린"*).
+        // `alch_essence`가 이미 *"모든 조제의 바탕"*이라 **역할이 정확히 겹쳤다** — 이름과
+        // 설명만 바꾸고 **id는 그대로 뒀다**(레시피 여섯과 연구 하나가 문자열로 가리킨다).
+        //
+        // **둘은 사슬이 아니라 나란히 선다**(2026-09-15, 사용자: *"허브 → 배양 → 푸른곰팡이로
+        // 가도 되긴하지만 굳이 갈 필요 없지않나? 두 템의 역할을 다르게 잡으면 되잖아"*).
+        //
+        // 처음엔 *허브를 배양해 곰팡이를 만든다*로 이었는데, **그러면 이끼굴 하나만 가도
+        // 된다** — 균사림은 *한 단계 건너뛰는 지름길*일 뿐이라 안 가도 그만이다.
+        // 이으면 바이옴이 **대체재**가 되고, 가르면 **둘 다 가야 한다.**
+        //
+        // 저작을 보니 **이미 갈려 있었다** — 손댈 것은 잇던 레시피를 **지우는 것**뿐이었다:
+        //
+        //   · **허브**(이끼굴) = 식물 — 천 짜기 · 약초차 · 에일 · 치즈 · 습포
+        //   · **푸른 곰팡이**(균사림) = 약효 — 치유 물약 · 해독제 · 활력 물약 · 구급낭
+        //
+        // 그리고 **물약 대부분이 둘을 같이 먹는다**(치유 = 곰팡이 2 + 허브 1). 사슬로 이어
+        // 두면 그게 *같은 것을 두 모양으로 넣는 것*이 되어 뜻이 없었다.
+        var mossPatch  = BuildPatch("Node_MossPatch",  "herbs",       2, 4,
+                                    new Color(0.26f, 0.52f, 0.22f), glow: false);
+        var mouldPatch = BuildPatch("Node_BlueMould",  "alch_essence", 2, 3,
+                                    new Color(0.22f, 0.44f, 0.92f), glow: true);
+
+        // ── 이끼굴의 나무 (2026-09-15, 사용자: *"이끼굴은 흙컨셉으로 해서 나무를 여기에"*) ──
+        //
+        // **둘 다 원목을 낸다**(거대버섯과 이 나무). 앞서 내가 *"목재원이 둘이면 한쪽은
+        // 다른 것을 내야 한다"*고 적었는데 **그건 내가 과하게 세운 규칙**이다 — 구리도 1층
+        // 세 바이옴에서 나고, 아무도 그걸 문제 삼지 않는다. 같은 것이 여러 곳에서 나는 것은
+        // *어디로 갈지*를 좁혀 주지 않을 뿐 **틀린 것이 아니다.**
+        //
+        // 갈리는 것은 **생김새와 곁들이**다: 균사림은 갓버섯(빛·식량)과 곰팡이(약)가 같이
+        // 나고, 이끼굴은 이끼(약초)가 같이 난다. 목재만 보고 고를 일이 아니다.
+        var mossTree = Node("MossTree", wood, prefab: null,
+                            gauge: 200f, min: 3, max: 6, workers: 2, totalYields: 6,
+                            displayName: "이끼 낀 나무",
+                            description: "흙이 두터운 굴에 뿌리를 내린 나무. 잎은 없고 " +
+                                         "가지에 이끼가 앉았다. **여섯 번 베면 없어진다.**");
+        var treePrefab = BuildTree(mossTree);
+        mossTree.Prefab = treePrefab;
+        EditorUtility.SetDirty(mossTree);
+
+        var hardPrefab = BuildTrunk(hardNode);
+        hardNode.Prefab = hardPrefab;
+        EditorUtility.SetDirty(hardNode);
+
         CleanBiomePools();
         DropStaleCapNode();
-        WireScatter(capPrefab, cavePrefab, giantPrefab, pebblePrefab);
+        WireScatter(capPrefab, cavePrefab, giantPrefab, pebblePrefab, hardPrefab,
+                    mossPatch, mouldPatch, treePrefab);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("[버섯] 갓버섯(채집) · 거대버섯(벌목, 균사림)을 만들고 뿌리기에 물렸습니다.");
+        Debug.Log("[초목] 갓버섯·양송이(채집) · 거대버섯(벌목, 균사림) · 바닥 돌 · " +
+                  "**물먹은 둥치**(벌목, 지저늪)를 만들고 뿌리기에 물렸습니다.\n" +
+                  "**단단한 나무를 먹는 레시피는 아직 없습니다** — 무엇이 먹을지 정하면 거기 걸 것.");
     }
 
     // ── 아이템 ──────────────────────────────────────────────────────────────
+
+    // **원목의 다음 티어.** 묶음이 `Wood`라는 것이 요점이다 — `ResourceNodeData.IsTree`가
+    // 그걸 보고 **채굴이 아니라 벌목**으로 가른다(노드마다 손으로 적지 않는다).
+    //
+    // 값은 원목(4)의 세 배쯤. 2층에서만 나고 다섯 번이면 마르므로 **원목과 같은 값이면
+    // 굳이 캐러 갈 이유가 없다.** 무게는 더 나간다 — 물을 먹고 굳은 나무다.
+    static ResourceItemData Hardwood()
+    {
+        const string id = "Res_Hardwood";
+        string path = ItemDir + "/" + id + ".asset";
+
+        var r = AssetDatabase.LoadAssetAtPath<ResourceItemData>(path);
+        if (r == null)
+        {
+            r = ScriptableObject.CreateInstance<ResourceItemData>();
+            AssetDatabase.CreateAsset(r, path);
+        }
+
+        r.Id          = id;
+        r.ItemName    = "단단한 나무";
+        r.Description = "물에 잠겼다 굳은 검은 나무. 원목보다 무겁고 잘 쪼개지지 않는다.";
+        r.Weight      = 1.4f;
+        r.Width       = 1;
+        r.Height      = 1;
+        r.BaseValue   = 12;
+        r.Group       = ResourceGroup.Wood;
+        r.Stack       = 200;
+        EditorUtility.SetDirty(r);
+        return r;
+    }
 
     // **음식이라 `FoodData`다.** 영양은 빵(30)보다 낮게 둔다: 주우면 나오는 것이 밥이 되면 농사를 지을 이유가 없다.
     static FoodData Food(string id, string name, int value, float nutrition, string desc)
@@ -260,6 +367,179 @@ public static class MushroomCreator
         SerializedWrite.Set(node, so => so.FindProperty("data").objectReferenceValue = data);
 
         return Save(root, "Node_GiantMushroom");
+    }
+
+    // ── 물먹은 둥치 ─────────────────────────────────────────────────────────
+    //
+    // **가지가 없다**(2026-09-15, 사용자 결정: *"물에 절인 검은 둥치"*). 거대버섯과
+    // **확실히 갈려야 한다** — 둘 다 목재를 내는데 층이 다르므로, 멀리서 *어느 쪽을 캐는
+    // 중인지*가 눈으로 읽혀야 한다. 버섯은 갓이 있고 이건 기둥뿐이다.
+    //
+    // **위가 부러져 있다**(원뿔이 아니라 잘린 원기둥) — 삭아 없어진 가지를 그리는 대신
+    // *부러진 자리*로 말한다. 그리고 **조금 기울인다**: 곧게 선 기둥은 사람이 세운 것처럼
+    // 보이고, 기울면 **물에 밀려 자빠지다 굳은 것**으로 읽힌다.
+    //
+    // **밑동이 굵다** — 물에 잠긴 나무의 뿌리목이 부푼 모양이고, 무엇보다 **한 칸을
+    // 채워야** 칸에 놓인 물건으로 보인다(바닥 돌에서 배운 것과 같다).
+    static GameObject BuildTrunk(ResourceNodeData data)
+    {
+        var root = new GameObject("Node_HardwoodTrunk");
+
+        // 밑동 — 굵고 낮게.
+        var flare = Prim(PrimitiveType.Cylinder, "Flare", root.transform,
+                         new Vector3(0.95f, 0.22f, 0.95f), new Vector3(0f, 0.20f, 0f));
+        Paint(flare, "Mdl_Trunk_Wet", new Color(0.13f, 0.12f, 0.11f));
+
+        // 둥치 — 두 토막으로 나눠 **위로 갈수록 가늘게**. 한 토막이면 파이프로 보인다.
+        var low = Prim(PrimitiveType.Cylinder, "TrunkLow", root.transform,
+                       new Vector3(0.62f, 0.75f, 0.62f), new Vector3(0f, 1.00f, 0f));
+        Paint(low, "Mdl_Trunk_Wet", new Color(0.13f, 0.12f, 0.11f));
+
+        var high = Prim(PrimitiveType.Cylinder, "TrunkHigh", root.transform,
+                        new Vector3(0.46f, 0.70f, 0.46f), new Vector3(0.10f, 2.35f, 0.05f));
+        high.transform.localRotation = Quaternion.Euler(6f, 0f, 4f);   // 기울었다
+        Paint(high, "Mdl_Trunk_Wet", new Color(0.11f, 0.10f, 0.10f));
+
+        // 부러진 단면 — **한 톤 밝게.** 속살이 드러난 자리라 겉보다 밝아야 *부러졌다*로
+        // 읽힌다(같은 색이면 그냥 잘린 원기둥이다).
+        var broke = Prim(PrimitiveType.Cylinder, "Break", root.transform,
+                         new Vector3(0.44f, 0.04f, 0.44f), new Vector3(0.18f, 3.02f, 0.09f));
+        broke.transform.localRotation = Quaternion.Euler(6f, 0f, 4f);
+        Paint(broke, "Mdl_Trunk_Core", new Color(0.34f, 0.28f, 0.22f));
+
+        // **트리거가 아니다** — 나무 자리라 몸으로 막는 것이 맞다(거대버섯과 같은 규칙).
+        var col = root.AddComponent<CapsuleCollider>();
+        col.height = 3.1f;
+        col.radius = 0.55f;
+        col.center = new Vector3(0f, 1.55f, 0f);
+
+        // **빛을 안 단다** — 거대버섯은 그 지대의 등이지만 이건 죽은 나무다. 늪이 어두운
+        // 것이 그 바이옴의 성격이고, 여기에 등을 달면 균사림과 구별이 흐려진다.
+
+        var node = root.AddComponent<ResourceNode>();
+        SerializedWrite.Set(node, so => so.FindProperty("data").objectReferenceValue = data);
+
+        return Save(root, "Node_HardwoodTrunk");
+    }
+
+    // ── 이끼 낀 나무 ───────────────────────────────────────────────────────
+    //
+    // 1층에 목재를 내는 것이 셋이 됐다 — 셋이 **눈으로 갈려야** 어느 굴에 있는지가 읽힌다:
+    //
+    //   · 거대버섯(균사림) — **갓**이 있다. 푸르고 빛난다
+    //   · 이끼 낀 나무(이끼굴) — **가지**가 있다. 갈색에 이끼가 앉았다
+    //   · 물먹은 둥치(지저늪, 2층) — **가지가 없다**. 검고 위가 부러졌다
+    //
+    // **가지가 이 나무의 표시다.** 잎은 안 단다 — 해가 없는 곳이라 잎이 있으면 *지상에서
+    // 떠온 것*으로 보인다. 대신 **가지 끝에 이끼**를 얹어 어느 굴의 것인지 말한다.
+    static GameObject BuildTree(ResourceNodeData data)
+    {
+        var root = new GameObject("Node_MossTree");
+        var rng  = new System.Random(NameSeed("Node_MossTree"));
+
+        var low = Prim(PrimitiveType.Cylinder, "TrunkLow", root.transform,
+                       new Vector3(0.52f, 0.85f, 0.52f), new Vector3(0f, 0.85f, 0f));
+        Paint(low, "Mdl_Bark", new Color(0.30f, 0.22f, 0.15f));
+
+        var high = Prim(PrimitiveType.Cylinder, "TrunkHigh", root.transform,
+                        new Vector3(0.38f, 0.80f, 0.38f), new Vector3(0f, 2.45f, 0f));
+        Paint(high, "Mdl_Bark", new Color(0.30f, 0.22f, 0.15f));
+
+        // 가지 셋 — **위로 벌어진다.** 아래로 처지면 죽은 나무로 보인다.
+        for (int i = 0; i < 3; i++)
+        {
+            float a = (float)(i * 2.0 * System.Math.PI / 3.0 + rng.NextDouble() * 0.5);
+            float dx = Mathf.Cos(a), dz = Mathf.Sin(a);
+
+            var br = Prim(PrimitiveType.Cylinder, "Branch" + i, root.transform,
+                          new Vector3(0.14f, 0.55f, 0.14f),
+                          new Vector3(dx * 0.55f, 3.05f, dz * 0.55f));
+            br.transform.localRotation = Quaternion.Euler(dz * 42f, 0f, -dx * 42f);
+            Paint(br, "Mdl_Bark", new Color(0.30f, 0.22f, 0.15f));
+
+            // **가지 끝의 이끼** — 이 나무가 어느 굴의 것인지를 말하는 한 점이다.
+            var moss = Prim(PrimitiveType.Sphere, "Moss" + i, root.transform,
+                            new Vector3(0.40f, 0.22f, 0.40f),
+                            new Vector3(dx * 1.05f, 3.62f, dz * 1.05f));
+            Paint(moss, "Mdl_TreeMoss", new Color(0.26f, 0.52f, 0.22f));
+        }
+
+        // **트리거가 아니다** — 나무라 몸으로 막는 것이 맞다(거대버섯과 같은 규칙).
+        var col = root.AddComponent<CapsuleCollider>();
+        col.height = 3.4f;
+        col.radius = 0.5f;
+        col.center = new Vector3(0f, 1.7f, 0f);
+
+        var node = root.AddComponent<ResourceNode>();
+        SerializedWrite.Set(node, so => so.FindProperty("data").objectReferenceValue = data);
+
+        return Save(root, "Node_MossTree");
+    }
+
+    // ── 바닥에 깔린 것 — 이끼 · 곰팡이 ─────────────────────────────────────
+    //
+    // **버섯이 아니라 깔린 것이다.** 갓버섯은 대와 갓이 있어 *서 있는 물건*인데, 이끼와
+    // 곰팡이는 **바닥에 붙어 번진 자국**이다 — 대를 세우면 작은 버섯으로 읽힌다.
+    // 그래서 납작한 덩이 몇을 바닥에 눌러 붙인다.
+    //
+    // **트리거다**(바닥 돌과 같은 규칙) — 칸을 막으면 이끼 한 무더기가 통로를 끊는다.
+    // 그래도 콜라이더는 **있어야 한다**: 좌클릭으로 고르는 길이 그것뿐이다.
+    //
+    // **JSON 아이템을 낸다** — 허브도 곰팡이도 `StreamingAssets`라 guid로 못 가리킨다.
+    // `Forageable.itemId`가 그 길이다(`MerchantPoolEntry`와 같은 규약).
+    static GameObject BuildPatch(string name, string itemId, int min, int max,
+                                 Color tone, bool glow)
+    {
+        var root = new GameObject(name);
+
+        // **시드를 이름에서 낸다 — `GetHashCode`가 아니다**(실행마다 달라지면 프리팹을
+        // 다시 구울 때마다 얼룩 모양이 바뀌어 **버전 관리에 매번 diff가 뜬다**).
+        var rng = new System.Random(NameSeed(name));
+
+        // **한 칸을 덮는다** — 주울 물건은 칸만 해야 칸에 놓인 것으로 보인다(바닥 돌에서
+        // 배운 것). 납작한 구 다섯을 겹쳐 얼룩을 만든다.
+        for (int i = 0; i < 5; i++)
+        {
+            float a  = (float)(rng.NextDouble() * Mathf.PI * 2.0);
+            float r  = (float)rng.NextDouble() * 0.32f;
+            float sc = 0.34f + (float)rng.NextDouble() * 0.24f;
+
+            var c = Prim(PrimitiveType.Sphere, "Clump" + i, root.transform,
+                         new Vector3(sc, sc * 0.30f, sc * 0.92f),
+                         new Vector3(Mathf.Cos(a) * r, sc * 0.08f, Mathf.Sin(a) * r));
+
+            c.transform.localRotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
+            Paint(c, "Mdl_" + name, tone, emissive: glow);
+        }
+
+        var sph = root.AddComponent<SphereCollider>();
+        sph.isTrigger = true;
+        sph.radius    = 0.5f;
+        sph.center    = new Vector3(0f, 0.12f, 0f);
+
+        // **곰팡이는 아주 약하게 빛난다** — 균사림이 푸른 지대라 바닥에 붙은 얼룩은
+        // 그냥 어둠에 묻힌다. 갓버섯만큼 밝히면 *등*이 되어 버리니 반경을 짧게 둔다.
+        if (glow) Glow(root, radius: 3.5f, strength: 0.28f, intensity: 0.35f, range: 4f, height: 0.3f);
+
+        var f = root.AddComponent<Forageable>();
+        SerializedWrite.Set(f, so =>
+        {
+            so.FindProperty("itemId").stringValue = itemId;
+            so.FindProperty("minAmount").intValue = min;
+            so.FindProperty("maxAmount").intValue = max;
+        });
+
+        return Save(root, name);
+    }
+
+    static int NameSeed(string s)
+    {
+        unchecked
+        {
+            int h = 17;
+            for (int i = 0; i < s.Length; i++) h = h * 31 + s[i];
+            return h != 0 ? h : 1;
+        }
     }
 
     // 바닥에 굴러다니는 돌 서넛. **버섯과 같은 물건이다**(`Forageable`) — 모양만 다르다.
@@ -454,18 +734,14 @@ public static class MushroomCreator
     // **없으면 조용히 넘어가지 않고 말한다** — 에셋만 만들어 두고 아무것도 안 나면 원인이
     // 코드가 아니라 배선에 있고, 그건 화면에서 절대 안 보인다.
     static void WireScatter(GameObject capPrefab, GameObject cavePrefab, GameObject giantPrefab,
-                            GameObject pebblePrefab)
+                            GameObject pebblePrefab, GameObject trunkPrefab,
+                            GameObject mossPrefab, GameObject mouldPrefab,
+                            GameObject treePrefab)
     {
-        var streamer = Object.FindFirstObjectByType<WorldContentStreamer>(FindObjectsInactive.Include);
-        if (streamer == null)
-        {
-            Debug.LogWarning("[버섯] 씬에 WorldContentStreamer가 없습니다 — 에셋만 만들었고 " +
-                             "뿌리기는 안 걸렸습니다. 판(씬)을 열고 다시 돌리세요.");
-            return;
-        }
-
-        var so    = new SerializedObject(streamer);
-        var rules = so.FindProperty("scatter");
+        // **쓰는 문은 `ScatterWiring` 하나다**(2026-09-14) — 바닥 광맥을 쓰는 도구가 하나 더
+        // 생기면서, 여기 박혀 있던 *"안 적으면 조용히 아무것도 안 나는"* 규칙들(지하 고도
+        // 범위 · `RequireOpenTile`)을 저쪽이 모르면 그대로 사고가 된다.
+        if (!ScatterWiring.Open("버섯", out var so, out var rules)) return;
 
         // **밀도는 "자리 수 × 무리 크기"다.** 갓버섯은 청크(64m)에 **네 자리, 자리마다
         // 셋~다섯이 맞닿은 칸에** — 굴을 걷다 보면 몇 번은 버섯밭을 만나고, 만나면 폰이
@@ -474,70 +750,51 @@ public static class MushroomCreator
         //
         // **퍼짐은 1칸이다** — 제 칸과 맞닿은 여덟. 다섯이면 한 칸도 안 비고 뭉친다.
         // 2로 올리면 3×3을 넘어서서 *한 무더기*가 아니라 *느슨한 밭*이 된다.
-        Rule(rules, "갓버섯", capPrefab, perChunk: 5f, spacing: 12f, regrowDays: 3f,
+        ScatterWiring.Set(rules, "갓버섯", capPrefab, perChunk: 5f, spacing: 12f, regrowDays: 3f,
              biomes: FungalOnly, cluster: (3, 5), spread: 1);
 
         // **양송이는 안 빛난다** — 그래서 더 흔해도 된다(빛이 아니라 먹을 것이다).
-        Rule(rules, "양송이", cavePrefab, perChunk: 4f, spacing: 14f, regrowDays: 3f,
+        ScatterWiring.Set(rules, "양송이", cavePrefab, perChunk: 4f, spacing: 14f, regrowDays: 3f,
              biomes: PlainCaves, cluster: (2, 4), spread: 1);
 
         // **거대버섯은 균사림에만** — 그리고 균사림 안에서는 흔하다(청크당 넷). 바이옴으로
         // 걸러 놓고 밀도까지 낮추면 *"목재가 나는 곳"*에 가서도 목재를 못 본다.
         // **무리는 안 짓는다** — 나무 자리라 하나씩 서는 것이 맞다.
-        Rule(rules, "거대버섯", giantPrefab, perChunk: 4f, spacing: 14f, regrowDays: 0f,
+        ScatterWiring.Set(rules, "거대버섯", giantPrefab, perChunk: 4f, spacing: 14f, regrowDays: 0f,
              biomes: FungalOnly, cluster: (1, 1), spread: 0);
+
+
+        // **물먹은 둥치는 지저늪에만** — 2층의 목재다. 거대버섯(청크당 넷)보다 드물게
+        // 둔다: 원목은 *늘 쓰는 것*이고 이건 **상위 재료**라, 같은 밀도면 티어가 안 읽힌다.
+        // **다시 안 난다**(0) — 죽은 나무는 자라지 않는다.
+        ScatterWiring.Set(rules, "물먹은 둥치", trunkPrefab, perChunk: 2.5f, spacing: 16f,
+             regrowDays: 0f, biomes: SwampOnly, cluster: (1, 1), spread: 0);
+
+        // **이끼 낀 나무는 이끼굴에만** — 1층 목재의 두 원천 중 하나다(다른 하나가
+        // 균사림의 거대버섯). 거대버섯(청크당 넷)보다 조금 성기게 둔다: 나무 한 그루가
+        // 칸을 막고 서 있으므로, 같은 밀도면 굴이 **숲이 아니라 장애물밭**이 된다.
+        ScatterWiring.Set(rules, "이끼 낀 나무", treePrefab, perChunk: 3f, spacing: 13f,
+             regrowDays: 0f, biomes: MossOnly, cluster: (1, 1), spread: 0);
+
+        // **이끼는 이끼굴에 흔하다** — 바이옴 이름이 그것이고, 무엇보다 **약초가 여기서만
+        // 난다**(1층 전체의 치료가 이 한 바이옴에 달렸으니 드물면 병목이 된다).
+        // **다시 난다**(3일) — 약초는 이어지는 수입이어야 한다(갓버섯과 같은 규칙).
+        ScatterWiring.Set(rules, "이끼 무더기", mossPrefab, perChunk: 5f, spacing: 11f,
+             regrowDays: 3f, biomes: MossOnly, cluster: (3, 5), spread: 1);
+
+        // **푸른 곰팡이는 균사림에만.** 이제 **만들 길이 없으므로**(배양 레시피를 지웠다)
+        // 여기가 세계에서 유일한 원천이다 — 드물게 두면 물약이 통째로 막힌다.
+        // 이끼보다 조금 성기되(허브가 먹는 레시피가 더 많다) **양을 늘려** 맞춘다(2~3).
+        ScatterWiring.Set(rules, "푸른 곰팡이", mouldPrefab, perChunk: 4f, spacing: 13f,
+             regrowDays: 4f, biomes: FungalOnly, cluster: (2, 4), spread: 1);
 
         // **돌은 어디에나, 그리고 흔하다** — 버섯보다 눈에 안 띄는 물건이라 드물면 없는 것과
         // 같다. **다시 안 난다**(0): 자연에 떨어져 있던 것이지 자라는 것이 아니다.
         if (pebblePrefab != null)
-            Rule(rules, "바닥 돌", pebblePrefab, perChunk: 7f, spacing: 9f, regrowDays: 0f,
+            ScatterWiring.Set(rules, "바닥 돌", pebblePrefab, perChunk: 7f, spacing: 9f, regrowDays: 0f,
                  biomes: null, cluster: (2, 4), spread: 1);
 
-        so.ApplyModifiedProperties();
-        EditorUtility.SetDirty(streamer);
-        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(streamer.gameObject.scene);
+        ScatterWiring.Commit(so);
     }
 
-    // 이름으로 찾아 값만 맞춘다 — **그냥 붙이면 다시 돌릴 때마다 규칙이 하나씩 늘어** 버섯이
-    // 두 배, 세 배로 난다(`5. Place Sites`가 신원으로 맞추는 것과 같은 이유다).
-    static void Rule(SerializedProperty rules, string name, GameObject prefab,
-                     float perChunk, float spacing, float regrowDays, Biome[] biomes,
-                     (int min, int max) cluster, int spread)
-    {
-        SerializedProperty e = null;
-        for (int i = 0; i < rules.arraySize; i++)
-        {
-            var it = rules.GetArrayElementAtIndex(i);
-            if (it.FindPropertyRelative("Name").stringValue == name) { e = it; break; }
-        }
-        if (e == null)
-        {
-            rules.InsertArrayElementAtIndex(rules.arraySize);
-            e = rules.GetArrayElementAtIndex(rules.arraySize - 1);
-        }
-
-        e.FindPropertyRelative("Name").stringValue            = name;
-        e.FindPropertyRelative("Prefab").objectReferenceValue = prefab;
-        e.FindPropertyRelative("PerChunk").floatValue         = perChunk;
-        e.FindPropertyRelative("MinSpacing").floatValue       = spacing;
-        e.FindPropertyRelative("RegrowDays").floatValue       = regrowDays;
-        e.FindPropertyRelative("RequireOpenTile").boolValue   = true;
-
-        // 지하 바닥은 거의 평지라 경사·고도는 사실상 아무것도 안 거른다 — **거르는 것은
-        // 바위다.** 그래도 값을 비워 두지 않는 이유: 코드 기본값(설선 400m)이 남아 있으면
-        // 지하 높이에서 **전부 걸러져 하나도 안 난다.**
-        e.FindPropertyRelative("MaxSlope").floatValue      = 35f;
-        e.FindPropertyRelative("MinHeight").floatValue     = -1000f;
-        e.FindPropertyRelative("MaxHeight").floatValue     =  1000f;
-        e.FindPropertyRelative("ScaleRange").vector2Value  = new Vector2(0.85f, 1.25f);
-
-        e.FindPropertyRelative("ClusterMin").intValue      = cluster.min;
-        e.FindPropertyRelative("ClusterMax").intValue      = cluster.max;
-        e.FindPropertyRelative("ClusterSpread").intValue   = spread;
-
-        var arr = e.FindPropertyRelative("Biomes");
-        arr.arraySize = biomes != null ? biomes.Length : 0;
-        for (int i = 0; i < arr.arraySize; i++)
-            arr.GetArrayElementAtIndex(i).enumValueIndex = (int)biomes[i];
-    }
 }

@@ -35,11 +35,9 @@ public class WorldContentStreamer : MonoBehaviour
     [Header("지도에서 세울 프리팹 (도구가 쓴다)")]
     [SerializeField] GameObject townPrefab;
     [SerializeField] GameObject lairPrefab;
-    [SerializeField] GameObject resourceSitePrefab;
 
-    public GameObject TownPrefab         => townPrefab;
-    public GameObject LairPrefab         => lairPrefab;
-    public GameObject ResourceSitePrefab => resourceSitePrefab;
+    public GameObject TownPrefab => townPrefab;
+    public GameObject LairPrefab => lairPrefab;
 
     [Tooltip("같은 시드면 언제나 같은 숲이 선다. 지형 시드와 따로 두는 이유는 " +
              "**지형은 그대로 두고 나무만 다시 뿌리고 싶을 때**가 있어서다.")]
@@ -80,6 +78,48 @@ public class WorldContentStreamer : MonoBehaviour
 
     static readonly List<Vector2Int> _placed = new();   // 간격 검사용 임시
 
+    // ── 뿌린 것이 없으면 왜 없는지가 화면에 남아야 한다 (2026-09-15) ────────
+    //
+    // 이 자리에서 두 번 당했다. **버섯**은 배선 도구가 규칙을 매번 지워서 통째로 안 났고,
+    // **바닥 광맥**은 밀도가 낮아 *"안 나온다"*로 보였다. 둘 다 **에셋도 프리팹도 멀쩡해서**
+    // 화면에 남는 단서가 아무것도 없었고, 원인이 코드인지 배선인지 눈금인지 가릴 수가 없었다.
+    //
+    // 첫 스물다섯 청크를 세어 **한 줄로 찍는다** — 그 뒤로는 조용하다. 규칙마다 *몇 번
+    // 찍었고 어디서 버려졌나*가 나오므로, 0이 어디서 나오는지가 한눈에 보인다.
+    struct Census
+    {
+        public int     Tried, Steep, Rock, Biome, NoPrefab, Close, Made;
+
+        // **칸은 열렸는데 발자국이 안 들어간 것**(2026-09-15). `Rock`과 갈라 센다 —
+        // 합쳐 두면 *바위가 많아서 안 선다*와 *덩치가 커서 안 선다*가 한 숫자가 되고,
+        // 밀도를 얼마나 올려야 하는지를 그 숫자로는 못 낸다.
+        public int     Tight;
+
+        // **어디에 섰는지도 적는다** — *"몇 개 섰다"*만으로는 *"안 보인다"*를 못 푼다.
+        // 숫자가 0이 아닌데 화면에 없으면 다음 물음은 **어디에**이고, 그 답이 없으면
+        // 찾으러 다니는 수밖에 없다. 처음 선 것 하나면 족하다(거기 가 보면 끝난다).
+        public string  FirstName;
+        public Vector3 FirstAt;
+
+        // **"몇 개 섰다"는 "보인다"가 아니다**(2026-09-15). 서른네 개가 섰다는 결산을
+        // 받고도 화면에는 아무것도 없었고, 에셋을 하루 종일 뒤졌지만 프리팹도 메시도
+        // 재질도 멀쩡했다 — **세어 놓은 숫자와 눈에 보이는 것 사이에 잰 것이 없었다.**
+        //
+        // 그래서 처음 선 것 하나를 **세우자마자 재 둔다**: 붙은 렌더러 · 실제로 그려지는
+        // 렌더러 · 재질이 빈 것 · 월드 경계 · 스케일. 다섯이 서로 다른 원인을 가리킨다.
+        //
+        // **`GetComponentsInChildren<Renderer>(true)`의 개수로는 못 푼다** — 꺼진 것과
+        // 비활성까지 세므로 *"렌더러가 있다"*가 *"그려진다"*를 뜻하지 않는다. 처음 낸
+        // 진단이 그것이었고, **에러가 안 뜬 것이 아무것도 증명하지 않았다.**
+        public int     FirstAttached, FirstLive, FirstNoMat;
+        public Vector3 FirstSize;
+        public float   FirstScale;
+    }
+
+    Census[] _census;
+    int      _censusChunks;
+    const int CensusChunks = 25;      // 스트리밍 반경 2면 5x5 = 25장이 첫 판이다
+
     // **정적 캐시는 판이 열릴 때 비운다.**
     //
     // 이 프로젝트는 "Enter Play Mode Options"가 켜져 있다(`m_EnterPlayModeOptionsEnabled: 1`).
@@ -93,6 +133,7 @@ public class WorldContentStreamer : MonoBehaviour
         _placedUp.Clear();
         _content.Clear();
         _taken.Clear();
+        _foot.Clear();
     }
 
     void OnEnable()
@@ -154,10 +195,14 @@ public class WorldContentStreamer : MonoBehaviour
     {
         _placed.Clear();
 
+        if (_census == null || _census.Length != scatter.Length) _census = new Census[scatter.Length];
+        bool census = _censusChunks < CensusChunks;
+
         for (int r = 0; r < scatter.Length; r++)
         {
             var rule = scatter[r];
-            if (rule == null || rule.Prefab == null || rule.PerChunk <= 0f) continue;
+            if (rule == null || rule.PerChunk <= 0f) continue;
+            if (!rule.FromBiomePool && rule.Prefab == null) continue;
 
             // **개수도 결정적이어야 한다** — 소수 부분을 확률로 쓰면 청크마다 20개냐 21개냐가
             // 갈리는데, 그것도 해시에서 나와야 다시 왔을 때 같은 숲이 선다.
@@ -172,27 +217,60 @@ public class WorldContentStreamer : MonoBehaviour
                 float wx = chunk.x * TerrainGrid.ChunkSize + lx;
                 float wz = chunk.y * TerrainGrid.ChunkSize + lz;
 
-                float h = TerrainHeight.At(wx, wz);
-                if (h < rule.MinHeight || h > rule.MaxHeight) continue;
-                if (SlopeDeg(wx, wz) > rule.MaxSlope) continue;
+                if (census) _census[r].Tried++;
 
-                // **바위 속에는 안 세운다.** 경사·고도는 지상의 물음이고, 지하에서 *설 수
-                // 있나*에 답하는 것은 `IsWorkable` 하나다(바위 + 머리 여유). 청크가 로드
-                // 안 돼 있어도 답이 나오므로 여기서 물어도 된다.
+                float h = TerrainHeight.At(wx, wz);
+                if (h < rule.MinHeight || h > rule.MaxHeight) { if (census) _census[r].Steep++; continue; }
+                if (SlopeDeg(wx, wz) > rule.MaxSlope)         { if (census) _census[r].Steep++; continue; }
+
+                // **무엇이 설지를 여기서 먼저 고른다** — 아래의 자리 판정이 **그 물건의
+                // 발자국**을 알아야 하기 때문이다(3x3 광맥과 1x1 버섯은 다른 자리를 묻는다).
+                var prefab = rule.FromBiomePool ? PoolPrefab(chunk, r, i, wx, wz) : rule.Prefab;
+                if (prefab == null) { if (census) _census[r].NoPrefab++; continue; }
+
+                // **바위 속에는 안 세운다 — 그리고 *발자국*으로 묻는다**(2026-09-15).
+                //
+                // 경사·고도는 지상의 물음이고, 지하에서 *설 수 있나*에 답하는 것은
+                // `IsWorkable` 하나다(바위 + 머리 여유). 여기까지는 전부터 맞았다.
+                //
+                // **틀린 것은 무엇을 물었느냐가 아니라 *어디를* 물었느냐였다.** 칸 하나만
+                // 봤는데 광맥은 `size: 3x3`에 덩치가 2.7m다 — 세계의 76%가 바위인 굴에서
+                // 한 칸만 열려 있으면 **나머지 여덟 칸은 24m 벽 속**이고, 광맥은 그 벽에
+                // 파묻힌 채 선다. 그리는 것은 멀쩡하다(결산이 *렌더러 34개가 전부 그려진다*고
+                // 답했다) — **벽이 앞을 가릴 뿐이다.**
+                //
+                // 그래서 증상이 **크기에 따라 갈렸다**: 바닥 돌·버섯은 1x1이라 멀쩡히 보이고
+                // **광맥만 안 보였다.** 사흘 동안 렌더링과 밀도와 시작 칸을 뒤졌는데, 원인은
+                // *점으로 물어 놓고 덩어리를 놓은 것*이었다.
+                //
+                // 칸 목록은 `ResourceNode.FootprintAt`이 답한다 — **세우고 나서 막는 칸과
+                // 같은 함수**라, 짝수 크기의 한 칸 어긋남까지 저절로 따라온다.
                 if (rule.RequireOpenTile)
                 {
                     var map = MapManager.Instance;
-                    if (map == null || !map.IsWorkable(map.WorldToTile(new Vector3(wx, 0f, wz))))
-                        continue;
+                    if (map == null) { if (census) _census[r].Rock++; continue; }
+
+                    var foot = FootOf(prefab);
+                    if (!map.IsWorkable(map.WorldToTile(new Vector3(wx, 0f, wz))))
+                    { if (census) _census[r].Rock++; continue; }
+
+                    if (!Fits(map, new Vector3(wx, 0f, wz), foot))
+                    { if (census) _census[r].Tight++; continue; }
                 }
 
                 // **바이옴이 다르면 안 난다** — 목재(거대버섯)를 균사림에만 두는 길이 이것이다.
                 // 저작한 지도가 답하므로(`WorldMap.BiomeAtWorld`) 청크가 로드 안 돼 있어도
                 // 계산된다 — 이 파일의 다른 판정과 같은 성질이다.
-                if (rule.Biomes != null && rule.Biomes.Length > 0 && !InBiome(rule, wx, wz))
-                    continue;
+                if (!rule.FromBiomePool &&
+                    rule.Biomes != null && rule.Biomes.Length > 0 && !InBiome(rule, wx, wz))
+                { if (census) _census[r].Biome++; continue; }
 
-                if (rule.MinSpacing > 0.01f && TooClose(wx, wz, rule.MinSpacing)) continue;
+                // (무엇이 설지는 위에서 골랐다 — 자리 판정이 그 발자국을 알아야 한다.
+                //  **씨점마다 한 번만 고른다** — 식구마다 다시 고르면 한 무리에 구리와
+                //  철이 섞여 서서 *"광맥 하나"*로 안 읽힌다.)
+
+                if (rule.MinSpacing > 0.01f && TooClose(wx, wz, rule.MinSpacing))
+                { if (census) _census[r].Close++; continue; }
 
                 // ── 한 자리에 여럿 ────────────────────────────────────────────
                 //
@@ -205,7 +283,7 @@ public class WorldContentStreamer : MonoBehaviour
 
                 // **자리를 먼저 고르고 나서 세운다.** 칸 목록을 미리 고르는 이유는
                 // *"같은 칸에 둘"*을 막기 위해서다 — 자리를 그때그때 굴리면 겹친다.
-                var spots = ClusterSpots(chunk, r, i, wx, wz, k, rule);
+                var spots = ClusterSpots(chunk, r, i, wx, wz, k, rule, FootOf(prefab));
 
                 for (int j = 0; j < spots.Count; j++)
                 {
@@ -220,13 +298,28 @@ public class WorldContentStreamer : MonoBehaviour
                     float mx = spots[j].x, mz = spots[j].y;
                     float mh = TerrainHeight.At(mx, mz);
 
-                    var go = Instantiate(rule.Prefab, new Vector3(mx, mh, mz),
-                                         Quaternion.Euler(0f, Rand(chunk, r, i * ClusterStride + j, 3) * 360f, 0f),
-                                         Root);
+                    var rot = Quaternion.Euler(0f, Rand(chunk, r, i * ClusterStride + j, 3) * 360f, 0f);
+                    var at  = new Vector3(mx, mh, mz);
+
+                    // **바이옴 풀에서 나온 것은 야생이다** — 노드 프리팹은 이식 광맥이라
+                    // 그대로 세우면 굴 한복판의 광맥이 배정을 받고 마르지 않는다.
+                    var go = rule.FromBiomePool
+                           ? ResourceNode.SpawnWild(prefab, at, rot, Root)
+                           : Instantiate(prefab, at, rot, Root);
+                    if (go == null) continue;
 
                     float sc = Mathf.Lerp(rule.ScaleRange.x, rule.ScaleRange.y,
                                           Rand(chunk, r, i * ClusterStride + j, 4));
                     go.transform.localScale *= sc;
+
+                    // **크기를 곱한 뒤에 잰다** — 앞에서 재면 경계가 프리팹의 것이라
+                    // *뿌리기가 0으로 눌러 버린 것*을 못 잡는다(재는 자리가 한 프레임이
+                    // 아니라 **한 줄** 어긋나도 답이 달라진다).
+                    if (census)
+                    {
+                        if (_census[r].Made == 0) Measure(ref _census[r], go);
+                        _census[r].Made++;
+                    }
 
                     // **캐면 기억한다** — 프리팹에 붙은 표식이 파괴될 때 순번을 남긴다.
                     // **다시 날 때까지의 날수도 표식이 든다** — 규칙 배열은 저작이라 순번으로
@@ -241,6 +334,84 @@ public class WorldContentStreamer : MonoBehaviour
                 _placed.Add(new Vector2Int(Mathf.RoundToInt(wx), Mathf.RoundToInt(wz)));
             }
         }
+
+        if (!census) return;
+        if (++_censusChunks == CensusChunks) ReportCensus();
+    }
+
+    // 처음 선 것 하나를 잰다 — **답이 한 벌이라 여기 하나다.** 세우는 자리가 둘이고
+    // (`SpawnWild` · 그냥 `Instantiate`) 저마다 재게 두면 **야생 광맥만 진단이 있고
+    // 버섯은 없는** 꼴이 된다 — 실제로 *"자원 뭐 뜨는 것도 없어"*는 둘 다를 가리켰다.
+    static void Measure(ref Census c, GameObject go)
+    {
+        c.FirstName  = go.name;
+        c.FirstAt    = go.transform.position;
+        c.FirstScale = go.transform.localScale.x;
+
+        var all = go.GetComponentsInChildren<Renderer>(true);
+        c.FirstAttached = all.Length;
+
+        // **경계는 그려지는 것만 모은다** — 꺼진 렌더러의 경계까지 더하면
+        // *"크기는 멀쩡한데 안 보인다"*가 되어 눈금이 거짓말을 한다.
+        var b = new Bounds(go.transform.position, Vector3.zero);
+        foreach (var r in all)
+        {
+            if (r.sharedMaterial == null) c.FirstNoMat++;
+            if (!r.enabled || !r.gameObject.activeInHierarchy) continue;
+            c.FirstLive++;
+            b.Encapsulate(r.bounds);
+        }
+        c.FirstSize = c.FirstLive > 0 ? b.size : Vector3.zero;
+    }
+
+    // **한 줄로 찍는다.** 규칙마다 *찍은 수 → 어디서 버려졌나 → 세운 수*.
+    // **0을 강조한다** — 아무것도 안 난 규칙이 이 로그의 존재 이유다.
+    void ReportCensus()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"[뿌리기] 첫 {CensusChunks}청크({TerrainGrid.ChunkSize}m) 결산 — ");
+        sb.Append("규칙마다 `찍음 → 버림(경사/바위/좁음/바이옴/풀없음/간격) → 세움`\n");
+
+        for (int r = 0; r < scatter.Length; r++)
+        {
+            var rule = scatter[r];
+            var c    = _census[r];
+            string name = rule != null && !string.IsNullOrEmpty(rule.Name) ? rule.Name : $"규칙{r}";
+
+            sb.Append($"  · {name}: {c.Tried} → " +
+                      $"경사 {c.Steep} · 바위 {c.Rock} · 좁음 {c.Tight} · 바이옴 {c.Biome} · " +
+                      $"풀없음 {c.NoPrefab} · 간격 {c.Close}" +
+                      $" → **{c.Made}개**");
+
+            if (c.Made == 0)
+                sb.Append("  ← **하나도 안 섰다.** 위 숫자에서 어디로 다 빠졌는지 보라 " +
+                          "(전부 0이면 규칙 자체가 안 돈 것 — `PerChunk`·프리팹을 볼 것)");
+            else
+            {
+                sb.Append($"  첫 자리 {c.FirstName} @ ({c.FirstAt.x:F0}, {c.FirstAt.y:F1}, {c.FirstAt.z:F0})" +
+                          $" · 렌더러 {c.FirstAttached}개 중 **그려지는 것 {c.FirstLive}개**" +
+                          $" · 재질 없음 {c.FirstNoMat}개" +
+                          $" · 경계 {c.FirstSize.x:F2}x{c.FirstSize.y:F2}x{c.FirstSize.z:F2}" +
+                          $" · 크기 {c.FirstScale:F2}");
+
+                if (c.FirstAttached == 0)
+                    sb.Append("  ← **모양이 없다**(프리팹이 비었거나 세우는 길에서 잃었다)");
+                else if (c.FirstLive == 0)
+                    sb.Append("  ← **꺼졌거나 비활성이다**(그려지는 렌더러가 0이다)");
+                else if (c.FirstNoMat > 0)
+                    sb.Append("  ← **재질이 빈 렌더러가 있다**");
+                else if (c.FirstSize.y < 0.05f)
+                    sb.Append("  ← **경계가 0이다**(크기가 눌렸다)");
+            }
+
+            sb.Append('\n');
+        }
+
+        sb.Append("센 것이 0이 아닌데 화면에 없으면 **첫 자리로 가 볼 것** — " +
+                  "Play 중 하이어라키의 `WorldContent` 아래에 그대로 있다.\n" +
+                  "밀도를 고치는 문은 씬이 아니라 도구다 — 버섯·바닥 돌은 " +
+                  "`World → 7. Create Mushrooms`, 바닥 광맥은 `World → B. Create Metal Ladder`.");
+        Debug.Log(sb.ToString());
     }
 
     // ── 무리는 **맞닿은 칸**에 앉는다 ───────────────────────────────────────
@@ -259,7 +430,7 @@ public class WorldContentStreamer : MonoBehaviour
     static readonly List<Vector2Int> _ring = new();
 
     List<Vector2> ClusterSpots(Vector2Int chunk, int rule, int seed,
-                               float wx, float wz, int want, ScatterRule cfg)
+                               float wx, float wz, int want, ScatterRule cfg, Vector2Int foot)
     {
         _spots.Clear();
 
@@ -296,7 +467,9 @@ public class WorldContentStreamer : MonoBehaviour
             foreach (var t in _ring)
             {
                 if (_spots.Count >= want) break;
-                if (cfg.RequireOpenTile && !map.IsWorkable(t)) continue;   // 벽에는 안 난다
+                // **식구도 발자국으로 묻는다** — 씨점만 재고 식구를 칸으로 재면
+                // 무리 가장자리의 광맥만 벽에 파묻힌다(원인이 반쪽만 고쳐진 모양이다).
+                if (cfg.RequireOpenTile && !Fits(map, map.TileToWorld(t), foot)) continue;
 
                 // **칸 한복판에 앉힌다** — 칸을 고른 뜻이 그것이다. 안 그러면 다시 흩어진다.
                 var c = map.TileToWorld(t);
@@ -311,6 +484,70 @@ public class WorldContentStreamer : MonoBehaviour
     // 상수여야 한다 — `Id`가 순번을 16비트에 담으므로 청크당 씨점 × 이 값이 65,536을
     // 넘으면 안 된다(지금은 열댓 × 여덟이라 한참 아래다).
     const int ClusterStride = 8;
+
+    // **바이옴의 자원 노드 풀에서 하나.** 벽 속 광맥과 **같은 표**를 읽는다
+    // (`RockMap.VeinAt`) — 여기서 새 목록을 들면 *"이 층에서 무엇이 나나"*의 답이 두 벌이
+    // 되고, 금속 사다리를 손볼 때 한쪽이 뒤처진다.
+    //
+    // **다만 표를 그대로 쓰면 안 된다 — 벽의 물음과 바닥의 물음이 한 칸 다르다**
+    // (2026-09-15, 사용자: *"지금 있는거는 그냥 돌이겠지"*).
+    //
+    // 풀에는 `Stone`이 들어 있고 **벽에서는 그게 맞다** — *"이 층은 광맥이 드물다"*는
+    // 희석이다(석회굴은 다섯 중 둘이 `Stone`이다). 그런데 **바닥에 세우면 그냥 돌덩이**이고,
+    // 돌덩이는 `Node_Pebbles`가 이미 청크당 스물씩 깔고 있다. 그래서 굴 바닥에 선 것의
+    // 3분의 1이 **자원이 아닌 돌**이었고, 화면에는 *"광맥이 없다"*로 보였다.
+    //
+    // **가르는 것은 `IsVein` 하나다** — *박힌 것이 있나*. 벽이 알갱이를 그릴지 정하는 그
+    // 사실이고, 여기서 또 목록을 들면 **`Stone`을 뺀 표가 두 벌**이 된다.
+    //
+    // **`Prefab`이 빈 노드도 건너뛴다** — 뽑고 조용히 아무것도 안 세우면 **그 씨점이 통째로
+    // 사라져** 바이옴마다 밀도가 달라진다. 하나도 못 고르면 `null`이고, 그건 결산의
+    // *풀없음*으로 세어진다(조용히 없어지지 않는다).
+    GameObject PoolPrefab(Vector2Int chunk, int rule, int seed, float x, float z)
+    {
+        var pool = BiomeContent.ResourceNodes(WorldMap.BiomeAtWorld(new Vector2(x, z)));
+        if (pool == null || pool.Count == 0) return null;
+
+        int start = Mathf.Clamp(Mathf.FloorToInt(Rand(chunk, rule, seed, 6) * pool.Count),
+                                0, pool.Count - 1);
+
+        for (int k = 0; k < pool.Count; k++)
+        {
+            var n = pool[(start + k) % pool.Count];
+            if (n != null && n.Prefab != null && n.IsVein) return n.Prefab;
+        }
+        return null;
+    }
+
+    // ── 덩치가 들어가나 ────────────────────────────────────────────────────
+    //
+    // **점이 아니라 발자국을 묻는다.** `IsWorkable`은 *이 칸에 설 수 있나*에 답하는데,
+    // 세우는 것은 칸 하나가 아니라 물건이다. 3x3짜리를 한 칸만 보고 놓으면 나머지
+    // 여덟 칸이 바위여도 통과하고, 그 물건은 **벽 속에 박힌 채 선다.**
+    static bool Fits(MapManager map, Vector3 at, Vector2Int foot)
+    {
+        if (foot.x <= 1 && foot.y <= 1) return true;      // 한 칸짜리는 이미 위에서 쟀다
+
+        foreach (var t in ResourceNode.FootprintAt(at, foot))
+            if (!map.IsWorkable(t)) return false;
+        return true;
+    }
+
+    // 프리팹의 칸 수. **`ResourceNode`가 없으면 한 칸이다** — 채집물(`Forageable`)과
+    // 바닥 돌이 그렇고, 그것들은 실제로 1m라 예전과 한 줄도 안 달라진다.
+    //
+    // **캐싱한다** — 청크마다 수백 번 묻는데 `GetComponent`는 그때마다 계층을 훑는다.
+    static readonly Dictionary<GameObject, Vector2Int> _foot = new();
+
+    static Vector2Int FootOf(GameObject prefab)
+    {
+        if (_foot.TryGetValue(prefab, out var f)) return f;
+
+        var node = prefab.GetComponent<ResourceNode>();
+        f = node != null ? node.Size : Vector2Int.one;
+        _foot[prefab] = f;
+        return f;
+    }
 
     static bool InBiome(ScatterRule rule, float x, float z)
     {

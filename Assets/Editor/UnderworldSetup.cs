@@ -22,16 +22,47 @@ public static class UnderworldSetup
     //
     // **자원·상인·연구는 안 채운다** — 그건 저작이고, 여기서 채우면 나중에 손으로 고친 것을
     // 다시 돌릴 때 덮어쓴다. 이 도구가 책임지는 것은 **빠진 에셋을 만들어 두는 것**까지다.
-    static readonly (Biome biome, int tier)[] Underground =
+    static readonly (Biome biome, int tier, MapDir dir)[] Underground =
     {
-        (Biome.Limestone, 1),   // 석회굴 — 시작 지역
-        (Biome.Cavern,    1),   // 동굴
-        (Biome.Mine,      2),   // 폐광
-        (Biome.Fungal,    2),   // 균사림
-        (Biome.Flooded,   3),   // 수몰층
-        (Biome.Crystal,   3),   // 수정동
-        (Biome.Lava,      4),   // 용암층
-        (Biome.Abyss,     5),   // 심연
+        // **사용자가 정한 층**(2026-09-15): **넷**이다.
+        //
+        //   1층 굴 — 구리·주석·석탄·나무
+        //   2층 마른 곳과 고인 곳 — 철·금·단단한 나무
+        //   3층 극단 — 은·티타늄·마법 광물
+        //   4층 끝 — 미스릴
+        //
+        // **금속은 층 번호를 따라간다**(`docs/design_metals.md`) — 바이옴이 층을 옮기면
+        // **거기서 나오는 것도 같이 옮겨진다**(`MetalCreator.WireBiomes`를 같이 고칠 것).
+        // **1층 방위는 사용자가 그려 줬다**(2026-09-15) — 네 귀퉁이다.
+        (Biome.Fungal,     1, MapDir.NW),  // 균사림 — 지하의 숲. **목재가 1층에서 난다**
+        (Biome.Mossgrotto, 1, MapDir.NE),  // 이끼굴
+        (Biome.Mine,       1, MapDir.SE),  // 폐광
+        (Biome.Cavern,     1, MapDir.SW),  // 동굴
+
+        // **아래 층은 아직 안 정했다** — `Auto`라 굴림이 돌린다. 그려 주면 여기 적는다.
+        (Biome.Swamp,      2, MapDir.Auto),  // 지저늪 — 지상 값을 되살렸다
+        (Biome.Ossuary,    2, MapDir.Auto),  // 납골굴
+        (Biome.Desert,     2, MapDir.Auto),  // 모래굴 — 지상 값을 되살렸다
+
+        (Biome.Glacier,    3, MapDir.Auto),  // 빙하굴
+        (Biome.Crystal,    3, MapDir.Auto),  // 수정동
+        (Biome.Lava,       3, MapDir.Auto),  // 용암층
+
+        (Biome.Abyss,      4, MapDir.Auto),  // 심연 — 한 층에 하나. 그게 *끝*의 성격이다
+    };
+
+    // **잠재운 넷**(2026-09-15) — 석회굴 · 소금굴 · 유황굴 · 균열대.
+    //
+    // **enum 값도 에셋도 안 지운다**(정수 직렬화라 지우면 뒤가 밀린다 — 지상 바이옴을
+    // 남겨 둔 것과 같은 규칙). 대신 **어디에도 안 적는다**: 티어를 안 매기고, 지도에 안
+    // 깔고(`BiomeMapGenerator.ByWetness`), 팔레트에서 빼고, **광맥 풀을 비운다.**
+    //
+    // **풀을 비우는 것이 요점이다** — 티어만 떼면 옛 풀이 남아, 나중에 다시 깔았을 때
+    // *어느 층 것인지 모를 광맥*이 조용히 나온다. 되살리려면 이 표에 한 줄 적고
+    // `ByWetness`·팔레트·풀 셋을 같이 채우면 된다.
+    public static readonly Biome[] Dormant =
+    {
+        Biome.Limestone, Biome.Saltflat, Biome.Sulfur, Biome.Rift,
     };
 
     [MenuItem("DungeonColony/World/0a. Create Underworld Biomes")]
@@ -48,8 +79,8 @@ public static class UnderworldSetup
             if (a != null) have[a.Biome] = a;
         }
 
-        int made = 0, tiered = 0;
-        foreach (var (biome, tier) in Underground)
+        int made = 0, tiered = 0, turned = 0;
+        foreach (var (biome, tier, dir) in Underground)
         {
             if (!have.TryGetValue(biome, out var data))
             {
@@ -65,13 +96,22 @@ public static class UnderworldSetup
                 data.Tier = tier;
                 tiered++;
             }
+
+            // **방위도 도구가 쓴다** — 티어와 같은 자리에 적어 두면 *층과 방위*를 한 표에서
+            // 읽는다. 갈라 두면 층을 옮기면서 방위를 안 옮기는 일이 생긴다.
+            if (data.MapDirection != dir)
+            {
+                Undo.RecordObject(data, "방위");
+                data.MapDirection = dir;
+                turned++;
+            }
             EditorUtility.SetDirty(data);
         }
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        Debug.Log($"[지하] 바이옴 에셋 — 새로 {made}개 · 티어 고침 {tiered}개.\n" +
+        Debug.Log($"[지하] 바이옴 에셋 — 새로 {made}개 · 티어 고침 {tiered}개 · 방위 고침 {turned}개.\n" +
                   "자원·상인·연구는 안 채웠다(저작이다). `Resources/Data/Biomes/`에서 채울 것.");
     }
 
@@ -491,6 +531,20 @@ public static class UnderworldSetup
             "DungeonColony/World/0d. Swap Wood Costs To Stone",  // 지하에는 나무가 없다 — 돌로
             "DungeonColony/World/0c. Create Fungal Wood Source", // 목재는 균사림에서 캔다
             "DungeonColony/Terrain/8. Generate Biome Map",      // 지하 바이옴을 깐다
+
+            // ── 굴 바닥에 나는 것 ───────────────────────────────────────────
+            //
+            // **여기 없으면 세계가 텅 빈다**(2026-09-14에 드러났다). `0. Setup World
+            // Streaming`이 첫 단계에서 뿌리기 규칙을 **비웠는데**(2026-08-29의 일회성
+            // 이행이 상시 도구에 남아 있었다) 그것을 되채우는 단계가 이 묶음에 없었다 —
+            // 그래서 씬의 `scatter`가 비어 **버섯도 바닥 돌도 광맥도 하나도 안 났다.**
+            // 이제 비우지 않고, **채우는 도구를 여기서 부른다.**
+            //
+            // 둘 다 **씬에 쓴다** — 이 묶음 끝에 씬을 저장해야 남는다.
+            "DungeonColony/World/7. Create Flora (버섯 · 바닥 돌 · 단단한 나무)",  // 바닥에 나는 것 전부
+            "DungeonColony/World/B. Create Metal Ladder (금속 사다리 · 광맥 배선)", // 층별 광맥 + 바닥 광맥
+            "DungeonColony/World/9. Set Wild Yields (야생 매장량)",        // 야생은 유한하다
+
             "DungeonColony/World/3. Open Authoring Scene",      // **장소는 저작 씬에 놓인다**
         };
 

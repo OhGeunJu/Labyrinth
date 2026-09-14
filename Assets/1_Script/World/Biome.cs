@@ -6,11 +6,19 @@ public enum Biome
     Unknown,    // 미지정 — 데이터가 없을 때의 기본값(게이팅 대상 아님)
     Plains,     // 평원 (시작 지역)
     Forest,     // 숲
-    Desert,     // 사막
+    // **모래굴 — 지상 `사막`을 지하에서 되살려 쓴다**(2026-09-15, 사용자 결정).
+    // `Cavern`이 지상 시절 *산악*이었다가 지하에서 **제 이름을 되찾은** 것과 같은 자리다.
+    // **식별자를 안 바꾼다** — 물이 말라 고운 모래가 깔린 굴이라 `Desert`가 뜻과 어긋나지
+    // 않고, 바꾸면 에셋 파일명(`MetalCreator.Pool`이 경로를 이름에서 만든다)까지 딸려 온다.
+    //
+    // **에셋에 지상 시절 저작이 그대로 있다** — 소굴·마을 무리·상인이 채워져 있어서,
+    // 살려 쓰는 것만으로 2층에 내용이 붙는다(지하 바이옴 대부분은 그게 비어 있다).
+    Desert,     // 모래굴 — 물이 마른 굴. 고운 모래가 깔렸다
     Tundra,     // 설원
     Lava,       // 용암지대 — **지하에서도 산다**(용암층)
     Cavern,     // 동굴 — **지하에서 제 이름을 되찾는다**(지상 시절엔 "산악"으로 쓰였다)
-    Swamp,      // 늪
+    // **지저늪 — 지상 `늪`을 지하에서 되살려 쓴다.** 모래굴과 같은 규칙이다.
+    Swamp,      // 지저늪 — 고인 물과 진흙. 2층에서 가장 젖었다
 
     // ── 지하 (2026-08-29) ────────────────────────────────────────────────
     //
@@ -21,10 +29,29 @@ public enum Biome
     // 지우는 순간 그 뒤의 모든 값이 밀린다.
     Limestone,  // 석회굴 — 넓고 완만한 방, 물이 깎은 곳
     Fungal,     // 균사림 — 지하의 숲. 농사와 목재가 여기서 나온다
-    Flooded,    // 수몰층 — 낮고 평평하고 물에 잠긴 곳
+    // **빙하굴 — 2026-09-15에 수몰층에서 개명했다**(사용자 결정: 3층을 얼음으로).
+    //
+    // 값은 그 자리 그대로다(정수 직렬화) — 바뀐 것은 **이름과 뜻**이다. 물이 고인 곳이
+    // 아니라 **얼어붙은 곳**이고, 그래서 3층이 빙하굴·수정동·소금굴 셋으로 **통째로
+    // 차고 흰 층**이 된다.
+    Glacier,    // 빙하굴 — 얼어붙은 물. 낮고 평평하다
     Crystal,    // 수정동 — 날카롭고 밝다
     Mine,       // 폐광 — 사람이 팠던 곳. 곧고 평평하다
     Abyss,      // 심연 — 깊고 험하다
+
+    // ── 층마다 하나씩 더 (2026-09-15, 사용자: *"바이옴을 좀 더 늘려"*) ──────
+    //
+    // 층이 후보를 정하게 되면서(`WorldMapData.Floor`) **한 층에 하나둘뿐**이 됐다 — 1층이
+    // 석회굴·동굴 둘이면 굴을 하루 걸어도 성격이 두 가지다. **층은 난도를 정하고 바이옴은
+    // 성격을 정하는데**, 성격이 둘이면 그 축이 거의 없는 것과 같다.
+    //
+    // **층마다 하나씩** 더해 1~3층은 셋, 4~5층은 둘이 된다. 깊은 층이 단출한 것은 뜻이
+    // 있다 — 내려갈수록 세계가 **극단으로** 간다.
+    Mossgrotto, // 이끼굴 — 1층. 물이 스며 이끼가 덮인 굴
+    Saltflat,   // 소금굴 — 3층. 하얀 소금 기둥. 얼음층의 가장 마른 쪽
+    Ossuary,    // 납골굴 — 2층. 지하에 묻힌 옛 무덤. 뼈와 돌관
+    Sulfur,     // 유황굴 — 4층. 노란 유황과 독한 공기. 용암층 곁의 마른 쪽
+    Rift,       // 균열대 — 5층. 세계가 갈라진 자리. 공허결정이 여기서 난다
 }
 
 public static class BiomeExt
@@ -34,18 +61,24 @@ public static class BiomeExt
         Biome.Unknown => "미지",
         Biome.Plains  => "평원",
         Biome.Forest  => "숲",
-        Biome.Desert  => "사막",
+        Biome.Desert  => "모래굴",
         Biome.Tundra  => "설원",
         Biome.Lava    => "용암층",
         Biome.Cavern  => "동굴",
-        Biome.Swamp   => "늪",
+        Biome.Swamp   => "지저늪",
 
         Biome.Limestone => "석회굴",
         Biome.Fungal    => "균사림",
-        Biome.Flooded   => "수몰층",
+        Biome.Glacier   => "빙하굴",
         Biome.Crystal   => "수정동",
         Biome.Mine      => "폐광",
         Biome.Abyss     => "심연",
+
+        Biome.Mossgrotto => "이끼굴",
+        Biome.Saltflat   => "소금굴",
+        Biome.Ossuary    => "납골굴",
+        Biome.Sulfur     => "유황굴",
+        Biome.Rift       => "균열대",
 
         _             => b.ToString(),
     };
@@ -59,11 +92,11 @@ public static class BiomeExt
     {
         Biome.Plains => new Color(0.45f, 0.70f, 0.35f),
         Biome.Forest => new Color(0.18f, 0.42f, 0.20f),
-        Biome.Desert => new Color(0.85f, 0.76f, 0.48f),
+        Biome.Desert => new Color(0.85f, 0.72f, 0.42f),   // 2층 — 모래
         Biome.Tundra => new Color(0.80f, 0.86f, 0.90f),
         Biome.Lava   => new Color(0.70f, 0.25f, 0.16f),
         Biome.Cavern => new Color(0.38f, 0.38f, 0.42f),
-        Biome.Swamp  => new Color(0.36f, 0.40f, 0.26f),
+        Biome.Swamp  => new Color(0.30f, 0.44f, 0.30f),   // 2층 — 진흙 초록
 
         // **지하는 서로 구별되게 벌린다** — 전부 회색 계열로 두면 지도가 한 덩어리로 보여
         // 어디로 갈지를 색으로 못 고른다(지도를 보는 이유의 절반이 그것이다).
@@ -72,10 +105,18 @@ public static class BiomeExt
         // **안 옮기면 지도만 초록이고**, 그러면 색으로 고르는 일이 거짓말이 된다.
         // 수정동(연보라)보다 **짙고 푸르게** 둔다 — 둘이 붙어 있으면 가르는 뜻이 없다.
         Biome.Fungal    => new Color(0.25f, 0.45f, 0.95f),
-        Biome.Flooded   => new Color(0.22f, 0.34f, 0.52f),
+        Biome.Glacier   => new Color(0.55f, 0.80f, 0.95f),   // 3층 — 얼음 하늘빛
         Biome.Crystal   => new Color(0.55f, 0.42f, 0.70f),
         Biome.Mine      => new Color(0.46f, 0.36f, 0.26f),
         Biome.Abyss     => new Color(0.14f, 0.13f, 0.18f),
+
+        // **같은 층끼리 특히 벌린다** — 지도에서 나란히 놓이는 것이 그 셋이라,
+        // 층을 넘는 색끼리 비슷한 것보다 **한 층 안에서 헷갈리는 것**이 나쁘다.
+        Biome.Mossgrotto => new Color(0.30f, 0.55f, 0.34f),   // 1층 — 이끼 초록
+        Biome.Saltflat   => new Color(0.92f, 0.90f, 0.74f),   // 3층 — 소금 누런 흰빛
+        Biome.Ossuary    => new Color(0.52f, 0.34f, 0.30f),   // 3층 — 마른 핏빛
+        Biome.Sulfur     => new Color(0.85f, 0.75f, 0.20f),   // 4층 — 유황 노랑
+        Biome.Rift       => new Color(0.30f, 0.10f, 0.40f),   // 5층 — 짙은 보라
 
         _            => new Color(0.28f, 0.28f, 0.30f),
     };
@@ -109,10 +150,19 @@ public static class BiomeExt
         Biome.Cavern    => new Color(0.70f, 0.73f, 0.80f),   // 평범한 굴 — 회청
         Biome.Mine      => new Color(0.78f, 0.60f, 0.40f),   // 폐광 — 흙 묻은 갱벽
         Biome.Fungal    => new Color(0.38f, 0.56f, 1.00f),   // 균사림 — 벽까지 푸르다
-        Biome.Flooded   => new Color(0.38f, 0.70f, 0.80f),   // 수몰층 — 젖은 청록
+        Biome.Glacier   => new Color(0.70f, 0.88f, 1.00f),   // 빙하굴 — 얼음 푸른빛
         Biome.Crystal   => new Color(0.74f, 0.58f, 1.00f),   // 수정동 — 보랏빛
         Biome.Lava      => new Color(0.90f, 0.38f, 0.26f),   // 용암층 — 붉게 그을렸다
         Biome.Abyss     => new Color(0.24f, 0.22f, 0.30f),   // 심연 — 여기만 어둡다
+        Biome.Desert    => new Color(0.95f, 0.82f, 0.55f),   // 모래굴 — 마른 모래빛
+        Biome.Swamp     => new Color(0.55f, 0.68f, 0.45f),   // 지저늪 — 이끼 낀 진흙
+
+        Biome.Mossgrotto => new Color(0.55f, 0.85f, 0.55f),   // 이끼굴 — 벽까지 초록
+        Biome.Saltflat   => new Color(1.00f, 0.96f, 0.80f),   // 소금굴 — 누런 흰 벽
+        Biome.Ossuary    => new Color(0.85f, 0.75f, 0.62f),   // 납골굴 — 마른 뼈빛
+        Biome.Sulfur     => new Color(0.95f, 0.85f, 0.30f),   // 유황굴 — 노랗게 절었다
+        Biome.Rift       => new Color(0.55f, 0.35f, 0.85f),   // 균열대 — 수정동보다 짙다
+
         _               => new Color(0.70f, 0.73f, 0.80f),
     };
 }

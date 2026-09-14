@@ -22,18 +22,12 @@ public struct WorldDeposit
 // 특별한 칸을 손으로 지정하고 싶어지면 `WorldMapData.Node`에 오버라이드를 얹으면 된다(아직 없음).
 public static class WorldDeposits
 {
-    // 자원 지대(`ResourceSite`)로 저작한 칸은 같은 바이옴이라도 매장이 두텁다.
-    // 그래야 "자원 지대"라고 찍어둔 것이 실제로 의미를 갖는다.
-    public const float ResourceSiteMultiplier = 2.5f;
-
     public static List<WorldDeposit> At(Vector2Int node, WorldTile tile, int seed)
     {
         var result = new List<WorldDeposit>();
 
         var data = BiomeContent.Get(tile.Biome);
         if (data == null || data.Deposits == null) return result;
-
-        float mult = tile.Content == WorldNodeContent.ResourceSite ? ResourceSiteMultiplier : 1f;
 
         for (int i = 0; i < data.Deposits.Count; i++)
         {
@@ -47,7 +41,7 @@ public static class WorldDeposits
 
             int min = Mathf.Min(e.MinAmount, e.MaxAmount);
             int max = Mathf.Max(e.MinAmount, e.MaxAmount);
-            int amount = Mathf.RoundToInt(rng.Next(min, max + 1) * mult);
+            int amount = rng.Next(min, max + 1);
             if (amount <= 0) continue;
 
             result.Add(new WorldDeposit { Item = e.Item, Amount = amount });

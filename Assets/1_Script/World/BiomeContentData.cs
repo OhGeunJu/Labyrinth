@@ -6,6 +6,22 @@ using UnityEngine;
 // 탐험 보상 루프의 핵심: "그 바이옴에 가야만 얻는" 것을 데이터로 게이팅한다.
 //
 // 배치: Resources/Data/Biomes/ 아래에 두면 BiomeContent가 자동 로드(Biome별 1개 권장).
+
+// **지도에서 어느 쪽에 앉나**(2026-09-15, 사용자가 1층 배치를 그려 줬다).
+//
+// 그전에는 **굴림이 돌렸다** — 구역은 크게 갈렸지만 *어느 방위에 무엇이*는 다시 누를
+// 때마다 달라졌다. 사용자가 *"균사림은 북서, 이끼굴은 북동…"*으로 그려 준 순간 그것은
+// **저작**이 됐고, 저작은 굴림이 못 건드려야 한다.
+//
+// **값은 꼬리에 붙일 것** — 정수 직렬화다. `Auto`가 0이라 **안 적은 바이옴은 예전 그대로**
+// (굴림이 돌린다).
+public enum MapDir
+{
+    Auto,       // 안 정했다 — 굴림이 둘레에 고르게 놓는다
+    Center,     // 한복판 — 시작 지점이 여기 든다
+    N, NE, E, SE, S, SW, W, NW,
+}
+
 [CreateAssetMenu(menuName = "DungeonColony/BiomeContentData")]
 public class BiomeContentData : ScriptableObject
 {
@@ -25,6 +41,15 @@ public class BiomeContentData : ScriptableObject
     [Header("지역 난도")]
     [Tooltip("1 = 시작 지역, 5 = 가장 험한 곳. 무리·소굴 전력에 곱해지고 도착 메뉴에 경고로 뜬다.")]
     [Range(1, 5)] public int Tier = 1;
+
+    // **지도에서 어느 쪽에 앉나.** `Terrain → 8. Generate Biome Map`이 이 방위에 씨를 놓고,
+    // 칸은 가장 가까운 씨에 붙는다(`BiomeMapGenerator`). **한 층 안에서만 뜻이 있다** —
+    // 다른 층과는 지도를 같이 쓰지 않는다.
+    //
+    // **`Auto`면 굴림이 둘레에 고르게 놓는다** — 한 층의 바이옴 중 일부만 못 박아도 된다.
+    [Header("지도에서 어느 쪽에 앉나")]
+    [Tooltip("비워 두면(Auto) 다시 누를 때마다 방위가 돈다. 못 박으면 굴림이 안 건드린다.")]
+    public MapDir MapDirection = MapDir.Auto;
 
     [Header("이 바이옴에서 등장하는 자원 노드 풀")]
     public List<ResourceNodeData> ResourceNodes = new();

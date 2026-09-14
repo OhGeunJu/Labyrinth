@@ -30,11 +30,38 @@ public class Forageable : MonoBehaviour, IGatherTarget
     [Tooltip("따면 나오는 것. **바닥에 떨어진다** — 배낭으로 바로 가지 않는다(수확과 같은 규칙).")]
     [SerializeField] ItemData item;
 
+    // ── JSON 아이템도 낼 수 있어야 한다 (2026-09-15) ────────────────────────
+    //
+    // 허브·정수는 `StreamingAssets`의 JSON이다 — **런타임 생성이라 프리팹이 guid로 가리킬
+    // 방법이 없다.** `item`만 있던 동안에는 채집물이 낼 수 있는 것이 SO뿐이었고, 그래서
+    // *약초를 주우면 물약이 된다*를 만들려면 **아이템을 SO로 옮기는 수밖에** 없었다
+    // (그러면 같은 id가 두 벌이 된다).
+    //
+    // **이 저장소가 이미 쓰는 길이 있다** — `MerchantPoolEntry`·`LoadoutData`·
+    // `ResearchData.Ingredient`가 전부 **문자열 `ItemId` 폴백**을 둔다. 같은 규약을 쓴다.
+    //
+    // **읽는 쪽은 반드시 `Item`을 쓸 것** — `item` 필드를 직접 읽으면 JSON 산출물이
+    // 조용히 `null`이고, 화면에는 *"따도 아무것도 안 나온다"*로만 보인다.
+    [Tooltip("JSON 아이템일 때 여기 id를 적는다(`herbs` 등). 위가 비었을 때만 본다.")]
+    [SerializeField] string itemId;
+
+    ItemData _resolved;
+
     [Tooltip("한 번에 나오는 개수 범위.")]
     [SerializeField] int minAmount = 1;
     [SerializeField] int maxAmount = 3;
 
-    public ItemData Item => item;
+    // **한 번 풀고 기억한다** — `DataManager.GetItem`은 사전 조회라 싸지만, 살펴보기 창이
+    // 매 프레임 묻는 자리라 습관을 남기지 않는 편이 낫다.
+    public ItemData Item
+    {
+        get
+        {
+            if (item != null) return item;
+            if (_resolved == null && !string.IsNullOrEmpty(itemId)) _resolved = DataManager.GetItem(itemId);
+            return _resolved;
+        }
+    }
 
     // 살펴보기 창이 *"무엇이 얼마나 나오나"*에 답하려면 밖에서 보여야 한다.
     public int MinAmount => minAmount;

@@ -42,7 +42,6 @@ public class WorldMapPanel : MonoBehaviour
     [Header("저작한 장소")]
     [SerializeField] Color townColor     = new(1f, 0.95f, 0.75f);
     [SerializeField] Color lairColor     = new(0.75f, 0.10f, 0.10f);
-    [SerializeField] Color resourceColor = new(0.95f, 0.65f, 0.20f);
     [SerializeField] Color outpostColor  = new(0.60f, 0.85f, 0.45f);
 
     // **표식 크기는 창에 비례한다** — 픽셀로 박으면 창을 키웠을 때 점이 그대로라 안 보인다.
@@ -138,7 +137,6 @@ public class WorldMapPanel : MonoBehaviour
             {
                 case WorldNodeContent.Town:         col = townColor;     break;
                 case WorldNodeContent.EnemyLair:    col = lairColor;     break;
-                case WorldNodeContent.ResourceSite: col = resourceColor; break;
                 default: continue;
             }
 

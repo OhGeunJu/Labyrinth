@@ -1156,8 +1156,7 @@ public class WorldMapView : MonoBehaviour
 
     // 임자 없는 땅 = 조사·기지 건설이 가능한 칸.
     // 마을(Town)·소굴(EnemyLair)은 남의 땅이고, 내 정착지·채집기지는 이미 자리를 잡은 곳이다.
-    static bool IsWildland(WorldNodeContent c) =>
-        c == WorldNodeContent.Empty || c == WorldNodeContent.ResourceSite;
+    static bool IsWildland(WorldNodeContent c) => c == WorldNodeContent.Empty;
 
     static string TitleFor(WorldTile tile) =>
         tile.Content == WorldNodeContent.Empty

@@ -5,7 +5,7 @@ using UnityEngine;
 // **세계를 채운다 — 개수와 자리를 도구가 정한다**(2026-08-27).
 //
 // 전에는 `5. Place Sites From World Map`이 **저작한 격자 한 칸에 하나씩** 세웠다. 그래서
-// 개수가 *"몇 칸을 칠했나"*로 정해졌고 — 실제로 마을 16 · 소굴 96 · 자원지대 16이 나왔다 —
+// 개수가 *"몇 칸을 칠했나"*로 정해졌고 — 실제로 마을 16 · 소굴 96이 나왔다 —
 // **한 지역(256m)에 하나**라는 제한이 붙었으며, 자리도 그 칸 안으로 갇혔다.
 //
 // 이제 **격자는 바이옴만 든다.** 무엇이 어디에 몇 개 서는지는 여기가 정한다.
@@ -29,8 +29,11 @@ using UnityEngine;
 //   · **마을** — 티어가 낮을수록 많다. **4티어 이상에는 안 선다** — 용암지대에 사람이 살면
 //     *"험한 곳"*이라는 말이 무너진다.
 //   · **소굴** — 티어가 높을수록 많다. 그게 위험도의 실체다.
-//   · **자원 지대** — 티어가 높을수록 많다. **더 험한 곳에 더 좋은 것**이 `design_progression`의
-//     핵심 루프다.
+//
+// **자원은 여기서 안 놓는다**(2026-09-14). 자원 지대를 한 덩어리씩 세우던 것을 걷어냈다 —
+// *"어디에 무엇이 나나"*는 `BiomeContentData.ResourceNodes` **한 표**가 답하고, 그것을
+// 벽(`RockMap.VeinAt`)과 바닥(`ScatterRule.FromBiomePool`)이 같이 읽는다. 여기서 또 놓으면
+// **같은 물음에 답이 셋**이 되고, 그중 하나만 *손으로 찍은 자리*에 매여 있었다.
 //
 // **시작 자리 둘레는 비워 둔다** — 판이 열리자마자 소굴이 문 앞에 있으면 탐험이 아니라 농성이다.
 public class WorldPopulator : EditorWindow
@@ -45,12 +48,10 @@ public class WorldPopulator : EditorWindow
     //   마을 15/100km² → 평균 간격 ≈ 2.6km ≈ 걸어서 11분. 보급이 닿을 만하고, 다음 마을이
     //                    어디인지 늘 궁금할 만한 거리다.
     //   소굴 45/100km² → 평균 간격 ≈ 1.5km. 마을 사이에 두세 개가 낀다 — **길이 위험해야 한다.**
-    //   자원 22/100km² → 평균 간격 ≈ 2.1km.
     //
-    // 8,192m(67km²)면 마을 10 · 소굴 30 · 자원 15가 된다.
+    // 8,192m(67km²)면 마을 10 · 소굴 30이 된다.
     const float TownsPer100  = 15f;
     const float LairsPer100  = 45f;
-    const float NodesPer100  = 22f;
 
     static float Km2 => TerrainGrid.WorldSize * (float)TerrainGrid.WorldSize / 1_000_000f;
     static int   ByArea(float per100) => Mathf.Max(1, Mathf.RoundToInt(per100 * Km2 / 100f));
@@ -58,7 +59,6 @@ public class WorldPopulator : EditorWindow
     int   _seed          = 20260827;
     int   _towns         = -1;      // 처음 열 때 넓이에서 낸다
     int   _lairs         = -1;
-    int   _resources     = -1;
 
     // **간격도 넓이에서 낸다**(2026-08-30). 절대값(1,800m·700m·450m·1,500m)으로 박혀 있었는데,
     // 세계를 256m로 줄이고 나니 **넷 다 세계보다 크다** — 그러면 조건이 뜻을 잃는 정도가
@@ -82,7 +82,6 @@ public class WorldPopulator : EditorWindow
     {
         if (_towns     < 0) _towns     = ByArea(TownsPer100);
         if (_lairs     < 0) _lairs     = ByArea(LairsPer100);
-        if (_resources < 0) _resources = ByArea(NodesPer100);
 
         if (_townSpacing < 0f) _townSpacing = Spread(_towns, 0.55f);
         if (_lairSpacing < 0f) _lairSpacing = Spread(_lairs, 0.55f);
@@ -127,11 +126,10 @@ public class WorldPopulator : EditorWindow
         EditorGUILayout.LabelField("개수", EditorStyles.boldLabel);
         _towns     = EditorGUILayout.IntSlider("마을",      _towns,     0, 200);
         _lairs     = EditorGUILayout.IntSlider("적 소굴",   _lairs,     0, 500);
-        _resources = EditorGUILayout.IntSlider("자원 지대", _resources, 0, 300);
         EditorGUILayout.LabelField(Spacing(), EditorStyles.miniLabel);
         if (GUILayout.Button("넓이에 맞게 되돌린다", EditorStyles.miniButton))
         {
-            _towns = ByArea(TownsPer100); _lairs = ByArea(LairsPer100); _resources = ByArea(NodesPer100);
+            _towns = ByArea(TownsPer100); _lairs = ByArea(LairsPer100);
         }
 
         EditorGUILayout.Space(6f);
@@ -156,7 +154,7 @@ public class WorldPopulator : EditorWindow
     {
         float w = TerrainGrid.WorldSize;
         string One(int n) => n <= 0 ? "—" : $"{Mathf.RoundToInt(w / Mathf.Sqrt(n)):N0}m";
-        return $"평균 간격 — 마을 {One(_towns)} · 소굴 {One(_lairs)} · 자원 {One(_resources)}";
+        return $"평균 간격 — 마을 {One(_towns)} · 소굴 {One(_lairs)}";
     }
 
     // ── 채우기 ──────────────────────────────────────────────────────────────
@@ -205,7 +203,6 @@ public class WorldPopulator : EditorWindow
             // 데가 남는 자투리로 밀린다 — 순서가 곧 우선순위다.
             made += Scatter(root, content, placed, rooms, rng, WorldNodeContent.Town,         _towns,     0f);
             made += Scatter(root, content, placed, rooms, rng, WorldNodeContent.EnemyLair,    _lairs,     _safeRadius);
-            made += Scatter(root, content, placed, rooms, rng, WorldNodeContent.ResourceSite, _resources, 0f);
         }
         finally { EditorUtility.ClearProgressBar(); }
 
@@ -215,15 +212,14 @@ public class WorldPopulator : EditorWindow
         Undo.CollapseUndoOperations(group);
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
 
-        int t = 0, l = 0, r = 0;
+        int t = 0, l = 0;
         foreach (var p in placed)
             if (p.kind == WorldNodeContent.Town) t++;
             else if (p.kind == WorldNodeContent.EnemyLair) l++;
-            else r++;
 
-        Debug.Log($"[배치] 시드 {_seed} — 마을 {t} · 소굴 {l} · 자원지대 {r} (합 {made}).\n" +
+        Debug.Log($"[배치] 시드 {_seed} — 마을 {t} · 소굴 {l} (합 {made}).\n" +
                   $"도구가 낸 옛것 {wiped}개를 지웠고, 손으로 놓은 {kept}개는 그대로 뒀다." +
-                  (t < _towns || l < _lairs || r < _resources
+                  (t < _towns || l < _lairs
                       ? "\n**바란 만큼 다 못 놓았다** — 간격을 좁히거나 허용 경사를 키울 것 " +
                         "(평평한 땅이 모자라면 개수를 못 채운다)."
                       : "") +
@@ -508,8 +504,8 @@ public class WorldPopulator : EditorWindow
         tag.Kind      = kind;
         tag.Generated = true;
 
-        // **마을은 안 내린다** — 안의 창고·폰·건물이 처음으로 돌아가면 안 된다.
-        tag.Persistent = kind != WorldNodeContent.ResourceSite;
+        // **안 내린다** — 안의 창고·폰·건물이 처음으로 돌아가면 안 된다.
+        tag.Persistent = true;
 
         Undo.RegisterCreatedObjectUndo(go, "장소 세우기");
     }
@@ -518,7 +514,6 @@ public class WorldPopulator : EditorWindow
     {
         WorldNodeContent.Town         => c.TownPrefab,
         WorldNodeContent.EnemyLair    => c.LairPrefab,
-        WorldNodeContent.ResourceSite => c.ResourceSitePrefab,
         _                             => null,
     };
 }

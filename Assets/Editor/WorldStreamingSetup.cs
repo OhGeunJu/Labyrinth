@@ -95,6 +95,8 @@ public static class WorldStreamingSetup
         int screens = SleepLegacyWorldScreen();
         int shaders = RegisterRuntimeShaders();
 
+        WarnStartTile();
+
         EditorUtility.SetDirty(go);
         Selection.activeGameObject = go;
 
@@ -103,6 +105,35 @@ public static class WorldStreamingSetup
                   $"옛 월드맵 화면 {screens}개 재움 · 셰이더 {shaders}개 새로 등록." + "\n" +
                   $"세계 {TerrainGrid.WorldSize}m · 청크 {TerrainGrid.ChunkSize}m · " +
                   $"{TerrainGrid.ChunksPerAxis}×{TerrainGrid.ChunksPerAxis}");
+    }
+
+    // ── 판이 시작되는 자리가 지도와 어긋났나 ────────────────────────────────
+    //
+    // **여기서 옮기지 않고 말만 한다**(2026-09-15). 이 도구는 `1. Rebuild Underworld`가
+    // 단계로 부르는 상시 도구라, 여기서 무리를 옮기면 **묶음을 돌릴 때마다 제자리로
+    // 끌려온다** — `WireScatter`가 뿌리기 규칙을 매번 비우던 그 함정이다. 옮기는 문은
+    // `World → C. Move Party To Start Tile` 하나이고 사람이 누른다.
+    //
+    // 그래도 여기서 **묻기는 해야 한다.** 어긋나 있어도 화면에는 *"자원이 안 보인다"*로만
+    // 보이고(시작 자리의 바이옴이 무엇을 내놓느냐가 통째로 달라진다) 그 원인을 가리키는
+    // 것이 아무 데도 없었다 — 사흘을 거기 썼다.
+    static void WarnStartTile()
+    {
+        if (!StartPlacement.Read(out var start, out var target, out var biome)) return;
+
+        var pawns = StartPlacement.PlayerPawns();
+        if (pawns.Length == 0) return;
+
+        var from = StartPlacement.Centroid(pawns);
+        float d = Vector2.Distance(new Vector2(from.x, from.z), new Vector2(target.x, target.z));
+        if (d < TerrainGrid.RegionSize * 0.5f) return;   // 시작 칸 안이다
+
+        Debug.LogWarning($"[월드] 무리가 시작 칸 밖에 서 있다 — ({from.x:F0}, {from.z:F0})인데 " +
+                         $"지도가 말하는 시작 칸은 ({start.x},{start.y}) = ({target.x:F0}, {target.z:F0}), " +
+                         $"**{d:F0}m 떨어져 있다**.\n" +
+                         $"판은 폰이 선 자리에서 열리므로 지금 시작 바이옴은 지도의 **{biome.DisplayName()}**이 " +
+                         "아니다 — 거기서 나는 광맥과 식물이 통째로 달라진다. " +
+                         "`World → C. Move Party To Start Tile`로 옮긴다.");
     }
 
     // ── 런타임에 이름으로 찾는 셰이더를 빌드에 넣는다 ──────────────────────
@@ -417,26 +448,31 @@ public static class WorldStreamingSetup
                   "밝기는 `Window → Rendering → Lighting`에서 바로 만질 것.");
     }
 
-    // 나무·바위 규칙을 물린다. **이미 저작된 규칙이 있으면 안 건드린다** — 도구를 다시 돌렸다고
-    // 손으로 맞춘 값이 날아가면 다시 돌릴 엄두가 안 난다(연구 그래프 베이커와 같은 판단).
+    // **뿌리기 규칙은 여기서 안 건드린다**(2026-09-14에 뒤집었다).
+    //
+    // 2026-08-29에는 **비웠다.** 지상 시절의 규칙(나무·바위)이 그대로 남아 **파낸 굴 한복판에
+    // 소나무가 서 있었고**, 지하에 뿌릴 것은 아직 없었으니 *비우고 안 채우는* 것이 맞았다.
+    //
+    // **그 뒤로 지하에 뿌릴 것이 생겼다** — 버섯·바닥 돌(2026-09-06) · 바닥 광맥(2026-09-14).
+    // 그런데 이 함수가 그대로 남아, **`1. Rebuild Underworld`가 첫 단계에서 그것을 매번
+    // 지웠다**(이 묶음이 콘텐츠 도구를 다시 부르지 않으니 아무도 되채우지 않는다). 그래서
+    // 씬의 `scatter`가 **비어 있었다** — 에셋도 프리팹도 멀쩡한데 세계에 버섯 한 송이가 없고,
+    // 화면에는 *"버섯이 안 보인다"*로만 나타난다.
+    //
+    // **일회성 이행을 상시 도구에 남겨 두면 그것이 규칙이 된다.** 이 함수의 첫 줄이 이미
+    // *"이미 저작된 규칙이 있으면 안 건드린다"*라고 말하고 있었고, 하는 일은 정반대였다.
+    //
+    // 이제 **채우는 문은 콘텐츠 도구 쪽 하나다**(`ScatterWiring`) — `7. Create Mushrooms`와
+    // `B. Create Metal Ladder`. 둘 다 `1. Rebuild Underworld`에 들어가 있다.
     static void WireScatter(WorldContentStreamer content)
     {
-        var so = new SerializedObject(content);
+        var so  = new SerializedObject(content);
         var arr = so.FindProperty("scatter");
 
-        // **지하에는 나무가 안 자란다**(2026-08-29). 지상 시절의 규칙(나무·바위)이 그대로
-        // 남아 있어서 **파낸 굴 한복판에 소나무가 서 있었다.** 게다가 바위 프리팹은 이제
-        // `RockMap`이 그리는 벽과 **뜻이 겹친다**.
-        //
-        // **비우고 안 채운다** — 지하에 뿌릴 것(버섯·종유석·수정)은 아직 프리팹이 없다.
-        // 없는 것을 억지로 채우는 것보다 **아무것도 없는 편**이 낫다.
-        if (arr.arraySize > 0)
-        {
-            Debug.Log($"[월드] 지상 뿌리기 규칙 {arr.arraySize}개를 비웠다 — " +
-                      "지하에는 나무가 안 자란다. 지하 프롭이 생기면 여기 채울 것.");
-            arr.arraySize = 0;
-            so.ApplyModifiedPropertiesWithoutUndo();
-        }
+        if (arr.arraySize == 0)
+            Debug.LogWarning("[월드] 뿌리기 규칙이 비어 있다 — 굴 바닥에 버섯도 돌도 광맥도 " +
+                             "안 난다.\n`World → 7. Create Mushrooms`와 " +
+                             "`World → B. Create Metal Ladder`를 돌릴 것(둘 다 씬에 쓴다).");
     }
 
     static void Add(SerializedProperty arr, string name, GameObject prefab,

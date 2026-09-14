@@ -20,6 +20,62 @@ using UnityEngine;
 // **밖에서 무한히 캐지는 광맥**이 조용히 하나 생긴다.
 public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
 {
+    // ── 야생으로 세운다 ────────────────────────────────────────────────────
+    //
+    // **노드 프리팹은 *이식 광맥*이다** — `Node_*Vein`에는 `PlacedBuilding`과 `PowerUser`가
+    // 붙어 있고, 그게 `IsBuilt`의 답이다(윗글의 표). 그대로 굴에 뿌리면 **자연에 있는 것이
+    // 지은 것 행세를 한다**: 배정을 받고 · 마르지 않고(`TotalYields`를 안 본다) · 핵 영역
+    // 밖이라 **전력을 못 받아 돌지도 않는다.** 걷어낸 자원 지대가 정확히 그랬다.
+    //
+    // **프리팹을 한 벌 더 만들지 않는다** — 광맥이 열다섯이라 야생판을 따로 두면 서른이
+    // 되고, `VeinArt`가 모양을 다시 구울 때마다 **그중 하나는 반드시 뒤처진다.**
+    // 가르는 것은 *무엇이냐*가 아니라 **어떻게 세웠느냐**이므로, 세우는 쪽이 답한다.
+    //
+    // ## 비활성 요람을 거치지 않는다 (2026-09-15에 되돌렸다)
+    //
+    // 처음에는 **꺼진 부모 아래에서 만들고 `DestroyImmediate`로 떼어 낸 뒤** 옮겼다 —
+    // `OnEnable`이 돌기 전에 떼려는 것이었다. 그런데 그렇게 세운 광맥이 **하이어라키에는
+    // 서 있는데 화면에 아무것도 안 그려졌다**(콜라이더 와이어만 보였다). 프리팹도 메시도
+    // 재질도 멀쩡했으니 **원인이 프리팹이 아니라 세우는 길에 있었다.**
+    //
+    // `DestroyImmediate`는 런타임에서 **쓰지 말라고 적혀 있는 함수**이고, 거기에 *꺼진
+    // 부모 아래의 갓 만든 인스턴스*라는 드문 상태를 겹쳤다. **드문 것 둘을 겹치면 무엇이
+    // 범인인지 가릴 수가 없다** — 그래서 둘 다 걷어냈다.
+    //
+    // 이제 **평범하게 세우고 `MakeWild`로 말해 준다.** 딸려 오는 것 둘은 감당된다:
+    //
+    //   · `PlacedBuilding.Start`가 제 칸을 막는데, **`ResourceNode.Awake`가 같은 칸을
+    //     이미 막는다** — 겹쳐 막는 것이라 결과가 같다.
+    //   · `PowerUser`는 `OnEnable`에서 등록하고 `OnDisable`(파괴)에서 빠진다 — 한 프레임
+    //     전력 목록에 있다가 나간다. 그 사이에 힘을 먹지는 않는다(`PowerGrid`가 다시 나눌 뿐).
+    //
+    // **`MakeWild`를 `Destroy`보다 먼저 부르는 것이 요점이다.** `Destroy`는 프레임 끝으로
+    // 미뤄지므로, 그 전에 도는 `ResourceNode.Start`가 `IsBuilt`를 물으면 **아직 붙어 있는
+    // `PlacedBuilding`을 보고 참으로 캐싱한다** — 그러면 야생 광맥이 영영 *지은 것*이 된다.
+    public static GameObject SpawnWild(GameObject prefab, Vector3 pos, Quaternion rot, Transform parent)
+    {
+        if (prefab == null) return null;
+
+        var go = Instantiate(prefab, pos, rot, parent);
+
+        // **먼저 말해 준다** — 아래 `Destroy`는 프레임 끝이라 `Start`가 그보다 먼저 돈다.
+        var node = go.GetComponent<ResourceNode>();
+        if (node != null) node.MakeWild();
+
+        foreach (var pu in go.GetComponentsInChildren<PowerUser>(true))      Destroy(pu);
+        foreach (var pb in go.GetComponentsInChildren<PlacedBuilding>(true)) Destroy(pb);
+
+        return go;
+    }
+
+    // **야생으로 세웠다** — `PlacedBuilding`을 떼기로 했으니 `IsBuilt`를 먼저 못 박는다.
+    // 안 박으면 `Start`가 **아직 안 지워진 컴포넌트**를 보고 참으로 캐싱한다.
+    public void MakeWild()
+    {
+        _built      = false;
+        _builtKnown = true;
+    }
+
     // 배정/해제 통보 — 노드 패널·무리 관리 패널이 즉시 갱신하도록.
     // 해제는 패널 밖(이동 명령·사망)에서도 일어나므로, 폴링만으로는 목록이 낡은 채로 남는다.
     public static event Action<ResourceNode> OnAssignmentChanged;
@@ -320,20 +376,27 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
     //
     // 타일 중심은 `tile + 0.5`이므로(`MapManager.TileToWorld`), 맨 왼쪽 칸 중심은
     // `중심 - (w-1)/2`이고 그 칸 번호는 그것을 floor한 값이다.
-    public IEnumerable<Vector2Int> Footprint
+    public IEnumerable<Vector2Int> Footprint => FootprintAt(transform.position, Size);
+
+    // 칸 수. **1보다 작게 저작된 것을 여기서 누른다** — 읽는 쪽마다 `Max(1, ...)`을
+    // 적으면 언젠가 한 곳이 빠지고, 그 자리만 0칸짜리 광맥을 본다.
+    public Vector2Int Size => new(Mathf.Max(1, size.x), Mathf.Max(1, size.y));
+
+    // **세우기 *전에* 어느 칸을 덮을지 묻는 문**(2026-09-15).
+    //
+    // 뿌리기는 *놓아 보기 전에* 자리가 되는지 물어야 하는데, 위의 프로퍼티는 이미 선
+    // 물건에만 답한다. 그래서 같은 셈을 뿌리기 쪽에 복사했다면 **답이 두 벌**이 되고,
+    // 짝수 크기의 한 칸 어긋남(아래 주석)이 한쪽에만 고쳐진 채 남았을 것이다.
+    public static IEnumerable<Vector2Int> FootprintAt(Vector3 pos, Vector2Int size)
     {
-        get
-        {
-            int w = Mathf.Max(1, size.x), h = Mathf.Max(1, size.y);
-            var pos = transform.position;
+        int w = Mathf.Max(1, size.x), h = Mathf.Max(1, size.y);
 
-            int minX = Mathf.FloorToInt(pos.x - (w - 1) * 0.5f);
-            int minY = Mathf.FloorToInt(pos.z - (h - 1) * 0.5f);
+        int minX = Mathf.FloorToInt(pos.x - (w - 1) * 0.5f);
+        int minY = Mathf.FloorToInt(pos.z - (h - 1) * 0.5f);
 
-            for (int x = 0; x < w; x++)
-            for (int y = 0; y < h; y++)
-                yield return new Vector2Int(minX + x, minY + y);
-        }
+        for (int x = 0; x < w; x++)
+        for (int y = 0; y < h; y++)
+            yield return new Vector2Int(minX + x, minY + y);
     }
 
     void Awake()

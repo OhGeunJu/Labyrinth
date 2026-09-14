@@ -9,7 +9,12 @@ public enum WorldNodeContent
     MySettlement, // 내 정착지 (코어 있음)
     Town,         // NPC 마을 (상인 등)
     EnemyLair,    // 적 소굴
-    ResourceSite, // 특수 자원 지대 (매장량이 두터운 칸)
+    // **안 쓴다**(2026-09-14). 자원 지대는 *"어디에 자원이 있나"*에 답하는 **두 번째 표**였다 —
+    // 벽 속 광맥(`RockMap.VeinAt`)과 바닥 뿌리기(`ScatterRule`)가 둘 다
+    // `BiomeContentData.ResourceNodes` 하나를 읽는데, 이것만 **손으로 놓은 자리**에 매여 있었다.
+    // **값은 안 지운다** — 정수 직렬화라 지우면 `Outpost`가 한 칸 밀려 구운 청크가 통째로 어긋난다
+    // (지상 바이옴을 `Biome` enum에 남겨 둔 것과 같은 규칙: 안 쓰면 그만이다).
+    ResourceSite,
     Outpost,      // 내 채집기지 — 매장 자원을 매일 캐서 쌓아둔다(사람은 살지 않는다)
 }
 
@@ -21,7 +26,6 @@ public static class WorldNodeContentExt
         WorldNodeContent.MySettlement => "내 정착지",
         WorldNodeContent.Town         => "마을",
         WorldNodeContent.EnemyLair    => "적 소굴",
-        WorldNodeContent.ResourceSite => "자원 지대",
         WorldNodeContent.Outpost      => "채집기지",
         _                             => c.ToString(),
     };
@@ -32,7 +36,6 @@ public static class WorldNodeContentExt
         WorldNodeContent.MySettlement => new Color(1f, 0.9f, 0.3f),
         WorldNodeContent.Town         => new Color(0.4f, 0.6f, 1f),
         WorldNodeContent.EnemyLair    => new Color(0.9f, 0.2f, 0.2f),
-        WorldNodeContent.ResourceSite => new Color(0.3f, 0.85f, 0.85f),
         WorldNodeContent.Outpost      => new Color(0.85f, 0.65f, 0.35f),
         _                             => UnityEngine.Color.white,
     };
@@ -43,7 +46,6 @@ public static class WorldNodeContentExt
         WorldNodeContent.MySettlement => "핵",
         WorldNodeContent.Town         => "마",
         WorldNodeContent.EnemyLair    => "적",
-        WorldNodeContent.ResourceSite => "자",
         WorldNodeContent.Outpost      => "굴",
         _                             => "",
     };
@@ -233,9 +235,14 @@ public class WorldMap : MonoBehaviour
 
     // **월드 좌표의 바이옴.** 장소가 칸이 아니라 좌표가 되면서 묻는 곳이 셋이 됐다
     // (소굴·시장·모집). 각자 지역을 계산하면 반 칸 밀리는 실수가 세 번 난다.
+    // **경계는 격자보다 곱다** — `TerrainGrid.BiomeSample`이 자리를 굽힌다(근거는 거기).
+    // 바닥 텍스처·지도 색과 **같은 문**을 쓴다: 갈리면 *바닥이 바뀌는 자리*와 *광맥이
+    // 바뀌는 자리*가 어긋나 경계가 두 줄로 보인다.
+    //
+    // **주소를 묻는 것은 `TerrainGrid.RegionAt`이다** — 굽히면 지도 툴팁이 거짓말을 한다.
     public static Biome BiomeAtWorld(Vector2 worldXZ)
     {
-        var r = TerrainGrid.RegionAt(worldXZ.x, worldXZ.y);
+        var r = TerrainGrid.BiomeRegion(worldXZ.x, worldXZ.y);
         return AuthoredBiome(r.x, r.y);
     }
 

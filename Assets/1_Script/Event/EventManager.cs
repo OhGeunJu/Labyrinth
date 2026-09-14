@@ -313,8 +313,21 @@ public class EventManager : MonoBehaviour
         Vector3 d = point - origin;
         d.y = 0f;
         if (d.sqrMagnitude < 1f) return null;   // 핵 위 — 방향이라 할 것이 없다
+        return Compass8(d.x, d.z);
+    }
 
-        float ang = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+    // **방위를 뭐라고 부르나 — 답은 이 표 하나다**(2026-09-15에 밖으로 열었다).
+    //
+    // 바이옴 배치 도구도 *"동쪽에 뭐가 있다"*를 말해야 하는데, 거기서 표를 다시 적으면
+    // **같은 방향을 습격 알림은 `북동`이라 하고 지도 로그는 `북동쪽`이라** 하게 된다.
+    // 여기가 이미 그 답을 들고 있으므로 열어 준다(에디터에서도 부른다).
+    //
+    // `+Z`가 북, 시계 방향. **길이가 0이면 방향이 아니다.**
+    public static string Compass8(float dx, float dz)
+    {
+        if (dx * dx + dz * dz < 1e-6f) return null;
+
+        float ang = Mathf.Atan2(dx, dz) * Mathf.Rad2Deg;
         if (ang < 0f) ang += 360f;
         return Compass[Mathf.RoundToInt(ang / 45f) % 8];
     }

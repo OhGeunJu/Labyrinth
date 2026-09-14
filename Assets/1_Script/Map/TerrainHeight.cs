@@ -95,7 +95,7 @@ public static class TerrainHeight
 
     public static BiomeBlend BlendAt(float worldX, float worldZ)
     {
-        var uv = TerrainGrid.RegionUV(worldX, worldZ);
+        var uv = TerrainGrid.BiomeUV(worldX, worldZ);   // **굽힌 자리**로 묻는다
         float fx = uv.x - 0.5f, fy = uv.y - 0.5f;
 
         int x0 = Mathf.FloorToInt(fx), y0 = Mathf.FloorToInt(fy);
@@ -115,7 +115,7 @@ public static class TerrainHeight
     {
         // **반 칸 밀어서 잰다** — 안 밀면 지역의 *가운데*가 아니라 *모서리*가 그 바이옴의
         // 순수한 값이 되어, 칸 한복판에서 이웃 색이 절반 섞인다.
-        var uv = TerrainGrid.RegionUV(worldX, worldZ);
+        var uv = TerrainGrid.BiomeUV(worldX, worldZ);   // **굽힌 자리**로 묻는다
         float fx = uv.x - 0.5f, fy = uv.y - 0.5f;
 
         int x0 = Mathf.FloorToInt(fx), y0 = Mathf.FloorToInt(fy);
@@ -226,7 +226,7 @@ public static class TerrainHeight
     // 그 표는 이미 하나뿐이다(`Biome.Color`, 저작 창의 격자가 쓰는 그것).
     public static Color MapColor(float worldX, float worldZ)
     {
-        var uv = TerrainGrid.RegionUV(worldX, worldZ);
+        var uv = TerrainGrid.BiomeUV(worldX, worldZ);   // **굽힌 자리**로 묻는다
         float fx = uv.x - 0.5f, fy = uv.y - 0.5f;
         int x0 = Mathf.FloorToInt(fx), y0 = Mathf.FloorToInt(fy);
         float tx = fx - x0, ty = fy - y0;

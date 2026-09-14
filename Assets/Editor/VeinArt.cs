@@ -151,6 +151,12 @@ public static class VeinArt
                 // **노드가 프리팹을 다시 가리키게 한다** — 덮어써도 참조는 유지되지만,
                 // 비어 있던 노드(`FungalWood`가 그랬다)는 여기서 채워진다.
                 data.Prefab = prefab;
+
+                // **벽에 박혔을 때의 얼굴도 같이 쓴다**(2026-09-14). `RockRenderer`가 벽면에
+                // 광맥 알갱이를 그리는데, 그 색을 저기서 따로 적으면 **같은 광맥이 벽에서와
+                // 바닥에서 다른 색**이 된다 — 화면에서 그 둘은 다른 광물로 읽힌다.
+                // 여기가 *"무엇이 어떻게 생겼나"*의 저작 표이므로 여기서 밀어 넣는다.
+                WriteVeinLook(data, v);
                 EditorUtility.SetDirty(data);
             }
             n++;
@@ -160,8 +166,27 @@ public static class VeinArt
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
+
         Debug.Log($"[광맥] {n}개를 다시 구웠습니다 — 금속은 둥근 바위에 알갱이, 보석은 기둥 다발." +
                   (dropped > 0 ? $" 안 쓰는 옛 색 재질 {dropped}개를 치웠습니다." : ""));
+    }
+
+    // **서 있는 광맥과 벽 속 광맥은 같은 물건이다** — 재질에 넣는 값을 노드 데이터에도
+    // 그대로 적는다(`RockRenderer`가 런타임에 읽는다. `VeinArt`는 에디터 전용이라 저쪽에서
+    // 이 표를 못 본다).
+    //
+    // **돌은 안 적는다** — `Stone`·`Node_Pebbles`는 박힌 것이 없는 순수한 돌이라
+    // (`Shape.Rock`·`Shape.Pebbles`) 벽에 그릴 알갱이가 없다. `Stone`은 광맥이 없는 맨바위가
+    // 무엇을 내놓나의 답이기도 한데(`RockMap.PlainRock`), 거기에 색을 주면 **온 세상 벽이
+    // 알갱이로 덮인다.**
+    static void WriteVeinLook(ResourceNodeData data, Vein v)
+    {
+        bool bare = v.Shape == Shape.Rock || v.Shape == Shape.Pebbles;
+
+        data.VeinColor      = bare ? new Color(0f, 0f, 0f, 0f) : v.Ore;
+        data.VeinMetallic   = v.Metal;
+        data.VeinSmoothness = v.Gloss;
+        data.VeinGlow       = v.Glow;
     }
 
     // **색을 바꾸면 옛 재질이 남는다 — 치운다.**
@@ -239,6 +264,11 @@ public static class VeinArt
         // 칸 수는 `ResourceNode.size`가 이미 들고 있다(건물 쪽은 `BuildingData.Size`와
         // 같은 값이다). **여기서 읽으면 답이 한 벌이 되고**, 나중에 칸을 늘려도 모델이
         // 저절로 따라온다.
+        // **여기서부터 저장까지 예외가 나면 `root`가 씬에 남는다** — 아래 `finally`가
+        // 치운다(`BuildOre`·`AddGlow`·`Save`가 전부 이 사이에 있다).
+        try
+        {
+
         var foot = FootprintOf(root, v.Shape);
         if (v.Shape == Shape.Ore) WriteFootprint(root, v.Name);
 
@@ -284,9 +314,21 @@ public static class VeinArt
 
         // **같은 경로에 덮어쓴다** — guid와 루트 fileID가 유지되어야 노드 데이터와 이식
         // 광맥 건물(`BuildingData.Prefab`은 **fileID까지** 가리킨다)이 계속 찾는다.
-        var saved = PrefabUtility.SaveAsPrefabAsset(root, path);
-        Object.DestroyImmediate(root);
-        return saved;
+        //
+        // **터져도 씬에 쓰레기를 안 남긴다**(2026-09-15). 위에서 `InstantiatePrefab`이
+        // **열린 씬에 인스턴스를 세우므로**, 저장까지 가는 길에 예외가 나면 그것이 그대로
+        // 남는다 — 실제로 굽기가 표의 첫 항목(`Node_CoalSeam`)에서 터지는 동안 누를
+        // 때마다 씬에 `Node_CoalSeam`이 하나씩 쌓였다(사용자: *"지금 3개있어"*).
+        //
+        // **도구가 실패할 때 남기는 것까지가 그 도구의 몫이다.** 치우는 것을 성공 경로에만
+        // 두면, 실패한 날 사람이 손으로 찾아 지워야 하고 **무엇이 쓰레기인지도 안 보인다.**
+        return PrefabUtility.SaveAsPrefabAsset(root, path);
+
+        }
+        finally
+        {
+            if (root != null) Object.DestroyImmediate(root);
+        }
     }
 
     // **광석 광맥은 3x3이다**(2026-09-13, 사용자 결정 — *"좀 큼직큼직했으면 … 3*3으로
@@ -663,9 +705,11 @@ public static class VeinArt
     {
         // **이름에 색과 금속성을 같이 넣는다** — 색만 넣으면 같은 색을 다른 금속성으로 쓰는
         // 날 **먼저 만든 쪽 설정이 뒤엣것까지 물들인다**(지형 색조 캐시에서 겪은 그 자리).
+        // **발광 세기까지 키에 넣는다** — 같은 색·금속성인데 세기만 다른 둘이 생기면
+        // (`Glow` 0.8 vs 바닥값 0.22) **먼저 만든 쪽이 뒤엣것까지 물들인다.**
         string key  = ColorUtility.ToHtmlStringRGB(v.Ore)
                     + "_M" + Mathf.RoundToInt(v.Metal * 100f)
-                    + (v.Glow ? "_E" : "");
+                    + (v.Glow ? "_E" : v.Shape == Shape.Ore || v.Shape == Shape.Crystal ? "_e" : "");
         string path = MatDir + "/Vein_" + key + ".mat";
 
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -682,12 +726,35 @@ public static class VeinArt
         if (m.HasProperty("_Metallic"))   m.SetFloat("_Metallic",   v.Metal);
         if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", v.Gloss);
 
+        // ── 어두운 굴에서는 반사만으로 안 읽힌다 (2026-09-15) ──────────────
+        //
+        // 전에는 **`Glow` 광물만** 빛났다(미스릴·마법/에테르/공허 결정). 나머지는
+        // `_Metallic` 반사에 기댔는데, **지하에는 해가 없고** 주변광 배율이 어느 때에도
+        // 1이 아니라(0.30~0.62) 구리도 철도 석탄도 **그냥 어두운 돌덩이로 눌린다.**
+        //
+        // 사용자: *"광석들이 박힌 벽은 보이긴하는데 그냥 바닥에 광맥이 있는 건 안보이는데?"*
+        // — 그런데 **서 있던 광맥은 그때 서른여덟 개가 실제로 서 있었다**(뿌리기 결산이
+        // 세어 줬다). 없던 것이 아니라 **안 읽혔다.**
+        //
+        // 갈린 이유가 명확하다: 벽 쪽 알갱이(`RockRenderer.OreMat`)에는 **은은한 발광을
+        // 넣었고**(0.22 x 색) 여기에는 안 넣었다. **같은 광물이 벽에서와 바닥에서 다르게
+        // 읽히면 그 둘은 화면에서 다른 물건이다** — `ResourceNodeData`에 색을 같이 적어
+        // 맞춰 놓고, 정작 *읽히게 만드는 값*은 한쪽에만 있었다.
+        //
+        // **`Glow`는 그대로 세다**(0.8) — 그것은 *스스로 빛나는 광물*이라는 저작이고,
+        // 여기서 더하는 것은 *어둠에 안 묻히게 하는 바닥값*이라 뜻이 다르다.
+        //
+        // **돌에는 안 넣는다** — `Rock`·`Pebbles`는 박힌 것이 없어 `Ore`가 검정이다.
+        // (곱하면 검정이라 티는 안 나지만, 키워드를 켜 두면 *빛나는 돌*이 언제 생겼는지
+        //  모르게 된다.)
+        bool lit = v.Shape == Shape.Ore || v.Shape == Shape.Crystal;
+
         // **URP 발광은 `_EMISSION` 키워드를 같이 켜야 한다** — 색만 넣으면 조용히 안 빛난다.
-        if (v.Glow)
+        if (lit)
         {
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-            m.SetColor("_EmissionColor", v.Ore * 0.8f);
+            m.SetColor("_EmissionColor", v.Ore * (v.Glow ? 0.8f : 0.22f));
         }
         EditorUtility.SetDirty(m);
         return m;
@@ -931,9 +998,33 @@ public static class VeinArt
         Tri(v, t, a, c, d);
     }
 
+    // ── 메시를 다시 만들지 않고 속만 갈아 끼운다 (2026-09-15) ──────────────
+    //
+    // **`CreateAsset`을 이미 있는 경로에 부르면 유니티는 옛 에셋을 *지우고* 새로 만든다.**
+    // 그 순간 이미 메모리에 올라와 있던 것들이 들고 있던 `Mesh` 객체가 **죽은 참조**가
+    // 된다 — 열린 씬의 인스턴스, 로드된 프리팹, Play 중인 클론 전부. 디스크의 새 파일은
+    // 멀쩡한데 **그 세션 동안만** 화면이 빈 렌더러를 그린다.
+    //
+    // 그래서 증상이 **에셋을 아무리 봐도 안 나온다**: 정점 384 · 인덱스 384 · 감김 100%
+    // 바깥 · URP Lit 불투명 · 렌더러 34개 전부 켜짐. `Renderer.bounds`마저 그럴듯한 값을
+    // 내는데, 그건 **자식들의 위치 분포**였다(지오메트리가 0이라 점들만 남았다).
+    // 사용자가 유니티를 껐다 켜서 찾았다 — **껐다 켜서 고쳐지는 것은 디스크가 아니라 메모리다.**
+    //
+    // 이 저장소가 한 층 위에서 이미 배운 규칙이다 — *"프리팹을 처음부터 다시 짓지 않는다,
+    // 자식만 갈아 끼운다"*(그때도 증상이 *"광맥이 화면에서 통째로 사라졌는데 에셋은
+    // 멀쩡했다"*였다). **메시도 같다: 있으면 그 객체를 비우고 다시 채운다.**
+    // 그러면 신원이 유지되어 가리키던 것들이 전부 살아 있고, guid도 안 바뀐다.
     static Mesh Save(List<Vector3> verts, List<int> tris, string name)
     {
-        var m = new Mesh { name = name };
+        string path = MeshDir + "/" + name + ".asset";
+
+        // **있으면 그것을 쓴다.** `Clear`는 객체를 그대로 두고 속만 비운다.
+        var m = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        bool fresh = m == null;
+        if (fresh) m = new Mesh();
+        else       m.Clear();
+
+        m.name = name;
         m.SetVertices(verts);
         m.SetUVs(0, _uv);
         m.SetTriangles(tris, 0);
@@ -943,6 +1034,12 @@ public static class VeinArt
         m.RecalculateTangents();
         m.RecalculateBounds();
 
+        // **LOD 표는 안 건드린다**(2026-09-15에 여기서 틀렸다). `m_MeshLodInfo`가
+        // `레벨 1개 · indexCount 0`으로 굳는 것을 보고 *"그래서 안 그려진다"*고 짚었는데,
+        // 유니티가 직접 답했다 — *"lodCount가 1이면 LOD0은 못 고친다, **서브메시 서술자가
+        // 답한다**"*. 즉 **LOD 없는 메시의 정상 상태**였다. 손대면 예외가 나면서 굽기가
+        // 통째로 멎는다. **에셋에서 이상해 보이는 값이 곧 고장인 것은 아니다.**
+
         // **에셋으로 저장해야 프리팹이 가리킬 수 있고, 가리켜야 빌드에 들어간다.**
         //
         // **폴더를 여기서 보장한다 — 부르는 쪽에서가 아니다.** 처음엔 메뉴(`Rebuild`)에서만
@@ -950,7 +1047,11 @@ public static class VeinArt
         // (*"Parent directory must exist"*). **진입로가 늘 때마다 mkdir이 하나씩 따라붙는
         // 구조라면 언젠가 하나를 빠뜨린다** — 쓰는 자리는 여기 하나뿐이다.
         EnsureFolder(MeshDir);
-        AssetDatabase.CreateAsset(m, MeshDir + "/" + name + ".asset");
+
+        // **처음일 때만 만든다** — 두 번째부터는 같은 객체를 더럽히기만 한다.
+        if (fresh) AssetDatabase.CreateAsset(m, path);
+        else       EditorUtility.SetDirty(m);
+
         _uv.Clear();   // **다음 메시를 위해 비운다** — 안 비우면 두 번째가 첫 번째 UV를 물려받는다
         return m;
     }

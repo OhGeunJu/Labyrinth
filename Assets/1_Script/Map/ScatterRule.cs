@@ -13,8 +13,30 @@ public class ScatterRule
 {
     public string Name = "나무";
 
-    [Tooltip("`ResourceNode`가 붙은 프리팹(`3_Prefab/Node/`).")]
+    [Tooltip("`ResourceNode`가 붙은 프리팹(`3_Prefab/Node/`). `FromBiomePool`을 켜면 안 본다.")]
     public GameObject Prefab;
+
+    // **무엇이 날지를 여기서 안 적는다 — 바이옴이 답한다**(2026-09-14, 사용자 결정:
+    // *"자원지대가 따로 있기보다는 그냥 지역에 따라서 랜덤 스폰 되면 좋겠어"*).
+    //
+    // 그전에는 자원이 **손으로 놓은 자원 지대**(`WorldNodeContent.ResourceSite`)로만 나왔다 —
+    // 한 덩어리 안에 구리·철·석탄이 박힌 프리팹 하나를 도구가 밀도로 뿌렸는데, 세계가
+    // 1.05km²라 `Max(1,…)` 바닥을 쳐 **세계 전체에 딱 하나**였다.
+    //
+    // **`BiomeContentData.ResourceNodes`가 이미 그 표다** — *"이 바이옴에서 나오는 자원 노드
+    // 풀"*이고 벽 속 광맥(`RockMap.VeinAt`)이 그것을 읽는다. 규칙마다 프리팹과 바이옴 목록을
+    // 적으면 **같은 표가 두 벌**이 되어, 금속 사다리를 손볼 때마다 여기도 같이 고쳐야 한다
+    // (그리고 한쪽은 반드시 뒤처진다). 프리팹은 `ResourceNodeData.Prefab`이 든다.
+    //
+    // **켜면 `Prefab`도 `Biomes`도 안 본다** — 자리의 바이옴이 둘 다 답한다.
+    //
+    // **여기서 나온 것은 야생으로 선다**(`ResourceNode.SpawnWild`). 노드 프리팹은 *이식 광맥*
+    // 이라 `PlacedBuilding`·`PowerUser`를 달고 있는데, 그대로 세우면 **굴 한복판의 광맥이
+    // 배정을 받고 마르지 않으며**(자연은 유한하다는 축이 깨진다) 핵 영역 밖이라 **전력을 못
+    // 받아 돌지도 않는다.** 걷어낸 자원 지대가 정확히 그랬다.
+    [Tooltip("프리팹을 고정하지 않고 **그 자리 바이옴의 자원 노드 풀**에서 고른다. " +
+             "켜면 Prefab·Biomes를 안 보고, 세우는 것은 야생 노드다.")]
+    public bool FromBiomePool = false;
 
     [Tooltip("청크(256m) 하나당 몇 개. 소수도 된다 — 0.5면 두 청크에 하나꼴.")]
     [Min(0f)] public float PerChunk = 20f;

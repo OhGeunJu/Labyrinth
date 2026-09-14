@@ -137,6 +137,57 @@ public static class TerrainGrid
     public static Vector2 RegionUV(float worldX, float worldZ) => new(
         worldX / RegionSize, worldZ / RegionSize);
 
+    // ── 바이옴 경계는 격자보다 곱다 (2026-09-15) ────────────────────────────
+    //
+    // 사용자: *"칠한거는 네모낳게 깔리잖아 내가 원하는 건 자연스러운 경계인데."*
+    //
+    // 지역이 64m라 **칠하면 64m 계단**이다. 해상도를 올리면(지도를 64x64로) 칠할 칸이
+    // 4,096개가 되어 **저작이 노동이 되고**, 무엇보다 `ChunksPerAxis`가 지역 수의 배수여야
+    // 한다는 제약에 걸린다.
+    //
+    // **저작 해상도와 경계 해상도를 같게 둘 이유가 없다.** 칠하는 것은 성기게 두고
+    // **읽을 때 자리를 굽힌다**(도메인 워프) — 그러면 64m 계단이 10~20m로 굽이치는 선이
+    // 되고, 저작은 여전히 칸 열여섯이다.
+    //
+    // **모든 바이옴 물음이 이 문을 지난다** — 바닥 텍스처(`TerrainSplat`) · 지도 색
+    // (`TerrainHeight.MapColor`) · 기복(`BlendedBiome`) · 광맥 풀과 벽 색조와 뿌리기
+    // (`WorldMap.BiomeAtWorld`). 한 곳이라도 안 지나면 **바닥이 바뀌는 자리와 광맥이
+    // 바뀌는 자리가 어긋나** 경계가 두 줄로 보인다.
+    //
+    // **주소는 안 굽힌다** — `RegionAt`은 *"여기가 몇 번 칸인가"*에 답하고 그건 저작
+    // 좌표다(지도 툴팁 · `WorldSites.InRegion` · 장소 배치). 굽히면 **툴팁이 거짓말을 한다.**
+    //
+    // 폭은 **지역의 3할 남짓**(±18m). 더 키우면 한 칸짜리 구역이 이웃에 통째로 먹히고,
+    // 줄이면 계단이 그대로 보인다. 잔물결을 한 겹 얹는 이유는 **큰 것만 쓰면 경계가
+    // 지나치게 매끈한 곡선**이라 사람이 그린 선으로 안 읽히기 때문이다.
+    const float WarpPeriod = 110f;   // m — 크게 굽이치는 주기
+    const float WarpRipple =  38f;   // m — 잔물결
+    const float WarpAmp    =  30f;   // m — (펄린이 ±0.3이라 실효 ±18m 남짓)
+
+    public static Vector2 BiomeSample(float worldX, float worldZ)
+    {
+        float nx = Mathf.PerlinNoise(worldX / WarpPeriod + 13.7f, worldZ / WarpPeriod + 91.3f) - 0.5f;
+        float nz = Mathf.PerlinNoise(worldX / WarpPeriod + 57.1f, worldZ / WarpPeriod + 24.9f) - 0.5f;
+
+        nx += (Mathf.PerlinNoise(worldX / WarpRipple +  5.5f, worldZ / WarpRipple + 71.2f) - 0.5f) * 0.35f;
+        nz += (Mathf.PerlinNoise(worldX / WarpRipple + 44.3f, worldZ / WarpRipple +  8.1f) - 0.5f) * 0.35f;
+
+        return new Vector2(worldX + nx * WarpAmp, worldZ + nz * WarpAmp);
+    }
+
+    // 굽힌 자리의 지역 격자 좌표 — **바이옴을 묻는 곳은 전부 이걸 쓴다.**
+    public static Vector2 BiomeUV(float worldX, float worldZ)
+    {
+        var p = BiomeSample(worldX, worldZ);
+        return RegionUV(p.x, p.y);
+    }
+
+    public static Vector2Int BiomeRegion(float worldX, float worldZ)
+    {
+        var p = BiomeSample(worldX, worldZ);
+        return RegionAt(p.x, p.y);
+    }
+
     // **원점은 (0,0) 모서리다 — 가운데가 아니다.** 기존 코드가 타일 좌표를 음수로 안 받는
     // 자리가 있고(`MapManager.IsInBuildZone`이 0부터 잰다), 세계를 가운데 정렬해서 얻는 것이
     // 없다. 타일은 0 ~ 29,439.

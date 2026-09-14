@@ -16,10 +16,8 @@ public static class BiomeTerrain
     {
         Biome.Plains => new BiomeTerrainProfile { Base =  0.0f, Amplitude = 0.7f, Roughness = 0.6f },
         Biome.Forest => new BiomeTerrainProfile { Base =  0.3f, Amplitude = 1.8f, Roughness = 1.0f },
-        Biome.Desert => new BiomeTerrainProfile { Base = -0.2f, Amplitude = 1.2f, Roughness = 0.5f },
         Biome.Tundra => new BiomeTerrainProfile { Base =  0.5f, Amplitude = 2.2f, Roughness = 0.8f },
         Biome.Lava   => Flat,
-        Biome.Swamp  => new BiomeTerrainProfile { Base = -0.8f, Amplitude = 0.4f, Roughness = 1.3f },
 
         // ── 지하는 완전 평지다 (2026-08-29, 사용자 결정) ─────────────────
         //
@@ -35,10 +33,22 @@ public static class BiomeTerrain
         Biome.Cavern    => Flat,
         Biome.Limestone => Flat,
         Biome.Fungal    => Flat,
-        Biome.Flooded   => Flat,
+        Biome.Glacier   => Flat,
         Biome.Crystal   => Flat,
         Biome.Mine      => Flat,
         Biome.Abyss     => Flat,
+
+        Biome.Mossgrotto => Flat,
+        Biome.Saltflat   => Flat,
+        Biome.Ossuary    => Flat,
+        Biome.Sulfur     => Flat,
+        Biome.Rift       => Flat,
+
+        // **지하로 되살린 둘**(2026-09-15) — 지상 arm을 **지우고** 여기로 옮겼다.
+        // 그대로 뒀으면 사막이 진폭 1.2에 거칠기 0.5라 **천장의 여유를 바닥이 먹어**
+        // 굴이 막힌다(지하 바닥은 완전 평지여야 한다).
+        Biome.Desert     => Flat,
+        Biome.Swamp      => Flat,
 
         _            => new BiomeTerrainProfile { Base =  0.0f, Amplitude = 0.0f, Roughness = 1.0f },  // 미지정 = 평평
     };

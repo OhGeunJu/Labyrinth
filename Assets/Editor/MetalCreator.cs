@@ -155,11 +155,59 @@ public static class MetalCreator
         EditorUtility.SetDirty(titaniumVein);
 
         WireBiomes(titaniumVein, mithrilVein);
+        WireFloorVeins();
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log("[금속] 미스릴·티타늄을 만들고 지하 여덟 층의 광맥 풀을 다시 배선했습니다. " +
+                  "굴 바닥에 광맥을 뿌리는 규칙도 씬에 물렸습니다 — **씬을 저장할 것.**\n" +
                   "이어서 `World → 9. Set Wild Yields`를 돌려 야생 매장량을 규칙에서 다시 내세요.");
+    }
+
+    // ── 굴 바닥에도 광맥이 난다 ─────────────────────────────────────────────
+    //
+    // **자원 지대를 걷어낸 자리다**(2026-09-14, 사용자 결정: *"자원지대가 따로 있기보다는
+    // 그냥 지역에 따라서 랜덤 스폰 되면 좋겠어"*). 전에는 서 있는 광맥을 보려면 도구가 놓아
+    // 준 **자원 지대** 하나를 찾아가야 했다 — 세계가 1.05km²라 밀도가 바닥을 쳐서 **세계
+    // 전체에 딱 하나**였고, 그 안의 광맥은 *이식 광맥* 프리팹이라 야생인데 배정을 받고
+    // 전력이 없어 돌지도 않았다.
+    //
+    // **규칙은 한 줄이다** — 자리의 바이옴이 무엇이 날지 답한다(`ScatterRule.FromBiomePool`
+    // → `BiomeContentData.ResourceNodes`, 바로 위 `WireBiomes`가 쓴 그 표). 그래서 층을
+    // 손보면 **바닥도 같이 따라온다**: 여기에 적을 것이 없다.
+    //
+    // **바이옴마다 규칙을 만들지 않는다** — 여덟 층 × 광맥이면 저작이 두 벌이 되고, 금속
+    // 사다리를 고치는 날 한쪽이 반드시 뒤처진다.
+    static void WireFloorVeins()
+    {
+        if (!ScatterWiring.Open("금속", out var so, out var rules)) return;
+
+        // **밀도는 "찍는 수"가 아니라 "서는 수"로 잰다**(2026-09-15에 한 번 틀렸다).
+        //
+        // 처음에 청크당 **둘**로 뒀더니 사용자가 *"바닥에 광맥이 있는 건 안 보이는데?"*라고
+        // 했다. 셈을 해 보면 당연하다 — 찍은 자리의 **3분의 2는 바위**라(`RequireOpenTile`)
+        // 실제로 서는 것은 청크(64m²당 4,096m²)에 **0.67개**다. 같은 씬의 바닥 돌이
+        // 21개/청크니 **30분의 1**이고, 그건 눈에 안 띄는 정도가 아니라 **없는 것과 같다.**
+        //
+        // **찍는 수로 저작하면 거르는 규칙이 셀 때마다 실제 밀도가 조용히 바뀐다** —
+        // `RequireOpenTile`이 붙던 날 이 값들이 전부 3분의 1이 된 것을 아무도 몰랐다.
+        //
+        // 여섯이면 서는 것이 **둘**이다. 트인 바닥이 청크당 1,400m² 안팎이니 광맥 하나가
+        // 700m²를 맡고, 9m짜리 통로로 치면 **75m에 하나** — 걷다 보면 만나되 널려 있지는
+        // 않다. **올리기 전에 벽 쪽을 먼저 볼 것**: 벽을 파는 것이 본류이고 바닥 광맥은
+        // *길에서 만나는 것*이라, 더 흔해지면 **파고들 이유가 사라진다.**
+        //
+        // **간격은 밀도를 따라 내린다** — 22m로 두면 64m 청크에 여섯을 찍어도 서로 걸려
+        // 태반이 버려진다(밀도를 올린 것이 간격에서 도로 빠진다).
+        //
+        // **무리를 안 짓는다**(1) — 버섯은 *밭을 만났다*가 되어야 하지만 광맥은 덩이 하나가
+        // 여러 번 산출한다(`TotalYields`). 넷이 붙어 서면 그 자리가 곧 광산이 된다.
+        //
+        // **다시 안 난다**(0) — 자연은 유한하다는 축이 야생 노드의 전부다.
+        ScatterWiring.Set(rules, "바닥 광맥", null, perChunk: 6f, spacing: 14f, regrowDays: 0f,
+                          biomes: null, cluster: (1, 1), spread: 0, fromBiomePool: true);
+
+        ScatterWiring.Commit(so);
     }
 
     // ── 옛 합금을 티타늄로 ────────────────────────────────────────────────
@@ -222,20 +270,54 @@ public static class MetalCreator
         // 개의 재료다. 깊이로 잠글 것이 아니다.
         //
         // **같은 것을 두 번 적으면 두 배로 나온다**(균등 추첨) — 흔해야 하는 것을 그렇게 적는다.
-        Pool(Biome.Limestone, stone, stone, coal, copper, tin);
-        Pool(Biome.Cavern,    stone, coal, copper, tin, iron);
+        // ── 1층 — 바이옴마다 **다른 것이 나야 갈 이유가 생긴다** (2026-09-15) ──
+        //
+        // 넷이 다 `돌·석탄·구리·주석`이던 때는 **어느 굴을 파도 같았다.** 층이 난도를
+        // 정하고 바이옴이 성격을 정하는데, 성격이 *나오는 것*에서 안 갈리면 지도를
+        // 넷으로 나눈 뜻이 없다. 사용자가 1층을 이렇게 갈랐다:
+        //
+        //   · **폐광**  — 광물의 굴. **석탄이 1층에서 여기서만 난다**
+        //   · **동굴**  — 구리·주석. 평범한 굴
+        //   · **균사림** — 벽은 돌뿐. 여기는 **균류**의 층이다(갓버섯·거대버섯)
+        //   · **이끼굴** — 벽은 돌뿐. 여기는 **흙**의 층이다(나무·이끼)
+        //
+        // **석탄을 폐광에 몰아준 것은 1층 안에서다** — 온 세상에서 폐광만이면 2~4층에
+        // 석탄이 없어져 **제련 넷이 통째로 막힌다**(*"석탄은 모든 층에"*가 그 규칙이다).
+        //
+        // **벽이 돌뿐인 바이옴에는 바닥 광맥도 안 선다** — 바닥 뿌리기가 같은 풀을 읽고
+        // `IsVein`으로 거르기 때문이다(`Stone`은 광맥이 아니다). 그게 맞는 그림이다:
+        // **광물의 층이 아닌 곳은 파도 돌만 나온다.**
+        Pool(Biome.Mine,       copper, copper, tin, tin, coal, coal, stone);
+        Pool(Biome.Cavern,     stone, copper, tin);
+        Pool(Biome.Fungal,     stone);
+        Pool(Biome.Mossgrotto, stone);
 
-        Pool(Biome.Mine,      iron, iron, coal, coal, stone, copper);
-        Pool(Biome.Fungal,    iron, coal, stone, sapph);
+        // ── 2층 — 철과 금. 구리·주석도 계속 난다(끊기면 내려가는 것이 벌칙이다). ──
+        Pool(Biome.Desert,     iron, iron, coal, stone, gold, tin);
+        Pool(Biome.Ossuary,    iron, coal, stone, gold, copper);
+        // 지저늪 — **여기는 단단한 나무의 자리다.** 광맥은 얇다(균사림과 같은 규칙).
+        Pool(Biome.Swamp,      iron, coal, stone);
 
-        Pool(Biome.Flooded,   titanium, iron, coal, stone, sapph, emer);
-        Pool(Biome.Crystal,   titanium, titanium, magic, ruby, sapph, topaz, emer, gold, silver);
+        // ── 3층 — 은 · 티타늄 · 마법 광물. 셋이 다 여기서 처음 난다. ────────
+        Pool(Biome.Glacier,    titanium, iron, coal, stone, silver, sapph, emer);
+        Pool(Biome.Crystal,    titanium, titanium, silver, magic, ruby, sapph, topaz, emer, gold);
+        // 용암층 — 3층의 마른 쪽. **연료와 마법 광물이 몰린다.**
+        Pool(Biome.Lava,       coal, coal, ether, magic, ruby, gold, iron, titanium);
 
-        // 4층은 금속이 없다 — **연료와 마법 광물의 층**이다.
-        Pool(Biome.Lava,      coal, coal, ether, magic, ruby, gold, iron);
+        // ── 4층 — 미스릴. 아래 것도 나야 **내려와서도 계속 만들 수 있다.** ──
+        Pool(Biome.Abyss,      mithril, mithril, voidc, ether, titanium, silver, coal);
 
-        // 5층 — 미스릴은 여기서만 난다. 티타늄도 나야 **내려와서도 계속 만들 수 있다.**
-        Pool(Biome.Abyss,     mithril, mithril, voidc, ether, titanium, coal);
+        // ── 잠재운 넷 — **풀을 비운다** ────────────────────────────────────
+        //
+        // 티어만 떼면 옛 풀이 에셋에 남아, 나중에 다시 깔았을 때 *어느 층 것인지 모를
+        // 광맥*이 조용히 나온다. **안 쓰는 것은 비워 두는 것이 안 쓴다는 뜻이다.**
+        //
+        // **에셋이 아예 없으면 비울 것도 없다** — `0a. Create Underworld Biomes`가 잠재운
+        // 것은 만들지 않으므로, 그냥 부르면 매번 *"못 찾았습니다"* 경고가 셋 뜬다.
+        // **정상 상태에서 뜨는 경고는 곧 아무도 안 읽는다.**
+        foreach (var b in UnderworldSetup.Dormant)
+            if (AssetDatabase.LoadAssetAtPath<BiomeContentData>(BiomeDir + "/Biome_" + b + ".asset") != null)
+                Pool(b);
     }
 
     static void Pool(Biome b, params ResourceNodeData[] nodes)
