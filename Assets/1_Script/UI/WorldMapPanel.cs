@@ -9,11 +9,19 @@ using UnityEngine.UI;
 // 사라졌다. 그런데 **개관과 빠른 이동은 여전히 필요하다** — 29km를 걸어 다니면서 지금 어디쯤
 // 있는지, 무리가 어디서 오는지를 알 길이 있어야 한다.
 //
-// **지형에서 그린다.** 높이 원본이 `TerrainHeight`(노이즈 + 델타)라 **로드 안 된 곳도
-// 계산된다** — 그래서 가 본 적 없는 데까지 한 번에 그릴 수 있다. 안개는 없다(2026-06-20 결정).
+// **굴을 그린다**(2026-09-15, 사용자: *"미니맵도 길이 보이게"*). 전에는 **바이옴 색만** 칠했다 —
+// 지상 시절의 지도라 바위라는 개념이 없었고, 256픽셀(한 칸 4m)이라 6~10m 길은 그려도 뭉개졌다.
+// 이제 **1m 한 칸 = 한 픽셀**이고 판정은 `RockMap.IsRock` 하나다(길찾기가 막히는 곳이 곧 지도의
+// 벽 · 캔 굴도 따라온다). **색은 바이옴이 든다** — 길은 그 색을 밝게, 바위는 어둡게.
 //
-// **한 번 굽고 캐싱한다** — 256×256이면 `Procedural()`을 65,536번 부르는데, 그건 열 때마다
-// 할 일이 아니다.
+// **안개를 따른다** — 안 가 본 곳은 지도에서도 검다. 화면은 검은데 지도에 길이 다 그려져 있으면
+// **안개가 지도에서 새어 나간다.** 같은 이유로 **지금 안 보이는 적과 무리는 안 그리고**, 마을·
+// 소굴은 가 본 곳의 것만 그린다. (2026-06-20의 *"안개는 없다"*는 안개가 없던 때의 결정이다.)
+//
+// **바뀐 곳만 다시 굽는다**(2026-09-15, 코드 리뷰) — 처음엔 열려 있는 동안 1초마다 세계 전체
+// (백만 칸)를 다시 구웠고, 일시정지 중에도 1초마다 프레임이 튀었다. 이제 **가 본 곳이 늘어난
+// 사각형**(`FogOfWar.TakeExploredDirty`)과 **바위가 바뀐 칸**(`RockMap.OnChanged`)만 모아 두었다가
+// 그 사각형만 굽는다. 닫혀 있는 동안에도 모은다(열었을 때 따라잡는다).
 public class WorldMapPanel : MonoBehaviour
 {
     [SerializeField] GameObject panel;
@@ -22,8 +30,16 @@ public class WorldMapPanel : MonoBehaviour
     [SerializeField] GameObject markerTemplate;
 
     [Header("지도")]
-    [Tooltip("가로세로 몇 픽셀로 구울지. 클수록 곱지만 굽는 데 오래 걸린다(제곱으로).")]
-    [SerializeField, Range(64, 512)] int resolution = 256;
+    [Tooltip("열려 있는 동안 바뀐 곳을 몇 초마다 모아 굽나. 바뀐 것이 없으면 아무 일도 안 한다.")]
+    [SerializeField, Range(0.1f, 5f)] float rebakeSeconds = 0.5f;
+
+    [Tooltip("길(지나갈 수 있는 곳)을 바이옴 색에서 얼마나 밝게 — 0이면 바이옴 색 그대로.")]
+    [SerializeField, Range(0f, 1f)] float openLift = 0.45f;
+
+    [Tooltip("바위의 밝기(바이옴 색에 곱한다). 길과 갈려야 한다.")]
+    [SerializeField, Range(0f, 1f)] float rockShade = 0.22f;
+
+    [SerializeField] Color unexploredColor = new(0.02f, 0.02f, 0.025f);
 
     [Header("표식")]
     [SerializeField] Color playerColor = new(0.45f, 0.85f, 1f);
@@ -58,9 +74,34 @@ public class WorldMapPanel : MonoBehaviour
     [SerializeField, Range(0.005f, 0.06f)] float siteSize = 0.020f;
 
     Texture2D _tex;
+    bool      _fullBake = true;   // 처음 · 판을 새로 열었을 때
+    RectInt   _dirty;
+    bool      _hasDirty;
+    Color[]   _biome;        // 바이옴 색 — 4m 눈금으로 한 번만 센다(판 도중에 안 바뀐다)
+    const int BiomeStep = 4;
+    float     _rebakeAt;
     readonly List<GameObject> _markers = new();
 
     public bool IsOpen => panel != null && panel.activeSelf;
+
+    void OnEnable()  => RockMap.OnChanged += OnRockChanged;
+    void OnDisable() => RockMap.OnChanged -= OnRockChanged;
+
+    // 캐거나 찍을 때 불린다 — **찍은 것은 지도에 안 나오지만** 칸 하나라 굽는 값이 없다.
+    // `Clear`는 `Vector2Int.zero`로 부르므로 그때는 통째로 굽는다.
+    void OnRockChanged(Vector2Int t)
+    {
+        if (t == Vector2Int.zero) { _fullBake = true; return; }
+        Grow(new RectInt(t.x, t.y, 1, 1));
+    }
+
+    void Grow(RectInt r)
+    {
+        if (!_hasDirty) { _dirty = r; _hasDirty = true; return; }
+        int xMin = Mathf.Min(_dirty.xMin, r.xMin), yMin = Mathf.Min(_dirty.yMin, r.yMin);
+        int xMax = Mathf.Max(_dirty.xMax, r.xMax), yMax = Mathf.Max(_dirty.yMax, r.yMax);
+        _dirty = new RectInt(xMin, yMin, xMax - xMin, yMax - yMin);
+    }
 
     void Awake()
     {
@@ -75,7 +116,15 @@ public class WorldMapPanel : MonoBehaviour
         var kb = Keyboard.current;
         if (kb != null && kb.mKey.wasPressedThisFrame && !InputFocus.IsTyping()) Toggle();
 
-        if (IsOpen) RefreshMarkers();
+        // **닫혀 있어도 가 본 곳은 모은다** — 안 모으면 열었을 때 그동안 넓힌 곳이 안 그려진다.
+        if (FogOfWar.TakeExploredDirty(out var explored)) Grow(explored);
+
+        if (!IsOpen) return;
+
+        RefreshMarkers();
+
+        _rebakeAt -= Time.unscaledDeltaTime;   // 일시정지 중에도 지도는 본다
+        if (_rebakeAt <= 0f) Bake();
     }
 
     public void Toggle()
@@ -91,24 +140,66 @@ public class WorldMapPanel : MonoBehaviour
 
     void Bake()
     {
-        if (_tex != null || mapImage == null) return;
+        if (mapImage == null) return;
+        _rebakeAt = rebakeSeconds;
 
-        int n = resolution;
-        _tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+        int n = TerrainGrid.WorldSize;
+        if (_tex == null)
+        {
+            _tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+            mapImage.texture = _tex;
+            _fullBake = true;
+        }
 
-        float step = TerrainGrid.WorldSize / (float)n;
-        var px = new Color32[n * n];
+        RectInt area;
+        if (_fullBake) area = new RectInt(0, 0, n, n);
+        else if (_hasDirty)
+        {
+            // 가장자리가 흐리게 번지는 몫(이중선형)으로 한 칸 넓힌다.
+            int xMin = Mathf.Max(0, _dirty.xMin - 1), yMin = Mathf.Max(0, _dirty.yMin - 1);
+            int xMax = Mathf.Min(n, _dirty.xMax + 1), yMax = Mathf.Min(n, _dirty.yMax + 1);
+            area = new RectInt(xMin, yMin, xMax - xMin, yMax - yMin);
+        }
+        else return;   // 바뀐 것이 없다 — 아무것도 안 올린다
 
-        // **색은 바이옴이 든다**(`TerrainHeight.MapColor`) — 높이만으로 칠하면 저작해 둔
-        // 지도가 화면에 안 나타나서 사막도 숲도 같은 초록이 된다. 그리고 **잔기복을 뺀 높이**로
-        // 명암을 준다: 한 픽셀이 64m인데 잔기복 주기가 80m라 그대로 그리면 **모아레가 낀다.**
-        for (int y = 0; y < n; y++)
-        for (int x = 0; x < n; x++)
-            px[y * n + x] = TerrainHeight.MapColor(x * step, y * step);
+        _fullBake = false;
+        _hasDirty = false;
 
-        _tex.SetPixels32(px);
+        // **색은 바이옴이 든다**(`TerrainHeight.MapColor`) — 픽셀마다 물으면 백만 번이라 4m
+        // 눈금으로 한 번만 센다. 경계가 4m 계단이 되지만 1,024m 지도에서 한 픽셀 남짓이다.
+        int bn = n / BiomeStep;
+        if (_biome == null)
+        {
+            _biome = new Color[bn * bn];
+            for (int y = 0; y < bn; y++)
+            for (int x = 0; x < bn; x++)
+                _biome[y * bn + x] = TerrainHeight.MapColor((x + 0.5f) * BiomeStep, (y + 0.5f) * BiomeStep);
+        }
+
+        Color32 dark = unexploredColor;
+        bool rockWorld = RockMap.Enabled;
+        var explored = FogOfWar.ExploredRaw;          // null = 안개 없음(전부 가 봤다)
+        var px = _tex.GetPixelData<Color32>(0);        // 텍스처 메모리에 바로 쓴다 — 4MB 사본을 안 만든다
+
+        for (int y = area.yMin; y < area.yMax; y++)
+        {
+            int brow = Mathf.Min(bn - 1, y / BiomeStep) * bn;
+            int row  = y * n;
+            for (int x = area.xMin; x < area.xMax; x++)
+            {
+                int seenB = explored != null ? explored[row + x] : 255;
+                if (seenB == 0) { px[row + x] = dark; continue; }
+
+                Color b = _biome[brow + Mathf.Min(bn - 1, x / BiomeStep)];
+                bool rock = rockWorld && RockMap.IsRock(new Vector2Int(x, y));
+
+                Color c = rock ? b * rockShade : Color.Lerp(b, Color.white, openLift);
+                c.a = 1f;
+                px[row + x] = seenB >= 255 ? (Color32)c : Color32.Lerp(dark, c, seenB / 255f);
+            }
+        }
+
         _tex.Apply(false, false);
-        mapImage.texture = _tex;
     }
 
     // ── 표식 ────────────────────────────────────────────────────────────────
@@ -146,6 +237,10 @@ public class WorldMapPanel : MonoBehaviour
             // 지도에서 같아 보인다.**
             if (site.Kind == WorldNodeContent.EnemyLair && WorldLairs.IsGone(site.Id)) continue;
 
+            // **가 본 곳의 장소만** — 안 가 본 검은 땅 위에 마을 점이 떠 있으면 안개가 지도에서 샌다.
+            var at = new Vector3(site.Position.x, 0f, site.Position.y);
+            if (FogOfWar.ExploredAt(at) < 0.5f) continue;
+
             used = Mark(used, new Vector3(site.Position.x, 0f, site.Position.y), col, span * siteSize);
         }
 
@@ -172,14 +267,16 @@ public class WorldMapPanel : MonoBehaviour
         {
             if (f == null) continue;
             if (f.IsPlayer) { used = Mark(used, f.transform.position, playerColor, span * pawnSize); continue; }
-            if (mine != null && mine.IsHostileTo(f))
+            // **지금 안 보이는 적은 안 그린다** — 화면에서 가린 폰을 지도가 알려 주면 안개가 아니다.
+            if (mine != null && mine.IsHostileTo(f) && FogOfWar.IsVisible(f.transform.position))
                 used = Mark(used, f.transform.position, hostileColor, span * hostileSize);
         }
 
         var mgr = WorldBandManager.Instance;
         if (mgr != null)
             foreach (var b in mgr.Bands)
-                if (b != null && b.IsAlive) used = Mark(used, b.Position, bandColor, span * bandSize);
+                if (b != null && b.IsAlive && FogOfWar.IsVisible(b.Position))   // 무리도 보일 때만
+                    used = Mark(used, b.Position, bandColor, span * bandSize);
 
         // **맨 마지막 = 맨 위.** 다른 표식과 겹쳐도 이건 보여야 한다.
         var cam = CameraController.Active;
@@ -247,6 +344,13 @@ public class WorldMapPanel : MonoBehaviour
     {
         float x = normalized.x * TerrainGrid.WorldSize;
         float z = normalized.y * TerrainGrid.WorldSize;
+
+        // **안 가 본 곳은 이름도 안 알려 준다** — 검게 칠해 놓고 툴팁이 *"수정동"*이라고 말하면 새어 나간다.
+        if (FogOfWar.ExploredAt(new Vector3(x, 0f, z)) < 0.5f)
+        {
+            HoverTooltipUI.Show("탐험하지 않은 곳", $"월드 ({x:F0}, {z:F0})");
+            return;
+        }
 
         var region = TerrainGrid.RegionAt(x, z);
         var biome  = WorldMap.AuthoredBiome(region.x, region.y);

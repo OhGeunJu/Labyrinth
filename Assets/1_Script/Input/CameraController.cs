@@ -274,11 +274,20 @@ public class CameraController : MonoBehaviour
 
     // **세계 밖으로 못 나간다.** 나가면 지형 청크가 없어 아무것도 안 보이고, 돌아오는 길을
     // 눈으로 찾을 수가 없다(사방이 똑같이 비어 있다).
+    //
+    // **끝에서 조금 안쪽에 묶는다**(2026-09-15) — 세계 끝에 월드보더 막(`WorldBorderVeil`)이
+    // 서는데, 카메라가 그 평면 위에 서면 막을 **옆에서 보게 되어 선 하나**로 사라진다.
+    // **밀어서 걸렸으면 막에 알린다** — 그것이 *"나가려 했다"*이고, 막이 그때 짙어진다.
     void ClampToWorld()
     {
-        var p = transform.position;
-        p.x = Mathf.Clamp(p.x, 0f, TerrainGrid.WorldSize);
-        p.z = Mathf.Clamp(p.z, 0f, TerrainGrid.WorldSize);
+        var   p = transform.position;
+        float m = WorldBorderVeil.CameraMargin;
+        float w = TerrainGrid.WorldSize;
+
+        if (p.x < m)     { p.x = m;     WorldBorderVeil.Push(0); }
+        if (p.x > w - m) { p.x = w - m; WorldBorderVeil.Push(1); }
+        if (p.z < m)     { p.z = m;     WorldBorderVeil.Push(2); }
+        if (p.z > w - m) { p.z = w - m; WorldBorderVeil.Push(3); }
         transform.position = p;
     }
 

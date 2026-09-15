@@ -197,6 +197,8 @@ public class WorldPopulator : EditorWindow
         var rng    = new System.Random(_seed);
         int made   = 0;
 
+        BuildReach();
+
         try
         {
             // **마을을 먼저 놓는다.** 소굴이 자리를 다 차지한 뒤에 마을을 끼우면, 사람 사는
@@ -206,6 +208,7 @@ public class WorldPopulator : EditorWindow
         }
         finally { EditorUtility.ClearProgressBar(); }
 
+        rooms.AddRange(StartRooms());
         WriteRooms(rooms);
 
         Undo.SetCurrentGroupName("세계 채우기");
@@ -284,6 +287,12 @@ public class WorldPopulator : EditorWindow
             p = new Vector2(open.x, open.z);
             if (Slope(p, foot) > _maxSlope) continue;   // 옮겼으니 다시 잰다
 
+            // **길 그물에서 걸어갈 수 있는 굴에만 세운다**(2026-09-15). 큰 굴 중에는 길에 안
+            // 닿은 것이 있고 그건 설계다(캐서 찾는 굴) — 그런데 거기 소굴이 서면 **무리가
+            // 영영 못 나오고**, 마을이 서면 **갈 수 없는 마을**이다. 가장 가까운 열린 칸은
+            // 그걸 모른다.
+            if (!Reachable(p)) continue;
+
             if (TooClose(placed, p, kind, mine)) continue;
 
             Create(root, prefab, kind, p, made, rng);
@@ -325,6 +334,197 @@ public class WorldPopulator : EditorWindow
             // 요철 한 번에 천장이 문턱 아래로 내려가 **방 한가운데가 막힌다.**
             Height = PawnMover.BodyHeight + 4f - p.BaseClearance,
         };
+    }
+
+    // ── 시작 자리도 제 방을 판다 ────────────────────────────────────────────
+    //
+    // **2026-09-15, 사용자:** *"처음 시작 지점이 원래는 막혀 있잖아 — 그냥 크게 뚫어 놓으면
+    // 안 돼? 시작을 안 누르면 막혀 있으니까 불편해."*
+    //
+    // 전에는 시작 자리를 **판이 열릴 때** 팠다(`RockRenderer.Start` → `OpenAround` 12m +
+    // `OpenPathToCave`). 그건 캔 칸이라 **런타임 상태**다 — 씬 뷰에서도, `2. Preview Cave Map`
+    // 에서도, 플레이를 누르기 전의 어디에서도 시작 자리는 **통짜 바위**였다. 시작 자리는
+    // 판마다 같은 곳이므로 사건이 아니라 **지형**이다. 그래서 장소의 방과 같은 물건(천장
+    // 특징)으로 판다 — 함수라 **에디터·미리보기·길찾기·게임이 전부 같은 굴을 본다.**
+    //
+    // **자연 굴에 잇는 것까지 여기서 한다.** 길을 성기게 한 뒤로 시작 칸 한복판이 큰길에서
+    // 수십 m 떨어질 수 있다 — 방만 파면 *크게 뚫린 섬*이다. 가장 가까운 **자연 굴**
+    // (`TerrainCeiling.NaturalClearance` — 지난번에 판 방을 안 센다)까지 둥근 방을 줄줄이
+    // 놓아 길을 낸다. 특징은 원뿐이라 원을 꿴다(겹친 자리는 더 열릴 뿐이다).
+    //
+    // **런타임 파기는 남긴다** — 무리가 시작 칸 밖에 서 있으면(`WarnStartTile`이 경고한다)
+    // 거기서는 여전히 그것이 폰을 꺼내 준다.
+    const float StartRoomRadius = 36f;   // 뚫리는 반지름은 그 4분의 3쯤 — 지름 50m 남짓
+    const float StartPathRadius = 4.5f;  // 뚫리는 폭 6m 남짓 — 큰길과 비슷하게
+    const float StartPathStep   = 3f;
+    const float StartSearch     = 220f;
+
+    static List<TerrainFeature> StartRooms()
+    {
+        var list  = new List<TerrainFeature>();
+        var start = StartPoint();
+        var p     = TerrainCeiling.Effective;
+        float h   = PawnMover.BodyHeight + 4f - p.BaseClearance;
+
+        list.Add(new TerrainFeature
+        {
+            Name        = $"{RoomPrefix}Start",
+            Center      = start,
+            Radius      = StartRoomRadius,
+            Plateau     = 0.6f,
+            Height      = h,
+            // **가장자리를 흔든다** — 완전한 원은 사람이 판 방처럼 보인다(`OpenAround`와 같은 이유).
+            Ridge       = 6f,
+            RidgePeriod = 11f,
+        });
+
+        // 방 안에서 확실히 뚫리는 반지름. `Room`의 주석대로 반경의 4분의 3쯤이다.
+        float inner = StartRoomRadius * 0.7f;
+
+        if (!NearestNaturalCave(start, StartSearch, out var cave))
+        {
+            // **막힌 시작 방도 괜찮다**(2026-09-15, 사용자: *"시작 방이 막힌 동굴 형태여도 된다"*) —
+            // 파서 나가면 된다. 경고가 아니라 무슨 일이 있었는지만 적는다.
+            Debug.Log($"[배치] 시작 칸 둘레 {StartSearch:0}m 안에 큰길이 없어 **시작 방을 막힌 채로** 둔다 " +
+                      "— 파서 나가야 한다.");
+            return list;
+        }
+
+        float dist = Vector2.Distance(start, cave);
+        if (dist <= inner - StartPathRadius) return list;   // 큰길이 이미 방을 지나간다
+
+        var dir = (cave - start) / dist;
+        int n = 0;
+        for (float t = inner - StartPathRadius; t <= dist + StartPathRadius; t += StartPathStep)
+        {
+            list.Add(new TerrainFeature
+            {
+                Name    = $"{RoomPrefix}StartPath_{n++}",
+                Center  = start + dir * t,
+                Radius  = StartPathRadius,
+                Plateau = 0.6f,
+                Height  = h,
+            });
+        }
+
+        Debug.Log($"[배치] 시작 방(지름 {inner * 2f:0}m 남짓)을 파고 {dist - inner:0}m 떨어진 " +
+                  $"자연 굴까지 길을 이었다 — 원 {n}개. 방위 **{EventManager.Compass8(dir.x, dir.y)}**.");
+        return list;
+    }
+
+    // 시작 자리에서 가장 가까운 **큰길**. 고리 모양으로 넓혀 간다 — 가까운 것부터 봐야
+    // 길이 짧다. **길 한가운데만 센다**(`RoadOpenness` = 1) — 벽면 문턱에 걸린 칸을 고르면
+    // 길 끝이 벽에 닿는다.
+    //
+    // **큰 굴은 안 센다**(2026-09-15) — 큰 굴 중에는 일부러 길에서 떼어 봉한 것이 있어서,
+    // 거기에 이으면 시작 방이 **큰 섬 하나에 붙은 섬**이 된다.
+    static bool NearestNaturalCave(Vector2 from, float maxRadius, out Vector2 found)
+    {
+        found = from;
+        float world = TerrainGrid.WorldSize;
+
+        for (float r = 0f; r <= maxRadius; r += 2f)
+        {
+            int steps = r < 1f ? 1 : Mathf.Max(8, Mathf.CeilToInt(2f * Mathf.PI * r / 2f));
+            for (int i = 0; i < steps; i++)
+            {
+                float a = i / (float)steps * Mathf.PI * 2f;
+                var q = new Vector2(from.x + Mathf.Cos(a) * r, from.y + Mathf.Sin(a) * r);
+                if (q.x < 4f || q.y < 4f || q.x > world - 4f || q.y > world - 4f) continue;
+                if (TerrainCeiling.RoadOpenness(q.x, q.y) < 0.99f) continue;
+
+                found = q;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ── 길 그물에서 걸어갈 수 있나 ──────────────────────────────────────────
+    //
+    // **정점 눈금(2m)으로 한 번 훑는다** — 1,024m면 513×513 = 26만 칸이라 한 번이면 된다.
+    // 폰의 규칙(대각선 조건 · 1m)과 똑같지는 않지만 *"이 굴이 그물에 붙었나"*를 가르는 데는
+    // 충분하다 — 봉한 굴의 벽은 6m라 2m 눈금이 새어 넘지 못한다.
+    //
+    // **시작 칸에서 가장 가까운 큰길에서 훑는다** — 시작 방은 아직 안 팠고(이 뒤에 판다),
+    // 그 방은 어차피 그 길에 이어진다.
+    static bool[] _reach;
+    static int    _reachSize;
+
+    static void BuildReach()
+    {
+        _reach = null;
+        if (!TerrainCeiling.Enabled) return;
+        if (!NearestNaturalCave(StartPoint(), StartSearch, out var seed)) return;
+
+        float step = TerrainGrid.VertexSpacing;
+        int n = Mathf.FloorToInt(TerrainGrid.WorldSize / step) + 1;
+        var reach = new bool[n * n];
+        var queue = new Queue<int>();
+
+        // **지난번에 이 도구가 판 방은 안 센다**(2026-09-15, 코드 리뷰). 이 판정은 `WriteRooms`가
+        // 옛 `site:` 방을 지우기 **전에** 돈다 — 그대로 `VertexClearanceGlobal`을 읽으면 옛 소굴 방이
+        // 봉한 굴의 벽을 뚫고 있을 때 그 굴이 *이어졌다*로 나오고, 새 소굴이 거기 선 뒤 옛 방이
+        // 지워지면 **유일한 입구가 사라진다**(막으려던 바로 그 사고). 그래서 여기서는 **자연 굴 +
+        // 손으로 저작한 방**만으로 잰다.
+        var kept = new List<TerrainFeature>();
+        foreach (var f in TerrainCeiling.Features)
+            if (f.Name == null || !f.Name.StartsWith(RoomPrefix)) kept.Add(f);
+
+        var known = new bool[n * n];
+        var open  = new bool[n * n];
+        bool Open(int gx, int gz)
+        {
+            int k = gz * n + gx;
+            if (known[k]) return open[k];
+            float wx = gx * step, wz = gz * step;
+            float c = TerrainCeiling.NaturalClearance(wx, wz);
+            for (int f = 0; f < kept.Count; f++) c += kept[f].Contribution(wx, wz);
+            known[k] = true;
+            return open[k] = c >= PawnMover.BodyHeight;
+        }
+
+        int sx = Mathf.Clamp(Mathf.RoundToInt(seed.x / step), 0, n - 1);
+        int sz = Mathf.Clamp(Mathf.RoundToInt(seed.y / step), 0, n - 1);
+        reach[sz * n + sx] = true;
+        queue.Enqueue(sz * n + sx);
+
+        while (queue.Count > 0)
+        {
+            int i = queue.Dequeue();
+            int x = i % n, z = i / n;
+            for (int k = 0; k < 4; k++)
+            {
+                int nx = x + (k == 0 ? 1 : k == 1 ? -1 : 0);
+                int nz = z + (k == 2 ? 1 : k == 3 ? -1 : 0);
+                if ((uint)nx >= n || (uint)nz >= n) continue;
+                int j = nz * n + nx;
+                if (reach[j]) continue;
+                if (!Open(nx, nz)) continue;
+                reach[j] = true;
+                queue.Enqueue(j);
+            }
+        }
+        _reach = reach;
+        _reachSize = n;
+    }
+
+    // 둘레 한 눈금 안에 닿은 정점이 있으면 참 — 자리가 벽면 문턱에 걸려도 안 버린다.
+    // **훑은 것이 없으면 막지 않는다**(길이 하나도 없는 세계에서 배치가 통째로 멎으면 안 된다).
+    static bool Reachable(Vector2 p)
+    {
+        if (_reach == null) return true;
+
+        float step = TerrainGrid.VertexSpacing;
+        int cx = Mathf.RoundToInt(p.x / step), cz = Mathf.RoundToInt(p.y / step);
+        for (int dz = -1; dz <= 1; dz++)
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            int x = cx + dx, z = cz + dz;
+            if ((uint)x >= _reachSize || (uint)z >= _reachSize) continue;
+            if (_reach[z * _reachSize + x]) return true;
+        }
+        return false;
     }
 
     // 도구가 판 방인지 이름으로 가른다 — **손으로 저작한 방은 안 건드린다**(물건에 `Generated`가

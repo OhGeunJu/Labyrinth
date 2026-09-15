@@ -190,25 +190,6 @@ public class RockRenderer : MonoBehaviour
     // 몇 프레임 더 서 있어도 아무도 안 본다.
     readonly HashSet<Vector2Int> _doomed = new();
 
-    // ── 청크가 들고 나는 값을 잰다 ──────────────────────────────────────────
-    //
-    // **손질이 값을 하는지는 숫자가 답한다**(`WideGraph`가 덩어리 수·간선 수·ms를 찍는 것과
-    // 같은 자리). 2026-09-12에 풀링을 **안 재고 넣었다가** 되돌린 적이 있다 — 그때 알고
-    // 싶었던 것이 정확히 이 넷이다: **몇 장이 생기고 몇 장이 사라지나 · 만드는 데 얼마나
-    // 걸리나 · 굽는 데 얼마나 걸리나.**
-    //
-    // 풀링이 줄이는 것은 **만드는 값**뿐이다(`new GameObject` + `AddComponent` + `new Mesh`).
-    // **굽는 값은 그대로다** — 정점을 다시 채우는 일은 풀이 있든 없든 돈다. 그래서 굽는 값이
-    // 만드는 값을 압도하면 **풀은 잡음이다.**
-    [Header("진단")]
-    [Tooltip("청크가 들고 나는 값을 1초마다 찍는다. 풀링 같은 손질을 재려면 이것부터 켠다.")]
-    [SerializeField] bool churnDebug;
-
-    static readonly System.Diagnostics.Stopwatch _churnSw = new();
-    int    _made, _dropped, _frameMade, _frameDropped, _peakMade, _peakDropped;
-    double _makeMs, _bakeMs;
-    float  _churnAt;
-
     readonly List<Vector3> _verts = new();
     readonly List<Vector3> _norms = new();
     readonly List<Vector2> _uvs   = new();
@@ -240,11 +221,27 @@ public class RockRenderer : MonoBehaviour
     // 넷이나 겹치는 일은 없다.
     const int MaxOreKinds = 4;
 
-    // 알갱이를 어디에 몇 개 박나. **눈높이 아래에 둔다** — 벽은 24m인데 `RockCut`이
-    // 눈높이의 비율로 뚜껑을 내리므로(`cutLow` 2.5m가 바닥) 위쪽에 박으면 **잘려서 안 보인다.**
-    const int   OreSpecks = 5;
-    const float OreBand   = 2.2f;    // 바닥에서 이 높이까지
-    const float OreOut    = 0.03f;   // 벽면에서 이만큼 띄운다(z-파이팅)
+    // 알갱이를 어디에 몇 개 박나.
+    //
+    // **높이는 벽이 보이는 만큼 퍼뜨린다**(2026-09-15, 사용자: *"너무 밑에만 딸랑 있다"*).
+    // 전에는 바닥에서 2.2m까지만 박았다 — `RockCut`의 **바닥값**(`cutLow` 2.5m)에 맞춘 것인데,
+    // 그 값은 *끝까지 당겼을 때*이고 **평소에는 벽이 눈높이 × 0.4(8~16m)까지 보인다.** 가장
+    // 드문 경우에 맞춰서 흔한 경우에 밑바닥에만 몰렸다. 이제 위로 퍼뜨린다(위쪽 것은
+    // 가까이 당겼을 때 벽과 같이 잘릴 뿐 틀린 것이 아니다).
+    //
+    // **덩어리 수도 면마다 굴린다** — 전부 같으면 벽을 따라 같은 간격으로 늘어선다.
+    //
+    // **절반으로 줄이고 그만큼 위로 폈다**(2026-09-15, 사용자: *"너무 오밀조밀 붙어 있다 —
+    // 절반은 줄어도 알아보는 데 문제없다, 줄인 걸 위로 올려라"*). 면당 2~3 → **1~2** 덩어리,
+    // 높이 6 → **10m**, 아래로 몰림 1.5 → **1.15**. 광맥은 *여기에 있다*만 읽히면 되고, 빽빽하면
+    // 벽이 아니라 **광석 판**으로 보인다. 값도 그만큼 줄었다(면당 꼭짓점 42~63 → 21~42).
+    const int   OreClustersMin = 1;    // 면 하나에 덩어리 몇 — 이 사이에서
+    const int   OreClustersMax = 2;
+    const int   OreNuggets  = 3;       // 덩어리 하나에 알갱이 몇
+    const int   OreRim      = 6;       // 알갱이 둘레 꼭짓점
+    const float OreBand     = 10f;     // 바닥에서 이 높이까지
+    const float OreLowBias  = 1.15f;   // 1이면 고르게, 클수록 아래로 몰린다
+    const float OreOut      = 0.03f;   // 벽면에서 이만큼 띄운다(z-파이팅)
 
     Transform _root;
     Material  _topMat, _sideMat, _markMat;
@@ -272,6 +269,17 @@ public class RockRenderer : MonoBehaviour
     // 전일 수 있고(실행 순서), 그러면 아무도 못 찾아 **아무 데도 안 열린다.**
     void Start()
     {
+        // **세계의 끝을 보여 주는 막**(2026-09-15). 바위를 그리는 쪽이 세운다 — 기반암이
+        // 바위의 일부라 *"바위가 있는 씬"*과 *"막이 있는 씬"*이 갈리면 안 된다. **없으면
+        // 만든다**(씬 배선을 늘리면 언젠가 한 씬만 빠진다).
+        if (RockMap.Enabled && Application.isPlaying && GetComponent<WorldBorderVeil>() == null)
+            gameObject.AddComponent<WorldBorderVeil>();
+
+        // **전장의 안개도 같은 자리에서**(2026-09-15) — 굴이 있는 씬이 곧 안개가 있는 씬이다.
+        // 값을 인스펙터에서 맞추려면 `0. Setup World Streaming`이 씬에 붙여 둔다(그러면 여기서는 안 만든다).
+        if (RockMap.Enabled && Application.isPlaying && GetComponent<FogOfWar>() == null)
+            gameObject.AddComponent<FogOfWar>();
+
         if (!RockMap.Enabled || startClearing <= 0f) return;
 
         int opened = 0;
@@ -481,38 +489,12 @@ public class RockRenderer : MonoBehaviour
             Rebuild(chunk);
         }
 
-        if (churnDebug) ReportChurn();
-    }
-
-    // **한 프레임에 몰리는 것이 값이다** — 누계만 보면 *"초당 서른 장"*이 고르게 퍼진 것처럼
-    // 읽히는데, 실제로는 지형 청크가 내려가는 프레임에 **열여섯 장씩** 몰린다.
-    void ReportChurn()
-    {
-        if (_frameMade    > _peakMade)    _peakMade    = _frameMade;
-        if (_frameDropped > _peakDropped) _peakDropped = _frameDropped;
-        _frameMade = _frameDropped = 0;
-
-        _churnAt += Time.unscaledDeltaTime;
-        if (_churnAt < 1f) return;
-        _churnAt = 0f;
-
-        if (_made == 0 && _dropped == 0) return;   // 가만히 서 있으면 조용하다
-
-        Debug.Log($"[바위] 초당 만듦 {_made}장({_makeMs:F1}ms) · 버림 {_dropped}장 · " +
-                  $"구움 {_bakeMs:F1}ms · 최악 프레임 만듦 {_peakMade}/버림 {_peakDropped} · " +
-                  $"살아 있는 청크 {_chunks.Count}\n" +
-                  $"풀링이 줄이는 것은 **만드는 값**뿐이다 — 굽는 값({_bakeMs:F1}ms)과 견줄 것.");
-
-        _made = _dropped = _peakMade = _peakDropped = 0;
-        _makeMs = _bakeMs = 0d;
     }
 
     // ── 굽기 ────────────────────────────────────────────────────────────────
 
     void Rebuild(Vector2Int chunk)
     {
-        double bakeAt = churnDebug ? Now() : 0d;
-
         _verts.Clear(); _norms.Clear(); _uvs.Clear(); _top.Clear(); _side.Clear(); _mark.Clear();
         _oreKinds.Clear();
 
@@ -537,6 +519,11 @@ public class RockRenderer : MonoBehaviour
             // **찍힌 칸은 윗면·옆면을 가리지 않고 한 벌로 간다** — 찍혔다는 것이 그 칸의
             // 전부이므로, 거기서 또 갈라 봐야 색만 늘고 읽히지는 않는다.
             bool marked = RockMap.IsMarked(tile);
+
+            // **기반암은 보통 바위와 똑같이 그린다**(2026-09-15에 따로 칠했다가 되돌렸다 — 사용자:
+            // *"너무 쨍하다"*). 세계의 끝을 알리는 것은 벽의 색이 아니라 그 위 허공의 막이다
+            // (`WorldBorderVeil`). **광맥은 안 박는다** — 못 캐는 벽에 광석이 보이면 거짓말이다.
+            bool border = RockMap.IsBedrock(tile);
 
             float floor = RockMap.SurfaceOf(tile);   // **`MapManager` 없이도 답한다**(씬 뷰)
             float top   = floor + RockMap.Height;
@@ -565,7 +552,7 @@ public class RockRenderer : MonoBehaviour
             // **광맥은 드러난 옆면에만 박힌다.** 찍힌 칸에는 안 그린다 — *"여기를 판다"*가
             // 그 칸의 전부라, 거기서 또 갈라 봐야 색만 늘고 읽히지는 않는다(윗면·옆면을
             // 한 벌로 보내는 것과 같은 규칙).
-            if (marked || !(wL || wR || wD || wU)) continue;
+            if (border || marked || !(wL || wR || wD || wU)) continue;
 
             var vein = RockMap.VeinAt(tile);
             if (vein == null || !vein.IsVein) continue;
@@ -631,14 +618,7 @@ public class RockRenderer : MonoBehaviour
         // **콜라이더를 단다** — 커서가 바위를 짚어야 캘 자리를 고를 수 있고, 몸도 막아야 한다.
         // (천장에 안 다는 것과 정반대다 — 저쪽은 위에 있어서 짚으면 안 되고, 이쪽은 짚어야 한다.)
         FitBoxes(ch, chunk, lowest, highest);
-
-        // **굽는 값에는 만드는 값이 들어 있다**(`Ensure`가 그 안이다) — 빼서 재면 풀이
-        // 줄일 몫과 그대로 남을 몫이 갈린다.
-        if (churnDebug) _bakeMs += Now() - bakeAt;
     }
-
-    static double Now() => System.Diagnostics.Stopwatch.GetTimestamp()
-                         * 1000d / System.Diagnostics.Stopwatch.Frequency;
 
     // ── 막는 것은 박스다 ────────────────────────────────────────────────────
     //
@@ -750,27 +730,83 @@ public class RockRenderer : MonoBehaviour
     //
     // **자리는 좌표 해시다** — 저장하는 것이 없고, 청크를 다시 구워도 알갱이가 안 움직인다
     // (뿌리기·광맥 심기와 같은 규칙). 움직이면 한 칸을 팔 때마다 옆 벽의 무늬가 흔들린다.
+    //
+    // **납작한 사각형이 아니라 솟은 알갱이다**(2026-09-15, 사용자: *"너무 단색이야 — 어색해,
+    // 주변이랑 안 어울려"*). 전에는 면에 붙인 **평행사변형 한 장**이었는데, 법선이 벽과 같아
+    // 빛을 받는 방식이 벽과 똑같고 가장자리가 칼같아서 **스티커**로 보였다. 셋을 바꿨다:
+    //   ① **가운데를 벽 밖으로 밀고 둘레 법선을 바깥으로 기울인다** — 빛이 한쪽을 밝히고
+    //      반대쪽을 어둡게 해 **한 알갱이 안에서 톤이 갈린다**(단색이 풀린다).
+    //   ② **둘레를 흔든 여섯 모**로 — 사각형은 사람이 붙인 모양이다.
+    //   ③ **흩뿌리지 않고 덩어리로** — 광맥은 줄기로 난다. 고르게 흩으면 무늬가 된다.
     void Specks(List<int> list, Vector2Int tile, int dir,
                 float x1, float z1, float x2, float z2, float floor, Vector3 n)
     {
-        float tx = x2 - x1, tz = z2 - z1;           // 면을 따라가는 방향(길이 1m)
-        float baseY = floor + 0.12f;
+        var t = new Vector3(x2 - x1, 0f, z2 - z1);   // 면을 따라가는 방향(길이 1m)
+        float baseY = floor + 0.15f;
 
-        for (int k = 0; k < OreSpecks; k++)
+        int clusters = OreClustersMin +
+                       Mathf.FloorToInt(Hash(tile, dir, 99) * (OreClustersMax - OreClustersMin + 1));
+
+        for (int c = 0; c < clusters; c++)
         {
-            float u = 0.14f + Hash(tile, dir, k * 3 + 0) * 0.72f;
-            float y = baseY + Hash(tile, dir, k * 3 + 1) * OreBand;
-            float h = 0.10f + Hash(tile, dir, k * 3 + 2) * 0.16f;   // 반쪽 크기
+            float cu = 0.18f + Hash(tile, dir, 100 + c * 7) * 0.64f;
+            float cy = baseY + Mathf.Pow(Hash(tile, dir, 101 + c * 7), OreLowBias) * OreBand;
 
-            float cx = x1 + tx * u + n.x * OreOut;
-            float cz = z1 + tz * u + n.z * OreOut;
+            for (int k = 0; k < OreNuggets; k++)
+            {
+                int salt = 200 + c * 31 + k * 5;
 
-            float ax = tx * h, az = tz * h;         // 면을 따라 +-h
-            Quad(list,
-                 new Vector3(cx - ax, y - h, cz - az), new Vector3(cx - ax, y + h, cz - az),
-                 new Vector3(cx + ax, y + h, cz + az), new Vector3(cx + ax, y - h, cz + az), n);
+                // 덩어리 안에서 조금씩 비껴 선다 — 첫 알갱이가 가장 크다.
+                float du = (Hash(tile, dir, salt)     - 0.5f) * 0.30f;
+                float dy = (Hash(tile, dir, salt + 1) - 0.5f) * 0.26f;
+                float r  = (k == 0 ? 0.10f : 0.045f) + Hash(tile, dir, salt + 2) * 0.06f;
+
+                float u = Mathf.Clamp(cu + du, 0.08f, 0.92f);
+                var center = new Vector3(x1, cy + dy, z1) + t * u + n * OreOut;
+
+                Nugget(list, center, t, n, r, Hash(tile, dir, salt + 3));
+            }
         }
     }
+
+    // 여섯 모 알갱이 하나. 가운데를 **반지름의 절반만큼** 벽 밖으로 민다 — 더 밀면 가시가 된다.
+    void Nugget(List<int> list, Vector3 center, Vector3 t, Vector3 n, float r, float seed)
+    {
+        int i0 = _verts.Count;
+
+        var tip = center + n * (r * 0.5f);
+        _verts.Add(tip); _norms.Add(n); Uv(tip, n);
+
+        for (int k = 0; k < OreRim; k++)
+        {
+            float a  = (k + (Frac(seed * 13.7f + k * 0.37f) - 0.5f) * 0.5f) / OreRim * Mathf.PI * 2f;
+            float rr = r * (0.65f + Frac(seed * 7.3f + k * 0.61f) * 0.5f);
+
+            var radial = t * Mathf.Cos(a) + Vector3.up * Mathf.Sin(a);
+            var p      = center + radial * rr;
+
+            // **둘레는 바깥을 보되 위아래로는 덜 기운다**(2026-09-15에 잡았다). `RockCut`이
+            // **법선으로 윗면을 가른다**(`|n.y| > 0.5` = 뚜껑) — 뚜껑은 자르지 않고 **자르는 높이로
+            // 끌어내린다.** 처음엔 둘레를 사방으로 똑같이(0.85) 기울였더니 **위쪽 둘레 꼭짓점이
+            // 뚜껑으로 읽혀** 카메라를 내려 자르는 면이 낮아질 때 그 꼭짓점만 끌려 내려가고,
+            // 사이의 삼각형이 **몇 m짜리 가시**로 늘어났다(사용자: *"화면 내릴 때 이렇게 된다"*).
+            // 위아래 몫을 0.4로 두면 `n.y`가 최대 0.45 — 보간해도 넘지 않는다. **바위 메시에
+            // 새 면을 더할 때는 법선의 y를 0.5 밑에 둘 것.**
+            var tilt = t * (Mathf.Cos(a) * 0.6f) + Vector3.up * (Mathf.Sin(a) * 0.4f);
+            _verts.Add(p);
+            _norms.Add((n * 0.8f + tilt).normalized);
+            Uv(p, n);
+        }
+
+        for (int k = 0; k < OreRim; k++)
+        {
+            list.Add(i0);
+            list.Add(i0 + 1 + k);
+            list.Add(i0 + 1 + (k + 1) % OreRim);
+        }
+    }
+
+    static float Frac(float v) => v - Mathf.Floor(v);
 
     // 0~1. **`string.GetHashCode`를 안 쓴다** — 실행마다 달라지면 알갱이가 판마다 옮겨 다닌다.
     static float Hash(Vector2Int tile, int dir, int salt)
@@ -813,21 +849,31 @@ public class RockRenderer : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetOreMats() => _oreMats.Clear();
 
-    static Material OreMat(ResourceNodeData vein)
+    // **벽의 재질에서 복제한다**(2026-09-15) — 전에는 텍스처 없는 단색 재질이었다. 벽은 사진
+    // 기반 바위 무늬인데 알갱이만 **매끈한 한 색**이라 어두운 굴에서 *칠한 점*으로 튀었다.
+    // 같은 텍스처·노멀맵을 쓰면 **벽의 결이 알갱이에도 이어져** 박힌 것으로 읽힌다.
+    // 색은 곱해지므로 **광물 색 그대로 두면 한 칸 어두워진다** — 조금 밝게 올린다.
+    //
+    // **발광은 거의 끈다**(0.22 → 0.06). 발광이 알갱이를 *단색*으로 만든 주범이었다 — 조명과
+    // 무관하게 같은 밝기를 더하므로 둘레 법선이 만든 톤 차이를 덮는다. **빛나는 광물은 그대로
+    // 빛난다**(미스릴·마법 결정 — 그건 빛이 그 광물의 성격이다).
+    Material OreMat(ResourceNodeData vein)
     {
         if (_oreMats.TryGetValue(vein, out var m) && m != null) return m;
 
-        m = Lit("Vein " + vein.name + " (runtime)", vein.VeinColor);
+        var wall = SideMat();
+        m = wall != null ? new Material(wall) { name = "Vein " + vein.name + " (runtime)" }
+                         : Lit("Vein " + vein.name + " (runtime)", vein.VeinColor);
+
+        var col = vein.VeinColor * 1.35f;
+        col.a = 1f;
+        m.SetColor("_BaseColor", col);
+        m.SetColor("_Color",     col);
         m.SetFloat("_Metallic",   vein.VeinMetallic);
         m.SetFloat("_Smoothness", vein.VeinSmoothness);
 
-        // **어두운 굴에서는 색만으로는 안 읽힌다** — 빛 배율이 어느 때에도 1이 아니라
-        // (0.30~0.62) 알갱이가 벽과 함께 눌린다. 아주 약하게 스스로 빛나게 두면 *박힌 것*이
-        // 그대로 보이고, **빛나는 광물은 더 세게** 빛난다(미스릴·마법 결정).
-        //
-        // **키워드를 같이 켜야 한다** — 색만 넣으면 URP가 조용히 그 패스를 안 돈다.
         m.EnableKeyword("_EMISSION");
-        m.SetColor("_EmissionColor", vein.VeinColor * (vein.VeinGlow ? 0.9f : 0.22f));
+        m.SetColor("_EmissionColor", vein.VeinColor * (vein.VeinGlow ? 0.9f : 0.06f));
         m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
 
         _oreMats[vein] = m;
@@ -883,8 +929,6 @@ public class RockRenderer : MonoBehaviour
             ChunkRoot = _root;
         }
 
-        if (churnDebug) _churnSw.Restart();
-
         var go = new GameObject($"Rock_{chunk.x}_{chunk.y}");
         go.transform.SetParent(_root, false);
         go.layer = Mathf.Clamp(rockLayer, 0, 31);
@@ -917,12 +961,6 @@ public class RockRenderer : MonoBehaviour
         c = new Chunk { Go = go, Mesh = mesh, Renderer = mr };
         _chunks[chunk] = c;
 
-        if (churnDebug)
-        {
-            _churnSw.Stop();
-            _makeMs += _churnSw.Elapsed.TotalMilliseconds;
-            _made++; _frameMade++;
-        }
         return c;
     }
 
@@ -984,7 +1022,6 @@ public class RockRenderer : MonoBehaviour
     {
         if (!_chunks.TryGetValue(chunk, out var c)) return;
         _chunks.Remove(chunk);
-        if (churnDebug) { _dropped++; _frameDropped++; }
 
         if (c.Go != null) Toss(c.Go);
         if (c.Mesh != null) Toss(c.Mesh);   // **메시도 같이 버린다** — 안 버리면 샌다

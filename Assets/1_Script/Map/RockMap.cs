@@ -101,6 +101,39 @@ public static class RockMap
         if (_cache != null) System.Array.Clear(_cache, 0, _cache.Length);
     }
 
+    // ── 세계의 끝 — 기반암 ──────────────────────────────────────────────────
+    //
+    // **2026-09-15, 사용자:** *"맵 끝에서 더 못 나가게 경계가 있으면 좋겠어 — 나가려고 하면
+    // 못 나간다고 표시를 보여 주는?"*
+    //
+    // **세계 밖은 이미 바위였다**(2026-09-07) — 막는 것은 됐는데 **보이지 않았다.** 밖에는
+    // 청크가 없어 바위 메시가 안 서므로, 길이 테두리에 닿은 자리는 **길이 허공에서 끊기고**
+    // 폰은 보이지 않는 벽 앞에 선다. 캐면서 넓히는 세계라 테두리 안쪽 바위를 파 들어가도
+    // 마지막 칸 너머가 **아무것도 없는 검은 허공**이다.
+    //
+    // 그래서 **테두리 안쪽 몇 칸을 캘 수 없는 바위로 둔다.** 세계 *안*이라 청크가 서고 메시가
+    // 그려진다 — 막는 곳과 보이는 곳이 한 줄에 선다. 판정은 `IsRock` 한 곳이라 길찾기·건설·
+    // 일감·스폰이 통째로 따라온다(세계 밖을 막을 때와 같은 자리).
+    //
+    // **캐는 문 셋이 전부 거절한다** — `Mark`(찍기) · `Mine`(파기) · `OpenAround`/`Carve`
+    // (시작 공터). 하나라도 빠지면 그 길로 **기반암에 구멍**이 나고 그 너머가 허공이다.
+    public const int BorderTiles = 3;
+
+    public static bool IsBedrock(Vector2Int tile) => Enabled && InBorder(tile);
+
+    static bool InBorder(Vector2Int t)
+    {
+        int w = TerrainGrid.WorldSize;
+        return t.x < BorderTiles || t.y < BorderTiles || t.x >= w - BorderTiles || t.y >= w - BorderTiles;
+    }
+
+    public static bool IsBedrock(Vector3 world)
+    {
+        var map = MapManager.Instance;
+        return IsBedrock(map != null ? map.WorldToTile(world)
+                                     : new Vector2Int(Mathf.FloorToInt(world.x), Mathf.FloorToInt(world.z)));
+    }
+
     public static bool IsRock(Vector2Int tile)
     {
         if (!Enabled) return false;
@@ -120,7 +153,9 @@ public static class RockMap
         //
         // **`Enabled` 뒤다** — 지하가 아닌 씬(옛 던전)은 `TerrainGrid`와 무관하므로
         // 위에서 이미 빠져나간다.
-        if (!TerrainGrid.TileInWorld(tile)) return true;
+        // **기반암도 여기서 막는다**(2026-09-15) — 세계 밖을 포함한다(`InBorder`가 밖에서도 참).
+        // **캔 칸 앞이다** — 옛 판에서 테두리를 파 둔 기록이 남아 있어도 다시 막힌다.
+        if (InBorder(tile)) return true;
 
         if (_mined.Contains(tile)) return false;
 
@@ -237,6 +272,7 @@ public static class RockMap
         // 칸을 모으므로 **지형이 끝난 자리 너머까지 닿는다** — 거기서도 `IsRock`은 참을
         // 돌려주므로(여유 함수는 세계 밖에서도 값을 낸다) 찍히고, 일감까지 난다.
         if (on && !TerrainGrid.TileInWorld(tile)) return false;
+        if (on && InBorder(tile)) return false;   // 기반암 — 캘 수 없다
 
         if (on && !IsRock(tile)) return false;
         bool changed = on ? _marked.Add(tile) : _marked.Remove(tile);
@@ -250,7 +286,7 @@ public static class RockMap
         // **테두리는 못 캔다.** 밖이 바위가 된 지금 `IsRock`은 참을 돌려주므로, 안 막으면
         // **세계 밖으로 굴을 파고 나갈 수 있다**(`_mined`에 들어가면 그 칸은 영영 열린다).
         // 찍는 쪽(`Mark`)은 이미 막지만 **파는 문은 여기 하나**라 여기서도 물어야 한다.
-        if (!TerrainGrid.TileInWorld(tile)) return false;
+        if (InBorder(tile)) return false;   // 세계 밖과 기반암 — 캘 수 없다
 
         if (!IsRock(tile)) return false;
 
@@ -304,7 +340,7 @@ public static class RockMap
             if (d > radius + wobble) continue;
 
             var t = new Vector2Int(c.x + dx, c.y + dy);
-            if (!IsRock(t)) continue;
+            if (InBorder(t) || !IsRock(t)) continue;
 
             _mined.Add(t);
             _marked.Remove(t);
@@ -362,7 +398,17 @@ public static class RockMap
 
     // 함수가 **굴이라고 답하는** 가장 가까운 칸. 고리 모양으로 넓혀 가며 찾는다 — 가까운
     // 것부터 봐야 길이 짧다. **성기게 훑는다**(2칸) — 통로 폭이 그보다 넓으므로 안 놓친다.
-    static bool TryFindNaturalCave(Vector2Int from, float searchRadius, out Vector2Int found)
+    //
+    // **큰길을 먼저 찾는다**(2026-09-15, 코드 리뷰). 큰 굴 중에는 일부러 길에서 떼어 봉한 것이
+    // 있어서(`TerrainCeiling` 큰 굴), 가까운 굴에 아무렇게나 이으면 기지가 **봉한 굴 하나에만
+    // 붙은 섬**이 된다. 반경 안에 큰길이 없으면 **아무 굴에나 잇는다** — 막힌 시작도 괜찮다
+    // (사용자: *"시작 방이 막힌 동굴 형태여도 된다"*). 자동 배치의 시작 방(`WorldPopulator.StartRooms`)과
+    // 같은 순서다.
+    static bool TryFindNaturalCave(Vector2Int from, float searchRadius, out Vector2Int found) =>
+        TryFindNaturalCave(from, searchRadius, true, out found) ||
+        TryFindNaturalCave(from, searchRadius, false, out found);
+
+    static bool TryFindNaturalCave(Vector2Int from, float searchRadius, bool roadOnly, out Vector2Int found)
     {
         found = from;
         var map = MapManager.Instance;
@@ -375,8 +421,10 @@ public static class RockMap
             if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;   // 고리 위만
 
             var t = new Vector2Int(from.x + dx, from.y + dy);
+            if (InBorder(t)) continue;   // 기반암 너머의 굴로 길을 내면 기반암에 막혀 끊긴다
             Vector3 w = map != null ? map.TileToWorld(t) : new Vector3(t.x + 0.5f, 0f, t.y + 0.5f);
-            if (TerrainCeiling.ClearanceAt(w.x, w.z) < PawnMover.BodyHeight) continue;
+            if (roadOnly ? TerrainCeiling.RoadOpenness(w.x, w.z) < 0.99f
+                         : TerrainCeiling.ClearanceAt(w.x, w.z) < PawnMover.BodyHeight) continue;
 
             found = t;
             return true;
@@ -408,7 +456,7 @@ public static class RockMap
                 if (dx * dx + dy * dy > half * half) continue;
 
                 var t = new Vector2Int(cx + dx, cy + dy);
-                if (!IsRock(t)) continue;
+                if (InBorder(t) || !IsRock(t)) continue;
 
                 _mined.Add(t);
                 _marked.Remove(t);

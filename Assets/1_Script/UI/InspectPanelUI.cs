@@ -298,6 +298,18 @@ public class InspectPanelUI : MonoBehaviour
         Show();
         if (infoText == null) return;
 
+        // **기반암은 파면 무엇이 나오나를 안 적는다** — 못 판다. 캐는 버튼도 안 단다
+        // (눌러도 `Mark`가 거절해 아무 일도 안 일어나는 버튼이 된다).
+        if (RockMap.IsBedrock(tile))
+        {
+            infoText.text =
+                "<b><color=#E8C566>기반암</color></b>  <color=#888>[세계의 끝]</color>\n" +
+                $"<color=#888>({tile.x}, {tile.y})</color>\n\n" +
+                "캘 수 없습니다. 이 너머로는 세계가 없습니다.";
+            SetActions(new List<(string, Action)>());
+            return;
+        }
+
         var vein = RockMap.VeinAt(tile);
         var data = vein != null ? vein : RockMap.PlainRock;
         var item = data != null ? data.DropItem : null;

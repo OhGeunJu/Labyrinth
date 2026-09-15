@@ -572,6 +572,10 @@ public class SelectionManager : MonoBehaviour
             var brain = h.collider.GetComponentInParent<UnitBrain>();
             if (brain?.Blackboard != null && brain.Blackboard.CarriedBy != null) continue;
 
+            // **안개가 가린 폰은 못 짚는다**(2026-09-15) — 안 막으면 커서를 훑어 적이 어디 있는지를
+            // 더듬어 찾을 수 있다. 가린 것을 누를 수 있으면 가린 것이 아니다.
+            if (FogOfWar.Hides(brain)) continue;
+
             hit = h;
             return true;
         }

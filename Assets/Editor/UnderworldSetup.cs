@@ -661,8 +661,10 @@ public static class UnderworldSetup
         Object.DestroyImmediate(tex);
 
         float total = res * (float)res;
+        TerrainCeiling.CountCaverns(out int caverns, out int sealedCaverns, out int spurCaverns);
         Debug.Log($"[굴] {world}m 세계 · {step}m/픽셀 — **지나갈 수 있는 곳 {open / total:P0}** · " +
-                  $"기어야 하는 틈 {crawl / total:P0} · 바위 {(total - open - crawl) / total:P0}\n{path}\n" +
+                  $"기어야 하는 틈 {crawl / total:P0} · 바위 {(total - open - crawl) / total:P0} · " +
+                  $"**큰 굴 {caverns}개(봉한 것 {sealedCaverns} · 샛길로 이은 것 {spurCaverns})**\n{path}\n" +
                   "**3분의 1 언저리가 열려 있어야 굴처럼 보인다** — 너무 적으면 통로 폭을, " +
                   "너무 많으면 주기를 키울 것(캘 바위가 남아야 한다).");
 

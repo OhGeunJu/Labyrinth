@@ -28,7 +28,7 @@ using UnityEngine;
 //
 // **길이 나려면 열림이 곡선이어야 한다.** 그래서 축을 뒤집었다:
 //
-//     여유 = Lerp(바위, 굴, 열림)          열림 = max(간선, 잔가지, 방)
+//     여유 = Lerp(바위, 굴, 열림)          열림 = max(간선, 잔가지)   — 방은 길의 폭을 키운다
 //
 // **열림은 능선(ridge)이 만든다** — 노이즈의 **등고선**(값이 0인 자리)은 세계를 가로지르는
 // 긴 곡선이고, 그 곡선에서 일정 거리 안쪽을 열면 그것이 곧 **구불구불한 통로**다. 두 벌을
@@ -67,8 +67,37 @@ public struct TerrainCeilingProfile
     [Header("방 — 통로가 넓어지는 자리")]
     public float ChamberPeriod;
 
-    [Tooltip("0~1. **높을수록 드물다.** 0.5면 절반이 방이 되어 굴이 아니라 들판이 된다.")]
+    [Tooltip("0~1. **높을수록 드물다.** 낮추면 길이 거의 어디서나 부푼다.")]
     [Range(0f, 1f)] public float ChamberRarity;
+
+    [Tooltip("방 자리에서 **간선이 최대 이만큼(m) 넓어진다**(잔가지는 절반). 방은 따로 열리지 " +
+             "않고 길이 부푸는 것이라 **길에서 떨어진 섬이 생기지 않는다.** 0이면 방이 없다.")]
+    public float ChamberWiden;
+
+    [Header("큰 굴 — 길 사이에 따로 놓인 덩어리")]
+    [Tooltip("세계를 이 크기(m)의 칸으로 나눠 **칸마다 굴 하나를 굴린다.** 클수록 드물다. " +
+             "반지름 최대의 세 배보다 작게 두지 말 것 — 이웃 칸 굴과 겹쳐 한 덩어리가 된다.")]
+    public float CavernSpacing;
+
+    [Tooltip("0~1. 한 칸에 굴이 날 확률. **1이 기본이다** — 1보다 낮으면 굴이 빠진 칸이 길 사이 " +
+             "빈터와 겹쳐 **바위만 수백 m**인 자리가 생긴다. 수는 간격으로 조절할 것.")]
+    [Range(0f, 1f)] public float CavernChance;
+
+    [Tooltip("굴 반지름(m) — 이 사이에서 굴린다. 흔들림 때문에 실제로는 좀 더 들쭉날쭉하다.")]
+    public float CavernRadiusMin;
+    public float CavernRadiusMax;
+
+    [Tooltip("0~1. **길에서 벽으로 떼어 놓을 굴의 몫.** 봉한 굴은 캐서 뚫어야 들어간다. " +
+             "0이면 전부 트인 채 두지만 **그래도 우연히 길에 안 닿는 굴은 있다.**")]
+    [Range(0f, 1f)] public float CavernSealed;
+
+    [Tooltip("봉한 굴과 길 사이에 남기는 바위 두께(m). 얇으면 벽 너머가 비치듯 가깝고, " +
+             "두꺼우면 찾을 단서가 없다.")]
+    public float CavernWall;
+
+    [Tooltip("트인 굴이 길에 안 닿으면 **가장 가까운 길까지 내는 샛길의 폭**(m). 0이면 샛길이 없어 " +
+             "빈터에 놓인 굴이 전부 떨어진 굴이 된다.")]
+    public float CavernSpurWidth;
 
     [Header("요철 — 천장의 울퉁불퉁함")]
     public float RoughPeriod;
@@ -96,6 +125,23 @@ public struct TerrainCeilingProfile
     // 16/11/0.55 → 60%). 다만 **화면의 인상은 넓이보다 벽 높이가 더 정한다** — 9.6m 벽은
     // 비스듬한 카메라에서 뒤쪽 바닥을 통째로 가리므로, 넓이를 키우는 것보다 `RockMap.Height`를
     // 내리는 쪽이 훨씬 트여 보인다(그쪽은 **판정을 한 줄도 안 바꾼다**).
+    //
+    // ── 개미굴에서 큰길로 (2026-09-15, 사용자) ────────────────────────────────
+    //
+    // *"지금은 개미굴처럼 뻥뻥 뚫려 있는데 내가 원하는 건 큰길만 몇 개 뚫려 있는 느낌."*
+    // 개미굴을 만든 것은 **잔가지 42m**였다 — 등고선 간격이 그 절반이라 20m마다 실금이
+    // 지나갔다. **주기를 키우는 것이 곧 길의 수를 줄이는 것이다**(간선 100 → 260 · 잔가지
+    // 42 → 170). 폭은 폰의 눈금이라 거의 안 건드렸다(9 → 10 · 5 → 6 — 길이 드문 만큼
+    // 하나하나는 조금 넉넉하게).
+    //
+    // **잔가지를 끄지 않는다** — 등고선은 서로 안 만나는 **닫힌 고리**라 한 벌만 두면 길이
+    // 저마다 따로 돈다(흉내 낸 그림에서 가장 큰 그물이 열린 넓이의 8할). 주기가 다른 둘이
+    // 교차해야 **그물**이다(두 벌이면 9할 5푼).
+    //
+    // 열린 넓이는 흉내 낸 그림으로 **24% 언저리 → 12% 언저리**다. 1,024m 세계에서 이게
+    // *"가끔 실금이 간 통짜 바위"*가 안 되는 이유는 **길 하나하나가 끊기지 않고 세계를
+    // 가로지르기 때문**이다(08-31의 사고는 폭은 그대로 두고 **간격만** 벌어진 것이었다).
+    // 확인은 `World → 2. Preview Cave Map`이 한다 — 흉내는 유니티 펄린과 같지 않다.
     public static TerrainCeilingProfile Default => new()
     {
         Seed            = 20260829,
@@ -103,14 +149,27 @@ public struct TerrainCeilingProfile
         BaseClearance   = -11f,
         OpenClearance   = 6f,
 
-        PassagePeriod   = 100f,
-        PassageWidth    = 9f,
+        PassagePeriod   = 260f,
+        PassageWidth    = 10f,
 
-        BranchPeriod    = 42f,
-        BranchWidth     = 5f,
+        BranchPeriod    = 170f,
+        BranchWidth     = 6f,
 
-        ChamberPeriod   = 70f,
-        ChamberRarity   = 0.66f,
+        ChamberPeriod   = 120f,
+        ChamberRarity   = 0.56f,
+        ChamberWiden    = 16f,
+
+        // 큰 굴 — 처음엔 반지름 30~60m · 칸 220m(열다섯 남짓)였는데 사용자가 *"생각보다 너무
+        // 커 — 절반으로 줄이고 수를 조금 더"*(2026-09-15). 반지름 15~30m(지름 30~60m).
+        // 그다음 *"빈 곳은 너무 비고 붙은 곳은 너무 붙었다"* — 확률 0.75를 **1로**(빠진 칸이
+        // 빈터를 만들었다) 올리고 칸을 205m로(세계에 5×5 = 스물다섯). 샛길 6m.
+        CavernSpacing   = 205f,
+        CavernChance    = 1f,
+        CavernRadiusMin = 15f,
+        CavernRadiusMax = 30f,
+        CavernSealed    = 0.4f,
+        CavernWall      = 6f,
+        CavernSpurWidth = 6f,
 
         RoughPeriod     = 18f,
         RoughAmplitude  = 0.6f,

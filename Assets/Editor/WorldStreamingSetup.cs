@@ -66,6 +66,10 @@ public static class WorldStreamingSetup
         // 지상 시계로 돌아가 **캄캄한데 대낮처럼 보는** 상태가 된다.
         if (go.GetComponent<UnderworldLighting>() == null) Undo.AddComponent<UnderworldLighting>(go);
 
+        // **전장의 안개**(2026-09-15). 없어도 `RockRenderer`가 판이 열릴 때 붙이지만, 씬에 붙어
+        // 있어야 **시야 반경을 인스펙터에서 맞추고 남길 수 있다.**
+        if (go.GetComponent<FogOfWar>() == null) Undo.AddComponent<FogOfWar>(go);
+
         int layer = LayerMask.NameToLayer("Ground");
         if (layer < 0) { layer = 0; Debug.LogWarning("[월드] 레이어 'Ground'가 없다 — Default로 둔다."); }
 
@@ -353,12 +357,24 @@ public static class WorldStreamingSetup
         // 값이 아니다. 확인은 `World → 2. Preview Cave Map` 한 장으로 한다.
         Set(st, "ceilingProfile.BaseClearance", -11f);
         Set(st, "ceilingProfile.OpenClearance",   6f);
-        Set(st, "ceilingProfile.PassagePeriod", 100f);
-        Set(st, "ceilingProfile.PassageWidth",    9f);
-        Set(st, "ceilingProfile.BranchPeriod",   42f);
-        Set(st, "ceilingProfile.BranchWidth",     5f);
-        Set(st, "ceilingProfile.ChamberPeriod",  70f);
-        Set(st, "ceilingProfile.ChamberRarity", 0.66f);
+        //
+        // **2026-09-15에 개미굴을 큰길로 바꿨다**(사용자) — 주기가 곧 길의 수다. 근거와 흉내 낸
+        // 넓이는 `TerrainCeilingProfile.Default`에 있다. **여기 값과 그쪽 기본값을 같이 옮길 것.**
+        Set(st, "ceilingProfile.PassagePeriod", 260f);
+        Set(st, "ceilingProfile.PassageWidth",   10f);
+        Set(st, "ceilingProfile.BranchPeriod",  170f);
+        Set(st, "ceilingProfile.BranchWidth",     6f);
+        Set(st, "ceilingProfile.ChamberPeriod", 120f);
+        Set(st, "ceilingProfile.ChamberRarity", 0.56f);
+        Set(st, "ceilingProfile.ChamberWiden",   16f);
+        // 큰 굴(09-15, 사용자: *"부분 부분, 이어진 것도 안 이어진 것도"*).
+        Set(st, "ceilingProfile.CavernSpacing",  205f);
+        Set(st, "ceilingProfile.CavernChance",     1f);
+        Set(st, "ceilingProfile.CavernRadiusMin", 15f);
+        Set(st, "ceilingProfile.CavernRadiusMax", 30f);
+        Set(st, "ceilingProfile.CavernSealed",   0.4f);
+        Set(st, "ceilingProfile.CavernWall",       6f);
+        Set(st, "ceilingProfile.CavernSpurWidth",  6f);
         Set(st, "ceilingProfile.RoughPeriod",    18f);
         Set(st, "ceilingProfile.RoughAmplitude", 0.6f);
         Set(st, "ceilingProfile.SinkDepth",        2f);

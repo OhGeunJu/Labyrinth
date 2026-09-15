@@ -57,6 +57,7 @@ public class MineDesignator : MonoBehaviour
     // 월드로 들고 **매 프레임 화면 좌표로 되돌린다** — 그러면 기준점이 화면 밖으로 나가도
     // 사다리꼴 계산이 그대로 성립한다(`WorldToScreenPoint`는 뷰포트 밖 좌표도 준다).
     Vector3 _dragStartWorld;
+
     bool    _hasAnchor;
 
     Vector2 _dragStart;
@@ -145,7 +146,7 @@ public class MineDesignator : MonoBehaviour
             // 보인다(사용자가 본 그것이다).
             _next.Clear();
             if (_dragging) CollectBox(_dragStart, cur, _next);
-            else if (TileUnder(cur, out var t) && RockMap.IsRock(t)) _next.Add(t);
+            else if (TileUnder(cur, out var t) && RockMap.IsRock(t) && !RockMap.IsBedrock(t)) _next.Add(t);
 
             // **무를 수 있는 것은 이번 드래그가 찍은 것뿐이다**(2026-08-30).
             //
@@ -243,6 +244,10 @@ public class MineDesignator : MonoBehaviour
         {
             var tile = new Vector2Int(x, y);
             if (!RockMap.IsRock(tile)) continue;
+
+            // **기반암은 안 모은다** — `Mark`가 어차피 거절하지만, 모아 두면 매 프레임
+            // 거절당하는 칸이 수백 개다.
+            if (RockMap.IsBedrock(tile)) continue;
             into.Add(tile);
         }
     }
