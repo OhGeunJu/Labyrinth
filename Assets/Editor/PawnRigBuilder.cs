@@ -358,11 +358,34 @@ public static class PawnRigBuilder
 
         if (head != null) Attach(head, jHead, head.name == "Head" ? "HeadMesh" : head.name);
 
+        // **살 이름이 붙을 자리를 말한다**(2026-09-18). `Head.EyeL`·`HandL.Ball`처럼
+        // **`관절.무엇` 꼴**이면 그 관절에 붙는다.
+        //
+        // 없을 때는 아래의 *"남은 살은 몸통이다"*에 전부 걸려서 **눈이 배에 가서 붙었다** —
+        // `Model` 아래의 살은 예외 없이 관절 하나에 붙으므로, 머리에 얹을 것을 적을 자리가
+        // 아예 없었다. **이름을 그대로 둔다** — `Flatten`이 `Mesh` 꼬리만 떼므로 되돌아온다.
+        var joints = new Dictionary<string, Transform>
+        {
+            { "Hips", hips }, { "Spine", spine }, { "Head", jHead },
+            { "ArmL", rig.ArmL }, { "LowerArmL", rig.LowerArmL }, { "HandL", rig.HandL },
+            { "ArmR", rig.ArmR }, { "LowerArmR", rig.LowerArmR }, { "HandR", rig.HandR },
+            { "LegL", rig.LegL }, { "LowerLegL", rig.LowerLegL }, { "FootL", rig.FootL },
+            { "LegR", rig.LegR }, { "LowerLegR", rig.LowerLegR }, { "FootR", rig.FootR },
+        };
+
         // 남은 살(Torso · Pelvis · Spine · Rib…)은 몸통이다.
         foreach (var kv in parts)
         {
             var t = kv.Value;
             if (t == null || t.parent != model) continue;
+
+            int dot = kv.Key.IndexOf('.');
+            if (dot > 0 && joints.TryGetValue(kv.Key.Substring(0, dot), out var j) && j != null)
+            {
+                Attach(t, j, kv.Key);
+                continue;
+            }
+
             if (kv.Key == "Pelvis") Attach(t, hips, "Pelvis");
             else                    Attach(t, spine, kv.Key == "Spine" ? "SpineMesh" : kv.Key);
         }
@@ -412,6 +435,48 @@ public static class PawnRigBuilder
         ("RightUpperLeg", "LegR"), ("RightLowerLeg", "LowerLegR"), ("RightFoot", "FootR"),
     };
 
+    // **팔을 끝까지 내릴 수 있게 한다**(2026-09-18). 유니티 휴머노이드에서 팔의 *내림*은 두 근육이 나눠
+    // 든다 — 어깨(-15°)와 위팔(-60°). 이 뼈대에는 **어깨 뼈가 없어서** 위팔 몫 -60°만 남고, 그래서 대기
+    // 클립이 *팔을 다 내려라*라고 해도 **T자에서 60°까지만** 내려가 팔이 30° 벌어진 채 선다(치비 폰은
+    // 그 30°에 손 공이 들려 턱 옆에 떠 있었다). 어깨를 더하는 대신 **위팔의 내림 한계를 90°로** 넓힌다 —
+    // 어깨 뼈를 넣으면 관절 규격(`PawnRig`)과 클립 경로가 바뀌어 모든 폰을 다시 세워야 한다.
+    // 나머지 축(비틀기·앞뒤)과 올림은 기본값 그대로다.
+    static HumanLimit ArmLimit(string humanName, Transform model, string boneName)
+    {
+        int bone = System.Array.IndexOf(HumanTrait.BoneName, humanName);
+        // 이름을 못 찾으면 기본값 — 0으로 채운 한계를 넘기면 **팔이 통째로 굳는다**.
+        if (bone < 0)
+        {
+            Debug.LogWarning($"[PawnRig] 휴머노이드 뼈 이름을 못 찾았다: {humanName} — 팔 한계를 기본값으로 둔다.");
+            return new HumanLimit { useDefaultValues = true };
+        }
+        var min = Vector3.zero; var max = Vector3.zero;
+        for (int dof = 0; dof < 3; dof++)
+        {
+            int m = HumanTrait.MuscleFromBone(bone, dof);
+            if (m < 0) continue;
+            min[dof] = HumanTrait.GetMuscleDefaultMin(m);
+            max[dof] = HumanTrait.GetMuscleDefaultMax(m);
+            if (HumanTrait.MuscleName[m].Contains("Down-Up")) min[dof] = -90f;
+        }
+
+        // 뼈 길이 — 위팔 관절에서 아래팔 관절까지(`axisLength`를 0으로 두면 한계가 제대로 안 선다).
+        float length = 0.25f;
+        var upper = FindDeep(model, boneName);
+        if (upper != null)
+            foreach (Transform c in upper)
+                if (c.name.StartsWith("LowerArm")) { length = c.localPosition.magnitude; break; }
+
+        return new HumanLimit { useDefaultValues = false, min = min, max = max, center = Vector3.zero, axisLength = length };
+    }
+
+    static Transform FindDeep(Transform t, string name)
+    {
+        if (t.name == name) return t;
+        foreach (Transform c in t) { var f = FindDeep(c, name); if (f != null) return f; }
+        return null;
+    }
+
     static Avatar BuildAvatar(Transform model, string prefabName)
     {
         var human = new HumanBone[HumanBones.Length];
@@ -419,6 +484,8 @@ public static class PawnRigBuilder
         {
             human[i] = new HumanBone { humanName = HumanBones[i].human, boneName = HumanBones[i].bone };
             human[i].limit.useDefaultValues = true;
+            if (HumanBones[i].human == "LeftUpperArm" || HumanBones[i].human == "RightUpperArm")
+                human[i].limit = ArmLimit(HumanBones[i].human, model, HumanBones[i].bone);
         }
 
         // 뼈대 = 계층의 **모든** 트랜스폼(뿌리 포함), 지금 자세(T자) 그대로.

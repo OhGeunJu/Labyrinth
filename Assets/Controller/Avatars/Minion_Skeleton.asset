@@ -334,7 +334,7 @@ Avatar:
               m_PostQ: {x: -0, y: -0, z: 0.7071068, w: -0.7071068}
               m_Sgn: {x: 1, y: 1, z: -1}
               m_Limit:
-                m_Min: {x: -1.5707964, y: -1.7453293, z: -1.0471976}
+                m_Min: {x: -1.5707964, y: -1.7453293, z: -1.5707964}
                 m_Max: {x: 1.5707964, y: 1.7453293, z: 1.7453293}
               m_Length: 0.27000013
               m_Type: 1
@@ -358,7 +358,7 @@ Avatar:
               m_PostQ: {x: 0, y: -0, z: -0.7071068, w: 0.7071068}
               m_Sgn: {x: -1, y: 1, z: 1}
               m_Limit:
-                m_Min: {x: -1.5707964, y: -1.7453293, z: -1.0471976}
+                m_Min: {x: -1.5707964, y: -1.7453293, z: -1.5707964}
                 m_Max: {x: 1.5707964, y: 1.7453293, z: 1.7453293}
               m_Length: 0.27000013
               m_Type: 1
@@ -598,11 +598,11 @@ Avatar:
     - m_BoneName: ArmL
       m_HumanName: LeftUpperArm
       m_Limit:
-        m_Min: {x: 0, y: 0, z: 0}
-        m_Max: {x: 0, y: 0, z: 0}
+        m_Min: {x: -90, y: -100, z: -90}
+        m_Max: {x: 90, y: 100, z: 100}
         m_Value: {x: 0, y: 0, z: 0}
-        m_Length: 0
-        m_Modified: 0
+        m_Length: 0.2700001
+        m_Modified: 1
     - m_BoneName: LowerArmL
       m_HumanName: LeftLowerArm
       m_Limit:
@@ -622,11 +622,11 @@ Avatar:
     - m_BoneName: ArmR
       m_HumanName: RightUpperArm
       m_Limit:
-        m_Min: {x: 0, y: 0, z: 0}
-        m_Max: {x: 0, y: 0, z: 0}
+        m_Min: {x: -90, y: -100, z: -90}
+        m_Max: {x: 90, y: 100, z: 100}
         m_Value: {x: 0, y: 0, z: 0}
-        m_Length: 0
-        m_Modified: 0
+        m_Length: 0.2700001
+        m_Modified: 1
     - m_BoneName: LowerArmR
       m_HumanName: RightLowerArm
       m_Limit:
