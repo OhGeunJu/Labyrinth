@@ -58,7 +58,7 @@ public static class PortraitCapture
         if (_cam != null) return;
 
         var go = new GameObject("~PortraitCaptureCam");
-        go.hideFlags = HideFlags.HideAndDontSave;
+        go.hideFlags = SelfStanding.HiddenRuntimeObject;
         Object.DontDestroyOnLoad(go);
 
         _cam = go.AddComponent<Camera>();
@@ -73,7 +73,7 @@ public static class PortraitCapture
 
         // **카메라의 자식**이라 매 캡처마다 각도를 다시 잡을 필요가 없다 — 카메라를 폰 앞에
         // 세우면 조명이 따라온다.
-        var lightGo = new GameObject("~PortraitKeyLight") { hideFlags = HideFlags.HideAndDontSave };
+        var lightGo = new GameObject("~PortraitKeyLight") { hideFlags = SelfStanding.HiddenRuntimeObject };
         lightGo.transform.SetParent(go.transform, false);
         lightGo.transform.localEulerAngles = KeyAngles;
 

@@ -70,6 +70,48 @@ public class MineDesignator : MonoBehaviour
     readonly HashSet<Vector2Int> _next    = new();   // 이번 프레임에 찍혀야 할 것
     readonly List<Vector2Int>    _undo    = new();   // 훑는 도중에 고치지 않으려고
 
+    // ── 위험을 커서 옆에 적는다 (2026-09-18) ────────────────────────────────
+    //
+    // **화면 구석에 적으면 눈은 커서에 가 있어 있어도 못 읽는다**(건설 모드가 값과 거절
+    // 사유를 커서 옆에 두는 것과 같은 자리).
+    //
+    // **색이 아니라 숫자다** — *"위험해 보인다"*로는 얼마나 무리인지 모른다. 몇 칸이
+    // 무너지는지 적으면 **한 칸 물러설지 버팀목을 세울지**를 그 자리에서 정한다.
+    //
+    // 찍는 것 자체는 안 막는다(사용자 결정) — **위험을 알고 파는 것도 선택**이다.
+    Vector2Int? _warnAt;
+    int         _warnCount;
+
+    // 같은 칸을 다시 재지 않는다 — 커서가 머무는 동안 매 프레임 81칸을 훑을 이유가 없다.
+    void UpdateWarning(Vector2Int? tile)
+    {
+        if (tile == null) { _warnAt = null; _warnCount = 0; return; }
+        if (_warnAt == tile) return;
+
+        _warnAt    = tile;
+        _warnCount = 0;
+
+        var at = tile.Value;
+        if (!RockMap.IsRock(at) || RockMap.IsBedrock(at)) return;
+
+        _tmpCollapse.Clear();
+        _warnCount = RockSupport.CollectCollapsed(at, _tmpCollapse);
+    }
+
+    static readonly List<Vector2Int> _tmpCollapse = new();
+
+    void OnGUI()
+    {
+        if (!IsActive || _warnAt == null || _warnCount <= 0 || Event.current == null) return;
+
+        var at = Event.current.mousePosition + new Vector2(20f, 18f);
+        var was = GUI.color;
+        GUI.color = new Color(1f, 0.55f, 0.25f);
+        GUI.Label(new Rect(at.x, at.y, 460f, 22f),
+                  $"받치는 것이 없습니다 — 파면 천장 {_warnCount}칸이 내려앉습니다 (버팀목을 세우세요)");
+        GUI.color = was;
+    }
+
     void Update()
     {
         var kb = Keyboard.current;
@@ -147,6 +189,10 @@ public class MineDesignator : MonoBehaviour
             _next.Clear();
             if (_dragging) CollectBox(_dragStart, cur, _next);
             else if (TileUnder(cur, out var t) && RockMap.IsRock(t) && !RockMap.IsBedrock(t)) _next.Add(t);
+
+            // **커서가 짚은 한 칸만 잰다** — 드래그 중에 상자 안을 전부 재면 칸마다
+            // 81칸을 훑어 프레임이 죽는다. 무리한 자리인지는 **한 칸으로도 드러난다.**
+            UpdateWarning(_dragging ? null : TileUnder(cur, out var w) ? w : (Vector2Int?)null);
 
             // **무를 수 있는 것은 이번 드래그가 찍은 것뿐이다**(2026-08-30).
             //

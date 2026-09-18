@@ -23,6 +23,38 @@ public class Grave : MonoBehaviour, IWorldClickable, ICarrySite
     [Tooltip("시체가 놓일 자리. 비우면 무덤 한가운데.")]
     [SerializeField] Transform graveAnchor;
 
+    // **뚜껑 — 비었으면 열려 있고 묻으면 닫힌다**(2026-09-18, 사용자: *"casket_stone_lid
+    // 이게 뚜껑인가봐 시체없을때는 열려있고 시체 있으면 닫혀있게"*).
+    //
+    // **비었다는 것이 화면에 보여야 한다** — 무덤은 *미루는 선택*이라(파묻은 것도 파낼 수
+    // 있다) 몇 자리가 남았는지가 눈에 들어와야 어디에 더 지을지를 정한다. 글자로만 적으면
+    // 무덤마다 눌러 봐야 한다.
+    //
+    // **비워 두면 아무 일도 안 한다** — 뚜껑이 없는 무덤 모형도 있을 수 있고, 그때
+    // 여기서 예외를 던지면 **무덤 전체가 안 선다.**
+    [Header("뚜껑 (있으면 묻을 때 닫힌다)")]
+    [SerializeField] Transform lid;
+
+    // **열린 뚜껑은 비스듬히 세워 둔다**(2026-09-18, 사용자: *"무덤 뚜껑이 저렇게 얹혀있는
+    // 게 아니라 살짝 비스듬이 세워져 있으면 좋겠어"*).
+    //
+    // 눕혀서 옆으로 밀면 *덮다 만 관*으로 보인다 — **세워 두어야 "열어 놓았다"로 읽힌다.**
+    // **관의 긴 변에 기대어 세운다** — 바닥에 밑동을 대고 비스듬히(2026-09-18, 사용자가
+    // 그림을 보내 줬다). 위로 띄워 눕히면 *덮다 만 관*이 되고, 옆으로 밀어 눕히면
+    // *뚜껑이 떨어져 나간 것*이 된다.
+    [Tooltip("열렸을 때 뚜껑이 밀려나는 거리(m). 짧은 축(z)으로 밀어 관 옆에 세운다.")]
+    [SerializeField] Vector3 lidOpenOffset = new Vector3(0f, -0.06f, -0.58f);
+
+    [Tooltip("기울이는 각(도). 관 밖으로 넘어가며 세워지는 각이라 음수다. -90이면 수직.")]
+    [SerializeField] float   lidOpenTilt   = -62f;
+
+    [Tooltip("같이 트는 각(도). 0이면 정면으로 서서 판板처럼 보인다.")]
+    [SerializeField] float   lidOpenYaw    = 6f;
+
+    Vector3    _lidHome;
+    Quaternion _lidHomeRot;
+    bool       _lidCached;
+
     public Corpse Buried { get; private set; }
     public bool   IsOccupied => Buried != null;
 
@@ -67,6 +99,7 @@ public class Grave : MonoBehaviour, IWorldClickable, ICarrySite
         corpse.transform.SetParent(transform, worldPositionStays: true);
         corpse.transform.position = GravePosition;
         corpse.SetBuried(true);
+        RefreshLid();
 
         EventNotificationUI.Notify("매장", $"{corpse.UnitName}을(를) 묻었습니다.");
     }
@@ -81,6 +114,7 @@ public class Grave : MonoBehaviour, IWorldClickable, ICarrySite
 
         corpse.transform.SetParent(null, worldPositionStays: true);
         corpse.SetBuried(false);
+        RefreshLid();
 
         // **흙 위로 올려놓는다** — 묻힌 자리 그대로 두면 무덤 모델과 겹쳐 클릭이 갈린다.
         // 시체도 폰이라 세우는 규약은 하나(`PawnPlacement`)를 쓴다.
@@ -100,4 +134,31 @@ public class Grave : MonoBehaviour, IWorldClickable, ICarrySite
     }
 
     public static Grave FindNearestFree(Vector3 from) => CarrySites.NearestFree(All, from);
+
+    void Start() => RefreshLid();
+
+    // **처음 자리를 기억해 두고 거기서 움직인다** — 매번 현재 자리에 더하면 여닫을 때마다
+    // 뚜껑이 조금씩 밀려나 결국 무덤 밖으로 걸어 나간다.
+    void RefreshLid()
+    {
+        if (lid == null) return;
+
+        if (!_lidCached)
+        {
+            _lidHome    = lid.localPosition;
+            _lidHomeRot = lid.localRotation;
+            _lidCached  = true;
+        }
+
+        if (IsOccupied)
+        {
+            lid.localPosition = _lidHome;
+            lid.localRotation = _lidHomeRot;
+            return;
+        }
+
+        lid.localPosition = _lidHome + lidOpenOffset;
+        // **X축으로 기운다** — 관이 가로로 길므로 짧은 축(z) 쪽으로 넘어가야 옆에 선다.
+        lid.localRotation = _lidHomeRot * Quaternion.Euler(lidOpenTilt, lidOpenYaw, 0f);
+    }
 }

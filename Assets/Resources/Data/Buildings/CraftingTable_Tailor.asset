@@ -20,9 +20,13 @@ MonoBehaviour:
   Category: 6
   SortOrder: 91
   Size: {x: 2, y: 1}
-  CostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
-  CostAmount: 1
+  Costs:
+  - Item: {fileID: 11400000, guid: d5110da4aaf3118469617092dbad6ce1, type: 2}
+    Amount: 14
+  CostItem: {fileID: 0}
+  CostAmount: 0
   DragBuild: 0
+  AreaDrag: 0
   RequiredResearch: {fileID: 11400000, guid: b412e02a7f86a3248929c43eb2cac7e9, type: 2}
   Prefab: {fileID: 3558653619476472113, guid: dc26b5a7126804b49b9a113217d4e402, type: 3}
   UsesBlueprint: 1

@@ -275,17 +275,21 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
 
     void Refund()
     {
-        if (data == null || data.CostAmount <= 0) return;
-        int refund = Mathf.FloorToInt(data.CostAmount * refundRatio);
-        if (refund <= 0) return;
+        if (data == null) return;
 
-        var item = data.CostItem;
-        if (item == null) return; // 비용 아이템이 없는 건물(무료) → 환불할 것도 없다
+        // **재료마다 따로 깎는다** — 합쳐서 깎으면 비율이 어느 재료에 붙는지가 정해지지 않는다.
+        foreach (var c in data.Costs)
+        {
+            if (c.Item == null || c.Amount <= 0) continue;
 
-        // **창고로 먼저, 바닥은 최후 수단**(`MaterialPool.Refund`) — 청사진 취소와 같은 길이다.
-        // 전엔 곧장 바닥에 떨궜는데, 그러면 그 짐이 다시 운반 일감이 되고 나르는 동안 창고
-        // 집계에서 빠져 있어 같은 자재를 기다리던 작업이 "재료 부족"으로 죽는다.
-        MaterialPool.Refund(item, refund, transform.position);
+            int refund = Mathf.FloorToInt(c.Amount * refundRatio);
+            if (refund <= 0) continue;
+
+            // **창고로 먼저, 바닥은 최후 수단**(`MaterialPool.Refund`) — 청사진 취소와 같은 길이다.
+            // 전엔 곧장 바닥에 떨궜는데, 그러면 그 짐이 다시 운반 일감이 되고 나르는 동안 창고
+            // 집계에서 빠져 있어 같은 자재를 기다리던 작업이 "재료 부족"으로 죽는다.
+            MaterialPool.Refund(c.Item, refund, transform.position);
+        }
     }
 
     // ── 철거 예정 빨간 표시 ─────────────────────────────────────────────────

@@ -269,10 +269,10 @@ public class ResourceNodeUI : MonoBehaviour
     {
         if (node == null) return;
 
-        // **야생에는 안 뜬다** — 여기는 *배정하는 창*인데 야생은 배정을 안 받는다.
-        // 띄우면 눌러도 아무 일이 없는 버튼을 보여 주는 셈이고, 실제로 *"자리가 모자란다"*는
-        // 엉뚱한 메시지가 찍혔다(자리는 비어 있었다). 야생은 `InspectPanel`이 맡는다.
-        if (node.CanDesignate) { if (panel != null) WindowRaiser.Close(panel); return; }
+        // **야생에도 뜬다**(2026-09-17, 사용자: *"내가 설치하지 않은 자원들도 걍 자원 노드
+        // 패널이 보이면 좋겠어"*). 막아 뒀던 이유는 *"여기는 배정하는 창인데 야생은 배정을
+        // 안 받는다"*였는데, **야생도 배정을 받게 되면서 그 전제가 없어졌다**
+        // (`ResourceNode.Assign` 참고 — 야생은 유한하므로 사람을 붙여도 무한 채굴이 아니다).
 
         Unsubscribe();
         _current = node;

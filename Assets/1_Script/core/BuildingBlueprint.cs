@@ -6,14 +6,19 @@ using UnityEngine;
 // **청사진은 칸을 막지 않는다** — 짓는 동안 폰이 지나다녀야 하고, 자재를 지고 오는 폰도
 // 통과한다. 대신 자기가 앞으로 깔고 앉을 칸을 `Footprint`로 알려 준다: 그래야 건설 자리가
 // 발자국 밖으로 잡히고(`WorkSpot.TileFor`), 완성되는 순간 지은 폰이 벽 안에 갇히지 않는다.
-public class BuildingBlueprint : MonoBehaviour, IFootprintSite
+public class BuildingBlueprint : MonoBehaviour, IFootprintSite, IConstructionSite
 {
     public static readonly List<BuildingBlueprint> All = new();
 
     BuildingData _data;
-    ItemData     _costItem;
-    int          _costRequired;
-    int          _costDelivered;
+
+    // **재료마다 필요량과 납품량을 따로 든다**(2026-09-17 — 전에는 한 칸이었다).
+    //
+    // 합계 하나로 세면 안 된다 — *돌 20 · 나무 10*짜리 건물에 돌 30을 부어도 합계는 차므로
+    // **나무 없이 완성된다.** 세는 축이 곧 *무엇이 아직 모자란가*라, 거기서 다음 일감이 나온다.
+    readonly List<RecipeData.Ingredient> _costs     = new();
+    readonly List<int>                   _delivered = new();
+
     bool         _jobPending;
     bool         _cancelled;
 
@@ -22,12 +27,65 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
     Renderer[]      _renderers;
     bool            _highlighted;
 
-    public bool         IsComplete   => _costDelivered >= _costRequired;
-    public int          Remaining    => Mathf.Max(0, _costRequired - _costDelivered);
-    public ItemData     CostItem     => _costItem;
-    public BuildingData Data         => _data;
-    public int          Delivered    => _costDelivered;
-    public int          CostRequired => _costRequired;
+    public BuildingData Data => _data;
+
+    // **바닥을 깔 때는 발밑을 두들긴다** — 벽 망치질로 바닥을 깔면 허공을 친다.
+    // 가르는 것은 `LevelFloor`(바닥·기단·계단이 그 축이다) 하나다.
+    public WorkAnim BuildAnim =>
+        _data != null && _data.LevelFloor ? WorkAnim.HammerGround : WorkAnim.HammerWall;
+
+    // **하나라도 모자라면 미완이다.**
+    public bool IsComplete
+    {
+        get
+        {
+            for (int i = 0; i < _costs.Count; i++)
+                if (_delivered[i] < _costs[i].Amount) return false;
+            return true;
+        }
+    }
+
+    // 아직 더 받아야 하는 양 — 화면(`InspectPanelUI`)이 진행도를 그린다. **합으로 잰다**:
+    // 여기서 물어보는 것은 *얼마나 남았나*이지 *무엇이 남았나*가 아니다(뒤엣것은 `NextMissing`).
+    public int Remaining
+    {
+        get
+        {
+            int n = 0;
+            for (int i = 0; i < _costs.Count; i++) n += Mathf.Max(0, _costs[i].Amount - _delivered[i]);
+            return n;
+        }
+    }
+
+    public int CostRequired
+    {
+        get
+        {
+            int n = 0;
+            foreach (var c in _costs) n += c.Amount;
+            return n;
+        }
+    }
+
+    public int Delivered
+    {
+        get
+        {
+            int n = 0;
+            foreach (int d in _delivered) n += d;
+            return n;
+        }
+    }
+
+    // 무엇이 얼마나 더 필요한가 — 화면이 줄마다 적는다(`item {받음}/{필요}`).
+    public IEnumerable<(ItemData Item, int Delivered, int Required)> Progress
+    {
+        get
+        {
+            for (int i = 0; i < _costs.Count; i++)
+                yield return (_costs[i].Item, _delivered[i], _costs[i].Amount);
+        }
+    }
 
     // 완성되면 막을 칸들 — 계산은 `PlacedBuilding`과 같은 것을 쓴다(답이 두 벌이면 어긋난다).
     // 칸을 안 막는 건물(`OccupiesTile` false)은 발자국도 비운다 — 그 위에 서도 갇히지 않는다.
@@ -45,11 +103,26 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
 
     public void Init(BuildingData data)
     {
-        _data         = data;
-        _costItem     = data.CostItem;
-        _costRequired = data.CostAmount;
+        _data = data;
+
+        // **값이 없는 줄은 여기서 거른다** — 그래야 아래 셈 전부가 *실제로 드는 것*만 본다.
+        foreach (var c in data.Costs)
+        {
+            if (c.Item == null || c.Amount <= 0) continue;
+            _costs.Add(c);
+            _delivered.Add(0);
+        }
+
         BuildGhostVisual();
-        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.BuildingName} ({_costItem?.ItemName} ×{_costRequired} 필요)");
+        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.BuildingName} ({CostLine()} 필요)");
+    }
+
+    string CostLine()
+    {
+        if (_costs.Count == 0) return "무료";
+        var parts = new string[_costs.Count];
+        for (int i = 0; i < _costs.Count; i++) parts[i] = $"{_costs[i].Item.ItemName} ×{_costs[i].Amount}";
+        return string.Join(" · ", parts);
     }
 
     void BuildGhostVisual()
@@ -117,7 +190,7 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
     void Start()
     {
         All.Add(this);
-        if (_costRequired <= 0) { Complete(); return; }
+        if (_costs.Count == 0) { Complete(); return; }
         Storage.OnChanged += OnStorageChanged;
         TryRegisterJob();
     }
@@ -154,17 +227,30 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
         // **취소된 뒤에도 불린다.** 일감을 거두면 `OnCancelled`가 `OnJobEnded`로 돌아오는데,
         // `IsComplete`는 미완이라 그대로 두면 사라지는 청사진이 새 일감을 또 등록한다.
         if (_cancelled) return;
-        if (_jobPending || IsComplete || JobManager.Instance == null || _costItem == null) return;
+        if (_jobPending || IsComplete || JobManager.Instance == null) return;
 
-        // **창고만 세면 손에 든 자재가 없는 것이 된다.** `MaterialPool`이 답하는 것과 같은
-        // 축으로 본다 — 창고 + 플레이어 폰들의 배낭. 등록 시점엔 누가 지을지 모르므로
-        // 넓게 보고, 폰별 판정은 `ConstructionJob.CanAssignTo`가 다시 한다.
-        int available = MaterialPool.AvailableNear(_costItem, transform.position);
-        if (available <= 0) return;
+        // **모자란 재료 중 지금 구할 수 있는 것 하나를 고른다**(2026-09-17).
+        //
+        // 한 번에 하나씩 거는 것은 전과 같다 — `_job` 하나가 취소 경로를 든다. 다만 **못
+        // 구하는 것에서 멈추면 안 된다**: 돌은 창고에 있는데 나무가 없다고 여기서 돌아가면
+        // **구할 수 있는 절반조차 안 들어오고** 화면에는 *"아무도 안 온다"*로만 보인다.
+        // 그래서 걸리는 것이 나올 때까지 훑는다.
+        for (int i = 0; i < _costs.Count; i++)
+        {
+            int need = _costs[i].Amount - _delivered[i];
+            if (need <= 0) continue;
 
-        _jobPending = true;
-        _job        = new ConstructionJob(this, _costItem, Mathf.Min(Remaining, available));
-        JobManager.Instance.RegisterJob(_job);
+            // **창고만 세면 손에 든 자재가 없는 것이 된다.** `MaterialPool`이 답하는 것과 같은
+            // 축으로 본다 — 창고 + 플레이어 폰들의 배낭. 등록 시점엔 누가 지을지 모르므로
+            // 넓게 보고, 폰별 판정은 `ConstructionJob.CanAssignTo`가 다시 한다.
+            int available = MaterialPool.AvailableNear(_costs[i].Item, transform.position);
+            if (available <= 0) continue;
+
+            _jobPending = true;
+            _job        = new ConstructionJob(this, _costs[i].Item, Mathf.Min(need, available));
+            JobManager.Instance.RegisterJob(_job);
+            return;
+        }
     }
 
     public void OnJobEnded()
@@ -188,12 +274,13 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
 
         DropJob();
 
-        if (_costItem != null && _costDelivered > 0)
+        for (int i = 0; i < _costs.Count; i++)
         {
-            MaterialPool.Refund(_costItem, _costDelivered, transform.position);
-            Debug.Log($"[Blueprint] 취소 — {_costItem.ItemName} ×{_costDelivered} 환불");
+            if (_delivered[i] <= 0) continue;
+            MaterialPool.Refund(_costs[i].Item, _delivered[i], transform.position);
+            Debug.Log($"[Blueprint] 취소 — {_costs[i].Item.ItemName} ×{_delivered[i]} 환불");
+            _delivered[i] = 0;
         }
-        _costDelivered = 0;
 
         Destroy(gameObject);
     }
@@ -239,12 +326,21 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
         PlacedBuilding.ApplyTint(_renderers, on, PendingColor);
     }
 
+    // **어느 칸에 넣을지는 아이템이 정한다.** 합계 하나에 더하면 *돌 20 · 나무 10*짜리
+    // 건물이 **돌 30으로 완성된다**(합계는 차는데 나무가 한 개도 안 들어왔다).
     public void Deliver(ItemData item, int amount)
     {
-        if (item != _costItem || amount <= 0) return;
-        _costDelivered = Mathf.Min(_costRequired, _costDelivered + amount);
-        Debug.Log($"[Blueprint] 자재 입고 — {item?.ItemName} {_costDelivered}/{_costRequired}");
-        if (IsComplete) Complete();
+        if (item == null || amount <= 0) return;
+
+        for (int i = 0; i < _costs.Count; i++)
+        {
+            if (_costs[i].Item != item) continue;
+
+            _delivered[i] = Mathf.Min(_costs[i].Amount, _delivered[i] + amount);
+            Debug.Log($"[Blueprint] 자재 입고 — {item.ItemName} {_delivered[i]}/{_costs[i].Amount}");
+            if (IsComplete) Complete();
+            return;
+        }
     }
 
     void Complete()

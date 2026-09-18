@@ -20,11 +20,19 @@ MonoBehaviour:
   Category: 6
   SortOrder: 100
   Size: {x: 2, y: 1}
-  CostItem: {fileID: 11400000, guid: 13058962675354244b1e635a2d56c74c, type: 2}
-  CostAmount: 20
+  Costs:
+  - Item: {fileID: 11400000, guid: 13058962675354244b1e635a2d56c74c, type: 2}
+    Amount: 20
+  CostItem: {fileID: 0}
+  CostAmount: 0
   DragBuild: 0
+  AreaDrag: 0
   RequiredResearch: {fileID: 11400000, guid: 34a3bf1fb9d9d914280439caa724beb3, type: 2}
   Prefab: {fileID: 6388735652006846745, guid: 4b33f7ccf12a0e84980511fa8968fa94, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 1
+  BlockMask: []

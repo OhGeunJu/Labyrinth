@@ -44,10 +44,25 @@ using UnityEngine;
 // (`RebakeArea`). 담는 것은 칸당 2바이트(걸을 수 있나 · 어느 덩어리냐)라 1,024m에서 **2MB**다.
 public class WideGraph
 {
-    // **셀 하나가 가질 수 있는 덩어리 수 천장.** 8칸짜리 셀이 체커보드로 갈리면 이론상
-    // 서른둘이지만 굴에서는 둘셋이다. 넘치면 **남는 덩어리를 버린다** — 이어 붙이면
-    // (없는 길을 있다고 하는) 더 나쁜 거짓말이 되고, 버리면 그 자리를 로컬이 찾는다.
-    const int MaxComp = 8;
+    // **셀 하나가 가질 수 있는 덩어리 수 천장 — 셀 크기에서 낸다.**
+    //
+    // 한동안 **8로 못 박고** *"체커보드면 이론상 서른둘이지만 굴에서는 둘셋"*이라고 적어
+    // 두었다. **그 전제가 채굴을 안 세고 있었다**(2026-09-18) — 자연 굴은 이어진 몸이라
+    // 둘셋이 맞지만, **찍어 둔 덩이를 폰 여럿이 파기 시작하면** 한 셀(7×7) 안에 **서로
+    // 안 이어진 구멍이 스물 몇 개**까지 생긴다.
+    //
+    // 넘친 덩어리는 **버려지므로 그 칸에는 광역 노드가 아예 없다** → `ComputeCoarseRoute`가
+    // 거기로 가는 길을 못 내고 → 로컬 창(40m) 밖이면 **폰이 아예 안 간다.** 화면에는
+    // *"파 놓은 자리에 갈 수가 없다 — 벽은 안 보이는데"*로만 보이고, **콜라이더도 통행
+    // 판정도 멀쩡하므로 어디를 봐도 이유가 없다.** 그리고 못 가니 못 파고, 못 파니 구멍이
+    // 안 이어져 **덩어리가 줄지 않는다** — 스스로 안 풀린다.
+    //
+    // 그래서 천장을 **셀이 가질 수 있는 최댓값**(체커보드 = 칸 수의 절반)으로 둔다 —
+    // 7×7이면 25다. **넘칠 수가 없으면 버릴 일도 없다.** 담는 값은 7칸 셀에서
+    // 노드 2MB → 6.5MB로 는다(칸 표 2MB는 그대로).
+    //
+    // 덩어리 번호는 `_comp`가 **바이트**로 드므로 254를 못 넘는다(`None` = 255).
+    readonly int _maxComp;
 
     // **경계 하나가 이을 수 있는 덩어리 쌍의 수 천장.** 같은 경계에서 서로 다른 덩어리 쌍이
     // 넷을 넘는 일은 굴에서 없다(넘으면 첫 넷만 든다 — 이어진 것은 이미 이어져 있다).
@@ -84,10 +99,14 @@ public class WideGraph
         _cellTiles = Mathf.Clamp(cellTiles, 2, 64);
         _cells     = Mathf.Max(1, Mathf.CeilToInt(_tiles / (float)_cellTiles));
 
+        // **체커보드가 최악이고 그게 칸 수의 절반이다.** 셀이 아주 크면 바이트 번호가
+        // 먼저 바닥나므로 254에서 자른다(그때는 옛날처럼 남는 덩어리를 버리고 경고한다).
+        _maxComp = Mathf.Min(254, (_cellTiles * _cellTiles + 1) / 2);
+
         _walk = new byte[_tiles * _tiles];
         _comp = new byte[_tiles * _tiles];
 
-        int nodes = _cells * _cells * MaxComp;
+        int nodes = _cells * _cells * _maxComp;
         _nodeX     = new float[nodes];
         _nodeZ     = new float[nodes];
         _nodeTiles = new int[nodes];
@@ -106,7 +125,7 @@ public class WideGraph
     bool InCells(int cx, int cz) => cx >= 0 && cz >= 0 && cx < _cells && cz < _cells;
 
     int CellOf(int t) => Mathf.Clamp(t / _cellTiles, 0, _cells - 1);
-    int NodeId(int cx, int cz, int comp) => ((cz * _cells + cx) * MaxComp) + comp;
+    int NodeId(int cx, int cz, int comp) => ((cz * _cells + cx) * _maxComp) + comp;
     int LinkBase(int cx, int cz, int dir) => (((cz * _cells + cx) * 2) + dir) * MaxLinks;
 
     bool Walk(int tx, int tz) => InTiles(tx, tz) && _walk[TileIdx(tx, tz)] != 0;
@@ -184,7 +203,7 @@ public class WideGraph
         // 붙는다** — 하필 그것이 그 셀의 주 통로면 멀쩡한 길이 조용히 끊긴다.
         for (int cz = cz0; cz <= cz1; cz++)
         for (int cx = cx0; cx <= cx1; cx++)
-        for (int k = 0; k < MaxComp; k++)
+        for (int k = 0; k < _maxComp; k++)
             _blocked.Remove(NodeId(cx, cz, k));
     }
 
@@ -217,7 +236,7 @@ public class WideGraph
         for (int tx = x0; tx < x1; tx++)
             _comp[TileIdx(tx, tz)] = None;
 
-        for (int k = 0; k < MaxComp; k++)
+        for (int k = 0; k < _maxComp; k++)
         {
             int n = NodeId(cx, cz, k);
             _nodeTiles[n] = 0;
@@ -229,13 +248,13 @@ public class WideGraph
         {
             if (!Walk(tx, tz) || _comp[TileIdx(tx, tz)] != None) continue;
 
-            if (next >= MaxComp)
+            if (next >= _maxComp)
             {
                 // **버린다 — 이어 붙이지 않는다.** 없는 길을 있다고 하는 것이 훨씬 나쁘다.
                 if (!_warnedComp)
                 {
                     _warnedComp = true;
-                    Debug.LogWarning($"[길찾기] 셀 ({cx},{cz})의 덩어리가 {MaxComp}개를 넘었다 — "
+                    Debug.LogWarning($"[길찾기] 셀 ({cx},{cz})의 덩어리가 {_maxComp}개를 넘었다 — "
                                    + "남는 것은 광역에서 안 보인다(로컬이 찾는다). "
                                    + "셀이 너무 넓거나 지형이 유난히 잘게 갈린 자리다.");
                 }
@@ -446,8 +465,8 @@ public class WideGraph
     {
         _steps.Clear();
 
-        int comp = node % MaxComp;
-        int cell = node / MaxComp;
+        int comp = node % _maxComp;
+        int cell = node / _maxComp;
         int cx = cell % _cells, cz = cell / _cells;
 
         Collect(cx, cz, 0, comp, forward: true);    // 제 동쪽 경계 — 나는 A
@@ -664,13 +683,13 @@ public class WideGraph
         int cx = CellOf(t.x), cz = CellOf(t.y);
 
         int comps = 0;
-        for (int k = 0; k < MaxComp; k++) if (_nodeTiles[NodeId(cx, cz, k)] > 0) comps++;
+        for (int k = 0; k < _maxComp; k++) if (_nodeTiles[NodeId(cx, cz, k)] > 0) comps++;
 
         if (!TryNodeAt(world, out int node, maxRadius: 0))
             return $"셀({cx},{cz}) 덩어리{comps} — **그 칸은 못 걷는다**";
 
         int links = Neighbors(node).Count;
-        return $"셀({cx},{cz}) 덩어리{comps} 그중 {node % MaxComp}번(칸 {_nodeTiles[node]}) "
+        return $"셀({cx},{cz}) 덩어리{comps} 그중 {node % _maxComp}번(칸 {_nodeTiles[node]}) "
              + $"이웃 {links}{(IsBlocked(node) ? " · **막힘으로 배움**" : "")}";
     }
 }

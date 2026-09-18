@@ -142,10 +142,15 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
         if (_assigned.Contains(brain)) return true;   // 이미 여기 있다 = 원하는 상태
         if (IsFull) return false;
 
-        // **배정은 지은 노드에만**(2026-09-06). 야생은 *찍어서 가져오는 것*이라 붙일 사람이
-        // 없다 — 붙일 수 있으면 **밖에서 무한히 캘 수 있고**, 그러면 기지에 광맥을 이식할
-        // 이유가 사라진다(그 축이 게임에 있는데 규칙이 쓸 이유를 안 만들고 있었다).
-        if (!IsBuilt) return false;
+        // **야생도 배정을 받는다**(2026-09-17, 사용자: *"이미 캐라고 지정을 해놨는데 조금
+        // 움직였다고 아예 안 캐는건 말이 안되잖아"*).
+        //
+        // 2026-09-06에 막았던 이유는 *"붙일 수 있으면 밖에서 무한히 캘 수 있어 기지에 광맥을
+        // 이식할 이유가 사라진다"*였는데, **그 전제가 그 사이에 없어졌다** — 야생 노드는
+        // `TotalYields`만큼 내고 사라진다(`9. Set Wild Yields`). 유한한 것에 사람을 붙이는
+        // 일은 *무한 채굴*이 아니라 **그냥 시키는 일**이다.
+        //
+        // 이식 광맥이 사는 이유도 그대로다: 마르지 않고, 기지 안에 있고, 힘을 먹는다.
 
         // 다른 노드에 배정돼 있었으면 **거기서 먼저 뗀다.** 폰이 들고 있는
         // `Blackboard.AssignedNode`는 하나뿐이라, 안 떼면 이전 노드의 목록에만
@@ -187,6 +192,10 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
     //
     // *"영역이 없으면 전부 허용"*은 게이트를 **없는 것으로** 만든다. 영역이 없다는 것은
     // 곧 **내 것이 하나도 없다**는 뜻이므로 아무것도 안 잡는 쪽이 맞다.
+    // 핵이 없을 때 저 혼자 잡으러 갈 수 있는 거리. **일감 컷오프와 같은 눈금**이라
+    // *찍어서 나가는 일*과 *저 혼자 잡는 일*이 같은 범위에서 돈다.
+    const float FreeClaimRange = 200f;
+
     public static ResourceNode ClaimFreeFor(UnitBrain unit)
     {
         if (unit == null) return null;
@@ -203,13 +212,28 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
         foreach (var node in _all)
         {
             if (node == null || node.data == null || node.IsFull) continue;
-            if (!node.IsBuilt) continue;   // 야생은 배정 대상이 아니다 — 찍어서 가져온다
+
+            // **저 혼자는 지은 것만 잡는다**(2026-09-18, 사용자: *"자동으로 게임시작했을 때
+            // 자동으로 채굴이 잡히는 걸 원하는게 아니라 내가 자동 스폰된 자원들은 내가 폰을
+            // 배정했을 때만 채굴을 해야하는거야"*).
+            //
+            // **손으로 붙이는 것과 다른 물음이다** — `Assign`은 야생도 받는다(사람이 시킨
+            // 일이다). 여기는 *아무도 안 시켰을 때 알아서 가나*라, 야생까지 잡으면 **판이
+            // 열리자마자 굴에 뿌려진 것을 전부 캐러 흩어진다.**
+            if (!node.IsBuilt) continue;
 
             var need = node.NeededCategory;
             if (!work.IsEnabled(need) || work.IsBlocked(need)) continue;
 
             var at = node.transform.position;
-            if (core == null || !core.IsWithinAnyRangeWorld(at)) continue;
+
+            // **핵이 없으면 거리로 자른다**(2026-09-17). 전에는 `core == null`이면 그냥
+            // `continue`라 **핵을 꽂기 전에는 자율 배정이 통째로 죽었다** — 판이 열리자마자
+            // 나무 한 그루 저 혼자 안 베는 상태였고, 화면에는 *"폰이 논다"*로만 보인다.
+            //
+            // 핵이 있으면 **영역 안만** 본다(안 묶으면 맵 전체의 나무를 베러 떠난다).
+            if (core != null) { if (!core.IsWithinAnyRangeWorld(at)) continue; }
+            else if ((at - from).sqrMagnitude > FreeClaimRange * FreeClaimRange) continue;
 
             float d = (at - from).sqrMagnitude;
             if (d < bestDist) { bestDist = d; best = node; }

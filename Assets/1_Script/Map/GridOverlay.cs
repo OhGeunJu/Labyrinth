@@ -72,7 +72,7 @@ public class GridOverlay : MonoBehaviour
         // 꺼질 때(`SettlementManager`) 격자만 살아남아 빈 세상에 흰 줄이 남는다.
         var go = new GameObject("GridLines");
         go.transform.SetParent(transform, worldPositionStays: false);
-        go.hideFlags = HideFlags.DontSave;
+        go.hideFlags = SelfStanding.RuntimeObject;
         ZeroWorld(go.transform);
 
         _filter   = go.AddComponent<MeshFilter>();

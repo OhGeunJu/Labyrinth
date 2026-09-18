@@ -20,12 +20,20 @@ MonoBehaviour:
     \uCE78\uC744 \uC601\uC601 \uBA39\uB294\uB2E4."
   Category: 3
   SortOrder: 61
-  Size: {x: 2, y: 1}
-  CostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
-  CostAmount: 18
+  Size: {x: 3, y: 1}
+  Costs:
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Amount: 18
+  CostItem: {fileID: 0}
+  CostAmount: 0
   DragBuild: 0
+  AreaDrag: 0
   RequiredResearch: {fileID: 0}
   Prefab: {fileID: 4100000000000000971, guid: c51d38e6af9c0a34bb27d8e3f6071492, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 0
+  BlockMask: []

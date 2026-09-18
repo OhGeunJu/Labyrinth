@@ -110,6 +110,10 @@ public class MineJobBoard : MonoBehaviour
             if (!RockMap.IsRock(t)) { RockMap.Mark(t, false); continue; }   // 이미 파였다
             if (_restUntil.TryGetValue(t, out float until) && Time.time < until) continue;
 
+            // **받칠 것이 없어도 일감은 낸다**(2026-09-18). 한때 여기서 걸렀는데, 그것은
+            // *무너지면 판 칸이 도로 메워진다*는 전제 위에 있었다 — 그 전제가 없어진
+            // 지금(천장만 떨어지고 굴은 남는다) 막을 이유가 없다. **림월드도 안 막는다**:
+            // 파는 것은 되고, 값은 **거기 있던 폰**이 치른다.
             var job = new MineJob(t);
             jm.RegisterJob(job);
             _live[t] = job;

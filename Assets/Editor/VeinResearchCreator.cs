@@ -131,11 +131,19 @@ public static class VeinResearchCreator
             }
             else
             {
+                // **건물의 첫 재료를 쓴다** — 광맥은 *그것을 캐는 건물을 짓는 재료*로 연구한다.
+                // 비용이 여럿일 수 있게 된 뒤로(2026-09-17) 전부 넣으면 연구 재료가 건물
+                // 비용의 복사본이 되어 버린다: 여기서 묻는 것은 *무엇으로 만드는 것인가*이지
+                // *얼마가 드는가*가 아니다.
                 r.Ingredients.Clear();
-                if (building.CostItem != null)
-                    r.Ingredients.Add(new ResearchData.Ingredient { Item = building.CostItem, Amount = IngredientAmount });
+                ItemData main = null;
+                foreach (var c in building.Costs)
+                    if (c.Item != null && c.Amount > 0) { main = c.Item; break; }
+
+                if (main != null)
+                    r.Ingredients.Add(new ResearchData.Ingredient { Item = main, Amount = IngredientAmount });
                 else
-                    Debug.LogWarning($"[광맥 연구] {buildingName} 에 CostItem이 없어 재료를 비웠습니다.");
+                    Debug.LogWarning($"[광맥 연구] {buildingName} 에 건설 비용이 없어 재료를 비웠습니다.");
 
                 building.RequiredResearch = r;
                 EditorUtility.SetDirty(building);

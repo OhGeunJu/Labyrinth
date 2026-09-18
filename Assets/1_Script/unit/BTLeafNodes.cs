@@ -810,8 +810,15 @@ public class WorkNode : BTNode
                 // 목표 칸이 점유됐는지·바닥이 있는지·차단 기억에 걸렸는지, 그리고 로컬 경로가
                 // 아예 안 나온 것인지(직선 폴백으로 처박은 것인지)가 원인을 가른다.
                 // `PawnMover`의 포기(4단계)가 쓰던 진단을 일감 쪽에서도 그대로 쓴다.
+                // **넘길 수 있는 것은 다 넘긴다**(2026-09-18). 반만 넘기던 동안에는 이 블록이
+                // *"앞을 막은 것"*을 **통과하는 폰까지 범인으로 적었고**(`cc`가 없으면
+                // `excludeLayers`를 못 읽는다) **조향 목표가 빠져 있었다** — 그 둘이 빠지면
+                // *"선 자리 통행가능 · 앞을 막은 것 없음 · 로컬경로 없음"*이라는 **모순처럼
+                // 읽히는 세 줄**이 그대로 되살아난다(2026-08-31에 겪은 그 자리).
                 MovementDiagnostics.LogGiveUp(bb.Self.name, pos, jobCenter,
-                                              bb.Mover.HasLocalPath, bb.Self);
+                                              bb.Mover.HasLocalPath, bb.Self,
+                                              bb.Mover.Controller,
+                                              bb.Mover.RoutePoints, bb.Mover.DiagnosticSteer);
 
                 // 놓는 건 **취소**로 한다 — 각 Job이 OnCancelled에 "들고 있던 것 되돌리기"를
                 // 이미 구현해 두었다(운반 짐 드롭·제작 재료 환불). 예약만 풀면 그게 안 돈다.

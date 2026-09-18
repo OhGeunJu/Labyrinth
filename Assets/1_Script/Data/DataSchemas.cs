@@ -118,6 +118,10 @@ public class RecipeSchema
     public float              requiredSkillLevel;
     public float              skillGrowthAmount = 0.5f;
     public string             requiredResearchId;
+
+    // **어느 등급의 작업대라야 만드나**(`BenchTier`). 0·1 = 아무 데나, 2 = 개량 작업대.
+    // 안 적으면 0이라 **기존 레시피는 전부 그대로 열려 있다.**
+    public int                requiredBenchTier;
 }
 
 [Serializable]

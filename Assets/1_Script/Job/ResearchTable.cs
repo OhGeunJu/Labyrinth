@@ -3,17 +3,44 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class ResearchTable : MonoBehaviour, IWorldClickable
+public class ResearchTable : MonoBehaviour, IWorldClickable, IUpgradableBench
 {
     [Tooltip("비우면 DataManager에 등록된 연구 **전부**를 쓴다. " +
              "특정 연구대만 일부를 다루게 하고 싶을 때만 채운다.")]
     [SerializeField] List<ResearchData> availableResearch = new();
+
+    // **등급 — 작업대와 같은 축이다**(`BenchTier`). 개량 연구대는 연구가 1.5배 빠르다.
+    // 0으로 남은 프리팹은 `Tier`가 1로 받으므로 **이미 놓인 연구대는 안 느려진다.**
+    [Tooltip("연구대 등급. 1 = 기본, 2 = 개량(연구가 빠르다). 비워 두면 1이다.")]
+    [SerializeField] int tier = BenchTier.Min;
+
+    public int   Tier  => BenchTier.Clamp(tier);
+    public float Speed => BenchTier.SpeedOf(Tier);
+
+    // **올리는 문은 `BenchUpgrade` 하나다.**
+    public void SetTier(int value)
+    {
+        tier = BenchTier.Clamp(value);
+        BenchVisual.Ensure(this)?.Apply();
+    }
+
+    public string BenchName => BenchTier.BaseNameOf(this);
 
     // **비어 있으면 레지스트리에서 끌어온다.**
     // 인스턴스마다 손으로 채우는 방식이면 런타임에 지은 연구대는 목록이 텅 빈 채로 나온다
     // — 씬에 미리 놓아둔 것에만 데이터가 들어가는 구조가 되기 때문이다.
     // `CraftingTable`이 `DataManager.GetRecipesBySkill`로 끌어오는 것과 같은 규칙으로 맞췄다.
     // 목록을 채우면 그게 이긴다(큐레이션용) — "데이터가 없으면 기본 동작"이라는 이 프로젝트의 관례.
+    // **이 목록은 저작된 그래프다 — 여기서 거르면 안 된다**(2026-09-17에 되돌렸다).
+    //
+    // 등급 필터를 처음엔 여기 걸었는데, 그러면 **씬에 구워 둔 노드 마흔넷과 목록 열다섯이
+    // 어긋나** `ResearchTableUI`가 *"구운 것이 낡았다"*고 경고하며 **매번 런타임에 그래프를
+    // 다시 찍는다**(저작한 자리가 통째로 버려진다). 다시 구워도 소용이 없다 — 구울 때는
+    // 마흔넷, 열 때는 열다섯이라 **영원히 안 맞는다.**
+    //
+    // *"거르는 자리는 목록 하나"*라고 적었던 판단이 틀렸다. 이 목록이 답하는 물음은
+    // **"이 그래프에 무엇이 있나"**이지 *"지금 무엇을 할 수 있나"*가 아니다. 등급은
+    // **`CanResearch`(할 수 있나)와 화면(보이나)**이 묻는다.
     public IReadOnlyList<ResearchData> AllResearch
     {
         get
@@ -25,6 +52,11 @@ public class ResearchTable : MonoBehaviour, IWorldClickable
             return _fallback;
         }
     }
+
+    // **이 연구대에서 다룰 수 있는 등급인가.** 화면도 이걸 보고 노드를 감춘다 —
+    // 답이 한 곳에 있어야 *보이는데 못 하는* 연구가 안 생긴다.
+    public bool HandlesTier(ResearchData data) =>
+        data != null && data.RequiredBenchTier <= Tier;
 
     // 매번 새 리스트를 만들면 UI가 열릴 때마다 쓰레기가 생긴다 — 한 벌만 돌려 쓴다.
     readonly List<ResearchData> _fallback = new();
@@ -122,6 +154,10 @@ public class ResearchTable : MonoBehaviour, IWorldClickable
     public bool CanResearch(ResearchData data)
     {
         if (data == null) return false;
+
+        // **등급이 모자라면 못 한다** — 목록에서 거르는 대신 여기서 막는다(위 주석 참고).
+        if (!HandlesTier(data)) return false;
+
         if (ResearchManager.Instance != null && !ResearchManager.Instance.CanResearch(data)) return false;
 
         // **이어서 하는 연구는 재료를 다시 요구하지 않는다.** 재료는 처음 착수할 때 한 번만

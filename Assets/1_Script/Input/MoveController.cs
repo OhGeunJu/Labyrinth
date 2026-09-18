@@ -298,12 +298,18 @@ public class MoveController : MonoBehaviour
             bb.PutDownSite  = null;
             bb.EscortTo     = EscortDest.None;   // 데려가던 것도 거둔다(간수가 켜져 있으면 다시 잡는다)
 
-            // **소집 중이면 배정은 남긴다.** 평소 이동 명령이 배정까지 거두는 이유는
-            // *"안 거두면 도착하자마자 일하러 돌아가 명령이 안 먹는 것처럼 보인다"*인데,
-            // **소집이 이미 `WorkNode`를 막고 있으므로 그 이유가 없다.** 거두면 진형을 잡으려고
-            // 한 번 옮겼을 뿐인데 캐던 바위가 떨어져 나가고, 소집을 풀어도 안 돌아간다.
-            if (brain.IsDrafted) brain.DropCurrentJob();
-            else                 brain.AbandonWork();
+            // **이동 명령은 배정을 안 거둔다**(2026-09-17, 사용자: *"이미 캐라고 지정을
+            // 해놨는데 조금 움직였다고 아예 안 캐는건 말이 안되잖아"*).
+            //
+            // 전에는 평소 이동이 `AbandonWork`(일감 + 배정)였다. 이유는 *"안 거두면 도착하자마자
+            // 일하러 돌아가 명령이 안 먹는 것처럼 보인다"*였는데 — **그건 명령이 안 먹은 것이
+            // 아니라 먹고 끝난 것**이다. 붙들어 두고 싶으면 소집(`R`)이 그 장치이고,
+            // 거두는 쪽은 **한 번 비켜세웠다고 캐던 바위가 떨어져 나가는** 값을 치른다.
+            //
+            // 그래서 소집이든 아니든 **일감만 놓는다.** (손에 든 일감을 놓는 것은 그대로
+            // 해야 한다 — 게이트로 막기만 하면 그 일감이 예약된 채 얼어붙어 다른 폰도
+            // 못 가져간다.)
+            brain.DropCurrentJob();
 
             // **진형이 준 자리를 기억한다** — 소집 중이면 `FightNode`가 여기서 멀어지지
             // 않는 선까지만 다가간다(안 기억하면 첫 접촉에서 대형이 녹는다).
@@ -712,7 +718,7 @@ public class MoveController : MonoBehaviour
     public static string BlueprintTitle(BuildingBlueprint bp)
     {
         string name = bp.Data != null ? bp.Data.BuildingName : "청사진";
-        return bp.CostItem != null
+        return bp.CostRequired > 0
             ? $"{name} (청사진 {bp.Delivered}/{bp.CostRequired})"
             : $"{name} (청사진)";
     }

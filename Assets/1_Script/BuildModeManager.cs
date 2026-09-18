@@ -441,15 +441,19 @@ public class BuildModeManager : MonoBehaviour
 
         // 값 — 모자라면 빨갛게. **얼마나 있는지도 같이 적는다**(모자란 줄만 알면 얼마를
         // 더 모아야 하는지를 또 찾아야 한다).
-        if (bd.CostAmount > 0 && bd.CostItem != null)
+        // **재료마다 한 줄이다** — 한 줄로 합치면 넷이 드는 건물에서 *무엇이* 모자란지가
+        // 안 보인다(모자란 것만 빨갛게 하려면 줄이 갈려 있어야 한다).
+        foreach (var c in bd.Costs)
         {
-            int have  = MaterialPool.AvailableHere(bd.CostItem);
-            bool poor = have < bd.CostAmount;
+            if (c.Item == null || c.Amount <= 0) continue;
+
+            int have  = MaterialPool.AvailableHere(c.Item);
+            bool poor = have < c.Amount;
 
             var was = GUI.color;
             GUI.color = poor ? new Color(1f, 0.35f, 0.30f) : new Color(0.92f, 0.92f, 0.92f);
             GUI.Label(new Rect(at.x, at.y, 420f, 22f),
-                      $"{bd.CostItem.ItemName} {bd.CostAmount}" +
+                      $"{c.Item.ItemName} {c.Amount}" +
                       (poor ? $" (재료가 충분하지 않음 — {have})" : ""));
             GUI.color = was;
             at.y += 18f;
@@ -905,6 +909,31 @@ public class BuildModeManager : MonoBehaviour
     //
     // **`IsFloor`가 이 물음을 겸하고 있었다**(2026-09-02에 갈랐다) — 그건 *"바닥 데이터로
     // 깔리는가"*라는 다른 물음이다. 밭은 바닥이 아니지만 면으로 깐다(`AreaDrag`).
+    // **잇대어 긋는 것은 줄 방향을 따라 돈다**(2026-09-18, 사용자: *"목책이 한쪽 방향은
+    // 맞는데 다른쪽 방향은 회전이 안돼"*).
+    //
+    // 전에는 줄을 어느 쪽으로 긋든 `_gridYaw`(사람이 `R`로 돌려 둔 각) 하나였다 — 가로로
+    // 그으면 맞고 **세로로 그으면 담이 옆을 보고 선다.** 벽이 큐브였을 때는 티가 안 났는데,
+    // 울타리처럼 **앞뒤가 있는 모델**이 들어오자 그대로 드러났다.
+    //
+    // **면으로 까는 것(`RectDrag`)과 회전이 없는 것은 안 건드린다** — 바닥·밭은 방향이 없고,
+    // 면에는 *줄 방향*이랄 것도 없다.
+    float DragYaw
+    {
+        get
+        {
+            if (_lineTiles.Count < 2 || RectDrag) return _gridYaw;
+
+            var a = _lineTiles[0];
+            var b = _lineTiles[_lineTiles.Count - 1];
+
+            // 세로로 그었으면 한 번 더 돌린다. **사람이 돌려 둔 각에 더한다** — 덮어쓰면
+            // `R`로 맞춰 둔 방향이 줄을 그을 때마다 사라진다.
+            bool vertical = Mathf.Abs(b.y - a.y) > Mathf.Abs(b.x - a.x);
+            return vertical ? _gridYaw + 90f : _gridYaw;
+        }
+    }
+
     bool RectDrag => SelectedBuilding != null && !SelectedBuilding.Stairs
                   && (SelectedBuilding.IsFloor || SelectedBuilding.AreaDrag);
 
@@ -1280,7 +1309,7 @@ public class BuildModeManager : MonoBehaviour
 
         // **지어질 자리마다 모델을 세운다.** 초록 격자만으로는 몇 칸인지는 알아도 어떤 모양이
         // 어느 방향으로 설지 안 보인다 — 담이 그림대로 이어지는지가 놓기 전에 보여야 한다.
-        var rot = Quaternion.Euler(0, _gridYaw, 0);
+        var rot = Quaternion.Euler(0, DragYaw, 0);
         var head = _lineTiles.Count > 0 ? _lineTiles[0] : tile;
         ShowGhost(FootprintCenter(GetFootprint(head)), rot, head);
         ShowLineGhosts(_lineTiles, rot);
@@ -1308,7 +1337,12 @@ public class BuildModeManager : MonoBehaviour
 
         // 두 번째 클릭 = 짓는다. **못 짓는 칸은 건너뛴다** — 스무 칸을 그었는데 한 칸이
         // 막혔다고 전부 취소하면, 어디가 막혔는지도 모른 채 처음부터 다시 그어야 한다.
+        // **줄 방향이 회전을 정한다** — 미리보기와 같은 값을 써야 *보이는 대로* 선다.
+        float was = _gridYaw;
+        _gridYaw = DragYaw;
         foreach (var t in _lineTiles) TryPlaceGrid(t);
+        _gridYaw = was;
+
         ClearLineAnchor();
     }
 
@@ -1486,11 +1520,11 @@ public class BuildModeManager : MonoBehaviour
         // 파란 계획이 서고 자재가 들어오는 순간 폰이 저절로 간다.
         // **자리에서 낸다** — 세계가 이어져 거점이 여럿이면 29km 밖 창고의 목재로 여기를
         // 짓게 된다(`Territory`).
-        if (data.CostAmount > 0 && !Storage.ConsumeByItem(data.CostItem, data.CostAmount, pos))
-        {
-            Debug.Log($"[Build] 자원 부족 — {data.CostItem?.ItemName} ×{data.CostAmount}");
-            return;
-        }
+        //
+        // **여럿이 들면 하나라도 모자랄 때 아무것도 안 뺀다** — 앞의 둘만 빼고 셋째에서
+        // 멈추면 그 자재가 **아무 일도 안 하고 사라진다**(화면에는 *"눌렀는데 안 지어졌다"*로만
+        // 보인다). 뺀 것을 적어 두었다가 되돌린다.
+        if (!ConsumeAll(data, pos)) return;
 
         // 표면 위에 얹기 — 피벗이 중앙이면 바닥면 스냅, 저작된 부양 높이(서브코어 등)가 있으면 그만큼 띄움.
         var instance = SpawnOnSurface(prefab, pos, rot);
@@ -1510,6 +1544,30 @@ public class BuildModeManager : MonoBehaviour
         // 벽 등 장애물이면 코스 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
         Debug.Log($"[Build] 배치 완료 — {data.BuildingName}");
+    }
+
+    // **전부 되거나 아무것도 안 된다.** 재료가 여럿일 수 있게 된 뒤로(2026-09-17) 중간에서
+    // 멈추면 앞서 뺀 자재가 증발하므로, 뺀 것을 적어 두었다가 되돌린다.
+    //
+    // 되돌리는 문은 `MaterialPool.Refund`다 — **창고 먼저**로 돌아간다(바닥에 떨구면 그 짐이
+    // 다시 운반 일감이 되고, 나르는 동안 집계에서 빠져 다른 작업이 재료 부족으로 죽는다).
+    static bool ConsumeAll(BuildingData data, Vector3 pos)
+    {
+        var taken = new List<RecipeData.Ingredient>();
+
+        foreach (var c in data.Costs)
+        {
+            if (c.Item == null || c.Amount <= 0) continue;
+
+            // **자리에서 낸다** — 세계가 이어져 거점이 여럿이면 29km 밖 창고의 목재로
+            // 여기를 짓게 된다(`Territory`).
+            if (Storage.ConsumeByItem(c.Item, c.Amount, pos)) { taken.Add(c); continue; }
+
+            foreach (var back in taken) MaterialPool.Refund(back.Item, back.Amount, pos);
+            Debug.Log($"[Build] 자원 부족 — {c.Item.ItemName} ×{c.Amount}");
+            return false;
+        }
+        return true;
     }
 
     GameObject ResolvePrefab()

@@ -151,6 +151,10 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 닫힌다(옛 격자에는 그 구별이 없어서 그렇게 할 수밖에 없었다).
     public void ReportUnreachable(Vector3 world) => _graph?.BlockAt(world, WideBlockDuration);
 
+    // **광역이 그 칸을 걸을 수 있다고 보나** — 진단이 쓴다(`RockMap.VerifyOpened`). 그래프가
+    // 없으면 참으로 답한다(없는 것을 막힌 것으로 치면 없는 사고를 쫓게 된다).
+    public bool WideWalkable(Vector2Int tile) => _graph == null || _graph.WalkableTile(tile.x, tile.y);
+
     // ── 공개 길찾기 API ────────────────────────────────────────────────
 
     // 광역 라우트 — *어느 복도로 갈지*의 안내. 도착점이 아니다(마지막 구간은 `PawnMover`가

@@ -67,6 +67,27 @@ public static class RockMap
 
     static readonly HashSet<Vector2Int> _mined = new();
 
+    // ── 천장 격자 ───────────────────────────────────────────────────────────
+    //
+    // **림월드의 그 격자다**(2026-09-18, 사용자: *"그냥 아예 림월드처럼 해달라니깐"*).
+    // 답하는 물음은 ***"이 칸에 아직 안 무너진 천장이 있나"*** 하나이고, 그 답이 곧
+    // **무너질 수 있는 칸**이다.
+    //
+    // **`_mined`와 다른 물음이라 집합이 둘이다** — 저쪽은 *여기가 열렸나*(여유 함수의 답을
+    // 뒤집은 칸)이고 이쪽은 *그 위에 뚫어 놓은 천장이 남아 있나*다. 같은 물음에 답이 둘인
+    // 것이 아니다.
+    //
+    // 들어오는 문은 **`Mine` 하나**다 — 파야 천장이 생긴다(사용자: *"내가 파기 시작한
+    // 곳부터 천장"*). 그래서 **자연 굴과, 판이 열릴 때 뚫어 주는 시작 공터·길**
+    // (`OpenAround`·`OpenPathToCave`)은 여기 없다: 원래부터 서 있던 천장이라 안 내려앉는다.
+    //
+    // 나가는 문도 하나다 — **무너지면 빠진다**(천장이 떨어졌으니 두 번 떨어지지 않는다).
+    static readonly HashSet<Vector2Int> _cutRoof = new();
+
+    // 파서 생긴 천장이 아직 있나. **`IsRock`의 반대가 아니다** — 자연 굴은 열려 있지만
+    // 이 격자 밖이고, 무너진 자리도 열려 있지만 이 격자 밖이다.
+    public static bool HasCutRoof(Vector2Int tile) => _cutRoof.Contains(tile);
+
     // 캘 것으로 찍어 둔 칸. **바위인지와 다른 축이다** — 찍어 놓고 아직 안 판 상태가 있다.
     static readonly HashSet<Vector2Int> _marked = new();
 
@@ -291,6 +312,7 @@ public static class RockMap
         if (!IsRock(tile)) return false;
 
         _mined.Add(tile);
+        _cutRoof.Add(tile);      // **여기부터 천장이다** — 무너짐이 보는 것은 이 격자다
         _marked.Remove(tile);
 
         // **길찾기에 알린다.** 안 알리면 격자가 옛 상태로 남아 **판 자리를 폰이 계속 벽으로
@@ -310,8 +332,80 @@ public static class RockMap
         if (map != null) HierarchicalPathfinder.Instance?.RebakeObstacleAt(map.TileToWorld(tile));
 
         OnChanged?.Invoke(tile);
+
+        VerifyOpened(tile);
+        Collapse(tile);
         return true;
     }
+
+    // **판 칸이 진짜로 열렸는지 그 자리에서 확인한다**(2026-09-18).
+    //
+    // *"팠는데 못 간다"*는 화면에 **그것 하나로만** 보인다 — 벽도 안 보이고 콜라이더도
+    // 없는데 폰만 안 간다. 답하는 층이 넷이라(바위·점유·`IsWorkable`·광역 격자) **어느
+    // 하나가 옛 답을 들고 있어도 증상이 똑같고**, 그 사실이 어디에도 안 적힌다.
+    //
+    // **성할 때는 아무 말도 안 한다** — 어긋났을 때만, 그것도 몇 번만 찍는다(한 칸이
+    // 어긋나면 대개 그 둘레가 통째로 어긋나 로그가 그것으로 덮인다).
+    static int _verifyLeft = 8;
+
+    static void VerifyOpened(Vector2Int tile)
+    {
+        if (_verifyLeft <= 0) return;
+
+        var map = MapManager.Instance;
+        var hp  = HierarchicalPathfinder.Instance;
+
+        bool rock = IsRock(tile);
+        bool occ  = map != null && map.IsOccupied(tile);
+        bool work = map == null || map.IsWorkable(tile);
+        bool wide = hp  == null || hp.WideWalkable(tile);
+
+        if (!rock && !occ && work && wide) return;
+
+        _verifyLeft--;
+        Debug.LogWarning($"[채굴] 판 칸 {tile}이 아직 막혀 있다 — "
+                       + $"바위 {rock} · 점유 {occ} · IsWorkable {work} · 광역격자 {wide}"
+                       + (hp == null ? " · **길찾기가 씬에 없다**" : ""));
+    }
+
+    // ── 무너짐 ──────────────────────────────────────────────────────────────
+    //
+    // **판 자리 둘레에서 천장이 지지를 잃으면 내려앉는다**(2026-09-18, `RockSupport`).
+    //
+    // **천장 격자에 있는 칸만 무너진다** — 자연 굴과 판이 열릴 때 뚫어 준 자리는 원래부터
+    // 서 있던 천장이라 안 내려앉는다(`_cutRoof`).
+    //
+    // **`_mined`는 안 건드린다** — 떨어지는 것은 천장이고 굴은 남는다. 그래서 `IsRock`의
+    // 답이 안 바뀌고, 길찾기·그리기·캐시도 그대로다.
+    static readonly System.Collections.Generic.List<Vector2Int> _collapsing = new();
+
+    static void Collapse(Vector2Int mined)
+    {
+        _collapsing.Clear();
+        if (RockSupport.CollectCollapsed(mined, _collapsing) == 0) return;
+
+        // **천장만 떨어진다 — 굴은 남는다**(림월드의 그 규칙, 2026-09-18 사용자 결정).
+        //
+        // 전에는 `_mined`에서 빼서 **판 칸을 도로 바위로 되메웠다.** 그러면 파는 일이
+        // *아무 일도 아닌 것*이 된다 — 폰이 몇 초 파고, 열리자마자 닫히고, 찍힘은 이미
+        // 지워졌으니 **진행이 0**이다. 둘레의 판 칸까지 같이 닫혀 뚫어 둔 길이 끊기므로
+        // 남은 일감이 `HasFace`를 잃고 취소·재시도를 되풀이했다(*"무너지고 나면 더 안 파고
+        // 왔다갔다만 한다"*).
+        //
+        // 림월드는 무너진 천장을 **없앤다** — 그 자리에 있던 것이 깔릴 뿐, 공간은 남는다.
+        // 그래서 값은 *진행의 무효화*가 아니라 **거기 있던 폰과 물건**이 치른다.
+        //
+        // 딸려 오는 것 둘: **`IsRock`의 답이 안 바뀌므로** 길찾기·그리기·캐시를 건드릴
+        // 일이 없다(`Forget`도 `RebakeObstacleAt`도 안 부른다 — 판 칸마다 세계 전체 캐시를
+        // 날리던 것이 사라진다) · **천장 격자에서 빠지므로 그 칸은 두 번 안 무너진다.**
+        foreach (var t in _collapsing) _cutRoof.Remove(t);
+
+        OnCollapse?.Invoke(_collapsing);
+    }
+
+    // **무너졌다는 사실을 밖에 알린다** — 누가 다치는지, 화면에 무엇을 띄우는지는
+    // 여기가 알 일이 아니다(`RockMap`은 *무엇이 바위인가*에만 답한다).
+    public static event System.Action<System.Collections.Generic.List<Vector2Int>> OnCollapse;
 
     // **시작 자리를 열어 둔다**(2026-08-29).
     //
@@ -471,6 +565,7 @@ public static class RockMap
     public static void Clear()
     {
         _mined.Clear();
+        _cutRoof.Clear();
         _marked.Clear();
         OnChanged?.Invoke(Vector2Int.zero);
     }

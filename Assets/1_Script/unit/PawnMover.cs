@@ -383,6 +383,11 @@ public class PawnMover : MonoBehaviour
 
     // 갈 수 없는 곳이다. **말하고 멈춘다** — 포기하는 자리가 어디든 같은 진단을 남긴다
     // (한 자리만 조용해도 그 자리에 걸린 날은 진단이 없는 것과 같다). 멈추면 BT가 다음
+    // **진단이 쓰는 두 값** — 밖에서 재면 답이 갈린다(조향 목표는 라우트·로컬 창·최종
+    // 목적지를 함께 봐야 나오고, 통과 레이어는 `_cc.excludeLayers`가 든다).
+    public Vector3              DiagnosticSteer => SelectSteeringTarget(transform.position);
+    public CharacterController  Controller      => _cc;
+
     // 행동을 고른다 — 여기서 계속 붙들면 그 폰은 다른 일을 영영 못 한다.
     void GiveUp()
     {

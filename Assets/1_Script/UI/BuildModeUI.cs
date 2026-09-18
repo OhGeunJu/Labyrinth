@@ -209,13 +209,15 @@ public class BuildModeUI : MonoBehaviour
         // 비용 이름이 **한글로 나온다.** 예전엔 enum 값이 그대로 찍혀 "IronOre ×20"이 보였다.
         // **가진 것을 같이 적는다** — 붉게 물든 타일을 보고 "얼마나 모자란가"를 물을 자리가
         // 여기뿐이다(청사진 살펴보기 창이 같은 답을 쓴다).
-        if (bd.CostAmount > 0 && bd.CostItem != null)
-        {
-            int have = MaterialPool.AvailableHere(bd.CostItem);
-            string col = have >= bd.CostAmount ? "#CCC" : "#F66";
-            sb.AppendLine($"<color={col}>{bd.CostItem.ItemName} {have}/{bd.CostAmount}</color>");
-        }
-        else sb.AppendLine("<color=#888>무료</color>");
+        if (bd.IsFree) sb.AppendLine("<color=#888>무료</color>");
+        else
+            foreach (var c in bd.Costs)   // **재료마다 한 줄** — 합치면 무엇이 모자란지가 안 보인다
+            {
+                if (c.Item == null || c.Amount <= 0) continue;
+                int have = MaterialPool.AvailableHere(c.Item);
+                string col = have >= c.Amount ? "#CCC" : "#F66";
+                sb.AppendLine($"<color={col}>{c.Item.ItemName} {have}/{c.Amount}</color>");
+            }
 
         // **사유는 `BuildingData.LockReason` 하나가 답한다** — 잠그는 축이 둘이 되면서
         // (연구 · 가져와 봤는가) 여기서 조립하면 창마다 다른 말이 뜬다.
@@ -274,7 +276,6 @@ public class BuildModeUI : MonoBehaviour
     bool CanAfford(BuildModeManager mgr, int idx)
     {
         var bd = mgr.GetBuilding(idx);
-        return bd == null || bd.CostAmount <= 0
-            || MaterialPool.AvailableHere(bd.CostItem) >= bd.CostAmount;
+        return bd == null || bd.CanAfford(MaterialPool.Focus);
     }
 }

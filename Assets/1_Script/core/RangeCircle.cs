@@ -92,7 +92,7 @@ public sealed class RangeCircle
 
         // **자식으로 둔다** — 붙은 오브젝트에 이미 렌더러가 있을 수 있고(핵은 모델이 있다),
         // 원만 껐다 켜려면 제 렌더러가 따로 있어야 한다.
-        _go = new GameObject(_name) { hideFlags = HideFlags.DontSave };
+        _go = new GameObject(_name) { hideFlags = SelfStanding.RuntimeObject };
         _go.transform.SetParent(_parent, worldPositionStays: false);
 
         _filter   = _go.AddComponent<MeshFilter>();

@@ -18,10 +18,14 @@ MonoBehaviour:
     \uAE54\uC558\uB2E4. \uAC19\uC740 \uBC24\uC744 \uC790\uB3C4 \uB354 \uAC1C\uC6B4\uD558\uB2E4."
   Category: 2
   SortOrder: 32
-  Size: {x: 1, y: 2}
-  CostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
-  CostAmount: 1
+  Size: {x: 3, y: 1}
+  Costs:
+  - Item: {fileID: 11400000, guid: d5110da4aaf3118469617092dbad6ce1, type: 2}
+    Amount: 16
+  CostItem: {fileID: 0}
+  CostAmount: 0
   DragBuild: 0
+  AreaDrag: 0
   RequiredResearch: {fileID: 11400000, guid: e051620b3d11b2748860d469de0de164, type: 2}
   Prefab: {fileID: 9051637841178264352, guid: 680ad628d5d7da04bbe02a495f5a4bc4, type: 3}
   UsesBlueprint: 1

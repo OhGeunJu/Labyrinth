@@ -272,6 +272,14 @@ public class ResearchTableUI : MonoBehaviour
             foreach (var data in all)
             {
                 if (data == null || !baked.TryGetValue(data, out var e)) continue;
+
+                // **등급이 모자란 연구는 감춘다**(사용자: *"하위 연구대에서는 상위 연구대의
+                // 연구들이 안 보여야 해"*). **구운 노드는 그대로 둔다** — 목록에서 빼면
+                // `CollectBaked`가 *낡았다*고 보고 저작한 자리를 통째로 버린다.
+                bool shown = _currentTable.HandlesTier(data);
+                e.gameObject.SetActive(shown);
+                if (!shown) continue;
+
                 e.Setup(data, pending);
                 e.OnSelected += SelectResearch;
                 _entries.Add(e);
@@ -302,6 +310,10 @@ public class ResearchTableUI : MonoBehaviour
         foreach (var data in all)
         {
             if (data == null || !graph.Slots.TryGetValue(data, out var slot)) continue;
+
+            // 계산해서 찍을 때도 같다 — **자리는 전체로 잡고 감추기만 한다**(빼고 잡으면
+            // 등급이 오를 때마다 그래프 모양이 통째로 달라진다).
+            if (!_currentTable.HandlesTier(data)) continue;
 
             var entry = Instantiate(entryPrefab, entryContainer);
             entry.Setup(data, pending);
@@ -397,9 +409,14 @@ public class ResearchTableUI : MonoBehaviour
             if (data.Prerequisites == null) continue;
             if (kv.Value.transform is not RectTransform to) continue;
 
+            // **감춘 노드에는 선을 안 잇는다** — 안 그으면 선이 빈 곳으로 뻗어, 없는 노드가
+            // 있는 것처럼 보인다(등급이 모자라 감춘 것도 씬에는 그대로 서 있다).
+            if (!kv.Value.gameObject.activeSelf) continue;
+
             foreach (var pre in data.Prerequisites)
             {
                 if (pre == null || !nodes.TryGetValue(pre, out var fromEntry)) continue;
+                if (!fromEntry.gameObject.activeSelf) continue;
                 if (fromEntry.transform is not RectTransform from) continue;
 
                 result.Add(new ResearchLinkGraphic.Link

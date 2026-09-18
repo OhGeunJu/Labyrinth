@@ -663,6 +663,17 @@ public static class VeinArt
     // 종류마다 재질을 만들면 그중 하나는 반드시 뒤처진다).
     const string RockTex = "Assets/assetsss/Yughues/YughuesFreeRockMaterials/Textures/T_YFRM_02";
 
+    // **남의 팩 텍스처는 그 팩의 UV에 묶여 있다 — 우리 메시에 못 쓴다**(2026-09-18에
+    // 해 보고 되돌렸다).
+    //
+    // 팩의 광맥 표면(`T_PROP_orevein_dungeon_BC`)을 입혀 봤더니 **벽돌 무늬와 색색 조각이
+    // 뒤섞여 나왔다** — 그 그림은 팩 소품의 UV에 맞춰 그린 **아틀라스**라, 제 UV를 가진
+    // `VeinArt` 메시에 물리면 **엉뚱한 자리가 잘려 나온다.**
+    //
+    // **남의 메시에서 가져올 수 있는 것은 *타일링 텍스처*뿐이다**(Yughues 바위가 그렇다 —
+    // 이음매 없이 반복되니 UV가 무엇이든 결이 맞는다). 아틀라스를 쓰려면 **그 메시까지
+    // 같이 가져와야** 하는데, 그건 *텍스처만 가져오는 일*이 아니다.
+
     static Material _rock;
 
     static Material RockMat()
@@ -699,6 +710,9 @@ public static class VeinArt
     // 결정·알갱이는 **텍스처가 없다** — 금속 알갱이도 보석도 매끈한 면이 맞고, 바위 결을
     // 입히면 *색칠한 돌*로 보인다. 갈리는 것은 색과 발광뿐이다.
     //
+    // (2026-09-18에 팩 광맥 표면을 입혀 봤다가 되돌렸다 — 윗글 참고. **그 그림은 남의
+    //  UV에 묶여 있어** 우리 메시에서는 무늬가 엉뚱하게 잘린다.)
+    //
     // **색을 이름에 넣는다** — 하나로 쓰면 나중에 만든 쪽이 앞엣것의 색을 덮어써서
     // **루비를 넣는 순간 사파이어까지 빨개진다**(색조 캐시에서 겪은 그 자리).
     static Material OreMat(Vein v)
@@ -721,6 +735,20 @@ public static class VeinArt
 
         m.SetColor("_BaseColor", v.Ore);
         m.SetColor("_Color",     v.Ore);
+
+        // **텍스처를 명시적으로 비운다**(2026-09-18).
+        //
+        // 이 재질은 **있으면 값만 맞춘다**(guid를 지키려고). 그래서 *넣는 코드를 지우는 것*
+        // 만으로는 안 지워진다 — 팩 광맥 표면을 잠깐 물렸다가 코드를 되돌렸더니, 다시
+        // 구워도 **에셋에 그 텍스처가 그대로 남아** 무늬가 계속 나왔다.
+        //
+        // **알갱이는 결이 없다** — 금속은 `_Metallic` 반사로, 결정은 깎은 면으로 읽힌다
+        // (`RockMat`은 Yughues **타일링** 텍스처를 쓴다 — 이음매 없이 반복되니 UV가
+        //  무엇이든 맞는다. 아틀라스는 그래서 못 쓴다).
+        m.SetTexture("_BaseMap", null);
+        m.SetTexture("_MainTex", null);
+        m.SetTexture("_BumpMap", null);
+        m.DisableKeyword("_NORMALMAP");
 
         // **금속은 반사로 읽힌다.** `_Metallic`이 0이면 아무리 회색으로 칠해도 *회색 돌*이다.
         if (m.HasProperty("_Metallic"))   m.SetFloat("_Metallic",   v.Metal);

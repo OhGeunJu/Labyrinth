@@ -20,8 +20,11 @@ MonoBehaviour:
   Category: 2
   SortOrder: 41
   Size: {x: 1, y: 1}
-  CostItem: {fileID: 11400000, guid: d72a41f0b8e35c34ea9017c6d5b28401, type: 2}
-  CostAmount: 20
+  Costs:
+  - Item: {fileID: 11400000, guid: d72a41f0b8e35c34ea9017c6d5b28401, type: 2}
+    Amount: 20
+  CostItem: {fileID: 0}
+  CostAmount: 0
   DragBuild: 0
   AreaDrag: 0
   RequiredResearch: {fileID: 11400000, guid: e83b52a1c9f46d34fb1028d7e6c39512, type: 2}

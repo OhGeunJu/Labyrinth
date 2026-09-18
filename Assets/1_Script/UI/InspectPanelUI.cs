@@ -614,8 +614,7 @@ public class InspectPanelUI : MonoBehaviour
         Show();
         if (infoText == null) return;
 
-        var sb   = new StringBuilder();
-        var item = bp.CostItem;
+        var sb = new StringBuilder();
         string name = bp.Data != null ? bp.Data.BuildingName : "청사진";
 
         sb.AppendLine($"<b><color=#E8C566>{name}</color></b>  <color=#888>[청사진]</color>");
@@ -629,19 +628,26 @@ public class InspectPanelUI : MonoBehaviour
             sb.AppendLine();
         }
 
-        if (item != null && bp.CostRequired > 0)
+        if (bp.CostRequired > 0)
         {
-            sb.AppendLine($"자재  {BarColored(bp.Delivered, bp.CostRequired, "#6C9", "#353")}  " +
-                          $"{item.ItemName} {bp.Delivered}/{bp.CostRequired}");
+            // **재료마다 한 줄이다**(2026-09-17) — 여기가 답하는 물음이 *"왜 아직 안
+            // 지어졌나"*인데, 합쳐 적으면 **무엇을 더 캐 와야 하는지**가 그 답에서 빠진다.
+            foreach (var (material, got, need) in bp.Progress)
+            {
+                if (material == null) continue;
 
-            // **창고만 세면 손에 든 것이 없는 것이 된다** — 등록 판정과 같은 축으로 본다.
-            int stock = MaterialPool.AvailableHere(item);
-            string col = stock >= bp.Remaining ? "#8BC34A" : "#F44336";
-            sb.AppendLine($"남은 것  <b>{bp.Remaining}</b>   " +
-                          $"가진 것  <color={col}>{stock}</color>");
+                sb.AppendLine($"{BarColored(got, need, "#6C9", "#353")}  " +
+                              $"{material.ItemName} {got}/{need}");
 
-            if (stock < bp.Remaining)
-                sb.AppendLine($"\n<color=#F90>{item.ItemName}이(가) 모자라 짓지 못하고 있습니다.</color>");
+                int left = need - got;
+                if (left <= 0) continue;
+
+                // **창고만 세면 손에 든 것이 없는 것이 된다** — 등록 판정과 같은 축으로 본다.
+                int stock = MaterialPool.AvailableHere(material);
+                if (stock < left)
+                    sb.AppendLine($"<color=#F90>  {material.ItemName}이(가) 모자랍니다 — "
+                                + $"가진 것 {stock} / 남은 것 {left}</color>");
+            }
         }
         else
         {
@@ -667,6 +673,11 @@ public class InspectPanelUI : MonoBehaviour
 
         var data = pb.Data;
         string name = data != null ? data.BuildingName : pb.name;
+
+        // **등급이 있으면 이름에 붙는다** — `연구대 II`. 이름을 다섯 벌 저작하지 않는
+        // 이유이자(`BenchTier.NameOf`), 화면에서 등급을 읽는 **유일한 자리**다.
+        var bench = pb.GetComponent<IUpgradableBench>();
+        if (bench != null) name = BenchTier.NameOf(name, bench.Tier);
 
         var sb = new StringBuilder();
         sb.AppendLine($"<b><color=#E8C566>{name}</color></b>  <color=#888>[건물]</color>");
@@ -709,16 +720,93 @@ public class InspectPanelUI : MonoBehaviour
         if (dorm != null && dorm.IsDormant)
             sb.AppendLine("<color=#F90>핵 영역 밖이라 작동을 멈췄습니다.</color>");
 
-        if (data != null && data.CostAmount > 0 && data.CostItem != null)
-            sb.AppendLine($"<color=#888>분해하면 {data.CostItem.ItemName} {data.CostAmount}을(를) 전부 돌려받습니다.</color>");
+        if (bench != null) AppendBenchTier(sb, pb, bench);
+
+        if (data != null && !data.IsFree)
+        {
+            var parts = new List<string>();
+            foreach (var c in data.Costs)
+                if (c.Item != null && c.Amount > 0) parts.Add($"{c.Item.ItemName} {c.Amount}");
+            if (parts.Count > 0)
+                sb.AppendLine($"<color=#888>분해하면 {string.Join(" · ", parts)}을(를) 전부 돌려받습니다.</color>");
+        }
 
         infoText.text = Josa.Fix(sb.ToString());
 
-        SetActions(new List<(string, Action)>
+        var actions = new List<(string, Action)>();
+        AddBenchActions(actions, pb, bench);
+        actions.Add(("이동한다", (Action)(() => BuildingRelocator.Begin(pb))));
+        actions.Add(("분해한다", pb.Demolish));
+        SetActions(actions);
+    }
+
+    // ── 작업대 등급 ──────────────────────────────────────────────────────────
+    //
+    // 여기서 답하는 것은 **"올릴 수 있나, 올리면 뭐가 좋나, 지금 어디까지 왔나"** 셋이다.
+    // 올리는 일은 건설과 같은 길이라(폰이 자재를 지고 온다) 진행이 보여야 하고, 안 보이면
+    // *"눌렀는데 아무 일도 안 일어난다"*가 된다.
+    static void AppendBenchTier(StringBuilder sb, PlacedBuilding pb, IUpgradableBench bench)
+    {
+        sb.AppendLine();
+        sb.AppendLine($"<color=#888>등급</color> <b>{BenchTier.Roman(bench.Tier)}</b>"
+                    + $"  <color=#888>작업 속도 ×{BenchTier.SpeedOf(bench.Tier):0.##}</color>");
+
+        var up = pb.GetComponent<BenchUpgrade>();
+
+        if (up != null && up.InProgress)
         {
-            ("이동한다", (Action)(() => BuildingRelocator.Begin(pb))),
-            ("분해한다", pb.Demolish),
-        });
+            sb.AppendLine($"<color=#6C9>{BenchTier.Roman(up.Target)} 등급으로 올리는 중</color>");
+            foreach (var (item, got, need) in up.Progress)
+            {
+                if (item == null) continue;
+                sb.AppendLine($"{BarColored(got, need, "#6C9", "#353")}  {item.ItemName} {got}/{need}");
+
+                int left = need - got;
+                if (left <= 0) continue;
+                int stock = MaterialPool.AvailableHere(item);
+                if (stock < left)
+                    sb.AppendLine($"<color=#F90>  {item.ItemName}이(가) 모자랍니다 — "
+                                + $"가진 것 {stock} / 남은 것 {left}</color>");
+            }
+            return;
+        }
+
+        if (bench.Tier >= BenchTier.Max)
+        {
+            sb.AppendLine("<color=#888>가장 높은 등급입니다.</color>");
+            return;
+        }
+
+        // **다음 등급에 무엇이 드는지 미리 적는다** — 누르기 전에 알아야 *지금 올릴지*를
+        // 정한다(누르고 나서 알면 취소하는 수밖에 없다).
+        var cost = BenchUpgrade.CostFor(bench.Tier + 1);
+        if (cost.Count == 0) return;
+
+        var parts = new List<string>();
+        foreach (var c in cost)
+            if (c.Item != null && c.Amount > 0) parts.Add($"{c.Item.ItemName} {c.Amount}");
+        sb.AppendLine($"<color=#888>{BenchTier.Roman(bench.Tier + 1)}로 올리려면 "
+                    + $"{string.Join(" · ", parts)}</color>");
+    }
+
+    static void AddBenchActions(List<(string, Action)> actions, PlacedBuilding pb, IUpgradableBench bench)
+    {
+        if (bench == null) return;
+
+        var up = pb.GetComponent<BenchUpgrade>();
+
+        if (up != null && up.InProgress)
+        {
+            // **취소는 전액 환불이다** — 아직 아무것도 안 바뀌었으므로 깎을 손실이 없다.
+            actions.Add(($"{BenchTier.Roman(up.Target)} 등급 올리기를 그만둔다", up.Cancel));
+            return;
+        }
+
+        if (bench.Tier >= BenchTier.Max) return;
+
+        int next = bench.Tier + 1;
+        actions.Add(($"{BenchTier.Roman(next)} 등급으로 올린다",
+                     (Action)(() => BenchUpgrade.Ensure(pb)?.Request())));
     }
 
     // ── 무덤 ─────────────────────────────────────────────────────────────────

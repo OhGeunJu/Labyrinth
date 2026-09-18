@@ -343,6 +343,7 @@ public static class DataManager
                 recipe.ResultAmount       = schema.resultAmount;
                 recipe.RequiredSkillLevel = schema.requiredSkillLevel;
                 recipe.SkillGrowthAmount  = schema.skillGrowthAmount;
+                recipe.RequiredBenchTier  = schema.requiredBenchTier;
                 recipe.Category           = JobCategory.Crafting;
                 if (Enum.TryParse<CraftSkill>(schema.requiredSkillType, ignoreCase: true, out var skill))
                     recipe.RequiredSkillType = skill;

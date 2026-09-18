@@ -269,6 +269,14 @@ public class RockRenderer : MonoBehaviour
     // 전일 수 있고(실행 순서), 그러면 아무도 못 찾아 **아무 데도 안 열린다.**
     void Start()
     {
+        // **바위를 그리는 것은 한 벌이어야 한다**(2026-09-18). 둘이면 각자 `_chunks`와
+        // `RockChunks` 루트를 들고 **같은 이름의 청크를 따로 세운다** — 한쪽이 파낸 것을
+        // 모르면 그쪽 콜라이더가 그대로 남아 **보이지 않는 벽**이 된다.
+        var renderers = FindObjectsByType<RockRenderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (renderers.Length > 1)
+            Debug.LogError($"[바위] 씬에 `RockRenderer`가 {renderers.Length}개다 — 청크가 두 벌로 서고 "
+                         + "한쪽의 낡은 콜라이더가 길을 막는다. 하나만 남길 것.");
+
         // **세계의 끝을 보여 주는 막**(2026-09-15). 바위를 그리는 쪽이 세운다 — 기반암이
         // 바위의 일부라 *"바위가 있는 씬"*과 *"막이 있는 씬"*이 갈리면 안 된다. **없으면
         // 만든다**(씬 배선을 늘리면 언젠가 한 씬만 빠진다).
@@ -389,6 +397,7 @@ public class RockRenderer : MonoBehaviour
     public void EditorClear()
     {
         foreach (var c in new List<Vector2Int>(_chunks.Keys)) Drop(c);
+        ReapStrayRoots(null);   // **`_chunks`가 비어 있어도 씬에 남은 것을 거둔다**(아래 참고)
         _dirty.Clear();
         _doomed.Clear();
         if (_root != null) { Toss(_root.gameObject); _root = null; ChunkRoot = null; }
@@ -647,6 +656,26 @@ public class RockRenderer : MonoBehaviour
         var map = MapManager.Instance;
         int x0 = chunk.x * ChunkTiles, y0 = chunk.y * ChunkTiles;
 
+        // **박스의 주인은 여기 하나다**(2026-09-18). `SetBoxCount`는 **목록에 든 것만** 끌 수
+        // 있으므로, 그 오브젝트에 목록 밖의 `BoxCollider`가 하나라도 붙어 있으면 **영영 켜진
+        // 채로 남는다** — 그게 곧 *"파냈는데 안 보이는 벽에 막힌다"*다(2026-09-18 진단:
+        // 같은 범위의 박스가 열두 개 겹쳐 있었고 그중 열하나가 낡은 것이었다).
+        //
+        // 그래서 굽기 전에 **실제로 붙어 있는 것을 세어 목록을 맞춘다.** 개수가 같으면
+        // 아무 일도 안 한다(대개 그렇다).
+        ch.Go.GetComponents(_boxBuf);
+        if (_boxBuf.Count != ch.Boxes.Count)
+        {
+            if (!_warnedStrayBox)
+            {
+                _warnedStrayBox = true;
+                Debug.LogWarning($"[바위] {ch.Go.name}에 목록 밖 콜라이더가 있다 — "
+                               + $"실제 {_boxBuf.Count}개 / 목록 {ch.Boxes.Count}개. 거둬서 끈다.");
+            }
+            ch.Boxes.Clear();
+            ch.Boxes.AddRange(_boxBuf);
+        }
+
         if (lowest > highest) { SetBoxCount(ch, 0); return; }   // 바위가 없다
 
         float bottom = lowest - 2f;                 // 조금 파묻는다 — 발밑으로 새지 않게
@@ -693,6 +722,9 @@ public class RockRenderer : MonoBehaviour
 
     // **박스를 지웠다 다시 만들지 않는다** — 청크는 파낼 때마다 다시 구워지므로, 그때마다
     // 컴포넌트를 붙였다 떼면 물리 엔진이 매번 브로드페이즈를 다시 짠다. 남는 것은 꺼 둔다.
+    static readonly List<BoxCollider> _boxBuf = new();
+    static bool _warnedStrayBox;
+
     BoxCollider BoxAt(Chunk ch, int i)
     {
         while (ch.Boxes.Count <= i) ch.Boxes.Add(ch.Go.AddComponent<BoxCollider>());
@@ -915,21 +947,109 @@ public class RockRenderer : MonoBehaviour
     // 레이어라(짚어야 캘 수 있다) 레이어로는 바닥과 못 가른다.
     public static Transform ChunkRoot { get; private set; }
 
+    const string RootName = "RockChunks";
+
+    // ── 도메인 리로드가 남긴 벌을 거둔다 (2026-09-18) ────────────────────────
+    //
+    // **원인**: 스크립트를 다시 컴파일하면 도메인이 리로드되어 `_chunks`와 `_root`(둘 다
+    // 순수 C# 필드)가 **비워지는데, 에디터가 세운 청크는 `HideFlags.DontSave`라 살아남는다**
+    // (`DontSave`는 *저장 안 함* + **씬을 새로 읽어도 안 죽음**이다).
+    //
+    // 그래서 **컴파일할 때마다 청크가 한 벌씩 쌓였다.** `EditorClear`는 `_chunks`가 비어
+    // 있으니 아무것도 못 치우고, `_root`도 null이라 루트조차 못 지운다 — 플레이에 들어가도
+    // `DontSave`라 안 죽는다.
+    //
+    // 화면에 나타난 모양: **그 벌이 굳은 시점의 지형을 콜라이더로 들고 있어**, 그 뒤에 판
+    // 자리를 폰이 **보이지 않는 벽**으로 계속 막혔다(메시는 새 벌이 그리므로 **벽은 안
+    // 보인다**). 진단에는 같은 범위의 낡은 박스가 **열한 개**로 찍혔다 — 그날 컴파일한
+    // 횟수였다. *"원래 잘 됐는데 갑자기"*의 답이 이것이다.
+    //
+    // **`_chunks`로 찾으면 안 된다** — 잃어버린 것이 그 목록이다. **씬을 본다.**
+    // **도메인 리로드가 남긴 것을 한 번에 쓴다**(2026-09-18).
+    //
+    // `_chunks`가 비어 있는데 씬에 `RockChunks`가 서 있다면 **그 안의 것은 전부 주인 없는
+    // 것**이다 — 목록이 곧 주인이므로, 목록이 비었다는 것은 아무것도 안 들고 있다는 뜻이다.
+    // 청크마다 만나서 거두면 **다시 구워지는 것만** 거둬지고 나머지는 그대로 남는다
+    // (그 남은 것이 판 자리를 막는다).
+    //
+    // **한 번만 돈다** — 이 플래그도 리로드에 같이 날아가므로, 리로드마다 정확히 한 번이다.
+    bool _swept;
+
+    void SweepOrphans()
+    {
+        if (_swept) return;
+        _swept = true;
+
+        if (_chunks.Count > 0) return;   // 들고 있는 것이 있으면 내 것이다
+
+        int reaped = 0;
+        var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        if (scene.IsValid() && scene.isLoaded)
+            foreach (var go in scene.GetRootGameObjects())
+            {
+                if (go == null || go.name != RootName) continue;
+                reaped += go.transform.childCount;
+                Toss(go);
+            }
+
+        // `_root`가 살아남았을 수도 있다(그 아래 것이 전부 주인 없는 것이다).
+        if (_root != null) { reaped += _root.childCount; Toss(_root.gameObject); }
+        _root = null; ChunkRoot = null;
+
+        if (reaped > 0)
+            Debug.LogWarning($"[바위] 주인 없는 청크 {reaped}개를 거뒀다 — 스크립트를 다시 "
+                           + "컴파일하면서 목록(`_chunks`)만 비워지고 오브젝트는 살아남은 것들이다. "
+                           + "그 낡은 콜라이더가 판 자리를 막고 있었다.");
+    }
+
+    static void ReapStrayRoots(Transform mine)
+    {
+        var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        if (!scene.IsValid() || !scene.isLoaded) return;
+
+        int reaped = 0;
+        foreach (var go in scene.GetRootGameObjects())
+        {
+            if (go == null || go.name != RootName) continue;
+            if (mine != null && go.transform == mine) continue;
+            Toss(go);
+            reaped++;
+        }
+
+        if (reaped > 0)
+            Debug.LogWarning($"[바위] 남아 있던 `{RootName}` {reaped}벌을 거뒀다 — "
+                           + "도메인 리로드로 목록을 잃은 사이 살아남은 것들이다. "
+                           + "그 낡은 콜라이더가 판 자리를 막고 있었다.");
+    }
+
     public static bool IsRockCollider(Component c) =>
         c != null && ChunkRoot != null && c.transform.parent == ChunkRoot;
 
     Chunk Ensure(Vector2Int chunk)
     {
+        SweepOrphans();
+
         if (_chunks.TryGetValue(chunk, out var c) && c.Go != null) return c;
 
         if (_root == null)
         {
-            _root = new GameObject("RockChunks").transform;
+            _root = new GameObject(RootName).transform;
             _root.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             ChunkRoot = _root;
+
+            // **루트를 새로 세웠다는 것은 지난 벌을 통째로 잃었다는 뜻이다** — 그 벌이
+            // 씬에 그대로 서 있을 수 있으므로 여기서 거둔다.
+            ReapStrayRoots(_root);
         }
 
-        var go = new GameObject($"Rock_{chunk.x}_{chunk.y}");
+        // **같은 이름의 청크가 이미 서 있으면 거둔다** — 위의 한 번 쓸기가 놓친 것을 받는
+        // 그물이다. **여기서는 안 알린다**(쓸기가 이미 개수로 말했다 — 청크마다 한 줄씩
+        // 찍으면 콘솔이 그것으로 덮인다).
+        string chunkName = $"Rock_{chunk.x}_{chunk.y}";
+        var stray = _root.Find(chunkName);
+        if (stray != null) Toss(stray.gameObject);
+
+        var go = new GameObject(chunkName);
         go.transform.SetParent(_root, false);
         go.layer = Mathf.Clamp(rockLayer, 0, 31);
 
@@ -1061,9 +1181,33 @@ public class RockRenderer : MonoBehaviour
         return _sideMat;
     }
 
+    // **찍은 표시는 안개를 안 탄다**(2026-09-18) — 렌더 큐를 반투명(3000)에 둔다.
+    //
+    // 안개는 **불투명을 다 그린 뒤 반투명 앞에** 덮으므로(`FogOfWar.FogPass`), 큐가 뒤면
+    // 그 위에 안 덮인다 — 월드보더 막·청사진이 이미 그 자리에 있다.
+    //
+    // **왜 필요한가**: 시야는 **첫 벽 한 겹만** 연다(그래야 봉한 굴이 안 들여다보인다).
+    // 그런데 벽 **뚜껑**의 XZ는 그 벽 칸 자신이라, **두 칸째부터의 뚜껑은 구조적으로 영영
+    // 안 가 본 곳**이다 — 위에서 내려다보면 보이는 것이 대개 뚜껑이므로, 5칸짜리 채굴 구역을
+    // 찍으면 **맨 앞줄만 주황색이고 나머지는 검다.**
+    //
+    // **안개를 밝혀서는 못 푼다** — 안개는 **곱하기**라 표시와 벽이 같은 비율로 밝아지고,
+    // 표시가 읽힐 만큼 올리면 **안 가 본 굴의 모양이 통째로 드러난다**(사용자가 정한
+    // *"안 가 본 길 = 검은색"*이 그것으로 끝난다). 가려야 할 것은 **세계의 사실**이지
+    // **내가 그린 계획**이 아니다(`PawnMark`가 *"폰의 것이 아니라 화면의 것"*인 것과 같은 자리).
+    const int MarkQueue = 3000;   // UnityEngine.Rendering.RenderQueue.Transparent
+
     Material MarkMat()
     {
-        if (markedMaterial != null) return markedMaterial;
+        if (markedMaterial != null)
+        {
+            // **큐는 저작이 아니라 규격이라 코드가 쥔다** — 색·결은 재질이 정하지만 *안개 앞에
+            // 서는가*는 고를 수 있는 값이 아니다. 경고만 하면 **밖에서 `.mat`을 고친 것이
+            // 유니티 저장 한 번에 되돌아가** 같은 자리가 조용히 되살아난다(2026-09-18에 실제로
+            // 그랬다 — 디스크에는 3000인데 화면에서는 2000이었다).
+            if (markedMaterial.renderQueue != MarkQueue) markedMaterial.renderQueue = MarkQueue;
+            return markedMaterial;
+        }
         if (_markMat != null) return _markMat;
 
         _markMat = Lit("Rock marked (runtime)", new Color(1.00f, 0.74f, 0.24f));
@@ -1073,8 +1217,10 @@ public class RockRenderer : MonoBehaviour
         _markMat.EnableKeyword("_EMISSION");
         _markMat.SetColor("_EmissionColor", new Color(0.95f, 0.55f, 0.08f));
         _markMat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+        _markMat.renderQueue = MarkQueue;
         return _markMat;
     }
+
 
     static Material Lit(string name, Color color)
     {

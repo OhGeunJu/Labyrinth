@@ -47,8 +47,12 @@ public class ResearchJob : JobBase
     // 폰이 연구대에 붙어 타이머가 도는 동안에만 true. 걸어오는 중엔 false.
     public bool IsRunning => _timerStarted && Status == JobStatus.InProgress;
 
-    // 이번에 붙어서 진행한 시간(초). 저장할 때와 게이지를 그릴 때 같은 값을 쓴다.
-    float ElapsedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) : 0f;
+    // **흐른 시간이 아니라 진척시킨 몫이다**(2026-09-17 — 연구대에 등급이 생겼다).
+    // 개량 연구대는 같은 1초에 1.5초어치를 한다. **표준 초로 환산해** 돌려주므로 게이지도
+    // 이어 하기도(`SetProgressSeconds`) 한 줄도 안 바뀐다 — `CraftJob`과 같은 규칙이다.
+    float BenchSpeed => _table != null ? _table.Speed : 1f;
+
+    float WorkedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) * BenchSpeed : 0f;
 
     // 0~1. **이전에 해 둔 몫(`_carriedSeconds`)을 포함한다** — 이어서 하는 것이므로
     // 게이지가 0부터 다시 차오르면 안 된다.
@@ -58,7 +62,7 @@ public class ResearchJob : JobBase
         {
             if (_data == null) return 0f;
             float total = Mathf.Max(0.01f, _data.ResearchTime);
-            return Mathf.Clamp01((_carriedSeconds + ElapsedThisSession) / total);
+            return Mathf.Clamp01((_carriedSeconds + WorkedThisSession) / total);
         }
     }
 
@@ -110,13 +114,13 @@ public class ResearchJob : JobBase
         if (_data == null) return;
 
         // **한 만큼을 저장한다** — 이게 이 클래스의 핵심 변경이다.
-        float done = _carriedSeconds + ElapsedThisSession;
+        float done = _carriedSeconds + WorkedThisSession;
         ResearchManager.Instance?.SetProgressSeconds(_data, done);
 
         // 진행이 있었으면 재료는 **돌려주지 않는다.** 이미 연구에 들어간 것이고,
         // 돌려주면서 진행도까지 남기면 중단·재개를 반복해 재료를 복사할 수 있다.
         // 폰이 도착도 못 한 채 취소됐을 때만 환불한다.
-        if (_consumed && ElapsedThisSession <= 0f)
+        if (_consumed && WorkedThisSession <= 0f)
         {
             _consumed = false;
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
@@ -141,7 +145,8 @@ public class ResearchJob : JobBase
 
             // **남은 만큼만** 잰다. 매 틱 누적하지 않는 이유는 BT가 `tickInterval`마다 돌아
             // 프레임 델타를 더하면 시간이 6배 이상 느려지기 때문이다(`docs` 알려진 이슈).
-            float remaining = Mathf.Max(0.01f, _data.ResearchTime - _carriedSeconds);
+            // **남은 표준 초를 연구대 속도로 나눈다** — 개량 연구대는 그만큼 일찍 끝난다.
+            float remaining = Mathf.Max(0.01f, (_data.ResearchTime - _carriedSeconds) / BenchSpeed);
             _endTime = Time.time + remaining;
 
             _table.SetActiveJob(this);

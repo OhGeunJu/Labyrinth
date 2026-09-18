@@ -12,13 +12,26 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 264124504a13cf24fb13f7056c4416b9, type: 3}
   m_Name: Water
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
+  Id: 
   BuildingName: "\uBB3C"
-  Description: "\uBB3C\uC744 \uAE37\uB294 \uC790\uB9AC. \uBC2D\uC5D0 \uBB3C\uC744 \uB300\uB824\uBA74 \uADFC\uCC98\uC5D0 \uC788\uC5B4\uC57C \uD55C\uB2E4."
+  Description: "\uBB3C\uC744 \uAE37\uB294 \uC790\uB9AC. \uBC2D\uC5D0 \uBB3C\uC744
+    \uB300\uB824\uBA74 \uADFC\uCC98\uC5D0 \uC788\uC5B4\uC57C \uD55C\uB2E4."
   Category: 0
   SortOrder: 20
-  CostItem: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
-  CostAmount: 25
+  Size: {x: 1, y: 1}
+  Costs:
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Amount: 25
+  CostItem: {fileID: 0}
+  CostAmount: 0
+  DragBuild: 0
+  AreaDrag: 0
+  RequiredResearch: {fileID: 0}
   Prefab: {fileID: 4652254238737930578, guid: 30e1d3ccc8daad74c99fbbdc0d081d47, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 1
+  BlockMask: []

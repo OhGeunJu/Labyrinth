@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // **레지스트리 데이터다.** `Assets/Resources/Data/Buildings/` 에 두면 `DataManager`가 자동으로
@@ -30,11 +31,56 @@ public class BuildingData : ScriptableObject
              "모델이 이 크기에 맞게 만들어져 있어야 한다 — 코드는 칸만 잡고 모양은 안 건드린다.")]
     public Vector2Int       Size = Vector2Int.one;
 
-    [Tooltip("건설 비용으로 쓰는 자원 아이템. 비우면 무료. " +
-             "예전엔 ResourceType enum이었는데, 그 값이 자원 아이템과 1:1이라 이름만 하나 더 만드는 " +
-             "꼴이었다 — 게다가 UI에 enum 이름(IronOre)이 그대로 찍혔다.")]
-    public ItemData         CostItem;
-    public int              CostAmount;
+    // **건설 비용 — 여러 재료가 든다**(2026-09-17, 사용자 결정: *"건물들도 나무랑 써야지"*).
+    //
+    // 한 칸(`CostItem` + `CostAmount`)이던 동안에는 *돌이냐 나무냐*를 골라야 했고, 그래서
+    // 지하로 내려올 때 `0d. Swap Wood Costs To Stone`이 **목재 비용을 전부 돌로 갈아엎었다**
+    // (그때는 지하에 나무가 없었다). 이제 1층에 균사림·이끼굴이 있고 2층에 단단한 나무가
+    // 나므로 그 전제가 뒤집혔는데, **한 칸으로는 "돌 벽에 나무 문"을 적을 자리가 없다.**
+    //
+    // `RecipeData.Ingredient`를 빌려 쓴다 — 필드가 `Item`/`Amount`로 정확히 같다.
+    // **공용 타입으로 옮기지는 않는다**: 유니티가 직렬화 타입을 못 찾으면 이미 저작된 값이
+    // 통째로 날아간다(`TraitData.StatOffset`을 빌려 쓴 것과 같은 규칙).
+    [Tooltip("건설 비용. 비우면 무료. 여러 줄이면 **전부** 있어야 짓는다.")]
+    public List<RecipeData.Ingredient> Costs = new();
+
+    // **옛 한 칸 — 저작하는 자리가 아니다.** 이름을 그대로 둬야 이미 구워진 에셋 쉰여덟의
+    // 값이 들어온다(직렬화 키가 필드 이름이다). `OnEnable`이 `Costs`로 흡수하므로 **읽는
+    // 쪽은 `Costs`만 본다** — 두 자리에 답이 있으면 언젠가 한쪽만 고쳐진다.
+    //
+    // 비우는 것은 `F. Migrate Building Costs`가 한다(그때 이 필드는 껍데기만 남는다).
+    [SerializeField, HideInInspector] ItemData CostItem;
+    [SerializeField, HideInInspector] int      CostAmount;
+
+    void OnEnable()
+    {
+        if (Costs.Count == 0 && CostItem != null && CostAmount > 0)
+            Costs.Add(new RecipeData.Ingredient { Item = CostItem, Amount = CostAmount });
+    }
+
+    // **짓는 데 무엇이 드는가는 여기 하나가 답한다.** 부르는 쪽이 `Costs`를 직접 훑어도
+    // 되지만, *무료인가*·*모자란 것이 무엇인가*는 일곱 군데(커서 힌트·목록·청사진·철거
+    // 환불·살펴보기 창·우클릭 창·즉시 배치)가 각자 세던 물음이라 여기로 모은다.
+    public bool IsFree
+    {
+        get
+        {
+            foreach (var c in Costs)
+                if (c.Item != null && c.Amount > 0) return false;
+            return true;
+        }
+    }
+
+    // 이 자리에서 지금 살 수 있나 — **핵 영역 안의 창고 + 배낭**(`MaterialPool`이 그 축이다).
+    public bool CanAfford(Vector3 worldPos)
+    {
+        foreach (var c in Costs)
+        {
+            if (c.Item == null || c.Amount <= 0) continue;
+            if (MaterialPool.AvailableNear(c.Item, worldPos) < c.Amount) return false;
+        }
+        return true;
+    }
 
     // **여러 칸을 한 번에 그어 짓는가**(두 번 클릭 — 기준을 찍고 늘였다 줄였다 하다 다시 클릭).
     //

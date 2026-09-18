@@ -162,6 +162,21 @@ public static class UnderworldSetup
         var mark = Mat("Rock_Mark", diffuse, normal, new Color(1.00f, 0.74f, 0.24f),
                        glow: new Color(0.95f, 0.55f, 0.08f));
 
+        // **찍은 표시는 안개를 안 먹는다**(2026-09-18, 사용자: *"벽위가 안개에 가려져서
+        // 내가 채굴을 얼만큼하는지 안보여"*).
+        //
+        // 벽은 **시야를 막으므로** 바위 덩어리 안쪽은 영영 안 밝아진다 — 넓게 찍으면
+        // **바깥 한 겹만 보이고 안쪽 표시가 검게 묻힌다.** 무너짐 규칙이 생기면서 넓게
+        // 찍을 일이 늘자 그대로 드러났다.
+        //
+        // 찍은 것은 **세계의 사실이 아니라 내가 내린 지시**다 — 안 가 봤다고 가려질 이유가
+        // 없다(길찾기 미리보기나 청사진과 같은 결). `FogOfWar`가 **반투명 앞에서** 덮으므로
+        // (`BeforeRenderingTransparents`), 큐를 그 뒤로 올리면 안개를 안 탄다.
+        //
+        // **바위 윗면·옆면은 그대로 둔다** — *안 판 자리 = 어둠*은 세계의 사실이고,
+        // 그게 안개와 같이 굴의 경계를 만든다.
+        mark.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+
         AssetDatabase.SaveAssets();
 
         int wired = 0;
@@ -344,60 +359,19 @@ public static class UnderworldSetup
         return null;
     }
 
-    // ── 목재를 돌로 바꾼다 ──────────────────────────────────────────────────
+    // ── 목재를 돌로 바꾸던 도구는 걷어냈다 (2026-09-17) ────────────────────
     //
-    // **지하에는 나무가 없다.** 그런데 건물 절반이 목재를 요구해서(오두막 63) 아무것도 못
-    // 짓는다 — 그러면 파낸 굴이 그냥 빈 구멍으로 남는다.
+    // **일회성 이행을 상시 도구에 남기면 그것이 규칙이 된다.** `0d. Swap Wood Costs To
+    // Stone`은 2026-08-29에 *지하에는 나무가 없다*는 전제로 건물의 목재 비용을 전부 돌로
+    // 갈아엎은 도구인데, **`1. Rebuild Underworld` 묶음의 한 단계로 남아 있었다.**
     //
-    // 처음엔 **값을 0으로 내렸는데**, 그건 *"재료가 필요 없다"*는 뜻이라 짓는 일에서 **비용이
-    // 통째로 사라진다**(사용자: *"화톳불이 건설할 때 나무가 필요하지 않을까? 돌이 필요하네"*).
-    // 지하에서 흔한 것은 **돌**이고, 그건 이미 바위를 파면 나온다 — **파는 일이 곧 자재를
-    // 버는 일**이 되어 루프가 닫힌다.
+    // 그 전제가 뒤집혔다 — 1층에 균사림·이끼굴이 있고 2층에서 단단한 나무가 난다. 그리고
+    // 건물 비용이 **여러 재료를 들 수 있게** 되었으므로(`BuildingData.Costs`) *돌 벽에
+    // 나무 문*을 적을 자리가 생겼다. 도구를 남겨 두면 **나무를 넣은 그 다음 묶음이 통째로
+    // 도로 돌로 바꾼다** — 그것도 조용히.
     //
-    // **양은 반으로 줄인다.** 목재 값은 나무가 흔한 지상 기준이라 그대로 옮기면 돌 63개짜리
-    // 오두막이 된다 — 굴을 예순세 칸 파야 오두막 하나다.
-    //
-    // **되돌릴 수 있게 로그에 옛 값을 남긴다.**
-    const string WoodGuid  = "889bd169115baac4f9de284d7066cadc";   // Res_Wood
-    const string StoneGuid = "1bbfcbce39cb01d4fa76acec6a0b64a0";   // Res_Stone
-
-    [MenuItem("DungeonColony/World/0d. Swap Wood Costs To Stone")]
-    public static void SwapWoodToStone()
-    {
-        var wood  = AssetDatabase.LoadAssetAtPath<ItemData>(AssetDatabase.GUIDToAssetPath(WoodGuid));
-        var stone = AssetDatabase.LoadAssetAtPath<ItemData>(AssetDatabase.GUIDToAssetPath(StoneGuid));
-        if (wood == null || stone == null)
-        {
-            Debug.LogWarning("[지하] 목재나 돌 아이템을 못 찾았다 — 아무것도 안 했다.");
-            return;
-        }
-
-        var changed = new List<string>();
-        foreach (var guid in AssetDatabase.FindAssets("t:BuildingData"))
-        {
-            var b = AssetDatabase.LoadAssetAtPath<BuildingData>(AssetDatabase.GUIDToAssetPath(guid));
-            if (b == null) continue;
-
-            var so   = new SerializedObject(b);
-            var item = so.FindProperty("CostItem");
-            var amt  = so.FindProperty("CostAmount");
-            if (item == null || amt == null) continue;
-            if (item.objectReferenceValue != wood) continue;
-
-            int was = amt.intValue;
-            item.objectReferenceValue = stone;
-            amt.intValue = Mathf.Max(1, Mathf.RoundToInt(was * 0.5f));
-
-            changed.Add($"{b.name} 목재{was}→돌{amt.intValue}");
-            so.ApplyModifiedPropertiesWithoutUndo();
-            EditorUtility.SetDirty(b);
-        }
-
-        AssetDatabase.SaveAssets();
-        Debug.Log(changed.Count == 0
-            ? "[지하] 목재를 요구하는 건물이 없다 — 이미 바꿨거나 다른 재료를 쓴다."
-            : $"[지하] 목재 비용을 돌로 바꿨다 ({changed.Count}개): {string.Join(" · ", changed)}");
-    }
+    // (`ScatterWiring`이 매번 비워지던 것과 **같은 사고**다: 2026-09-14에 잡을 때까지
+    //  버섯이 게임에 한 번도 안 났다.)
 
     // ── 지상 굽기 산출물 지우기 ─────────────────────────────────────────────
 
@@ -528,7 +502,6 @@ public static class UnderworldSetup
             "DungeonColony/Terrain/0. Setup World Streaming",   // 천장 켜기 · 높이맵 떼기 · 렌더러 붙이기
             "DungeonColony/Terrain/9. Create Terrain Palette (지하)",  // 바닥 텍스처를 지하 것으로
             "DungeonColony/World/0b. Create Rock Materials",     // 벽 텍스처도 같은 세트로
-            "DungeonColony/World/0d. Swap Wood Costs To Stone",  // 지하에는 나무가 없다 — 돌로
             "DungeonColony/World/0c. Create Fungal Wood Source", // 목재는 균사림에서 캔다
             "DungeonColony/Terrain/8. Generate Biome Map",      // 지하 바이옴을 깐다
 
@@ -543,7 +516,16 @@ public static class UnderworldSetup
             // 둘 다 **씬에 쓴다** — 이 묶음 끝에 씬을 저장해야 남는다.
             "DungeonColony/World/7. Create Flora (버섯 · 바닥 돌 · 단단한 나무)",  // 바닥에 나는 것 전부
             "DungeonColony/World/B. Create Metal Ladder (금속 사다리 · 광맥 배선)", // 층별 광맥 + 바닥 광맥
+            "DungeonColony/World/E. Create Wood Ladder (단단한 판자)",     // 2층 목재의 중간재
+            "DungeonColony/World/F. Wire Building Costs (건설 비용)",      // 건물은 돌과 나무로 짓는다
+            "DungeonColony/World/H. Wire Research Tiers (연구대 등급)",    // 어느 연구를 어느 연구대에서
             "DungeonColony/World/9. Set Wild Yields (야생 매장량)",        // 야생은 유한하다
+
+            // **얼굴은 맨 끝이다**(2026-09-17) — `7. Create Flora`가 버섯·나무 프리팹을
+            // **다시 만들므로**, 앞에 두면 입힌 얼굴이 그 단계에서 통째로 날아간다.
+            // (`BenchArtCreator`는 작업대만 건드리고 그쪽 프리팹은 아무도 다시 안 지어서
+            //  묶음에 없어도 된다 — 넣으면 등급 모델을 매번 다시 굽느라 느려지기만 한다.)
+            "DungeonColony/Building/1. Dress Buildings (모델 입히기)",      // 굴에 나는 것 · 침대 · 우물 …
 
             "DungeonColony/World/3. Open Authoring Scene",      // **장소는 저작 씬에 놓인다**
         };

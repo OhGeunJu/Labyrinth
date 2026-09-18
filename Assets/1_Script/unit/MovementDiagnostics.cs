@@ -139,19 +139,52 @@ public static class MovementDiagnostics
 
         var blocks = new System.Text.StringBuilder();
         var passes = new System.Text.StringBuilder();
+        int blockCount = 0;
         foreach (var h in hits)
         {
             if (self != null && h.transform.IsChildOf(self.transform)) continue;
 
-            var sb = (exclude & (1 << h.gameObject.layer)) != 0 ? passes : blocks;
+            bool through = (exclude & (1 << h.gameObject.layer)) != 0;
+            var sb = through ? passes : blocks;
+
+            // **막는 쪽은 넷까지만 자세히 적는다** — 한 오브젝트에 콜라이더가 여럿이면
+            // 같은 이름이 열 번 찍혀 **정작 어느 자리인지가 안 보인다**(2026-09-18에
+            // `Rock_13_15`가 열한 번 찍혔다).
+            if (!through && ++blockCount > 4) continue;
+
             if (sb.Length > 0) sb.Append(", ");
             sb.Append($"{h.transform.root.name}/{h.name}(레이어 {LayerMask.LayerToName(h.gameObject.layer)})");
+            if (!through) sb.Append(DescribeBlockerBox(h));
         }
+        if (blockCount > 4) blocks.Append($" 외 {blockCount - 4}개");
 
         string tail = passes.Length > 0 ? $" · 통과함: {passes}" : "";
         return blocks.Length > 0
             ? blocks + tail
             : "없음(물리적으로 안 막힘 — 조향/경로 문제)" + tail;
+    }
+
+    // **막은 콜라이더가 덮은 칸과, 그 칸이 실제로 바위인지를 같이 적는다**(2026-09-18).
+    //
+    // *"격자는 통행가능이라는데 물리가 막는다"*가 나왔을 때, **콜라이더의 이름만으로는
+    // 그것이 맞게 서 있는 벽인지 낡아 남은 박스인지 알 수가 없다.** 덮은 칸을 `RockMap`에
+    // 되물으면 그 자리에서 갈린다 — `바위아님`이 하나라도 있으면 **그 박스는 낡은 것**이다.
+    static string DescribeBlockerBox(Collider h)
+    {
+        var b = h.bounds;
+        var map = MapManager.Instance;
+        if (map == null) return "";
+
+        var lo = map.WorldToTile(new Vector3(b.min.x + 0.01f, 0f, b.min.z + 0.01f));
+        var hi = map.WorldToTile(new Vector3(b.max.x - 0.01f, 0f, b.max.z - 0.01f));
+
+        int rock = 0, open = 0;
+        for (int z = lo.y; z <= hi.y; z++)
+        for (int x = lo.x; x <= hi.x; x++)
+            if (RockMap.IsRock(new Vector2Int(x, z))) rock++; else open++;
+
+        return $"[{lo.x},{lo.y}]~[{hi.x},{hi.y}] 바위{rock}/바위아님{open}"
+             + (open > 0 ? " **낡은 박스**" : "");
     }
 
     // 폰에서 목표까지 **직선을 그어** 그 위의 칸들을 찍는다. **보이지 않는 점유**(모델보다
@@ -328,7 +361,7 @@ public static class MovementDiagnostics
         _nextSummary   = Time.time + SummaryInterval;
         _nextHeartbeat = Time.time + HeartbeatInterval;
 
-        var go = new GameObject("~MovementDiagnostics") { hideFlags = HideFlags.HideAndDontSave };
+        var go = new GameObject("~MovementDiagnostics") { hideFlags = SelfStanding.HiddenRuntimeObject };
         Object.DontDestroyOnLoad(go);
         go.AddComponent<MovementDiagnosticsTicker>();
 
