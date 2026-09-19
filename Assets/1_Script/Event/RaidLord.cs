@@ -261,7 +261,7 @@ public class RaidLord
             // 이력을 갈라 둔 뜻이 지워지는 자리다.
             best.ApplySpec(PawnSpec.Roll(data, seed,
                                          Bump(data.DefaultMinGrade), Bump(data.DefaultMaxGrade),
-                                         null, storyGroup));
+                                         null, storyGroup, best.Gender));   // 몸은 이미 섰다 — 그 성별로
         }
 
         // **이력은 맨 끝에 준다 — 여기가 유일한 문이다.**

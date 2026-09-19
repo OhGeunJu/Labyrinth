@@ -58,7 +58,7 @@ public class TimeHUD : MonoBehaviour
     void Update()
     {
         var kb = Keyboard.current;
-        if (kb == null || !kb[pauseKey].wasPressedThisFrame) return;
+        if (kb == null || !kb[pauseKey].wasPressedThisFrame || InputFocus.KeysBlocked()) return;
 
         if (GameTimeManager.IsPaused) GameTimeManager.SetSpeed(_lastRunning);
         else                          { _lastRunning = GameTimeManager.Speed; GameTimeManager.SetSpeed(0f); }

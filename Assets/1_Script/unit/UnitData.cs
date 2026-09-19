@@ -28,8 +28,25 @@ public class UnitData : ScriptableObject
     public string RaceName;
     public Sprite Icon;
 
-    [Tooltip("개체 고유 이름 후보. 소환 시 랜덤 1개 선택. 비어 있으면 RaceName 사용.")]
+    [Tooltip("개체 고유 이름 후보 — **성별을 안 가리는 이름**. 비어 있으면 RaceName 사용.")]
     public List<string> NamePool = new();
+
+    // **성별이 있는 이름은 따로 든다**(2026-09-20 — 몸에 성별이 생긴 날). 한 풀에 섞여 있으면 여자 몸에 `던컨`이 붙는다.
+    // 고르는 풀 = 그 성별의 이름 + 가리지 않는 이름(`NamePool`). 비워 두면 예전처럼 `NamePool`만 쓴다.
+    [Tooltip("남성 이름 후보 — `NamePool`(중성)과 합쳐서 고른다.")]
+    public List<string> MaleNames = new();
+    [Tooltip("여성 이름 후보 — `NamePool`(중성)과 합쳐서 고른다.")]
+    public List<string> FemaleNames = new();
+
+    // 이 성별이 고를 수 있는 이름. 성별을 모르면(늑대·골렘) 중성 풀 그대로다.
+    public List<string> NamesFor(Gender? gender)
+    {
+        var gendered = gender == Gender.Female ? FemaleNames : gender == Gender.Male ? MaleNames : null;
+        if (gendered == null || gendered.Count == 0) return NamePool;
+        var all = new List<string>(gendered);
+        if (NamePool != null) all.AddRange(NamePool);
+        return all;
+    }
 
     // **여기에 아이템은 없다.** 무엇을 지니고 무엇을 떨구는지는 전부 `LoadoutData`(`UnitBrain.loadout`)가
     // 든다 — 늑대 가죽까지 포함해서. 한때 "몸에서 나오는 것(가죽)은 종족, 지니는 것(무기)은 역할"로

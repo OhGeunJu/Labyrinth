@@ -73,10 +73,11 @@ public class PawnSpecData : ScriptableObject
     public GameObject ModelOverride;
 
     // 적어 둔 것을 입힌 명세를 만든다. 안 적은 것은 **종족이 스탯별로 저작한 범위**에서 굴린다.
-    public PawnSpec Build(UnitData race)
+    // `gender` — 몸이 이미 정해진 폰이면 그 성별(몸이 이긴다). 비우면 씨앗에서 뽑는다.
+    public PawnSpec Build(UnitData race, Gender? gender = null)
     {
         int seed = Seed != 0 ? Seed : StableSeed(PawnName, name);
-        var spec = PawnSpec.Roll(race, seed);
+        var spec = PawnSpec.Roll(race, seed, null, null, gender);
 
         if (!string.IsNullOrWhiteSpace(PawnName)) spec.Name = PawnName;
         if (BodyScale > 0f)                      spec.BodyScale = BodyScale;

@@ -519,6 +519,31 @@ public class BodyPartSystem : MonoBehaviour
     }
 
     // ── 혈액 ────────────────────────────────────────────────────────
+
+    // **지금 초당 얼마나 흘리나 — 한 벌**(2026-09-19). 흘리는 쪽(`UpdateBleed`)과 화면(`PawnSheetUI`의 *출혈*)이 같이 묻는다.
+    // **`BodyPart.BleedRate`는 "지금 피가 나는가"가 아니다** — 그 부위가 다쳤을 때 흘리는 **빠르기(상수)**라 멀쩡한
+    // 몸에서도 0보다 크다. 그걸로 물었더니 상태표가 **늘 *출혈***이었다(사용자: *"상태가 계속 출혈이야"*).
+    // 실제로 흘리는 것은 **망가진 부위가 · 맞은 지 `clotSeconds` 안에 · 산 몸일 때**뿐이다.
+    public float CurrentBleed
+    {
+        get
+        {
+            // **산 몸만 흘린다**(아래 `UpdateBleed` 참고).
+            if (_brain != null && Needs.BodyOf(_brain) != BodyKind.Living) return 0f;
+
+            // 자연 지혈: 부상 직후 BleedRate로 시작해 clotSeconds에 걸쳐 선형으로 멎는다.
+            // 재피격 시 LastWoundTime이 리셋돼 다시 출혈 — 연타당할 때만 출혈이 위험해진다.
+            float total = 0f;
+            foreach (var part in _parts.Values)
+            {
+                if (!part.IsDisabled) continue;
+                float clot = clotSeconds > 0f ? 1f - (Time.time - part.LastWoundTime) / clotSeconds : 0f;
+                if (clot > 0f) total += part.BleedRate * clot;
+            }
+            return total;
+        }
+    }
+
     void UpdateBleed()
     {
         // **산 몸만 흘린다**(2026-09-08). 지속 출혈은 *상처가 시간에 걸쳐 피를 흘리는 것*이라
@@ -527,18 +552,7 @@ public class BodyPartSystem : MonoBehaviour
         //
         // 없앤 것은 *시간에 걸친 감소*뿐이다: 맞으면 여전히 줄고(`Blood -= actualDamage`),
         // 0에서 부서지는 것도 그대로다. **언데드는 맞은 만큼만 무너진다.**
-        if (_brain != null && Needs.BodyOf(_brain) != BodyKind.Living) return;
-
-        // 자연 지혈: 부상 직후 BleedRate로 시작해 clotSeconds에 걸쳐 선형으로 멎는다.
-        // 재피격 시 LastWoundTime이 리셋돼 다시 출혈 — 연타당할 때만 출혈이 위험해진다.
-        float totalBleed = 0f;
-        foreach (var part in _parts.Values)
-        {
-            if (!part.IsDisabled) continue;
-            float clot = clotSeconds > 0f ? 1f - (Time.time - part.LastWoundTime) / clotSeconds : 0f;
-            if (clot > 0f) totalBleed += part.BleedRate * clot;
-        }
-
+        float totalBleed = CurrentBleed;
         if (totalBleed > 0f)
         {
             Blood -= totalBleed * Time.deltaTime;

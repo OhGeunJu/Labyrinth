@@ -449,7 +449,7 @@ public class EventManager : MonoBehaviour
             if (m == null || m.Prefab == null) continue;
 
             var prong = prongs[spawned % prongs.Count];
-            var go = SpawnPawn(m.Prefab, ScatterNear(prong.Edge, 3f, used));
+            var go = SpawnPawn(m.Prefab, ScatterNear(prong.Edge, 3f, used), m.Spec);
             arrivals.Add(go);
             prong.Members.Add(go);
             spawned++;
@@ -841,9 +841,10 @@ public class EventManager : MonoBehaviour
     //
     // 핵이 하수인을 소환할 때 멀쩡했던 건 `GetSpawnPosition`이 **핵의 높이**(부양)를 쓰기 때문이다
     // — 공중에서 떨어져 착지하므로 파묻힐 일이 없었다.
-    static GameObject SpawnPawn(GameObject prefab, Vector3 groundPos)
+    // `spec` — 지도에서 본 그 사람이면 그 명세(성별이 **몸을 고른다** — `PawnSpawn`).
+    static GameObject SpawnPawn(GameObject prefab, Vector3 groundPos, PawnSpec spec = null)
     {
-        var go = Instantiate(prefab, groundPos, Quaternion.identity);
+        var go = PawnSpawn.Instantiate(prefab, groundPos, Quaternion.identity, null, spec);
         go.transform.position = PawnPlacement.StandingPos(go, groundPos);
         return go;
     }

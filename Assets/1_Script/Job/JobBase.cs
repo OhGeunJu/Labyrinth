@@ -55,6 +55,16 @@ public abstract class JobBase
 
     public virtual float Reach => StandReach;
 
+    // **어디서 재고 · 어디로 가고 · 어디를 보나** — 기본은 목표 칸 하나다. 몸이 여러 칸인
+    // 것(자원 노드)은 **몸에서 재고 폰 쪽 둘레로 간다**(`ResourceNode.ReachFrom`).
+    public virtual float DistanceFrom(Vector3 pos)
+    {
+        var c = MapManager.Instance.TileToWorld(TileCoord);
+        return Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(c.x, c.z));
+    }
+    public virtual Vector3? StandPointFor(Vector3 from) => null;   // null이면 목표 칸 둘레
+    public virtual Vector3  FacePoint => MapManager.Instance.TileToWorld(TileCoord);
+
     // ── 작업 현장(건물) ────────────────────────────────────────────────
     // 이 작업이 매달린 건물. 핵 영역 밖으로 나가 휴면 중이면 배정하지 않는다.
     // 취소가 아니라 대기 — 영역이 복구되면 주문/일감이 그대로 재개된다(재료 부족 대기와 같은 정책).

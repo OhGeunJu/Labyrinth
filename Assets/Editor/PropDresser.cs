@@ -380,6 +380,7 @@ public static class PropDresser
                 Object.DestroyImmediate(art.gameObject);
                 foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
                     r.enabled = true;
+                UnfitBed(root);
 
                 PrefabUtility.SaveAsPrefabAsset(root, path);
                 done++;
@@ -390,6 +391,94 @@ public static class PropDresser
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log($"[모델] {done}채를 원래 도형으로 되돌렸다.");
+    }
+
+    // ── 침대 — 눕는 자리는 **보이는 모델**이 정한다 ──────────────────────────────
+    //
+    // (2026-09-20, 사용자: *"또 이상하게 누워"* — 폰이 침대를 **가로질러** 누웠고 **기둥 높이에 떠** 있었다.)
+    // `Bed`는 눕는 자리를 *옛 도형*의 약속으로 냈다: 긴 축은 정면(Z) · 높이는 렌더러 전체의 꼭대기. 모델을 입히자
+    // 둘 다 틀렸다 — 팩 침대는 발자국(3×1)에 맞춰 **90° 돌아 X로 길고**, 꼭대기는 매트리스가 아니라 **머리판**이다.
+    // `pillowYaw`만 90으로 고치면 이 침대는 맞지만 **다른 모델을 입히는 날 또 틀린다.** 그래서 입히는 도구가
+    // 모델의 메시에서 잰다:
+    //   - **긴 축** = 수평 두 축 중 더 긴 쪽
+    //   - **베개 쪽** = 양 끝 중 **더 높은 쪽**(머리판이 발판보다 높다 — 팩 넷이 다 그렇다)
+    //   - **높이** = 가운데 토막의 윗면(매트리스·이불) + `lieHeight`
+    // 결과는 `sleepAnchor`(자식 `[Art Sleep]`)에 박는다 — `Bed`가 이미 **그것을 가장 센 저작으로** 읽는다.
+    // 되돌릴 때는 지우고, 원래 저작해 둔 `SleepAnchor`가 있으면 그것으로 돌려놓는다.
+    const string SleepName = "[Art Sleep]";
+
+    static void FitBed(GameObject root)
+    {
+        var bed = root.GetComponent<Bed>();
+        var art = root.transform.Find(ArtName);
+        if (bed == null || art == null) return;
+
+        // 모델의 정점을 **침대 뿌리 기준**으로 모은다(입힐 때 돌리고 키운 것이 다 들어간다).
+        var pts = new List<Vector3>();
+        foreach (var mf in art.GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf.sharedMesh == null) continue;
+            var toRoot = root.transform.worldToLocalMatrix * mf.transform.localToWorldMatrix;
+            foreach (var v in mf.sharedMesh.vertices) pts.Add(toRoot.MultiplyPoint3x4(v));
+        }
+        if (pts.Count == 0) { Debug.LogWarning($"[모델] {root.name}: 침대 모델에 메시가 없어 눕는 자리를 못 쟀다."); return; }
+
+        var min = pts[0]; var max = pts[0];
+        foreach (var p in pts) { min = Vector3.Min(min, p); max = Vector3.Max(max, p); }
+
+        bool alongX = (max.x - min.x) >= (max.z - min.z);
+        float Along(Vector3 p) => alongX ? p.x : p.z;
+        float Across(Vector3 p) => alongX ? p.z : p.x;
+        float lo = alongX ? min.x : min.z, hi = alongX ? max.x : max.z, span = hi - lo;
+        float clo = alongX ? min.z : min.x, chi = alongX ? max.z : max.x, cspan = chi - clo;
+
+        // 양 끝 토막(12%)의 꼭대기 — 높은 쪽이 머리판이다.
+        float topLo = float.MinValue, topHi = float.MinValue, bedTop = float.MinValue;
+        foreach (var p in pts)
+        {
+            float a = Along(p), c = Across(p);
+            if (a < lo + span * 0.12f) topLo = Mathf.Max(topLo, p.y);
+            if (a > hi - span * 0.12f) topHi = Mathf.Max(topHi, p.y);
+            // 가운데 토막(40%) · 안쪽(70%) — 난간·기둥을 빼고 매트리스만.
+            if (a > lo + span * 0.3f && a < hi - span * 0.3f &&
+                c > clo + cspan * 0.15f && c < chi - cspan * 0.15f)
+                bedTop = Mathf.Max(bedTop, p.y);
+        }
+        if (bedTop == float.MinValue) bedTop = (min.y + max.y) * 0.5f;
+
+        // 머리가 갈 쪽(뿌리 기준 수평 단위 벡터).
+        float sign = topLo >= topHi ? -1f : 1f;
+        var toPillow = alongX ? new Vector3(sign, 0f, 0f) : new Vector3(0f, 0f, sign);
+
+        var anchor = root.transform.Find(SleepName);
+        if (anchor == null)
+        {
+            anchor = new GameObject(SleepName).transform;
+            anchor.SetParent(root.transform, false);
+        }
+        float lie = new SerializedObject(bed).FindProperty("lieHeight").floatValue;
+        var center = new Vector3((min.x + max.x) * 0.5f, bedTop + lie, (min.z + max.z) * 0.5f);
+        anchor.localPosition = center;
+        // `PawnMover.SetSleeping`이 받는 회전 = Euler(−90, 방위, 0)이고 그때 머리 쪽은 방위로 돌린 **−Z**다.
+        // 그러니 방위는 *베개 반대쪽이 +Z가 되는* 각이다.
+        float yaw = Mathf.Atan2(-toPillow.x, -toPillow.z) * Mathf.Rad2Deg;
+        anchor.localRotation = Quaternion.Euler(-90f, yaw, 0f);
+
+        var so = new SerializedObject(bed);
+        so.FindProperty("sleepAnchor").objectReferenceValue = anchor;
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    static void UnfitBed(GameObject root)
+    {
+        var bed = root.GetComponent<Bed>();
+        var fitted = root.transform.Find(SleepName);
+        if (fitted != null) Object.DestroyImmediate(fitted.gameObject);
+        if (bed == null) return;
+
+        var so = new SerializedObject(bed);
+        so.FindProperty("sleepAnchor").objectReferenceValue = root.transform.Find("SleepAnchor");   // 원래 저작한 것(있으면)
+        so.ApplyModifiedPropertiesWithoutUndo();
     }
 
     // 표에 없는데 얼굴이 붙어 있는 프리팹을 원래대로 되돌린다.
@@ -417,6 +506,7 @@ public static class PropDresser
                     touched = true;
                 }
                 if (!touched) continue;
+                UnfitBed(root);
 
                 foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true)) r.enabled = true;
 
@@ -514,6 +604,9 @@ public static class PropDresser
             else
             {
                 if (Place(root, first, ArtName, keepHeight, d.Glow, d.Tint, d.Margin, d.KeepTall, d.FillLong) == null) return false;
+
+                // 침대면 **눕는 자리를 입힌 모델에서 잰다**(`FitBed`).
+                FitBed(root);
 
                 // 변형이 아니면 그 컴포넌트는 없어야 한다 — 표를 고쳐 변형을 끈 날
                 // **켜진 것 하나만 남고 나머지는 사라졌는데 컴포넌트가 계속 도는** 꼴이 된다.

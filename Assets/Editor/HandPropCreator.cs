@@ -113,6 +113,11 @@ public static class HandPropCreator
 
             made[name] = SaveProp(name, left, twoHanded, euler, Vector3.zero, root =>
             {
+                // **두 손 도구의 날은 모델의 +X다**(2026-09-19 — FBX 정점을 재어 봤다: 곡괭이 날 X ±41cm ·
+                // 자루 Y · 두께 Z 8cm, 도끼 날도 X). 기본값 +Z는 **두께 쪽**이라 날이 옆으로 누웠다(사용자:
+                // *"곡괭이 방향 좀 맞추면 될 듯"*). 이건 눈으로 맞출 값이 아니라 **메시의 사실**이라 매번 적는다.
+                if (twoHanded) root.GetComponent<HandProp>().EdgeAxis = Vector3.right;
+
                 var mesh = (GameObject)PrefabUtility.InstantiatePrefab(model, root);
                 mesh.name = "Mesh";
                 mesh.transform.localPosition = Vector3.zero;

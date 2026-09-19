@@ -10,8 +10,18 @@ def smooth(r, sigma=1.0):
     p = np.pad(r, 3, mode='edge')
     return np.convolve(p, w, mode='valid')
 
+# **우리 이름으로 적는다**(`ChibiNames` — 림월드 이름을 그대로 쓰지 않는다). 그림 파일 이름은 옛 이름 그대로다.
+WIDTH = {"Average": "Broad", "Narrow": "Slim"}
+JAW   = {"Normal": "Soft", "Pointy": "Sharp", "Wide": "Square"}
+def our_name(n):
+    g, rest = n.split('_')
+    for a, b in WIDTH.items():
+        if rest.startswith(a): return f"{g}_{b}{JAW[rest[len(a):]]}"
+    return n
+
 lines = []
 for name, v in d.items():
+    name = our_name(name)
     H, W = v['H'], v['W']
     t = np.array(v['t']) + 0.5 / H          # 행 가운데 (저장 때 반 픽셀 밀림 보정)
     r = np.array(v['r'])

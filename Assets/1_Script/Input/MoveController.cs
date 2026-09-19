@@ -42,7 +42,7 @@ public class MoveController : MonoBehaviour
         var screen = Mouse.current.position.ReadValue();
         bool far    = Vector2.Distance(screen, _dragScreen) >= DragPixels;
         var  ray    = _cam.ScreenPointToRay(screen);
-        bool ground = Physics.Raycast(ray, out RaycastHit hit, 500f, groundMask);
+        bool ground = VisiblePick.First(ray, out PickHit hit, 500f, groundMask);
 
         if (Mouse.current.rightButton.isPressed)
         {
@@ -176,7 +176,7 @@ public class MoveController : MonoBehaviour
         // **소집 중이면 우클릭이 진형 배치다.** 누르는 순간에는 아직 모른다 — 끌 것인지
         // 그냥 누른 것인지는 놓을 때 갈리므로, 여기서는 **붙들어만 두고** 판단을 미룬다.
         if (AnyDrafted(wanderers) && !HasAim(ray) &&
-            Physics.Raycast(ray, out RaycastHit start, 500f, groundMask))
+            VisiblePick.First(ray, out PickHit start, 500f, groundMask))
         {
             _dragging   = true;
             _dragPawns  = wanderers;
@@ -220,7 +220,7 @@ public class MoveController : MonoBehaviour
         // 쓰러진 놈은 **싸우는 중이어도 창을 띄운다** — 지금 그 자리에서 할 수 있는 건
         // 마무리뿐인데, 그건 지목해야만 되는 일이라(`FinishTarget`) 즉시 공격으로 보내면
         // 아무 일도 안 일어나는 헛클릭이 된다.
-        bool hasTarget = PickTarget(ray, wanderers, out RaycastHit first);
+        bool hasTarget = PickTarget(ray, wanderers, out PickHit first);
 
         if (hasTarget)
         {
@@ -251,7 +251,7 @@ public class MoveController : MonoBehaviour
     // 있는 폰을 우클릭하면 **[내려놓는다] 대신 그 시체의 [뒤진다]·[도축한다]가 떴다.**
     // 문서가 *"업힌 쪽을 때리면 업은 폰을 노리는 것과 구별이 안 된다 — 어깨 위라 사거리가
     // 같다"*고 적어 둔 그것이 겨냥에서도 그대로 성립한다.
-    static bool PickTarget(Ray ray, List<PawnMover> commanders, out RaycastHit hit)
+    static bool PickTarget(Ray ray, List<PawnMover> commanders, out PickHit hit)
         => SelectionManager.PickVisible(ray, out hit);
 
     // 실제 이동 명령. 창의 [여기로 이동]과 옛 직접 명령이 같은 코드를 쓴다.
@@ -401,12 +401,12 @@ public class MoveController : MonoBehaviour
     // `hasHit`/`hit`은 `PickTarget`이 이미 고른 것 — **여기서 다시 쏘지 않는다.**
     // 따로 쏘면 "명령 받는 폰은 건너뛴다"는 규칙이 한쪽에만 걸려, 즉시 공격과 창이 서로 다른
     // 것을 겨누게 된다.
-    void OpenMenuAt(Ray ray, List<PawnMover> commanders, bool hasHit, RaycastHit hit)
+    void OpenMenuAt(Ray ray, List<PawnMover> commanders, bool hasHit, PickHit hit)
     {
         var menu = PawnContextMenuUI.Instance;
 
         // 바닥 지점은 따로 잰다 — 유닛·건물을 맞았어도 [여기로 이동]은 바닥을 가리켜야 한다.
-        bool hasGround = Physics.Raycast(ray, out RaycastHit groundHit, 500f, groundMask);
+        bool hasGround = VisiblePick.First(ray, out PickHit groundHit, 500f, groundMask);
 
         if (!hasHit)
         {
@@ -430,6 +430,8 @@ public class MoveController : MonoBehaviour
         var brain   = go.GetComponent<UnitBrain>();
         var node    = go.GetComponent<ResourceNode>();
         var drop    = go.GetComponent<DroppedItem>();
+        // 채집물은 콜라이더가 자식에 달릴 수 있다 — 부모까지 본다(`HaulDesignator.PickUnder`와 같은 규칙).
+        var forage  = go.GetComponentInParent<Forageable>();
         var corpse  = go.GetComponent<Corpse>();
         var core    = go.GetComponent<DungeonCore>();
         var clickable = go.GetComponent<IWorldClickable>();
@@ -554,19 +556,11 @@ public class MoveController : MonoBehaviour
                         : "";
             string verb = tree ? "여기서 나무를 벤다" : "여기서 캔다";
 
-            // **야생은 배정이 아니라 지정이다**(2026-09-06). 그전에는 여기서 `Assign`을
-            // 불렀는데 야생이 그것을 거절하게 된 뒤로 **아무 일도 안 일어나면서 "자리가
-            // 모자란다"는 거짓말**이 찍혔다(자리는 비어 있었다).
-            //
-            // **누르는 사람에게는 하는 일이 같다** — *"여기서 캔다"*. 갈리는 것은 그 뒤이고
-            // (배정이냐 큐냐) 그건 노드가 안다.
-            if (node.CanDesignate)
-            {
-                // 야생 — 지정이다. **자리 수는 안 적는다**(배정이 아니므로 뜻이 없다).
-                options.Add((node.Designated ? $"{verb} - 지정 취소" : verb,
-                             () => node.SetDesignated(!node.Designated)));
-            }
-            else if (node.IsFull)
+            // **고른 폰을 붙인다 — 야생도 지은 것도**(2026-09-19, 사용자: *"돌 우클릭으로 여기서 캔다로
+            // 누르니깐 노드 패널에서 붙은 폰에 붙어있지 않더라고"*). 09-06부터 야생은 여기서 **지정만**
+            // 했는데(배정이 야생을 거절하던 때의 규칙), 09-17에 배정이 야생도 받게 바뀐 뒤로도 이 분기만
+            // 옛 규칙으로 남아 **누른 폰이 아니라 아무나 캐러 갔다.** 우클릭은 *고른 폰에게 내리는 명령*이다.
+            if (node.IsFull)
             {
                 options.Add(($"{verb}{room} - 자리 없음", () => { }));
             }
@@ -586,7 +580,21 @@ public class MoveController : MonoBehaviour
                                   $"{rejected}명은 배정하지 못했습니다.");
                 }));
             }
+
             options.Add(("살펴본다", () => SelectionManager.InspectNode(node)));
+        }
+        else if (forage != null)
+        {
+            // **고른 폰이 따 온다**(2026-09-19, 사용자: *"양송이 버섯들에 우클릭이 안돼"*) — 그전에는 이
+            // 가지가 없어서 메뉴에 넣을 줄이 없었고, 그래서 눌러도 아무 일이 없었다.
+            title = forage.Item != null ? forage.Item.ItemName : "채집물";
+            options.Add(("딴다", () =>
+            {
+                var picker = Nearest(commanders, forage.transform.position,
+                                     b => b.Blackboard == null || !b.Blackboard.IsKnockedOut);
+                if (picker != null) forage.RequestBy(picker);
+            }));
+            options.Add(("살펴본다", () => SelectionManager.InspectForage(forage)));
         }
         else if (drop != null)
         {

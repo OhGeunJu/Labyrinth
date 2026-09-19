@@ -114,7 +114,7 @@ public class WorldMapPanel : MonoBehaviour
         // **New Input System을 쓴다** — 이 프로젝트는 Player Settings에서 옛 `Input`을 껐다.
         // `UnityEngine.Input`을 부르면 예외가 난다(`DraftController`·`ColonyUI`와 같은 규약).
         var kb = Keyboard.current;
-        if (kb != null && kb.mKey.wasPressedThisFrame && !InputFocus.IsTyping()) Toggle();
+        if (kb != null && kb.mKey.wasPressedThisFrame && !InputFocus.KeysBlocked()) Toggle();
 
         // **닫혀 있어도 가 본 곳은 모은다** — 안 모으면 열었을 때 그동안 넓힌 곳이 안 그려진다.
         if (FogOfWar.TakeExploredDirty(out var explored)) Grow(explored);

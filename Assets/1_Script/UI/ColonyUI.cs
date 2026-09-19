@@ -72,7 +72,7 @@ public class ColonyUI : MonoBehaviour
 
     void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.pKey.wasPressedThisFrame && panel != null)
+        if (Keyboard.current != null && Keyboard.current.pKey.wasPressedThisFrame && panel != null && !InputFocus.KeysBlocked())
             panel.SetActive(!panel.activeSelf);
 
         if (panel == null || !panel.activeSelf) return;

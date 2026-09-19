@@ -219,7 +219,8 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     {
         if (cam == null) return null;
         var ray = cam.ScreenPointToRay(screenPos);
-        if (Physics.Raycast(ray, out var hit, 500f))
+        // 짚는 문은 한 벌(`VisiblePick`) — 잘려서 안 보이는 벽 윗부분에 먼저 맞지 않게.
+        if (VisiblePick.First(ray, out var hit, 500f))
             return hit.collider.GetComponentInParent<PlacedBuilding>();
         return null;
     }

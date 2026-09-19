@@ -618,10 +618,14 @@ public class WorldContentStreamer : MonoBehaviour
             if (o.Persistent && _placedUp.Contains(id)) continue;
 
             float h = TerrainHeight.At(o.Position.x, o.Position.y) + o.YOffset;
-            var go = Instantiate(o.Prefab,
-                                 new Vector3(o.Position.x, h, o.Position.y),
-                                 Quaternion.Euler(0f, o.Yaw, 0f),
-                                 o.Persistent ? null : Root);
+
+            // **폰이면 명세를 세우기 전에 낸다** — 명세의 성별이 **어느 몸을 세울지** 고르므로(`PawnSpawn`)
+            // 세운 뒤에 굴리면 여자 이름에 남자 몸이 선다. 프리팹 에셋에서도 종족·세력은 읽힌다(직렬화된 값).
+            var spec = SpecFor(o, id);
+            var go = PawnSpawn.Instantiate(o.Prefab,
+                                           new Vector3(o.Position.x, h, o.Position.y),
+                                           Quaternion.Euler(0f, o.Yaw, 0f),
+                                           o.Persistent ? null : Root, spec);
             go.name = o.Prefab.name + " (" + o.Name + ")";
 
             // **없으면 안 건드린다** — 프리팹이 든 크기를 그대로 쓴다(`WorldObject.Scale` 참고).
@@ -634,39 +638,42 @@ public class WorldContentStreamer : MonoBehaviour
             // 맞다 — **저작(프리팹) < 주입(그 자리)** 이 이 저장소의 우선순위다(상인 상품과
             // 같은 규칙). 그래서 *"같은 산적 프리팹인데 이 소굴의 두목만 특정 인물"*이 된다.
             var pawn = go.GetComponent<UnitBrain>();
-
-            if (o.Spec != null)
-            {
-                if (pawn != null) pawn.ApplySpec(o.Spec.Build(pawn.Data));
-            }
-            // **저작한 명세가 없어도 같은 사람이 선다**(2026-09-08, 사용자 결정 — 마을을
-            // 군데군데 두고 그 안에서 퀘스트를 진행할 것이라, *"고정 NPC의 배경이 매번
-            // 바뀌는 건 이상하다"*).
-            //
-            // 그전에는 `UnitBrain.Awake`가 `UnityEngine.Random`으로 굴렸다. 그래서
-            // **판을 새로 열 때마다 마을 사람이 딴사람**이었고, `Persistent`가 아닌 물건은
-            // **청크가 다시 올라올 때마다** 바뀌었다(갈 때마다 딴사람이다).
-            //
-            // **재료는 이미 다 있었다** — `id`가 안정된 신원이고(`Persistent` 추적이 쓰는
-            // 그 값) `PawnSpec.Roll`은 시드를 받는다. 둘을 잇기만 하면 **마을 사람마다
-            // 명세를 저작하지 않고도** 판마다 같은 사람이 선다.
-            //
-            // **`string.GetHashCode`를 안 쓴다** — 실행마다 달라져서 시드로는 못 쓴다
-            // (`PawnSpecData`가 먼저 겪은 함정이고 여기도 같다).
-            //
-            // **세력의 이력 묶음을 넘긴다** — 안 넘기면 `civilian` 폴백이라 마을 사람과
-            // 산적이 같은 이력을 산다.
-            else if (pawn != null && pawn.Data != null)
-            {
-                var faction = go.GetComponent<Faction>();
-                pawn.ApplySpec(PawnSpec.Roll(pawn.Data, StableSeed(id), null,
-                                             faction != null && faction.Data != null
-                                                 ? faction.Data.BackstoryGroup : null));
-            }
+            if (pawn != null && spec != null) pawn.ApplySpec(spec);
 
             if (o.Persistent) _placedUp.Add(id);   // 안 내린다 — 안의 상태가 처음으로 돌아가면 안 된다
             else into.Add(go);
         }
+    }
+
+    // 이 자리에 설 폰의 명세 — 저작한 것이 있으면 그것, 없으면 신원에서 굴린다. 폰이 아니면 null.
+    static PawnSpec SpecFor(WorldObject o, string id)
+    {
+        var brain = o.Prefab.GetComponent<UnitBrain>();
+        if (brain == null) return null;
+
+        if (o.Spec != null) return o.Spec.Build(brain.Data);
+        if (brain.Data == null) return null;
+
+        // **저작한 명세가 없어도 같은 사람이 선다**(2026-09-08, 사용자 결정 — 마을을
+        // 군데군데 두고 그 안에서 퀘스트를 진행할 것이라, *"고정 NPC의 배경이 매번
+        // 바뀌는 건 이상하다"*).
+        //
+        // 그전에는 `UnitBrain.Awake`가 `UnityEngine.Random`으로 굴렸다. 그래서
+        // **판을 새로 열 때마다 마을 사람이 딴사람**이었고, `Persistent`가 아닌 물건은
+        // **청크가 다시 올라올 때마다** 바뀌었다(갈 때마다 딴사람이다).
+        //
+        // **재료는 이미 다 있었다** — `id`가 안정된 신원이고(`Persistent` 추적이 쓰는
+        // 그 값) `PawnSpec.Roll`은 시드를 받는다. 둘을 잇기만 하면 **마을 사람마다
+        // 명세를 저작하지 않고도** 판마다 같은 사람이 선다.
+        //
+        // **`string.GetHashCode`를 안 쓴다** — 실행마다 달라져서 시드로는 못 쓴다
+        // (`PawnSpecData`가 먼저 겪은 함정이고 여기도 같다).
+        //
+        // **세력의 이력 묶음을 넘긴다** — 안 넘기면 `civilian` 폴백이라 마을 사람과
+        // 산적이 같은 이력을 산다.
+        var faction = o.Prefab.GetComponent<Faction>();
+        return PawnSpec.Roll(brain.Data, StableSeed(id), null,
+                             faction != null && faction.Data != null ? faction.Data.BackstoryGroup : null);
     }
 
     // 신원 문자열에서 시드를 낸다. **실행마다 같아야 한다.**

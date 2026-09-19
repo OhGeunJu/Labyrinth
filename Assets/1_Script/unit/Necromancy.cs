@@ -142,7 +142,7 @@ public static class Necromancy
         var at = corpse.transform.position;
         corpse.SpillBelongings(at);
 
-        var go = Object.Instantiate(prefab, at, Quaternion.identity);
+        var go = PawnSpawn.Instantiate(prefab, at, Quaternion.identity);
         PawnPlacement.PlaceAndEnable(go, at);
 
         // **일으킨 세력의 것이 된다.** 해골 프리팹은 망자 소속으로 저작돼 있지만, 교단이

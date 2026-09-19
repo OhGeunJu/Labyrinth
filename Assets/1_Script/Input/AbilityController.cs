@@ -28,7 +28,7 @@ public class AbilityController : MonoBehaviour
         if (kb == null) return;
 
         // 글자를 치는 중이거나 지도를 보는 중이면 명령이 아니다 — `DraftController`와 같은 규칙.
-        if (InputFocus.IsTyping() || !GameModeManager.IsField) return;
+        if (InputFocus.KeysBlocked() || !GameModeManager.IsField) return;
 
         for (int i = 0; i < SlotCount; i++)
         {

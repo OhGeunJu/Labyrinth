@@ -183,8 +183,18 @@ public static class MovementDiagnostics
         for (int x = lo.x; x <= hi.x; x++)
             if (RockMap.IsRock(new Vector2Int(x, z))) rock++; else open++;
 
+        // **낡았으면 어느 벌인지도 적는다**(2026-09-19) — *지금 렌더러의 청크가 다시 안 구워진 것*인지
+        // *거두는 쪽이 놓친 다른 벌*인지는 고칠 자리가 다르다. 루트가 지금 것과 다르면 후자다.
+        string whose = "";
+        if (open > 0)
+        {
+            var root = h.transform.parent;
+            whose = root == null ? " · 루트 없음"
+                  : root == RockRenderer.ChunkRoot ? " · 지금 루트(다시 안 구워짐)"
+                  : $" · **다른 루트**#{root.GetInstanceID()} 씬 '{h.gameObject.scene.name}' {h.gameObject.hideFlags}";
+        }
         return $"[{lo.x},{lo.y}]~[{hi.x},{hi.y}] 바위{rock}/바위아님{open}"
-             + (open > 0 ? " **낡은 박스**" : "");
+             + (open > 0 ? " **낡은 박스**" + whose : "");
     }
 
     // 폰에서 목표까지 **직선을 그어** 그 위의 칸들을 찍는다. **보이지 않는 점유**(모델보다

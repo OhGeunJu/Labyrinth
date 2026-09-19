@@ -61,6 +61,7 @@ public static class ChibiPawnCreator
     // **얼굴 그림 폴더** — 눈은 `eyes/`, 입은 `mouths/` 아래 PNG를 훑는다(넣고 빼면 저절로 다시 굽는다).
     public const string PackDir = "Assets/assetsss/face";
     const string ToonShader = "DungeonColony/ToonOutline";
+    const string OuterShader = "DungeonColony/ToonOutlineOuter";   // 몸통의 바깥 선만 — 셰이더 머리말
     const string FaceShader = "DungeonColony/ChibiFace";
 
     // ── 비례 ────────────────────────────────────────────────────────────────
@@ -82,8 +83,10 @@ public static class ChibiPawnCreator
     const float HairLine = 0.62f;
 
     const float BottomRound = 0.60f, TopRound = 0.55f;
-    const float HandY = 0.53f, HandZ = 0.20f, HandGap = 0.08f;
-    const float ArmTop = 0.78f, ArmBot = 0.53f;
+    // **손 높이 = 팔 밑동**(둘이 갈리면 손 공이 손 관절에서 떨어져 팔이 돌 때 지렛대가 된다).
+    // 0.53에서 올렸다(2026-09-19, 사용자: *"팔이 너무 밑에있는 거 같아 조금만 올려줘"*).
+    const float HandY = 0.61f, HandZ = 0.20f, HandGap = 0.08f;
+    const float ArmTop = 0.80f, ArmBot = HandY;
 
     // ── 체형 ────────────────────────────────────────────────────────────────
     readonly struct Shape
@@ -128,7 +131,7 @@ public static class ChibiPawnCreator
         public readonly string  Name, Gender;
         public readonly Vector3 Size;
         public readonly ChibiHeadProfiles.Ref Ref;
-        public readonly float   Forward, EyeT, EyeDx, EyeSize, EyeAspect, MouthT;
+        public readonly float   Forward, EyeT, EyeDx, EyeSize, EyeAspect, MouthT, NoseT, NoseK;
         // 눈·입 자리는 **사람이 고친 표**(`ChibiFaceLayout`)에서 온다 — 처음 값은 측정이고, 고친 것이 이긴다.
         public HeadShape(ChibiHeadProfiles.Ref r, ChibiFaceLayout layout)
         {
@@ -136,7 +139,7 @@ public static class ChibiPawnCreator
             Ref = r; Name = r.Name; Gender = r.Name.Substring(0, r.Name.IndexOf('_'));
             float m = TorsoH / ChibiHeadProfiles.BodyPx * HeadScale;   // 픽셀 → 미터
             Size = new Vector3(r.W * m, r.H * m, r.W * m * Depth);
-            Forward = r.Name.EndsWith("Pointy") ? 0.26f : 0.20f;
+            Forward = r.Name.EndsWith("Sharp") ? 0.26f : 0.20f;
             e ??= ChibiFaceLayout.Measured(r);
             // 전체 손잡이(`ChibiFaceLayout`의 위쪽 넷)를 머리마다의 값 위에 얹는다.
             float sizeK  = layout != null ? layout.EyeSizeScale    : ChibiFaceLayout.DefaultEyeSizeScale;
@@ -144,7 +147,9 @@ public static class ChibiPawnCreator
             float spread = layout != null ? layout.EyeSpacingScale : 1f;
             EyeAspect    = layout != null ? layout.EyeAspect       : ChibiFaceLayout.DefaultEyeAspect;
             EyeT = e.EyeHeight + lift; EyeDx = e.EyeSpacing * spread; MouthT = e.MouthHeight;
-            // 눈 판 한 변 = 눈 지름 ÷ 0.6(판 안에서 동그란 눈이 차지하는 몫 — `rim_eye` 반지름 0.30)
+            NoseT = e.NoseHeight > 0f ? e.NoseHeight : ChibiFaceLayout.DefaultNose(e);
+            NoseK = layout != null ? layout.NoseSizeScale : 1f;
+            // 눈 판 한 변 = 눈 지름 ÷ 0.6(판 안에서 동그란 눈이 차지하는 몫 — `ink_eye` 반지름 0.30)
             EyeSize = e.EyeSize * sizeK * Size.x / 0.6f;
         }
     }
@@ -176,9 +181,20 @@ public static class ChibiPawnCreator
     static readonly (string name, Color color)[] Mats =
     {
         ("Skin",  new Color32(0xF2, 0xD2, 0xA8, 0xFF)),
+        // **머리 살은 손·팔·귀의 살과 재질을 가른다**(2026-09-19) — 색은 같고 **스텐실에 "얼굴"을 적는 것**만 다르다.
+        // 코 선은 제 얼굴 위에서만 비키고 손·몸통·다른 폰 위에서는 서야 하는데(사용자: *"머리처럼 다른 부위랑 겹쳐졌을때도
+        // 외곽선이 보여야지"* · *"근데 머리랑은 외곽선이 보이면 안돼"*), 한 재질이면 얼굴과 손을 스텐실로 못 가른다.
+        ("HeadSkin", new Color32(0xF2, 0xD2, 0xA8, 0xFF)),
         ("Shirt", new Color32(0xC4, 0x45, 0x3C, 0xFF)),
         ("Hair",  new Color32(0xA8, 0x72, 0x3C, 0xFF)),
+        // **코는 제 선을 끄고 바깥 선만 받는다**(2026-09-19, 사용자: *"코에 외곽선이 떠서 문제가 있고"*) — 제 재질의
+        // 6cm 선은 스텐실을 안 봐서 **얼굴 위에 검은 덩어리**로 떴다. 선은 `OutlineOuterFine`이 얼굴 밖에만 긋는다.
+        ("SkinFine",  new Color32(0xF2, 0xD2, 0xA8, 0xFF)),
+        ("NoseDark",  new Color32(0x2E, 0x24, 0x24, 0xFF)),   // 동물 코 — 짙은 코끝
     };
+
+    // 제 선을 끄고 바깥 선을 따로 받는 코 재질 — 이름으로 가른다(`Mats`의 둘).
+    static bool FineOutline(string mat) => mat == "SkinFine" || mat == "NoseDark";
 
     // ── 이목구비 판 ─────────────────────────────────────────────────────────
     //
@@ -190,20 +206,22 @@ public static class ChibiPawnCreator
         public readonly string Name, Kind, DefaultCell;
         public readonly int    Side;     // -1 · +1 = 눈의 쪽 · 0 = 가운데(입)
         public readonly float  Lift;
-        public readonly bool   Mirror, IsMouth;
-        public Feature(string name, string kind, string cell, int side, float lift, bool mirror, bool isMouth)
-        { Name = name; Kind = kind; DefaultCell = cell; Side = side; Lift = lift; Mirror = mirror; IsMouth = isMouth; }
+        public readonly bool   Mirror;
+        public readonly FaceSlot Slot;   // 어느 높이 · 어느 크기를 쓰나
+        public Feature(string name, string kind, string cell, int side, float lift, bool mirror, FaceSlot slot)
+        { Name = name; Kind = kind; DefaultCell = cell; Side = side; Lift = lift; Mirror = mirror; Slot = slot; }
     }
 
     // **왼눈(방위 90° + = 보는 사람의 오른쪽)이 그림 그대로**이고 오른눈이 거울이다 — 그 눈의 코 쪽이
     // 그림의 왼쪽이다. 입은 기본이 빈 칸.
     static readonly Feature[] Features =
     {
-        new Feature("EyeR",  "Eyes",   "rim_eye", -1, 1.012f, mirror: true,  isMouth: false),
-        new Feature("EyeL",  "Eyes",   "rim_eye", +1, 1.012f, mirror: false, isMouth: false),
-        new Feature("Mouth", "Mouths", "",          0, 1.008f, mirror: false, isMouth: true),
+        new Feature("EyeR",  "Eyes",   "ink_eye", -1, 1.012f, mirror: true,  FaceSlot.Eye),
+        new Feature("EyeL",  "Eyes",   "ink_eye", +1, 1.012f, mirror: false, FaceSlot.Eye),
+        new Feature("Mouth", "Mouths", "",          0, 1.008f, mirror: false, FaceSlot.Mouth),
     };
     const float MouthScale = 0.75f;   // 입 판 = 눈 판 × 이만큼
+    enum FaceSlot { Eye, Mouth }   // 코는 판이 아니라 입체다(`Noses`)
 
     const int CellPx = 128, CellPad = 3;
 
@@ -269,6 +287,10 @@ public static class ChibiPawnCreator
         {
             ts[i] = Mathf.Lerp(tFrom, tTo, Ring(i, rings, densePole));
             rs[i] = radiusAt(ts[i]);
+            // **옆선이 숫자가 아니면 굽지 않는다** — NaN 정점은 화면에서 조용히 빠질 뿐이라, 모르고 구우면 한참 뒤
+            // 엉뚱한 자리(내보내기·레이캐스트)에서 터진다. 여기서 이름을 대고 멈춘다.
+            if (float.IsNaN(rs[i]) || float.IsInfinity(rs[i]))
+                throw new InvalidOperationException($"[치비] {name}: 옆선이 t={ts[i]:F3}에서 {rs[i]}를 냈다 — 음수의 거듭제곱·0 나누기를 확인할 것");
             maxR = Mathf.Max(maxR, rs[i]);
         }
         float norm = (normalize && maxR > 1e-5f ? 0.5f / maxR : 1f) * lift;
@@ -307,8 +329,11 @@ public static class ChibiPawnCreator
             int b0 = ring * stride;
             for (int k = 0; k < segs; k++)
             {
-                if (up) { tris.Add(center); tris.Add(b0 + k); tris.Add(b0 + k + 1); }
-                else    { tris.Add(center); tris.Add(b0 + k + 1); tris.Add(b0 + k); }
+                // 감김이 곧 앞면이다 — 거꾸로 감으면 **뚜껑이 안쪽을 본다**(2026-09-19에 법선을 계산해 잡았다: 윗뚜껑이
+                // (0,−1,0)이었다). 그러면 앞에서 본 코끝 뚜껑이 뒷면이라 살은 안 그려지고 **외곽선 껍질(Cull Front)이
+                // 그 자리를 검게 칠했다.** 몸통 위아래 뚜껑도 같은 함수라 같이 뒤집혀 있었다.
+                if (up) { tris.Add(center); tris.Add(b0 + k + 1); tris.Add(b0 + k); }
+                else    { tris.Add(center); tris.Add(b0 + k); tris.Add(b0 + k + 1); }
             }
         }
         Cap(0, (tFrom - 0.5f) * lift, up: false);
@@ -380,21 +405,24 @@ public static class ChibiPawnCreator
         public readonly bool    On;
         public readonly string  Cell;          // 이목구비 판이면 기본 칸 이름
         public readonly string  Kind;          // 이목구비 판이면 어느 아틀라스(Eyes · Mouths)
+        public readonly string  OuterMat;      // 외곽선을 몸 밖에만 긋는 둘째 재질(`ToonOutlineOuter`) — 없으면 null
+        public readonly Vector3 Euler;         // 기울여 놓는 것(귀·코) — 나머지는 0
         public Part(string name, Mesh mesh, Vector3 center, Vector3 size, string mat, bool on = true,
-                    string cell = null, string kind = null)
-        { Name = name; Mesh = mesh; Center = center; Size = size; Mat = mat; On = on; Cell = cell; Kind = kind; }
+                    string cell = null, string kind = null, string outerMat = null, Vector3 euler = default)
+        { Name = name; Mesh = mesh; Center = center; Size = size; Mat = mat; On = on; Cell = cell; Kind = kind; OuterMat = outerMat; Euler = euler; }
     }
 
     static List<Part> HeadParts(string gender, Dictionary<string, Mesh> heads,
                                 Dictionary<(string head, string feature), Mesh> features,
-                                Dictionary<string, Mesh> hairs)
+                                Dictionary<string, Mesh> hairs, Dictionary<string, Mesh> ears,
+                                Dictionary<string, Mesh> noses)
     {
         var parts = new List<Part>();
         var basis = BasisOf(gender);
         var bPos  = HeadPos(basis);
 
         // **리거가 쓸 `Head`** — 안 보이는 구. 목 관절 자리가 여기서 나온다(`Bottom` = 턱 끝).
-        parts.Add(new Part("Head", null, bPos, basis.Size, "Skin", on: false));
+        parts.Add(new Part("Head", null, bPos, basis.Size, "HeadSkin", on: false));
 
         // 이 성별의 머리 여섯과 그 이목구비 — 기준만 켜 둔다.
         foreach (var h in Heads)
@@ -402,7 +430,7 @@ public static class ChibiPawnCreator
             if (h.Gender != gender) continue;
             bool on = h.Name == basis.Name;
             var pos = HeadPos(h);
-            parts.Add(new Part($"Head.Shape.{h.Name}", heads[h.Name], pos, h.Size, "Skin", on));
+            parts.Add(new Part($"Head.Shape.{h.Name}", heads[h.Name], pos, h.Size, "HeadSkin", on));
             foreach (var f in Features)
                 parts.Add(new Part($"Head.Shape.{h.Name}.{f.Name}", features[(h.Name, f.Name)],
                                    pos, h.Size, "Face" + f.Kind, on, cell: f.DefaultCell, kind: f.Kind));
@@ -431,8 +459,131 @@ public static class ChibiPawnCreator
         Shell("Bun",      "Short", on: false);
         Hair ("Bun",      "Knot",  null, bPos + new Vector3(0f, 0.30f, -0.26f), Vector3.one * 0.26f, on: false);
 
+        // 귀 — **기준 머리에 맞춰 굽고** 머리카락처럼 `PawnLook`이 고른 머리로 옮긴다. 기본은 일반 귀만 켠다.
+        // **밑동을 머리 옆에 붙이고 끝을 기울인다** — 가운데를 옆에 두면 긴 귀가 머리 속으로 반쯤 파묻힌다.
+        foreach (var e in Ears)
+        {
+            float t  = basis.EyeT + e.Lift;
+            float rx = HeadRadius(t, basis) * basis.Size.x;
+            float y  = bPos.y + (t - 0.5f) * basis.Size.y;
+            float z  = bPos.z - basis.Size.z * 0.06f;
+            foreach (int s in new[] { -1, +1 })
+            {
+                // 끝이 바깥(±x)으로 `Out`도, 뒤(−z)로 `Back`도 기운다. 납작한 면은 앞뒤를 본다(옆에서 넓게 · 앞에서 날렵하게).
+                var euler = new Vector3(-e.Back, 0f, -s * e.Out);
+                var dir   = Quaternion.Euler(euler) * Vector3.up;
+                var root  = new Vector3(s * (rx - e.Size.x * 0.3f), y, z);
+                var c     = root + dir * (e.Size.y * 0.5f - e.Sink);
+                parts.Add(new Part($"Head.Ear.{e.Name}.{(s < 0 ? "L" : "R")}", ears[e.Name], c, e.Size, "Skin",
+                                   on: e.Name == PawnLook.DefaultEar, euler: euler));
+            }
+        }
+
+        // 코 — **머리형마다 따로 굽는다**(`Head.Nose.{모양}.{머리형}`). 턱을 앞으로 민 정도(`Forward`)와 코 높이가
+        // 머리마다 달라, 한 벌을 옮겨 쓰면 코가 파묻히거나 뜬다. 얼굴 곡면의 앞면 자리를 머리마다 재어 밑동을 붙인다.
+        foreach (var h in Heads)
+        {
+            if (h.Gender != gender) continue;
+            var pos = HeadPos(h);
+            foreach (var n in Noses)
+            {
+                // 밑동 — 그 높이의 **얼굴 앞면**(`Shear`와 같은 식으로 턱을 민 만큼 앞으로).
+                float t  = h.NoseT + n.Lift;
+                float yN = t - 0.5f;
+                float front = HeadRadius(t, h) + (yN < 0f ? h.Forward * 2f * yN * yN : 0f);
+                var root = new Vector3(0f, pos.y + yN * h.Size.y, pos.z + front * h.Size.z);
+
+                var size  = n.Size * h.NoseK;
+                // 축(위)을 앞으로 눕히고 끝을 떨군다 — **90 + 떨굼**이다(90 − 떨굼이면 코끝이 위를 본다: 계산으로 잡았다).
+                // 떨굼이 크면(콧대 있는 코) 축이 얼굴을 따라 **아래로** 내려간다.
+                var euler = new Vector3(90f + n.Droop, 0f, 0f);
+                var dir   = Quaternion.Euler(euler) * Vector3.up;
+                var c     = root + dir * (size.y * (0.5f - n.Sink)) + Vector3.back * (size.z * n.Bury);
+                // **선은 옆에서만**(사용자: *"옆에서 볼때는 보이게 앞에서 볼때는 안보이게"*) — 제 선은 끄고, 둘째 재질이
+                // **폰의 살 밖에서만** 긋는다. 앞에서 보면 코 둘레가 전부 얼굴 위라 선이 안 서고, 옆에서 보면 배경으로
+                // 삐져나온 윤곽에만 선다(몸통 가로선을 없앤 것과 같은 장치 — `ToonOutlineOuter`).
+                parts.Add(new Part($"Head.Nose.{n.Name}.{h.Name}", noses[n.Name], c, size, n.Mat, on: false,
+                                   outerMat: "OutlineOuterFine", euler: euler));
+            }
+        }
+
         return parts;
     }
+
+    // ── 귀(2026-09-19, 사용자: *"귀도 추가해"*) ────────────────────────────────
+    //
+    // **판이 아니라 입체다** — 눈·코·입은 얼굴 곡면에 붙인 그림이지만 귀는 **머리 옆으로 튀어나와야** 옆에서도
+    // 귀로 읽히고 외곽선이 선다(살 재질이라 먹선이 저절로 둘린다). 모양은 옆선 하나를 돌려 깎고 **한 축을 눌러**
+    // 납작하게 만든다(`Size.x` = 두께). 크기는 실제 m — 머리 폭 0.6m 언저리에 맞췄다.
+    // 귀는 **셋**이다(사용자: *"그냥 일반 귀랑 고블린 귀나 엘프귀 처럼 긴 귀처럼 특이한 귀만"*) — 크기만 다른 둥근 귀
+    // 여럿은 고를 이유가 없다. 긴 귀는 **밑동을 붙이고 끝을 기울인다**(`Out` 바깥 · `Back` 뒤, 도).
+    readonly struct Ear
+    {
+        public readonly string Name;
+        public readonly Vector3 Size;     // 두께 · 길이 · 너비(옆에서 본 폭)
+        public readonly float  Lift;      // 눈 높이에서 얼마나 올리나(t)
+        public readonly float  Out, Back; // 기울기(도)
+        public readonly float  Sink;      // 밑동이 머리 속으로 들어가는 길이(m)
+        public readonly Func<float, float> Profile;
+        public Ear(string name, Vector3 size, float lift, float outDeg, float backDeg, float sink, Func<float, float> profile)
+        { Name = name; Size = size; Lift = lift; Out = outDeg; Back = backDeg; Sink = sink; Profile = profile; }
+    }
+
+    static float Oval(float t)   => Mathf.Sqrt(Mathf.Max(0f, t * (1f - t)));
+    // 아래는 둥글고 위로 갈수록 가늘어져 끝이 선다.
+    // `Max(0, …)` — `Sin(π)`은 부동소수로 −8.7e-8이라 **음수의 0.8제곱 = NaN**이 됐다(2026-09-19). 화면에서는 귀 끝 고리가
+    // 조용히 안 그려질 뿐이라 몰랐고, FBX 내보내기가 `(NaN, 0.50, NaN)`에서 넘어져서야 드러났다.
+    static float Blade(float t)  => Mathf.Pow(Mathf.Max(0f, Mathf.Sin(Mathf.PI * Mathf.Clamp01(t))), 0.8f) * (1f - 0.8f * t);
+
+    static readonly Ear[] Ears =
+    {
+        new Ear("Human",  new Vector3(0.07f, 0.20f, 0.15f), 0.00f,  0f,  0f, 0.10f, Oval),
+        new Ear("Elf",    new Vector3(0.05f, 0.38f, 0.13f), 0.04f, 35f, 25f, 0.06f, Blade),   // 위·뒤로 솟는다
+        new Ear("Goblin", new Vector3(0.06f, 0.44f, 0.22f), 0.02f, 78f, 12f, 0.06f, Blade),   // 옆으로 뻗는다
+    };
+
+    // ── 코 — 입체(2026-09-19, 사용자: *"코는 텍스쳐가 아니라 모델링으로"*) ─────────────────────
+    //
+    // 처음엔 눈·입처럼 얼굴에 붙인 **먹선 그림**이었는데, 치비 얼굴에서 코는 **튀어나온 것**이라 옆에서 보면
+    // 없는 것과 같았다. 옆선 하나를 돌려 깎아 **앞으로 눕힌다**(`Droop` — 끝을 조금 떨군다). 살 재질이라 먹선이
+    // 둘리고 그림자도 진다. **기본은 없음**(있던 폰의 얼굴이 조용히 바뀌지 않게) — 폰마다 `PawnLook`에서 고른다.
+    //
+    // **둥근 코는 뺐다**(사용자: *"버튼코 같이 둥그런 코는 필요없어"*). 대신 셋을 더했다 — **콧대가 있는 실제 코**,
+    // **애니의 조그만 코**, **동물 코**(*"콧대가 있는 실제 코모양이랑 … 애니에 나오는 좀 조그만 코 … 동물 코같은 것도"*).
+    readonly struct Nose
+    {
+        public readonly string Name;
+        public readonly Vector3 Size;     // 폭 · 길이(축 방향) · 두께
+        public readonly float  Droop;     // 끝을 아래로(도) — 0 = 곧장 앞 · 65쯤이면 얼굴을 따라 내려오는 콧대
+        public readonly float  Lift;      // 밑동을 코 높이에서 얼마나 올리나(t) — 콧대는 눈 사이에서 시작한다
+        public readonly float  Sink;      // 축 방향으로 얼굴 속에 묻히는 몫(0~0.5)
+        public readonly float  Bury;      // 뒤로 밀어 넣는 몫(두께 대비) — 콧대는 반쯤 묻혀 **등성이만** 솟는다
+        public readonly string Mat;
+        public readonly Func<float, float> Profile;
+        public Nose(string name, Vector3 size, float droop, float lift, float sink, float bury, string mat, Func<float, float> profile)
+        { Name = name; Size = size; Droop = droop; Lift = lift; Sink = sink; Bury = bury; Mat = mat; Profile = profile; }
+    }
+
+    // 원뿔 — 밑이 넓고 끝이 둥글게 좁아진다.
+    static float Cone(float t) => Mathf.Sqrt(Mathf.Max(0f, t)) * (1f - 0.85f * t);
+    // 콧대 — 밑동(눈 사이)은 가늘고 코끝으로 갈수록 도톰해지다 **둥글게 닫힌다.**
+    // 애니 코 — 밑에서 부풀었다가 **끝이 뾰족하게** 닫힌다(둥글게 닫히면 덩이로 읽힌다).
+    static float Tip(float t) => Mathf.Pow(Mathf.Max(0f, t), 0.6f) * Mathf.Pow(Mathf.Max(0f, 1f - t), 0.9f);
+    static float Bridge(float t) => (0.35f + 0.65f * t) * Mathf.Sqrt(Mathf.Max(0f, 1f - Mathf.Pow(t, 8f)));
+
+    static readonly Nose[] Noses =
+    {
+        //                          폭      길이    두께      떨굼  올림    묻힘   뒤로   재질
+        // 콧대 있는 코 — **옆모습을 파이썬으로 그려 맞췄다**: 처음 값(길이 0.17 · 떨굼 62)은 눈 위에서 시작해 코끝이 6cm나
+        // 튀어나온 곤봉이었고, 길이 0.14는 코끝이 입 아래로 내려갔다. 눈 바로 아래에서 시작해 눈과 입 사이 절반에서 끝난다.
+        new Nose("Real",   new Vector3(0.042f, 0.100f, 0.048f), 70f, 0.065f, 0.05f, 0.35f, "SkinFine", Bridge),
+        // 애니 코 — **끝이 뾰족한 작은 쐐기**(`Tip`). 둥근 원뿔로는 *"너무 못만든"* 갈고리 덩이였다(사용자). 옆모습을
+        // 셋 그려 보고 고른 값 — 얼굴에서 아래·앞으로 살짝 솟아 끝이 선다.
+        new Nose("Anime",  new Vector3(0.022f, 0.050f, 0.022f), 62f, 0.02f, 0.05f, 0.30f, "SkinFine", Tip),
+        new Nose("Pointy", new Vector3(0.050f, 0.070f, 0.050f), 15f, 0.00f, 0.25f, 0.00f, "SkinFine", Cone),    // 뾰족한 코(덜 둥글게)
+        new Nose("Long",   new Vector3(0.060f, 0.160f, 0.060f), 20f, 0.00f, 0.25f, 0.00f, "SkinFine", Cone),    // 긴 코
+        new Nose("Animal", new Vector3(0.095f, 0.050f, 0.065f),  8f, 0.00f, 0.30f, 0.00f, "NoseDark", Oval),    // 동물 코
+    };
 
     static readonly string[] HairFits = { PawnLook.FitRound, PawnLook.FitBox };
 
@@ -443,8 +594,10 @@ public static class ChibiPawnCreator
 
         return new List<Part>
         {
+            // **몸통의 선은 몸 밖에만** — 여자 체형은 가슴의 아랫단이 엉덩이 위에 걸쳐, 제 선을 그대로
+            // 두면 배 한가운데에 가로선이 선다(`ToonOutlineOuter` 머리말).
             new Part("Torso", torso, new Vector3(0f, TorsoH * 0.5f, 0f),
-                     new Vector3(torsoMaxR * 2f, TorsoH, torsoMaxR * 2f * s.Depth), "Shirt"),
+                     new Vector3(torsoMaxR * 2f, TorsoH, torsoMaxR * 2f * s.Depth), "Shirt", outerMat: "OutlineOuter"),
 
             new Part("HandL.Ball", null, new Vector3(-handX, HandY, HandZ), Vector3.one * s.HandR, "Skin"),
             new Part("HandR.Ball", null, new Vector3( handX, HandY, HandZ), Vector3.one * s.HandR, "Skin"),
@@ -466,14 +619,16 @@ public static class ChibiPawnCreator
     [MenuItem("DungeonColony/Pawn/3. Create Chibi Pawns (체형 · 머리형 · 머리카락 · 눈 · 입)")]
     public static void Create()
     {
-        var toon = Shader.Find(ToonShader);
-        var face = Shader.Find(FaceShader);
-        if (toon == null || face == null) { Debug.LogError($"[치비] 셰이더를 못 찾았다 — {ToonShader} / {FaceShader}"); return; }
+        var toon  = Shader.Find(ToonShader);
+        var face  = Shader.Find(FaceShader);
+        var outer = Shader.Find(OuterShader);
+        if (toon == null || face == null || outer == null)
+        { Debug.LogError($"[치비] 셰이더를 못 찾았다 — {ToonShader} / {FaceShader} / {OuterShader}"); return; }
         if (AssetDatabase.LoadAssetAtPath<GameObject>(Source) == null) { Debug.LogError($"[치비] 바탕 폰이 없다 — {Source}"); return; }
 
         // **아틀라스를 늘 다시 굽는다** — 옛 아틀라스를 쓰면 *"넣었는데 안 보인다"*가 된다.
         var atlases = BuildFaceAtlases();
-        var mats = EnsureMaterials(toon, face, atlases);
+        var mats = EnsureMaterials(toon, face, outer, atlases);
 
         _saved.Clear();
         Heads = MakeHeads(ChibiFaceLayout.LoadOrCreate());
@@ -512,38 +667,74 @@ public static class ChibiPawnCreator
             hairs[$"{fit}.Bob"]   = Shear(HairShell($"Chibi_Hair_{fit}_Bob",   hairR, 0.26f, 125f), forward);
             hairs[$"{fit}.Long"]  = Shear(HairShell($"Chibi_Hair_{fit}_Long",  hairR, 0.10f, 110f), forward);
         }
-        var headParts = new Dictionary<string, List<Part>>();
-        foreach (var g in Genders) headParts[g] = HeadParts(g, heads, features, hairs);
+        var ears = new Dictionary<string, Mesh>();
+        foreach (var e in Ears)
+            ears[e.Name] = Lathe($"Chibi_Ear_{e.Name}", e.Profile, 16, 16, out _, densePole: 2);
+        var noses = new Dictionary<string, Mesh>();
+        foreach (var n in Noses)
+            noses[n.Name] = Lathe($"Chibi_Nose_{n.Name}", n.Profile, 12, 16, out _, densePole: 2);
 
-        var made = new List<string>();
+        // **코 그림(아틀라스)은 걷어냈다** — 한 번 구웠으면 남은 에셋을 치운다(안 치우면 무엇이 쓰이는지 모른다).
+        foreach (var stale in new[] { $"{MatDir}/Chibi_NosesAtlas.asset", $"{MatDir}/Chibi_NosesAtlas.png", $"{MatDir}/Chibi_FaceNoses.mat" })
+            if (AssetDatabase.LoadMainAssetAtPath(stale) != null) AssetDatabase.DeleteAsset(stale);
+
+        var headParts = new Dictionary<string, List<Part>>();
+        foreach (var g in Genders) headParts[g] = HeadParts(g, heads, features, hairs, ears, noses);
+
+        var made   = new List<string>();
+        var bodies = new List<string>();   // 방랑자가 태어날 수 있는 몸들(`BodyVariants`)
         foreach (var shape in Shapes)
         {
             var s = shape;
             var torso = Lathe($"Chibi_Torso_{s.Suffix}", t => TorsoRadius(s, t), 40, 36, out float maxR);
             string target = $"{OutDir}/Chibi_{s.Suffix}.prefab";
 
-            AssetDatabase.DeleteAsset(target);
-            AssetDatabase.CopyAsset(Source, target);
-            AssetDatabase.ImportAsset(target);
+            // **guid를 지킨다 — 지우고 다시 만들지 않는다.** 방랑자의 몸 목록(`BodyVariants`)이 이 여섯을 guid로
+            // 가리키는데, 지웠다 복사하면 돌릴 때마다 새 guid라 **목록이 조용히 빈다**(CLAUDE.md "`.meta`를 짝지어").
+            // 이미 있으면 파일 내용만 원본으로 덮고 `.meta`는 그대로 둔다.
+            if (File.Exists(target))
+            {
+                File.Copy(Source, target, true);
+                AssetDatabase.ImportAsset(target, ImportAssetOptions.ForceUpdate);
+            }
+            else
+            {
+                AssetDatabase.CopyAsset(Source, target);
+                AssetDatabase.ImportAsset(target);
+            }
 
-            var root = PrefabUtility.LoadPrefabContents(target);
+            if (Dress(target, s, torso, maxR, headParts, mats, atlases, isSource: false))
+            {
+                made.Add($"{s.Label}(Chibi_{s.Suffix})");
+                bodies.Add(target);
+            }
+
+            // **방랑자(내 폰)도 치비 몸이다**(2026-09-20, 사용자: *"원래 폰은 없애버려"* → *"내 폰(방랑자)만 치비로"*).
+            // 새 프리팹으로 갈아 끼우지 않고 **제자리에서 살만 바꾼다** — `Wanderer_Human`은 합류 이벤트·바이옴이 guid로
+            // 가리키고 씬에도 놓여 있어서, 지우거나 새로 만들면 그 참조가 조용히 끊겨 **아무도 안 온다.** 루트와 컴포넌트는
+            // 그대로 두고 `Model` 자식만 갈므로 guid·루트 fileID가 지켜진다(CLAUDE.md "프리팹을 통째로 다시 짓지 않는다").
+            // 체형은 남성 하나다 — 한 프리팹은 한 몸이다. 이 파일이 **치비 여섯의 원본**(`Source`)이기도 하지만 복사한 뒤
+            // `Model`을 비우고 다시 굽으므로 원본이 치비여도 결과는 같다.
+            if (s.Suffix == WandererShape && Dress(Source, s, torso, maxR, headParts, mats, atlases, isSource: true))
+                made.Add($"방랑자(Wanderer_Human = {s.Label})");
+        }
+
+        // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
+        // 성별에 맞는 몸을 여기서 고른다. 원본 자신의 몸(남성)은 씬에 직접 놓을 때만 쓰인다.
+        {
+            var root = PrefabUtility.LoadPrefabContents(Source);
             try
             {
-                var model = root.transform.Find("Model");
-                if (model == null) { Debug.LogError($"[치비] {target}에 `Model`이 없다."); continue; }
-
-                var kids = new List<GameObject>();
-                foreach (Transform c in model) kids.Add(c.gameObject);
-                foreach (var k in kids) UnityEngine.Object.DestroyImmediate(k);
-
-                var all = new List<Part>(BodyParts(s, torso, maxR));
-                all.AddRange(headParts[s.Gender]);
-                foreach (var p in all) Build(model, p, mats, atlases, root.layer);
-
-                if (root.GetComponent<PawnLook>() == null) root.AddComponent<PawnLook>();
-
-                PrefabUtility.SaveAsPrefabAsset(root, target);
-                made.Add($"{s.Label}(Chibi_{s.Suffix})");
+                var bv = root.GetComponent<BodyVariants>() ?? root.AddComponent<BodyVariants>();
+                bv.Variants.Clear();
+                foreach (var path in bodies)
+                {
+                    var body = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    var pb   = body != null ? body.GetComponent<PawnBody>() : null;
+                    if (pb != null) bv.Variants.Add(pb);
+                    else Debug.LogWarning($"[치비] {path}에 `PawnBody`가 없다 — 몸 목록에서 빠졌다.");
+                }
+                PrefabUtility.SaveAsPrefabAsset(root, Source);
             }
             finally { PrefabUtility.UnloadPrefabContents(root); }
         }
@@ -561,6 +752,55 @@ public static class ChibiPawnCreator
         Debug.Log($"[치비] 체형 {made.Count}벌 — {string.Join(" · ", made)} · 머리형 {Heads.Length}(성별마다 {Heads.Length / Genders.Length}) · 머리카락 6 · " +
                   $"눈 {atlases["Eyes"].Names.Length} · 입 {atlases["Mouths"].Names.Length}. " +
                   "**이제 `Pawn/2. Build Pawn Rigs`를 돌려야 관절이 선다.**");
+    }
+
+    // 방랑자에게 입힐 체형(`Shapes`의 `Suffix`).
+    const string WandererShape = "Male";
+
+    // 프리팹 하나의 `Model` 자식을 치비 살로 갈아 끼우고 치비 컴포넌트를 붙인다. **루트는 안 건드린다.**
+    static bool Dress(string path, Shape s, Mesh torso, float maxR, Dictionary<string, List<Part>> headParts,
+                      Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, bool isSource)
+    {
+        var root = PrefabUtility.LoadPrefabContents(path);
+        try
+        {
+            var model = root.transform.Find("Model");
+            if (model == null) { Debug.LogError($"[치비] {path}에 `Model`이 없다."); return false; }
+
+            var kids = new List<GameObject>();
+            foreach (Transform c in model) kids.Add(c.gameObject);
+            foreach (var k in kids) UnityEngine.Object.DestroyImmediate(k);
+
+            var all = new List<Part>(BodyParts(s, torso, maxR));
+            all.AddRange(headParts[s.Gender]);
+            foreach (var p in all) Build(model, p, mats, atlases, root.layer);
+
+            if (root.GetComponent<PawnLook>() == null) root.AddComponent<PawnLook>();
+            // 몸통 선이 **제 몸만** 피하게 폰마다 번호를 준다(`ToonOutlineOuter`).
+            if (root.GetComponent<PawnOutlineId>() == null) root.AddComponent<PawnOutlineId>();
+            // 클립은 사람 비례라 허리를 젖히면 치비는 몸 전체가 눕는다 — 몸통 움직임만 덜어 낸다.
+            if (root.GetComponent<ChibiPoseDamp>() == null) root.AddComponent<ChibiPoseDamp>();
+            // 곡괭이질은 받은 클립 대신 손 공을 직접 옮긴다(머리 위로 들었다가 찍는다).
+            if (root.GetComponent<ChibiToolSwing>() == null) root.AddComponent<ChibiToolSwing>();
+
+            // **이 몸이 무엇인가** — 성별은 몸이 답한다(`PawnBody`). 머리형도 이 성별의 것만 구웠다.
+            var pb = root.GetComponent<PawnBody>() ?? root.AddComponent<PawnBody>();
+            pb.Gender     = s.Gender == "Female" ? Gender.Female : Gender.Male;
+            pb.Shape      = s.Suffix;
+            pb.ShapeLabel = s.Label;
+
+            // **몸 목록은 원본(방랑자)만 든다** — 복사본은 원본을 복사해 만들어 목록까지 따라오는데, 남겨 두면 체형
+            // 프리팹을 직접 세울 때 **다른 몸으로 바꿔치기**된다.
+            if (!isSource)
+            {
+                var bv = root.GetComponent<BodyVariants>();
+                if (bv != null) UnityEngine.Object.DestroyImmediate(bv);
+            }
+
+            PrefabUtility.SaveAsPrefabAsset(root, path);
+            return true;
+        }
+        finally { PrefabUtility.UnloadPrefabContents(root); }
     }
 
     static void Build(Transform model, Part p, Dictionary<string, Material> mats,
@@ -583,9 +823,10 @@ public static class ChibiPawnCreator
         go.transform.SetParent(model, false);
         go.transform.localPosition = p.Center;
         go.transform.localScale    = p.Size;
+        go.transform.localRotation = Quaternion.Euler(p.Euler);
 
         var mr = go.GetComponent<MeshRenderer>();
-        mr.sharedMaterial    = mats[p.Mat];
+        mr.sharedMaterials   = p.OuterMat != null ? new[] { mats[p.Mat], mats[p.OuterMat] } : new[] { mats[p.Mat] };
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mr.enabled = p.On;   // **끄되 지우지 않는다**
 
@@ -657,9 +898,9 @@ public static class ChibiPawnCreator
     static Mesh BuildFeature(HeadShape h, Feature f, int cells)
     {
         Func<float, float> profile = t => HeadRadius(t, h);
-        float tc    = f.IsMouth ? h.MouthT : h.EyeT;
-        float side  = h.EyeSize * (f.IsMouth ? MouthScale : 1f);
-        float asp   = f.IsMouth ? 1f : Mathf.Max(0.3f, h.EyeAspect);
+        float tc    = f.Slot == FaceSlot.Mouth ? h.MouthT : h.EyeT;
+        float side  = h.EyeSize * (f.Slot == FaceSlot.Mouth ? MouthScale : 1f);
+        float asp   = f.Slot == FaceSlot.Eye ? Mathf.Max(0.3f, h.EyeAspect) : 1f;
         float sizeW = side * Mathf.Sqrt(asp), sizeH = side / Mathf.Sqrt(asp);   // 넓이는 그대로 두고 비율만
         float rN    = Mathf.Max(0.05f, HeadRadius(tc, h));            // 그 높이의 반폭(정규화)
         float rM    = rN * h.Size.x;                                  // 실제 반지름
@@ -686,15 +927,21 @@ public static class ChibiPawnCreator
 
     public static void RebakeFaces()
     {
-        var eyes   = AssetDatabase.LoadAssetAtPath<ChibiFaceAtlas>($"{MatDir}/Chibi_EyesAtlas.asset");
-        var mouths = AssetDatabase.LoadAssetAtPath<ChibiFaceAtlas>($"{MatDir}/Chibi_MouthsAtlas.asset");
-        if (eyes == null || mouths == null) { Debug.LogWarning("[치비] 아틀라스가 없다 — `Pawn/3. Create Chibi Pawns`를 먼저 돌릴 것."); return; }
+        // 아틀라스는 이목구비 종류마다(`Feature.Kind`) — 하나라도 없으면 먼저 굽기를 돌려야 한다.
+        var atlases = new Dictionary<string, ChibiFaceAtlas>();
+        foreach (var f in Features)
+        {
+            if (atlases.ContainsKey(f.Kind)) continue;
+            var a = AssetDatabase.LoadAssetAtPath<ChibiFaceAtlas>($"{MatDir}/Chibi_{f.Kind}Atlas.asset");
+            if (a == null) { Debug.LogWarning($"[치비] {f.Kind} 아틀라스가 없다 — `Pawn/3. Create Chibi Pawns`를 먼저 돌릴 것."); return; }
+            atlases[f.Kind] = a;
+        }
 
         var layout = AssetDatabase.LoadAssetAtPath<ChibiFaceLayout>(ChibiFaceLayout.Path);
         Heads = MakeHeads(layout);
         foreach (var h in Heads)
         foreach (var f in Features)
-            BuildFeature(h, f, f.Kind == "Mouths" ? mouths.Cells : eyes.Cells);
+            BuildFeature(h, f, atlases[f.Kind].Cells);
         AssetDatabase.SaveAssets();
         SceneView.RepaintAll();
         UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
@@ -702,7 +949,7 @@ public static class ChibiPawnCreator
 
     // ── 아틀라스 — 눈 · 입 따로 ─────────────────────────────────────────────
     //
-    // 칸은 두 벌에서 온다: **도구가 그리는 림월드식**(`rim_*` — 폴더가 비어도 늘 있다)과
+    // 칸은 두 벌에서 온다: **도구가 그리는 림월드식**(`ink_*` — 폴더가 비어도 늘 있다)과
     // **`PackDir/eyes/` · `PackDir/mouths/` 아래의 PNG**(넣고 빼면 저절로 다시 굽는다).
     //
     // 그림은 **채널 분할 마스크**로 바꾼다:
@@ -846,28 +1093,28 @@ public static class ChibiPawnCreator
 
     static List<(string name, Func<float, float, Color32> draw)> RimEyes() => new()
     {
-        ("rim_eye",        (u, v) => Ink(Soft(Circle(u, v, 0.5f, 0.5f, EyeR)))),
+        ("ink_eye",        (u, v) => Ink(Soft(Circle(u, v, 0.5f, 0.5f, EyeR)))),
         // 크게 뜬 눈 — 조금 크고 흰 반짝임.
-        ("rim_eye_wide",   (u, v) =>
+        ("ink_eye_wide",   (u, v) =>
         {
             float body  = Soft(Circle(u, v, 0.5f, 0.5f, EyeR * 1.15f));
             float spark = Soft(Circle(u, v, 0.40f, 0.62f, EyeR * 0.28f));
             return new Color(1f - spark, spark, 0f, body);
         }),
         // 졸린 눈 — 위를 눈꺼풀이 덮은 반달(44번 사진의 그 눈).
-        ("rim_eye_sleepy", (u, v) => Ink(Soft(Mathf.Max(Circle(u, v, 0.5f, 0.45f, EyeR), v - 0.50f)))),
+        ("ink_eye_sleepy", (u, v) => Ink(Soft(Mathf.Max(Circle(u, v, 0.5f, 0.45f, EyeR), v - 0.50f)))),
         // 감은 눈 — 아래로 휜 굵은 호(∪).
-        ("rim_eye_closed", (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.62f, EyeR, EyeLine, up: false)))),
+        ("ink_eye_closed", (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.62f, EyeR, EyeLine, up: false)))),
         // 웃는 눈 — 위로 휜 굵은 호(∩).
-        ("rim_eye_happy",  (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.38f, EyeR, EyeLine, up: true)))),
+        ("ink_eye_happy",  (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.38f, EyeR, EyeLine, up: true)))),
         // 화난 눈 — **코 쪽 위**가 비스듬히 깎인 점.
-        ("rim_eye_angry",  (u, v) => Ink(Soft(Mathf.Max(Circle(u, v, 0.5f, 0.46f, EyeR),
+        ("ink_eye_angry",  (u, v) => Ink(Soft(Mathf.Max(Circle(u, v, 0.5f, 0.46f, EyeR),
                                                         (v - 0.58f) + (0.5f - u) * 0.8f)))),
         // 슬픈 눈 — **바깥쪽 위**가 깎인 점.
-        ("rim_eye_sad",    (u, v) => Ink(Soft(Mathf.Max(Circle(u, v, 0.5f, 0.46f, EyeR),
+        ("ink_eye_sad",    (u, v) => Ink(Soft(Mathf.Max(Circle(u, v, 0.5f, 0.46f, EyeR),
                                                         (v - 0.58f) + (u - 0.5f) * 0.8f)))),
         // 놀란 눈 — 가운데가 빈 고리.
-        ("rim_eye_shock",  (u, v) => Ink(Soft(Mathf.Abs(Circle(u, v, 0.5f, 0.5f, EyeR)) - EyeLine * 0.4f))),
+        ("ink_eye_shock",  (u, v) => Ink(Soft(Mathf.Abs(Circle(u, v, 0.5f, 0.5f, EyeR)) - EyeLine * 0.4f))),
     };
 
     // ── 림월드식 입 ─────────────────────────────────────────────────────────
@@ -877,12 +1124,12 @@ public static class ChibiPawnCreator
 
     static List<(string name, Func<float, float, Color32> draw)> RimMouths() => new()
     {
-        ("rim_mouth_line",  (u, v) => Ink(Soft(Bar(u, v, 0.5f, 0.5f, MouthW, MouthLine * 0.5f)))),
-        ("rim_mouth_smile", (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.62f, MouthW, MouthLine, up: false)))),
-        ("rim_mouth_frown", (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.38f, MouthW, MouthLine, up: true)))),
-        ("rim_mouth_o",     (u, v) => Ink(Soft(Mathf.Abs(Circle(u, v, 0.5f, 0.5f, 0.12f)) - MouthLine * 0.5f))),
+        ("ink_mouth_line",  (u, v) => Ink(Soft(Bar(u, v, 0.5f, 0.5f, MouthW, MouthLine * 0.5f)))),
+        ("ink_mouth_smile", (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.62f, MouthW, MouthLine, up: false)))),
+        ("ink_mouth_frown", (u, v) => Ink(Soft(Arc(u, v, 0.5f, 0.38f, MouthW, MouthLine, up: true)))),
+        ("ink_mouth_o",     (u, v) => Ink(Soft(Mathf.Abs(Circle(u, v, 0.5f, 0.5f, 0.12f)) - MouthLine * 0.5f))),
         // 벌린 입 — 검은 반원에 혀(B).
-        ("rim_mouth_open",  (u, v) =>
+        ("ink_mouth_open",  (u, v) =>
         {
             float body   = Soft(Mathf.Max(Circle(u, v, 0.5f, 0.56f, MouthW), v - 0.56f));
             float tongue = Soft(Circle(u, v, 0.5f, 0.36f, MouthW * 0.45f));
@@ -891,6 +1138,14 @@ public static class ChibiPawnCreator
     };
 
     // ── 그리기 도구 — 부호 있는 거리(안쪽이 음수) ───────────────────────────
+    // 선분 — (ax,ay)~(bx,by), 굵기 w, 끝은 둥글게.
+    static float Segment(float u, float v, float ax, float ay, float bx, float by, float w)
+    {
+        float px = u - ax, py = v - ay, dx = bx - ax, dy = by - ay;
+        float t  = Mathf.Clamp01((px * dx + py * dy) / Mathf.Max(1e-6f, dx * dx + dy * dy));
+        float ex = px - dx * t, ey = py - dy * t;
+        return Mathf.Sqrt(ex * ex + ey * ey) - w * 0.5f;
+    }
     const float Px = 1f / (CellPx - 2 * CellPad);
     static Color32 Ink(float cover) => new Color(1f, 0f, 0f, Mathf.Clamp01(cover));
     static float Soft(float d) => Mathf.Clamp01(0.5f - d / Px);   // 1px 부드럽게 — 딱 자르면 계단이 선다
@@ -917,7 +1172,8 @@ public static class ChibiPawnCreator
 
     // ── 재질 ────────────────────────────────────────────────────────────────
 
-    static Dictionary<string, Material> EnsureMaterials(Shader toon, Shader face, Dictionary<string, ChibiFaceAtlas> atlases)
+    static Dictionary<string, Material> EnsureMaterials(Shader toon, Shader face, Shader outer,
+                                                        Dictionary<string, ChibiFaceAtlas> atlases)
     {
         EnsureDir(MatDir);
         var map = new Dictionary<string, Material>();
@@ -926,9 +1182,19 @@ public static class ChibiPawnCreator
             var mat = LoadOrMake($"{MatDir}/Chibi_{name}.mat", toon);
             mat.SetColor("_BaseColor", color);
             mat.SetColor("_ShadeColor", new Color(0.70f, 0.72f, 0.82f, 1f));
-            mat.SetColor("_OutlineColor", new Color(0.06f, 0.05f, 0.06f, 1f));
-            mat.SetFloat("_OutlineWidth", 0.06f);
-            mat.SetFloat("_OutlineMin",   0.008f);
+            mat.SetColor("_OutlineColor", OutlineColor);
+            // **몸통(셔츠)은 제 선을 끈다** — 그 선은 두 번째 재질(`OutlineOuter`)이 몸 밖에만 긋는다.
+            // **코(가는 선 재질)도 제 선을 끈다** — 선은 둘째 재질(`OutlineOuterFine`)이 몸 밖에만 긋는다.
+            bool outerOnly = name == "Shirt" || FineOutline(name);
+            mat.SetFloat("_OutlineWidth", outerOnly ? 0f : OutlineWidth);
+            mat.SetFloat("_OutlineMin",   outerOnly ? 0f : OutlineMin);
+            // 스텐실에 제 자리를 적는 것은 **몸통과 얼굴**뿐이다 — 번호는 폰마다 `PawnOutlineId`가 준다(여기 값은 씬 뷰용 기본값).
+            // 얼굴(머리 살·코)은 번호에 **128을 얹어** 적는다: 코 선이 비킬 곳은 제 얼굴뿐이라 손·몸통과 갈라야 한다.
+            // **손·팔·귀는 안 적는다** — 적으면 몸통 선이 제 손 위에서 사라진다(겹친 부위 사이에도 선이 서야 한다).
+            bool isFace = name == "HeadSkin" || FineOutline(name);
+            mat.SetFloat("_StencilFace",      isFace ? 1f : 0f);
+            mat.SetFloat("_StencilRef",       isFace ? 1f + PawnOutlineId.FaceBit : 1f);
+            mat.SetFloat("_StencilWriteMask", outerOnly || isFace ? 255f : 0f);
             // **머리카락만 양면이다** — 커튼은 앞을 비운 한 겹이라 트인 자리로 안쪽이 보인다.
             mat.SetFloat("_Cull", name == "Hair" ? 0f : 2f);
             EditorUtility.SetDirty(mat);
@@ -948,10 +1214,40 @@ public static class ChibiPawnCreator
             EditorUtility.SetDirty(mat);
             return mat;
         }
+        var o = LoadOrMake($"{MatDir}/Chibi_OutlineOuter.mat", outer);
+        o.SetColor("_OutlineColor", OutlineColor);
+        o.SetFloat("_OutlineWidth", OutlineWidth);
+        o.SetFloat("_OutlineMin",   OutlineMin);
+        o.SetFloat("_StencilRef",   1f);
+        // 살이 다 칠해진 뒤 · **발밑 선택 고리(반투명 3000)보다도 뒤** — 앞이면 고리가 선을 뚫는다.
+        o.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 1;
+        EditorUtility.SetDirty(o);
+        map["OutlineOuter"] = o;
+
+        // 코의 바깥 선 — **굵기는 머리와 같고 · 땅을 이기려 당기지 않는다**(코는 땅에 안 닿는다 · 당기면 얼굴 앞으로 떠 보인다).
+        // 처음엔 1.2cm로 가늘게 뒀는데 머리 테두리(6cm) 옆에서 **코끝만 선이 얇아** 선이 없는 것처럼 읽혔다(2026-09-19, 사용자:
+        // *"외곽선이 엄청 얇은데 머리랑 맞추는게 맞지"*). 굵게 해도 앞에서 검은 덩어리가 안 되는 것은 **얼굴 위에서는 스텐실이
+        // 선을 지우기 때문**이다 — 코 제 재질에 6cm 선을 걸었을 때 덩어리가 된 것은 그 선이 스텐실을 안 보는 옛 패스였기 때문이다.
+        var of = LoadOrMake($"{MatDir}/Chibi_OutlineOuterFine.mat", outer);
+        of.SetColor("_OutlineColor", OutlineColor);
+        of.SetFloat("_OutlineWidth", OutlineWidth);
+        of.SetFloat("_OutlineMin",   OutlineMin);
+        of.SetFloat("_OutlineGroundPush", 0f);
+        // **"내 얼굴"만 비킨다** — 번호 + 128과 같은 자리에서만 안 긋고, 제 손·몸통(번호만 적힌 자리)과 다른 폰 위에서는 긋는다.
+        of.SetFloat("_StencilFace",  1f);
+        of.SetFloat("_StencilRef",   1f + PawnOutlineId.FaceBit);
+        of.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 1;
+        EditorUtility.SetDirty(of);
+        map["OutlineOuterFine"] = of;
+
         map["FaceEyes"]   = Face("Eyes",   new Color32(0x5A, 0x3C, 0x28, 0xFF));
         map["FaceMouths"] = Face("Mouths", new Color32(0xC8, 0x5A, 0x5A, 0xFF));
         return map;
     }
+
+    // 외곽선 값은 한 벌 — 살 재질과 바깥 선 재질이 같이 쓴다(갈리면 몸통 선만 굵기가 다르다).
+    static readonly Color OutlineColor = new(0.06f, 0.05f, 0.06f, 1f);
+    const float OutlineWidth = 0.06f, OutlineMin = 0.008f;
 
     static Material LoadOrMake(string path, Shader shader)
     {

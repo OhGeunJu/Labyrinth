@@ -240,11 +240,11 @@ public class FarmZoneDesignator : MonoBehaviour
         if (_cam == null) return false;
 
         var ray  = _cam.ScreenPointToRay(screen);
-        var hits = Physics.RaycastAll(ray, 5000f, ~0, QueryTriggerInteraction.Collide);
-        if (hits.Length == 0) return false;
+        // 짚는 문은 한 벌(`VisiblePick`) — 이미 가까운 순이다.
+        var hits = VisiblePick.All(ray, 5000f, ~0, QueryTriggerInteraction.Collide);
+        if (hits.Count == 0) return false;
 
-        System.Array.Sort(hits, (x, y) => x.distance.CompareTo(y.distance));
-        for (int i = 0; i < hits.Length; i++)
+        for (int i = 0; i < hits.Count; i++)
         {
             if (RockRenderer.IsRockCollider(hits[i].collider)) continue;
             world = hits[i].point;

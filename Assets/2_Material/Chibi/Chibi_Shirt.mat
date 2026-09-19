@@ -26,10 +26,13 @@ Material:
     m_Ints: []
     m_Floats:
     - _Cull: 2
-    - _OutlineMin: 0.008
-    - _OutlineWidth: 0.06
+    - _OutlineMin: 0
+    - _OutlineWidth: 0
     - _ShadeSoftness: 0.03
     - _ShadeThreshold: 0.42
+    - _StencilFace: 0
+    - _StencilRef: 1
+    - _StencilWriteMask: 255
     m_Colors:
     - _BaseColor: {r: 0.76862746, g: 0.27058825, b: 0.23529412, a: 1}
     - _OutlineColor: {r: 0.06, g: 0.05, b: 0.06, a: 1}

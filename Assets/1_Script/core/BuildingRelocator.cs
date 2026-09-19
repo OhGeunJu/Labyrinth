@@ -96,7 +96,8 @@ public class BuildingRelocator : MonoBehaviour
 
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
         Vector3 point;
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f))
+        // 짚는 문은 한 벌(`VisiblePick`) — 잘려서 안 보이는 벽 윗부분에 먼저 맞지 않게.
+        if (VisiblePick.First(ray, out var hit, 500f))
             point = hit.point;
         // 공허(던전 씬): 콜라이더가 없어도 y=0 평면 교차 — `BuildModeManager`와 같은 폴백.
         else if (new Plane(Vector3.up, 0f).Raycast(ray, out float enter) && enter <= 500f)

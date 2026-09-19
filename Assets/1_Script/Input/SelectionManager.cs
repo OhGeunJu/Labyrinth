@@ -90,6 +90,13 @@ public class SelectionManager : MonoBehaviour
     // 부르는 쪽이 자기 이벤트를 따로 만들면 패널을 여는 길이 둘이 되어 어긋난다.
     public static void InspectNode(ResourceNode node)   => OnNodeSelected?.Invoke(node);
     public static void InspectCorpse(Corpse corpse)     => OnCorpseSelected?.Invoke(corpse);
+    // 채집물 — 좌클릭과 **같은 순서로** 연다(노드·폰 창을 닫고 살펴보기 창을 연다).
+    public static void InspectForage(Forageable forage)
+    {
+        OnNodeSelected?.Invoke(null);
+        OnPawnInspected?.Invoke(null);
+        OnForageInspected?.Invoke(forage);
+    }
 
     void Awake()
     {
@@ -238,7 +245,7 @@ public class SelectionManager : MonoBehaviour
         // 그 폰이 아니라 어깨의 시체가 열린다.** 우클릭 쪽(`MoveController.PickTarget`)과
         // **같은 규칙이어야 한다** — 같은 물음에 두 곳이 다르게 답하면 반드시 어긋난다
         // (시체를 먼저 볼 것이냐를 두고 이미 한 번 겪었다).
-        bool hasHit = PickVisible(ray, out RaycastHit hit);
+        bool hasHit = PickVisible(ray, out PickHit hit);
         if (hasHit)
         {
             var core = hit.collider.GetComponentInParent<DungeonCore>();
@@ -279,13 +286,7 @@ public class SelectionManager : MonoBehaviour
 
             // 채집물 — **선택은 유지한다**(노드·시체·바닥 물건과 같은 이유).
             var forage = hit.collider.GetComponentInParent<Forageable>();
-            if (forage != null)
-            {
-                OnNodeSelected?.Invoke(null);
-                OnPawnInspected?.Invoke(null);
-                OnForageInspected?.Invoke(forage);
-                return;
-            }
+            if (forage != null) { InspectForage(forage); return; }
 
             var corpse = hit.collider.GetComponent<Corpse>();
             if (corpse != null)
@@ -558,16 +559,14 @@ public class SelectionManager : MonoBehaviour
     // 문서가 *"업힌 쪽을 때리면 업은 폰을 노리는 것과 구별이 안 된다 — 어깨 위라 사거리가
     // 같다"*고 적어 둔 규칙이 겨냥에도 그대로 성립한다. **좌·우클릭이 같은 함수를 쓴다** —
     // 같은 물음에 두 곳이 다르게 답하면 반드시 어긋난다.
-    public static bool PickVisible(Ray ray, out RaycastHit hit)
+    //
+    // **보이는 것만 짚는다**(`VisiblePick`, 2026-09-19) — 잘려서 화면에 없는 벽 윗부분이 먼저 맞으면
+    // 그 뒤의 폰·광맥이 아니라 **안 보이는 벽**이 열린다.
+    public static bool PickVisible(Ray ray, out PickHit hit)
     {
         hit = default;
 
-        var hits = Physics.RaycastAll(ray, 500f);
-        if (hits.Length == 0) return false;
-
-        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-        foreach (var h in hits)
+        foreach (var h in VisiblePick.All(ray, 500f))
         {
             var brain = h.collider.GetComponentInParent<UnitBrain>();
             if (brain?.Blackboard != null && brain.Blackboard.CarriedBy != null) continue;

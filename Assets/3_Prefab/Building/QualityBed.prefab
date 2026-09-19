@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1536589477264825872
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2019328045147980830}
+  m_Layer: 0
+  m_Name: '[Art Sleep]'
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2019328045147980830
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1536589477264825872}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: 0.5, z: 0.5, w: 0.5}
+  m_LocalPosition: {x: 0, y: 1.183052, z: 0.00000014901161}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1897494257547426331}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5271680083437237405
 GameObject:
   m_ObjectHideFlags: 0
@@ -428,7 +459,8 @@ Transform:
   - {fileID: 2414342383513146850}
   - {fileID: 8473886722571026350}
   - {fileID: 3367914371349203499}
-  - {fileID: 8455009197625885084}
+  - {fileID: 7606975013562881236}
+  - {fileID: 2019328045147980830}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!65 &4827586249381572705
@@ -470,7 +502,7 @@ MonoBehaviour:
   tintTarget: {fileID: 2532223124874824128}
   normalTint: {fileID: 2100000, guid: 76236b7691f748d7a0e1b76f2823353c, type: 2}
   prisonTint: {fileID: 2100000, guid: 20c05d0fec044e44868a2b11e0e54748, type: 2}
-  sleepAnchor: {fileID: 3367914371349203499}
+  sleepAnchor: {fileID: 2019328045147980830}
   lieHeight: 0.35
   pillowYaw: 0
   approachMargin: 0.8
@@ -488,7 +520,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: 9ab856178631528409ea0f4a65603b08, type: 2}
   refundRatio: 1
---- !u!1001 &6421084868263542659
+--- !u!1001 &5033647536790645451
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -560,8 +592,8 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 6aa1d891720f8ac4e8681286b13e2e5e, type: 3}
---- !u!4 &8455009197625885084 stripped
+--- !u!4 &7606975013562881236 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3191500429625998879, guid: 6aa1d891720f8ac4e8681286b13e2e5e, type: 3}
-  m_PrefabInstance: {fileID: 6421084868263542659}
+  m_PrefabInstance: {fileID: 5033647536790645451}
   m_PrefabAsset: {fileID: 0}

@@ -58,7 +58,7 @@ public class FactionPanelUI : MonoBehaviour
 
     void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.lKey.wasPressedThisFrame && panel != null)
+        if (Keyboard.current != null && Keyboard.current.lKey.wasPressedThisFrame && panel != null && !InputFocus.KeysBlocked())
         {
             panel.SetActive(!panel.activeSelf);
             if (panel.activeSelf) Refresh();

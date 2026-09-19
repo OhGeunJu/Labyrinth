@@ -80,7 +80,7 @@ public class ExpeditionUI : MonoBehaviour
         if (kb == null) return;
 
         // 월드맵을 보는 동안엔 편성할 게 없다(폰이 화면에 없다).
-        if (kb[toggleKey].wasPressedThisFrame && GameModeManager.IsField) Toggle();
+        if (kb[toggleKey].wasPressedThisFrame && GameModeManager.IsField && !InputFocus.KeysBlocked()) Toggle();
         if (IsOpen && kb.escapeKey.wasPressedThisFrame) Close();
     }
 

@@ -29,6 +29,8 @@ public class PawnLookEditor : Editor
         {
             EditorGUILayout.TextField("머리형", look.Shape);
             EditorGUILayout.TextField("머리",   look.Hair);
+            EditorGUILayout.TextField("귀",     look.Ear);
+            EditorGUILayout.TextField("코",     look.Nose);
         }
 
         EditorGUILayout.Space();
@@ -39,6 +41,13 @@ public class PawnLookEditor : Editor
         var hairs = look.HairNames.ToList();
         hairs.Insert(0, PawnLook.Bald);
         Row("머리", hairs, look.HairOverride, v => look.HairOverride = v, look);
+
+        var ears = look.EarNames.ToList();
+        ears.Insert(0, PawnLook.None);
+        Row("귀", ears, look.EarOverride, v => look.EarOverride = v, look, "(일반 귀)");
+
+        var noses = look.NoseNames.ToList();
+        Row("코", noses, look.NoseOverride, v => look.NoseOverride = v, look, "(없음)");
 
         // 이목구비 — 아틀라스의 이름을 그대로 드롭다운에 낸다. 첫 칸은 "기본", 둘째는 "없음".
         EditorGUILayout.Space();
@@ -65,7 +74,7 @@ public class PawnLookEditor : Editor
             if (GUILayout.Button("전부 씨앗으로"))
                 Change(look, () =>
                 {
-                    look.ShapeOverride = ""; look.HairOverride = "";
+                    look.ShapeOverride = ""; look.HairOverride = ""; look.EarOverride = ""; look.NoseOverride = "";
                     foreach (var f in PawnLook.FaceFeatures) look.SetFaceOverride(f, "");
                 });
             if (GUILayout.Button("다시 모으기"))

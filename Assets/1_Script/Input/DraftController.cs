@@ -42,7 +42,7 @@ public class DraftController : MonoBehaviour
         // **"고른 것이 있나"로 물으면 안 된다** — uGUI는 누른 **버튼**도 다음 클릭까지 고른
         // 채로 둔다. 그러면 창고 필터나 작업 설정을 한 번 누른 뒤로는 R이 조용히 안 먹는다.
         // 글자를 치는 칸인지를 물어야 한다.
-        if (InputFocus.IsTyping()) return;
+        if (InputFocus.KeysBlocked()) return;
 
         // **월드맵에서는 안 먹는다** — 거기서 R은 아무 뜻이 없고, 지도에 나가 있는 사이에
         // 필드의 폰들이 소집되면 돌아왔을 때 아무도 일을 안 하고 있다.

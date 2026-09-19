@@ -445,13 +445,37 @@ public class InspectPanelUI : MonoBehaviour
     // 그 둘을 갈라 놓은 덕에 한 줄로 갈린다.
     void Show() => UiTween.PopIn(panel);
 
+    // **폰의 이름 줄 — 한 벌**(상태표 맨 위가 쓴다). 이름 · [유형] (세력). **시체의 소속은 `Corpse`가 든다**
+    // (`BecomeCorpse`가 `Faction`을 지운다 — 안 그러면 죽는 순간 소속이 사라진다).
+    public static (string name, string sub) PawnHeader(UnitBrain brain)
+    {
+        if (brain == null) return ("", "");
+        var faction = brain.GetComponent<Faction>();
+        var corpse  = brain.GetComponent<Corpse>();
+        var data    = faction != null ? faction.Data : corpse != null ? corpse.Faction : null;
+
+        string name = !string.IsNullOrEmpty(brain.UnitName) ? brain.UnitName
+                    : brain.Data != null ? brain.Data.RaceName : brain.gameObject.name;
+        // 성별은 몸이 답한다 — 몸이 없는 폰(늑대·골렘)은 안 적는다.
+        var    g    = brain.Gender;
+        string sub  = $"[{UnitTypeLabel(brain, faction)}]" + (g.HasValue ? $" {g.Value.DisplayName()}" : "")
+                    + (data != null ? $"  <color=#7AA>({data.FactionName})</color>" : "");
+        return (name, sub);
+    }
+
+    // **지금 이 창이 보여 주는 폰**(2026-09-19) — 상태표(`PawnSheetUI`)가 읽는다. *방금 눌러 본 것 ↔ 고른 폰*을
+    // 여기서 가르므로 상태표가 또 가르면 두 창이 다른 폰을 보여 주는 순간이 생긴다. 폰이 아니면 null.
+    public static UnitBrain ShownPawn { get; private set; }
+
     void Refresh()
     {
+        ShownPawn = null;
         // 운반 스위치는 **바닥 물건을 골랐을 때만** 뜬다 — 여기서 한 번 내리고
         // `ShowItems`만 다시 올린다(분기마다 끄면 새 분기가 하나 빠뜨린다).
         SetHaulToggle(null);
 
-        if (_buildMode) { panel?.SetActive(false); return; }
+        // 건설뿐 아니라 **명령·밭 구역에서도** 치운다(`FocusMode`).
+        if (_buildMode || FocusMode.Active) { panel?.SetActive(false); return; }
 
         // **방금 누른 것이 먼저다**(조사와 같은 규칙). 청사진이 다 지어지거나 취소되면,
         // 건물이 분해되면 `== null`이 되어 저절로 폰 쪽으로 돌아간다.
@@ -481,18 +505,13 @@ public class InspectPanelUI : MonoBehaviour
         }
 
         if (brain == null) { panel?.SetActive(false); return; }   // 선택 없음 / 파괴된 유닛
+        ShownPawn = brain;
         Show();
 
         SetPawnActions(brain);
 
-        var pawn = brain.gameObject;
-        var body = brain.GetComponent<BodyPartSystem>();
-        var sfx  = brain.GetComponent<StatusEffectSystem>();
-
         var sb    = new StringBuilder();
-        var equip = brain.Equipment;
 
-        // 헤더 — 이름 [유형] (세력)
         var faction = brain.GetComponent<Faction>();
         var corpse  = brain.GetComponent<Corpse>();
 
@@ -500,11 +519,7 @@ public class InspectPanelUI : MonoBehaviour
         // 소속은 `Corpse`가 받아 뒀으므로 거기서 읽는다(안 그러면 죽는 순간 소속이 사라진다).
         var factionData = faction != null ? faction.Data : corpse != null ? corpse.Faction : null;
 
-        string raceName = !string.IsNullOrEmpty(brain.UnitName) ? brain.UnitName
-                        : brain.Data != null ? brain.Data.RaceName : pawn.name;
-        string factionName = factionData != null
-            ? $"  <color=#7AA>({factionData.FactionName})</color>" : "";
-        sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>[{UnitTypeLabel(brain, faction)}]</color>{factionName}");
+        // **이름 줄은 상태표 맨 위로 옮겼다**(`PawnSheetUI` ← `PawnHeader`, 사용자: *"이름이랑 순서가 먼저 보여야해"*).
 
         // **얼마나 삭았나** — 도축해서 무엇이 나올지가 이것으로 갈리고(`Butchering`),
         // 나중에 붙일 "교단이 일으킨다"의 재료도 이 단계다. 산 폰에는 안 뜬다.
@@ -524,83 +539,15 @@ public class InspectPanelUI : MonoBehaviour
 
         sb.AppendLine();
 
-        // 혈액 / 보호막 / 부패
-        if (body != null)
-        {
-            // **이름은 몸이 정한다** — 뼈에 흐르는 피도, 돌덩이가 흘리는 피도 없다.
-            sb.AppendLine($"{Needs.VitalName(Needs.BodyOf(brain))}  " +
-                          $"{BloodBar(body.Blood, body.MaxBlood)}");
-            if (sfx != null && sfx.ShieldPool > 0f)
-                sb.AppendLine($"보호막  <color=#4AF>{sfx.ShieldPool:F0}</color>");
-            if (sfx != null && sfx.CorruptionGauge > 0f)
-                sb.AppendLine($"부패  {BarColored(sfx.CorruptionGauge, StatusEffectSystem.MaxCorruption, "#A020F0", "#6010A0")}  {sfx.CorruptionGauge:F0}/{StatusEffectSystem.MaxCorruption:F0}");
-        }
-
-        // 허기 — **허기가 도는 유닛에만**, 그리고 **살아 있을 때만** 표시.
-        //
-        // 누가 굶는지는 `Feeding.Simulates`가 답한다(플레이어 세력 + 갇힌 사람). 여기서
-        // 따로 판정하면 반드시 어긋나는데, 그 어긋남은 **가장 나쁜 쪽으로** 나타난다:
-        // 붙잡아 둔 적은 굶는데 허기 바가 안 떠서 왜 죽는지 알 길이 없다.
-        //
-        // 시체 검사는 남는다 — `BecomeCorpse`가 `Faction`을 지우므로 세력으로는 걸러지지만
-        // (모르는 것은 플레이어가 아니다) **죽은 자는 안 배고프다**를 여기서 못 박아 둔다.
-        if (corpse == null && Needs.Simulates(brain))
-        {
-            // **축마다 한 줄, 규칙은 한 벌.** 셋이 같은 물건이라(`Needs`) 색과 눈금을 여기서
-            // 축별로 갈라 적으면 하나를 고칠 때 나머지가 뒤처진다.
-            for (int i = 0; i < Needs.Count; i++)
-            {
-                var kind = (NeedKind)i;
-                if (!Needs.Simulates(brain, kind)) continue;   // 안 도는 축은 안 띄운다
-
-                float v  = brain.Blackboard.Need(kind);
-                // **색 경계도 임계에서 나온다** — 60/30을 손으로 박아 두면 임계를 옮겼을 때
-                // 바가 초록인데 폰은 이미 밥 먹으러 가는 꼴이 된다.
-                string c  = v > Needs.Threshold        ? "#8BC34A"
-                          : v > Needs.Threshold * 0.5f ? "#FF9800"
-                          :                              "#F44336";
-                sb.AppendLine($"{Needs.Name(kind)}  {BarColored(v, 100f, c, c)}  " +
-                              $"<color={c}>{v:F0}/100</color>");
-            }
-        }
+        // **혈액 · 욕구 · 부위 · 상태 이상은 상태표로 옮겼다**(`PawnSheetUI`, 2026-09-19 — 켄시의 그 창). 같은 값을
+        // 두 창이 그리면 하나를 고칠 때 다른 하나가 뒤처진다. 여기는 **누구이고 무엇을 지녔나**를 답한다.
 
         // **업고 있는 것과 갇힌 것은 화면에 나와야 한다.** 둘 다 그 폰이 왜 느린지·왜
         // 아무것도 안 하는지의 답인데, 모델만 봐서는 알기 어렵다.
         AppendCarryState(sb, brain);
 
-        // 활성 상태이상
-        if (sfx != null) AppendStatusEffects(sb, sfx);
-
-        // **특성 — 이름만.** 여긴 상태를 보는 창이라 오프셋 숫자까지 늘어놓으면 혈액·허기가
-        // 밀린다. 무엇을 얼마나 얹는지는 스탯 창(C)이 답한다.
-        AppendTraits(sb, brain);
-        sb.AppendLine();
-
-        // 장착
-        if (equip != null)
-        {
-            sb.AppendLine(H("■ 장착"));
-            sb.AppendLine(Row2("주손",   equip.MainHand?.ItemName ?? "-",
-                               "보조손", equip.OffHand?.ItemName  ?? "-"));
-            sb.AppendLine(Row2("머리",   equip.GetArmor(ArmorSlot.Head)?.ItemName  ?? "-",
-                               "몸통",   equip.GetArmor(ArmorSlot.Chest)?.ItemName ?? "-"));
-            sb.AppendLine(Row2("손",     equip.GetArmor(ArmorSlot.Hands)?.ItemName ?? "-",
-                               "다리",   equip.GetArmor(ArmorSlot.Legs)?.ItemName  ?? "-"));
-            sb.AppendLine();
-        }
-
-        // 신체 부위
-        if (body != null)
-        {
-            sb.AppendLine(H("■ 신체"));
-            sb.AppendLine(Row2("머리",   FormatPart(body, BodyPartType.Head),
-                               "가슴",   FormatPart(body, BodyPartType.Chest)));
-            sb.AppendLine(Row2("복부",   FormatPart(body, BodyPartType.Abdomen),
-                               "왼팔",   FormatPart(body, BodyPartType.LeftArm)));
-            sb.AppendLine(Row2("오른팔", FormatPart(body, BodyPartType.RightArm),
-                               "왼다리", FormatPart(body, BodyPartType.LeftLeg)));
-            sb.AppendLine($"  오른다리  {FormatPart(body, BodyPartType.RightLeg)}");
-        }
+        // **배경·특성·장비는 상태표의 줄로 옮겼다**(`PawnSheetUI` — 능력치와 같은 색 규칙, 사용자 결정).
+        // 여기 남는 것은 **그때그때 생기는 사정**뿐이다(부패 · 우호도 · 업기/갇힘).
 
         if (infoText != null) infoText.text = Josa.Fix(sb.ToString());
     }
@@ -1292,15 +1239,6 @@ public class InspectPanelUI : MonoBehaviour
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────
 
-    static void AppendStatusEffects(StringBuilder sb, StatusEffectSystem sfx)
-    {
-        var parts = new List<string>();
-        if (sfx.AttackIntervalMult > 1.05f) parts.Add("<color=#4CF>[빙결 둔화]</color>");
-        if (sfx.MoveSpeedMult      < 0.95f) parts.Add("<color=#4CF>[이속감소]</color>");
-        if (sfx.HealMult           < 0.95f) parts.Add("<color=#F44>[힐감소]</color>");
-        if (sfx.AttackChanceMod    < 0.95f) parts.Add("<color=#F84>[약화]</color>");
-        if (parts.Count > 0) sb.AppendLine("상태  " + string.Join("  ", parts));
-    }
 
     // 유형 라벨 — 플레이어 유닛은 방랑자/하수인, NPC는 역할, 그 외는 **우리 세력과의 관계**.
     // (비플레이어를 무조건 "적"이라 부르면 중립 세력까지 적으로 표기된다)
@@ -1465,46 +1403,8 @@ public class InspectPanelUI : MonoBehaviour
         }
     }
 
-    // 한 줄로 붙여 쓴다 — `특성  강인함 · 겁쟁이`. 없는 폰(0개)은 줄 자체가 안 뜬다.
-    static void AppendTraits(StringBuilder sb, UnitBrain brain)
-    {
-        // **성장 배경 한 줄** — 이름만. 좁은 창이라 오프셋까지 적으면 특성 줄과 함께
-        // 두 줄이 숫자로 가득 찬다.
-        //
-        // **이름마다 링크를 감는다**(2026-09-08) — 자세한 것은 **올렸을 때** 뜬다.
-        // 그전에는 스탯 창(`C`)이 답한다고 적어 두었는데, 그 창은 **내 폰 전용**이라
-        // 붙잡은 산적의 이력을 볼 자리가 아무 데도 없었다(회유할지 몸값을 받을지 정하는
-        // 근거가 그것인데). **아래에 블록을 하나 더 붙였다가 걷어냈다** — 위에 이미 있는
-        // 줄을 못 보고 같은 것을 두 번 그렸다.
-        string story = PawnStoryText.StoryNames(brain);
-        if (!string.IsNullOrEmpty(story))
-            sb.AppendLine($"<color=#888>배경</color>  {story}");
 
-        string names = PawnStoryText.TraitNames(brain);
-        if (string.IsNullOrEmpty(names)) return;
 
-        sb.AppendLine($"<color=#D8C89A>특성  {names}</color>");
-    }
-
-    static string H(string t)    => $"<color=#E8C566>{t}</color>";
-    static string Row2(string l1, string v1, string l2, string v2)
-    {
-        string left  = l1.Length > 0 ? $"{l1}  <b>{v1}</b>" : v1;
-        string right = l2.Length > 0 ? $"{l2}  <b>{v2}</b>" : v2;
-        return $"  {left,-20}  {right}";
-    }
-
-    // **최대 혈액은 몸에게 묻는다.** 100이 기본값으로 박혀 있었는데, 눈금을 올리는 순간
-    // (350) 바가 늘 가득 차 보이고 색도 안 변한다 — *"피를 흘리는데 화면은 멀쩡하다"*.
-    // 색 문턱도 비율로 잰다(60/30은 100 기준의 수였다).
-    static string BloodBar(float blood, float max)
-    {
-        if (max <= 0f) max = 1f;
-        float pct = blood / max * 100f;
-        int filled = Mathf.Clamp(Mathf.RoundToInt(blood / max * 10), 0, 10);
-        string color = pct > 60 ? "#E55" : pct > 30 ? "#F90" : "#F44";
-        return $"<color={color}>{new string('█', filled)}{new string('░', 10 - filled)}</color>  {blood:F0}/{max:F0}";
-    }
 
     static string BarColored(float val, float max, string fill, string empty)
     {
@@ -1512,11 +1412,4 @@ public class InspectPanelUI : MonoBehaviour
         return $"<color={fill}>{new string('█', filled)}</color><color={empty}>{new string('░', 10 - filled)}</color>";
     }
 
-    static string FormatPart(BodyPartSystem body, BodyPartType type)
-    {
-        var part = body.GetPart(type);
-        if (part.IsDestroyed) return $"<color=#F44>{part.CurrentHP:F0}/{part.MaxHP:F0} [파괴]</color>";
-        if (part.IsDisabled)  return $"<color=#F90>{part.CurrentHP:F0}/{part.MaxHP:F0} [상실]</color>";
-        return $"{part.CurrentHP:F0}/{part.MaxHP:F0}";
-    }
 }

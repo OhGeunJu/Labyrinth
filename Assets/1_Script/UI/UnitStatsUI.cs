@@ -22,7 +22,9 @@ public class UnitStatsUI : MonoBehaviour
     [Tooltip("초상화가 없을 때의 색")]
     [SerializeField] Color           emptyPortrait = new(1f, 1f, 1f, 0.12f);
     [SerializeField] SelectionManager selectionManager;
-    [SerializeField] Key              toggleKey = Key.C;
+    // **U다**(2026-09-19) — C는 명령의 `취소`가 가져갔다(`CommandMode`). 씬이 값을 들고 있으므로 씬은
+    // `UI → Setup Command Bar`가 U로 바꾼다(코드 기본값은 씬이 값을 들면 아무 힘이 없다).
+    [SerializeField] Key              toggleKey = Key.U;
 
     void Awake()
     {
@@ -45,10 +47,15 @@ public class UnitStatsUI : MonoBehaviour
 
     void OnBuildModeChanged(bool active) { if (active && panel != null) panel.SetActive(false); }
 
+    // 명령·밭 구역이 켜질 때도 닫는다(`FocusMode`) — 건설과 같은 규칙.
+    void OnEnable()  => ExclusiveMode.Claimed += OnModeClaimed;
+    void OnDisable() => ExclusiveMode.Claimed -= OnModeClaimed;
+    void OnModeClaimed(object _) { if (panel != null) panel.SetActive(false); }
+
     void Update()
     {
         if (Keyboard.current == null) return;
-        if (Keyboard.current[toggleKey].wasPressedThisFrame)
+        if (Keyboard.current[toggleKey].wasPressedThisFrame && !InputFocus.KeysBlocked())
         {
             if (selectionManager.Selected.Count == 0) return;
             bool next = panel != null && !panel.activeSelf;

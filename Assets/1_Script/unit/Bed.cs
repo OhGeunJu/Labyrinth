@@ -207,13 +207,19 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
     // `ApproachPosition`도 전부 이 바운즈에서 나오므로, 장식 하나를 자식으로 붙이면
     // 그만큼 폰이 침대 위에 떠서 자거나 엉뚱한 자리에 선다. (용도 색을 표식 quad로 얹었을
     // 때 실제로 그랬다 — 지금은 매트리스를 직접 물들이므로 자식이 늘지 않는다.)
+    //
+    // **켜진 렌더러만 센다**(2026-09-20). 모델을 입히면 옛 도형은 렌더러만 **꺼 둔 채** 남는데(`PropDresser`),
+    // `GetComponentsInChildren`은 꺼진 렌더러도 돌려줘서 **안 보이는 옛 도형**이 경계를 넓혔다.
     Bounds WorldBounds()
     {
-        var renderers = GetComponentsInChildren<Renderer>();
-        if (renderers.Length == 0) return new Bounds(transform.position, Vector3.one);
-
-        var bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+        bool any = false;
+        var bounds = new Bounds(transform.position, Vector3.one);
+        foreach (var r in GetComponentsInChildren<Renderer>())
+        {
+            if (!r.enabled) continue;
+            if (!any) { bounds = r.bounds; any = true; }
+            else bounds.Encapsulate(r.bounds);
+        }
         return bounds;
     }
 

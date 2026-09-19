@@ -325,7 +325,7 @@ public class DungeonCore : MonoBehaviour
         // **반드시 켜서 내보낸다.** `Instantiate`는 원본의 활성 상태를 그대로 복제하는데,
         // 씬에 꺼진 채로 둔 템플릿(또는 모드가 꺼진 채로 구운 프리팹)을 원본으로 쓰면
         // 소환된 하수인이 꺼진 채 나와 `Awake`조차 안 돈다 — 아무 일도 안 일어난 것처럼 보인다.
-        var spawned = Instantiate(prefab, spawnPosition, Quaternion.identity);
+        var spawned = PawnSpawn.Instantiate(prefab, spawnPosition, Quaternion.identity);
         spawned.SetActive(true);
 
         Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 ({CurrentMinionCount}/{TotalMinionCap})");

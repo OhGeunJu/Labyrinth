@@ -66,6 +66,22 @@ public class MineJobBoard : MonoBehaviour
         var jm = JobManager.Instance;
         if (jm == null) return;
 
+        // ⓪ **표시를 무른 칸의 일감은 거둔다 — 걸어오던 폰도 그 자리에서 멈춘다**(2026-09-19, 사용자: *"취소했을 때
+        // 폰이 걸어오다가 멈췄으면 좋겠는데 그냥 끝까지 걸어오네"*). 전에는 일감이 살아 있어 폰이 끝까지 걸어와
+        // 도착해서야 *"표시가 없다"*를 알고 놓았다(`MineJob.Execute`). 채집·운반은 무르는 순간 일감을 거두고
+        // 있었다(`Forageable.SetDesignated` · `DroppedItem.SetHaulAllowed`) — 채굴만 빠져 있었다.
+        // **드래그 중이어도 돈다** — 무르는 것은 미리보기가 아니다. 이미 파인 칸(`IsRock` 거짓)은 끝나는 중이라 안 건드린다.
+        _done.Clear();
+        foreach (var kv in _live)
+        {
+            var job = kv.Value;
+            if (job == null || job.Status == JobStatus.Done || job.Status == JobStatus.Cancelled) continue;
+            if (RockMap.IsMarked(kv.Key) || !RockMap.IsRock(kv.Key)) continue;
+            jm.CancelJob(job);   // `WorkNode`가 다음 틱에 `Cancelled`를 보고 놓는다
+            _done.Add(kv.Key);
+        }
+        foreach (var t in _done) { _live.Remove(t); _restUntil.Remove(t); }
+
         // **손을 뗄 때까지 기다린다**(2026-09-06). 드래그 중의 표시는 *미리보기*인데 여기서
         // 그것을 **결정으로 읽고 있었다** — 자리를 고르는 동안 폰이 벌써 캐러 갔다
         // (사용자: *"내가 채굴위치를 고민중인데 걍 바로 가서 채굴해버리니깐"*).

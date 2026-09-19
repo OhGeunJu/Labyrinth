@@ -177,7 +177,7 @@ public class WorldMapView : MonoBehaviour
     void Update()
     {
         var kb = Keyboard.current;
-        if (legacyWorldScreen && kb != null && kb[toggleKey].wasPressedThisFrame)
+        if (legacyWorldScreen && kb != null && kb[toggleKey].wasPressedThisFrame && !InputFocus.KeysBlocked())
         {
             CloseMenu();
             GameModeManager.Instance?.Toggle();
@@ -1354,7 +1354,7 @@ public class WorldMapView : MonoBehaviour
         // **꺼진 채로 만든다.** 원정대 멤버는 필드맵에서 빠져 있는 상태가 정상이고
         // (`WorldMapView.AddMembers`가 그렇게 한다), 거점에 들어갈 때 `EnterSettlement`가
         // 자리를 잡아 켠다 — 새로 온 사람도 같은 길을 타야 한 곳에서만 살아난다.
-        var go = Instantiate(recruit.Prefab);
+        var go = PawnSpawn.Instantiate(recruit.Prefab, recruit.Spec);   // 메뉴에서 본 성별의 몸
         go.name = recruit.Prefab.name;
         go.SetActive(false);
 

@@ -96,12 +96,16 @@ public static class TownRecruits
 
             // 이름은 **한 마을 안에서 안 겹치게** 미리 고르고, 그것만 명세에 넘긴다.
             // 명세가 제 마음대로 고르게 두면 같은 이름 둘이 설 수 있다.
-            string name = UniqueName(unit, rng, usedNames);
+            // **개체 시드**는 마을·날짜·자리에서 나온다 → 같은 날 다시 열어도 같은 사람이다.
+            // 성별을 먼저 낸다 — 이름이 성별을 따르고, 합류할 때 **그 성별의 몸**이 선다(`PawnSpawn`).
+            int     specSeed = Hash(site.Id, seed, day * 97 + i);
+            Gender? gender   = PawnSpec.OfGender(unit) ? PawnSpec.GenderFor(specSeed) : (Gender?)null;
+
+            string name = UniqueName(unit, gender, rng, usedNames);
             if (name == null) break;   // 이름 풀이 동난 마을 — 있는 만큼만 세운다
 
-            // **개체 시드**는 마을·날짜·자리에서 나온다 → 같은 날 다시 열어도 같은 사람이다.
-            var spec = PawnSpec.Roll(unit, Hash(site.Id, seed, day * 97 + i),
-                                     picked.MinGrade, picked.MaxGrade, new[] { name });
+            var spec = PawnSpec.Roll(unit, specSeed,
+                                     picked.MinGrade, picked.MaxGrade, new[] { name }, null, gender);
 
             result.Add(new TownRecruit
             {
@@ -180,9 +184,9 @@ public static class TownRecruits
     // 한 마을 안에서 이름이 겹치지 않게 고른다 — **사람을 가르는 건 이름**이라,
     // 같은 이름 둘이 서 있으면 누구를 고용했는지 알 수 없다.
     // 이름 풀이 동나면 null(있는 만큼만 세운다).
-    static string UniqueName(UnitData unit, System.Random rng, HashSet<string> used)
+    static string UniqueName(UnitData unit, Gender? gender, System.Random rng, HashSet<string> used)
     {
-        var names = unit != null ? unit.NamePool : null;
+        var names = unit != null ? unit.NamesFor(gender) : null;
         if (names == null || names.Count == 0)
         {
             string fallback = unit != null && !string.IsNullOrEmpty(unit.RaceName)

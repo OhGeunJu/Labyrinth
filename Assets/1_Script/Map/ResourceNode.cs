@@ -166,6 +166,10 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
         var prev = brain.Blackboard.AssignedNode;
         if (prev != null && prev != this) prev.Unassign(brain);
 
+        // **들고 있던 일감은 놓는다** — 배정은 명령이라 옛 일을 덮어쓴다. `WorkNode`는 배정을 일감보다
+        // 먼저 보므로, 안 놓으면 그 일감이 **예약된 채 얼어붙어** 다른 폰도 못 가져간다.
+        if (brain.Blackboard.CurrentJob != null) brain.DropCurrentJob();
+
         _assigned.Add(brain);
         brain.Blackboard.AssignedNode      = this;
         brain.Blackboard.NodeAutoClaimed   = false;   // 손으로 붙인 것 — `ClaimFreeFor`만 참으로 되돌린다
@@ -401,6 +405,65 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
     // 타일 중심은 `tile + 0.5`이므로(`MapManager.TileToWorld`), 맨 왼쪽 칸 중심은
     // `중심 - (w-1)/2`이고 그 칸 번호는 그것을 floor한 값이다.
     public IEnumerable<Vector2Int> Footprint => FootprintAt(transform.position, Size);
+
+    // ── 둘러서서 캔다 — 가운데 한 점에서 재고, 폰 쪽 면으로 간다 ─────────────────
+    //
+    // (2026-09-19, 사용자: *"자원을 안캐 … 자원을 가까이 가면 캐는게 맞는데 캐는 방향때문에 자꾸
+    //  고정된 자리로 가서 캐는게 이상해 캘때 자원을 바라보게만 하면 되잖아"*.)
+    //
+    // 전에는 **한복판 칸까지의 거리**를 `NodeReach`(2m)로 쟀고, 갈 자리는 한복판에서
+    // `FindWorkableNear`로 찾았다. 1×1이던 시절의 셈이라 **3×3 광맥에서 둘 다 틀렸다**:
+    // 몸 옆에 붙어 서도 한복판까지는 2m가 넘어 **영영 안 캤고**(게이지 0%), 야생 광맥은 칸을
+    // 안 막으므로(빌드존 밖) 한복판 칸 자체가 "설 자리"로 뽑혀 **바위 한가운데로 걸어가다 한쪽 면에
+    // 처박혔다** — 늘 같은 면이라 *"고정된 자리"*로 보였다.
+    //
+    // 어느 쪽에서 오든 그쪽 면에서 캔다. 캐는 방향은 폰이 몸을 **돌려서** 맞춘다(`FaceTowards`).
+    // **배정(`WorkNode`)과 찍은 일감(`GatherNodeJob`)이 이 둘을 같이 쓴다** — 갈리면 한쪽만 선다.
+    //
+    // **가운데 한 점에서 잰다 — 가까워지면 캔다**(2026-09-19, 사용자: *"그냥 광맥 가운데에 빈 오브젝트를
+    // 하나 만들고 그냥 가까워지면 캐게 만들면 되잖아"*). 그 점은 **노드 자신의 자리**다(피벗이 한가운데
+    // 바닥이라 따로 세울 것이 없다). 야생 광맥은 칸에 안 맞춰 아무 자리·방향·크기로 서므로(`WorldContentStreamer`)
+    // 칸 덩어리로 재면 실제 바위와 반 칸까지 어긋나 **한쪽 면에서만 캤다** — 한 점과 반지름이면 어긋날 것이 없다.
+    //
+    // 반지름은 **실제 바위의 가로 크기**다(크기를 굴려 세우므로 프리팹 값으로는 모자란다). 한 번만 잰다.
+    // 값은 `NodeReach`(2m)와 견주는 눈금으로 돌려준다 — 겉에서 1.5m 안이면 닿는다(1×1이던 때와 같은 눈금).
+    public float ReachFrom(Vector3 pos)
+    {
+        var c = transform.position;
+        float d = Vector2.Distance(new Vector2(pos.x, pos.z), new Vector2(c.x, c.z));
+        return Mathf.Max(0f, d - BodyRadius) + 0.5f;
+    }
+
+    // 걸어갈 곳 — 가운데에서 **폰 쪽으로** 겉 + 0.8m. 어느 쪽에서 오든 그쪽 면에 선다.
+    // 거기가 벽이면 `PawnMover.SetMoveTarget`이 가장 가까운 설 자리로 접는다.
+    public Vector3 StandPointFor(Vector3 from)
+    {
+        var c   = transform.position;
+        var dir = new Vector3(from.x - c.x, 0f, from.z - c.z);
+        if (dir.sqrMagnitude < 1e-4f) dir = Vector3.forward;
+        return c + dir.normalized * (BodyRadius + 0.8f);
+    }
+
+    // 바위의 가로 반지름 — 트리거가 아닌 콜라이더들의 경계에서. 없으면 칸 크기의 절반.
+    float _bodyRadius = -1f;
+    public float BodyRadius
+    {
+        get
+        {
+            if (_bodyRadius >= 0f) return _bodyRadius;
+            var c = transform.position;
+            float r = 0f;
+            foreach (var col in GetComponentsInChildren<Collider>())
+            {
+                if (col.isTrigger) continue;
+                var b = col.bounds;
+                r = Mathf.Max(r, Mathf.Max(Mathf.Abs(b.max.x - c.x), Mathf.Abs(b.min.x - c.x),
+                                           Mathf.Abs(b.max.z - c.z), Mathf.Abs(b.min.z - c.z)));
+            }
+            _bodyRadius = r > 0f ? r : Mathf.Max(Size.x, Size.y) * 0.5f;
+            return _bodyRadius;
+        }
+    }
 
     // 칸 수. **1보다 작게 저작된 것을 여기서 누른다** — 읽는 쪽마다 `Max(1, ...)`을
     // 적으면 언젠가 한 곳이 빠지고, 그 자리만 0칸짜리 광맥을 본다.

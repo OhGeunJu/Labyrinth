@@ -45,6 +45,9 @@ public class ChibiFacePart : MonoBehaviour
 
         _mpb ??= new MaterialPropertyBlock();
         r.GetPropertyBlock(_mpb);
+        // 옛 칸 이름(`rim_*`)은 새 이름(`ink_*`)으로 읽는다(`ChibiNames`) — 안 그러면 아틀라스를 다시 구운 순간 그 칸을 못 찾는다.
+        Cell        = ChibiNames.Migrate(Cell);
+        DefaultCell = ChibiNames.Migrate(DefaultCell);
         _mpb.SetVector(IdOffset, Atlas.OffsetOf(Atlas.IndexOf(Cell)));
         r.SetPropertyBlock(_mpb);
     }

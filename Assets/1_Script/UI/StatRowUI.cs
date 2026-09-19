@@ -13,34 +13,41 @@ public class StatRowUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     [SerializeField] TextMeshProUGUI nameText;
     [SerializeField] TextMeshProUGUI valueText;
 
+    [Tooltip("등급 옆에 진행도(%)를 적나. 캐릭터 생성 화면처럼 **전부 최하**인 자리에서는 0%만 줄줄이 떠서 읽기를 방해한다.")]
+    [SerializeField] bool showPercent = true;
+
     StatName _stat;
     bool     _bound;
+    Passion  _passion;
 
     public void Bind(UnitStats stats, StatName stat, bool held)
     {
-        _stat  = stat;
-        _bound = true;
+        _stat    = stat;
+        _bound   = true;
+        _passion = stats.PassionOf(stat);
 
         if (nameText != null)
         {
-            nameText.text = stat.ToDisplay();
+            // **열정은 이름 옆에**(`+` 작은 · `++` 큰) — 불꽃 같은 기호는 폰트에 없어 네모가 된다.
+            string mark   = Passions.Mark(_passion);
+            nameText.text = mark.Length > 0 ? $"{stat.ToDisplay()} {mark}" : stat.ToDisplay();
             // **든 것은 색으로 표시한다** — 무엇을 들었는지(아이템 이름)는 왼쪽 상자가 적는다.
             nameText.color = held ? HeldColor : NormalColor;
         }
-        if (valueText != null) valueText.text = Grade(stats, stat);
+        if (valueText != null) valueText.text = Grade(stats, stat, showPercent);
     }
 
     static readonly Color NormalColor = new(0.85f, 0.85f, 0.88f);
     static readonly Color HeldColor   = new(0.67f, 0.67f, 1f);
 
     // 등급 + 진행도. `UnitStatsUI`가 쓰던 그 표기 그대로다.
-    static string Grade(UnitStats stats, StatName name)
+    static string Grade(UnitStats stats, StatName name, bool showPercent)
     {
         float val   = stats.GetStat(name);
         StatGrade g = stats.GetGrade(name);
         string hex  = ColorUtility.ToHtmlStringRGB(g.GetColor());
 
-        if (g == StatGrade.SSSPlus)
+        if (g == StatGrade.SSSPlus || !showPercent)
             return $"<color=#{hex}><b>{g.ToDisplay()}</b></color>";
 
         float baseline = (int)g * StatGradeExt.StepValue;
@@ -54,7 +61,11 @@ public class StatRowUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public void OnPointerEnter(PointerEventData _)
     {
         if (!_bound) return;
-        HoverTooltipUI.Show(_stat.ToDisplay(), _stat.Describe());
+        string body = _stat.Describe();
+        if (_passion != Passion.None)
+            body += $"\n\n<color=#E8A33D>{_passion.DisplayName()}</color>" +
+                    $"  <color=#888>(성장 {Passions.Rate(_passion):0.#}배)</color>";
+        HoverTooltipUI.Show(_stat.ToDisplay(), body);
     }
 
     public void OnPointerExit(PointerEventData _) => HoverTooltipUI.Hide();

@@ -42,6 +42,12 @@ Shader "DungeonColony/ToonOutline"
         // 안 그러면 트인 자리로 **안쪽 면이 보여야 할 곳이 비어** 뒤가 비친다(2026-09-18, 사용자:
         // *"약간씩 뚫리는게 기분나빠"*). 닫힌 몸(몸통·머리)은 Back이 맞다 — 안쪽이 안 보인다.
         [Enum(UnityEngine.Rendering.CullMode)] _Cull("면 버리기", Float) = 2
+
+        // 몸통의 바깥 선(`ToonOutlineOuter`)이 피할 자리 — 몸통 재질만 적는다(나머지는 쓰기 마스크 0).
+        [IntRange] _StencilRef("스텐실 번호(폰마다)", Range(0,255)) = 1
+        [IntRange] _StencilWriteMask("스텐실 쓰기 마스크", Range(0,255)) = 0
+        // 얼굴인가 — 셰이더는 안 읽는다. `PawnOutlineId`가 번호에 128을 얹을지 여기서 읽는다(재질이 들어야 저장된다).
+        [ToggleUI] _StencilFace("얼굴(번호 + 128)", Float) = 0
     }
 
     SubShader
@@ -80,34 +86,8 @@ Shader "DungeonColony/ToonOutline"
             #pragma vertex OutlineVert
             #pragma fragment OutlineFrag
 
-            struct OutlineIn  { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
-            struct OutlineOut { float4 positionCS : SV_POSITION; };
-
-            OutlineOut OutlineVert(OutlineIn v)
-            {
-                OutlineOut o;
-                float3 posWS = TransformObjectToWorld(v.positionOS.xyz);
-                float3 nrmWS = TransformObjectToWorldNormal(v.normalOS);
-
-                nrmWS = normalize(nrmWS);
-
-                float4 clipBase  = TransformWorldToHClip(posWS);
-                // 월드 굵기: 법선 쪽으로 `_OutlineWidth`m 민 자리를 클립으로 옮겨 **차이**만 쓴다.
-                float4 clipThick = TransformWorldToHClip(posWS + nrmWS * _OutlineWidth);
-                float2 dWorld    = clipThick.xy - clipBase.xy;
-
-                // 화면 최소: `w`를 곱해 원근 나눗셈을 상쇄한 **픽셀 일정** 굵기.
-                float3 nrmCS   = TransformWorldToHClipDir(nrmWS);
-                float2 nrm2    = nrmCS.xy / max(length(nrmCS.xy), 1e-5);
-                float2 dScreen = nrm2 * _OutlineMin * clipBase.w;
-
-                // **화면에서 굵은 쪽** — 가까이서는 월드가, 멀리서는 최소가 이긴다.
-                float2 d = dot(dWorld, dWorld) > dot(dScreen, dScreen) ? dWorld : dScreen;
-
-                o.positionCS = clipBase;
-                o.positionCS.xy += d;
-                return o;
-            }
+            #include "ToonOutlineHull.hlsl"
+            OutlineOut OutlineVert(OutlineIn v) { return OutlineHull(v, 0); }
 
             half4 OutlineFrag(OutlineOut i) : SV_Target { return _OutlineColor; }
             ENDHLSL
@@ -120,6 +100,9 @@ Shader "DungeonColony/ToonOutline"
             Tags { "LightMode" = "UniversalForward" }
             Cull [_Cull]
             ZWrite On
+            // **몸통과 얼굴만 제 번호를 적는다**(`_StencilWriteMask` — 둘은 255 · 나머지 0이라 안 적는다. 얼굴은 번호 + 128).
+            // 번호는 폰마다 다르다(`PawnOutlineId`) — `ToonOutlineOuter`가 **제 몸만** 피하고 남의 몸 위에는 긋는다.
+            Stencil { Ref [_StencilRef] WriteMask [_StencilWriteMask] Comp Always Pass Replace }
 
             HLSLPROGRAM
             #pragma vertex LitVert

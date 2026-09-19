@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [System.Serializable]
@@ -247,12 +248,27 @@ public class UnitStats
     [System.NonSerialized] public System.Action<UnitStats, StatName, StatGrade> OnGradeUp;
     [System.NonSerialized] public GameObject Owner;
     [System.NonSerialized] public UnitData SourceData;
+
+    // **열정 — 스탯마다**(`Passions`). 성장 배율을 여기서 곱하므로 **성장하는 길이 전부 따라온다**(`GrowStat` 하나를
+    // 지난다). 비어 있으면 전부 1배다 — 늑대·골렘·블록 인형은 그대로다.
+    [System.NonSerialized] public readonly Dictionary<StatName, Passion> PassionByStat = new();
+
+    public Passion PassionOf(StatName stat)
+        => PassionByStat.TryGetValue(stat, out var p) ? p : Passion.None;
+
+    public void SetPassions(IReadOnlyDictionary<StatName, Passion> passions)
+    {
+        PassionByStat.Clear();
+        if (passions == null) return;
+        foreach (var kv in passions) if (kv.Value != Passion.None) PassionByStat[kv.Key] = kv.Value;
+    }
     public static event System.Action<UnitStats, StatName, StatGrade> OnAnyGradeUp;
 
     public void GrowStat(StatName stat, float amount)
     {
         if (IsLocked || amount <= 0f) return;
         if (SourceData != null) amount *= SourceData.GetGrowthRate(stat);
+        amount *= Passions.Rate(PassionOf(stat));   // 열정 — 없음 1 · 작은 1.5 · 큰 2
         if (amount <= 0f) return;
         float oldVal = GetStat(stat);
         StatGrade oldGrade = StatGradeExt.FromValue(oldVal);

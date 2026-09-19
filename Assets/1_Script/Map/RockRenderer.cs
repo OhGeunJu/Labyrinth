@@ -105,8 +105,22 @@ public class RockRenderer : MonoBehaviour
     //
     // **끄면 `_RockCutOn`에 0을 민다** — 셰이더가 그 하나로 기능 전체를 건너뛴다.
     // 0이 곧 꺼짐이라 **아무도 안 밀었을 때도 안전하다**(에디터 씬 뷰가 그렇다).
+    // ── 보이는 것을 짚는다 ────────────────────────────────────────────────────
+    //
+    // **벽은 잘려 그려지는데 콜라이더는 24m 그대로다**(2026-09-19, 사용자: *"안개가 생긴후부터 채굴 지정하는
+    // 판정이 안좋아진 거 같아"*). 커서 레이를 그냥 쏘면 **자르고 남은 윗부분 — 화면에 없는 벽**에 먼저 맞아,
+    // 눈으로 겨눈 칸보다 **카메라 쪽 칸**이 찍힌다(내려다보는 각이 60°면 몇 m씩). 콜라이더를 낮추는 길은
+    // 안 된다 — 자르는 높이는 카메라를 따라 매 프레임 바뀌고, 막는 판정이 화면을 따라가면 안 된다.
+    //
+    // 그래서 **짚는 쪽이 자르는 면을 안다**(`VisiblePick` — 커서로 월드를 짚는 자리가 전부 거기를 지난다).
+    // 높이의 답은 셰이더와 **같은 식**이다(`RockCut.hlsl` — 바닥 + max(눈높이 × `cutFrac`, `cutLow`)).
+    // 여기서 다른 식을 쓰면 짚는 것과 보이는 것이 갈린다.
+    public static bool CutActive { get; private set; }
+    public static float CutY { get; private set; }
+
     void PushCutUniforms()
     {
+        CutActive = false;
         if (!cutNearWalls) { Shader.SetGlobalFloat(IdOn, 0f); return; }
 
         var cam = Camera.main;
@@ -125,6 +139,10 @@ public class RockRenderer : MonoBehaviour
         Shader.SetGlobalFloat(IdLow,      cutLow);
         Shader.SetGlobalFloat(IdFrac,     cutFrac);
         Shader.SetGlobalFloat(IdFloorY,   floorY);
+
+        // 짚는 쪽(`PickVisible`)이 쓸 같은 값 — 셰이더의 `RockCutY`와 한 식이다.
+        CutActive = true;
+        CutY      = floorY + Mathf.Max((camPos.y - floorY) * cutFrac, cutLow);
 
         // **숫자를 안 보면 손잡이를 짐작으로 돌리게 된다**(2026-09-07에 네 번 헛돌렸다).
         // 화면만 보고는 *벽이 안 낮아지는 것*인지 *카메라가 낮은 것*인지 가릴 수가 없다.
@@ -291,6 +309,18 @@ public class RockRenderer : MonoBehaviour
         if (!RockMap.Enabled || startClearing <= 0f) return;
 
         int opened = 0;
+
+        // **시작 자리 표식이 먼저다**(`StartSpot`, 2026-09-20) — 캐릭터를 만드는 판에서는 판이 열릴 때 씬에
+        // 폰이 없다(만든 폰은 화면을 닫은 뒤에 선다). 폰을 기다리면 첫 화면이 통짜 바위다.
+        var spot = StartSpot.Current != null ? StartSpot.Current
+                 : FindFirstObjectByType<StartSpot>();
+        if (spot != null)
+        {
+            RockMap.OpenAround(spot.transform.position, startClearing);
+            if (pathToCave > 0f) RockMap.OpenPathToCave(spot.transform.position, pathToCave, pathWidth);
+            opened++;
+        }
+
         var all = UnitBrain.All;
         for (int i = 0; i < all.Count; i++)
         {
@@ -983,14 +1013,11 @@ public class RockRenderer : MonoBehaviour
         if (_chunks.Count > 0) return;   // 들고 있는 것이 있으면 내 것이다
 
         int reaped = 0;
-        var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-        if (scene.IsValid() && scene.isLoaded)
-            foreach (var go in scene.GetRootGameObjects())
-            {
-                if (go == null || go.name != RootName) continue;
-                reaped += go.transform.childCount;
-                Toss(go);
-            }
+        foreach (var go in AllRoots())
+        {
+            reaped += go.transform.childCount;
+            Toss(go);
+        }
 
         // `_root`가 살아남았을 수도 있다(그 아래 것이 전부 주인 없는 것이다).
         if (_root != null) { reaped += _root.childCount; Toss(_root.gameObject); }
@@ -1004,13 +1031,9 @@ public class RockRenderer : MonoBehaviour
 
     static void ReapStrayRoots(Transform mine)
     {
-        var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-        if (!scene.IsValid() || !scene.isLoaded) return;
-
         int reaped = 0;
-        foreach (var go in scene.GetRootGameObjects())
+        foreach (var go in AllRoots())
         {
-            if (go == null || go.name != RootName) continue;
             if (mine != null && go.transform == mine) continue;
             Toss(go);
             reaped++;
@@ -1020,6 +1043,29 @@ public class RockRenderer : MonoBehaviour
             Debug.LogWarning($"[바위] 남아 있던 `{RootName}` {reaped}벌을 거뒀다 — "
                            + "도메인 리로드로 목록을 잃은 사이 살아남은 것들이다. "
                            + "그 낡은 콜라이더가 판 자리를 막고 있었다.");
+    }
+
+    // **메모리에 살아 있는 `RockChunks` 루트 전부** — 씬 목록으로 찾지 않는다(2026-09-19).
+    //
+    // 전에는 `GetActiveScene().GetRootGameObjects()`를 훑었는데, 에디터가 `DontSave`로 세운 것은
+    // 플레이에 들어가는 사이 **활성 씬의 목록 밖**에 남을 수 있다 — 그러면 거두는 쪽이 **못 보고 조용히
+    // 지나간다.** 2026-09-19에 실제로 그랬다: 그 판에는 *"거뒀다"*가 한 줄도 없었는데 파낸 자리를 막은
+    // **낡은 박스가 두 벌씩** 찍혔다(사용자: *"저번에 돌렸던 벽이 남아서 채굴하러 들어갈 수 없는 버그가
+    // 아직 남아있어"*). `FindObjectsOfTypeAll`은 숨김·`DontSave`·씬 밖을 가리지 않는다. **에셋은 뺀다**
+    // (프리팹 안의 같은 이름을 부수면 안 된다).
+    static readonly List<GameObject> _rootsBuf = new();
+    static List<GameObject> AllRoots()
+    {
+        _rootsBuf.Clear();
+        foreach (var t in Resources.FindObjectsOfTypeAll<Transform>())
+        {
+            if (t == null || t.parent != null || t.name != RootName) continue;
+#if UNITY_EDITOR
+            if (UnityEditor.EditorUtility.IsPersistent(t)) continue;
+#endif
+            _rootsBuf.Add(t.gameObject);
+        }
+        return _rootsBuf;
     }
 
     public static bool IsRockCollider(Component c) =>

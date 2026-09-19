@@ -12,15 +12,25 @@ using UnityEngine;
 //
 // 무엇을 들지는 0.2초에 한 번 본다(초에 몇 번 바뀌면 많은 것이다). **두 손 도구의 자세만 매
 // 프레임** — 애니메이터가 뼈를 움직인 뒤(`LateUpdate`) 양손에서 자루 방향을 낸다(`HandProp` 참고).
+// **두 손 도구의 자세를 손 동작이 직접 줄 때**(치비의 곡괭이질 — `ChibiToolSwing`). 참을 돌려주는 동안은
+// 팔뚝에서 자세를 내지 않고 이 값을 쓴다 — 손은 그쪽이 옮겼으니, 여기서 다시 셈하면 손과 자루가 갈린다.
+public interface IToolPose
+{
+    // grip = 자루 밑동 자리 · handle = 밑동에서 머리로 · edge = 날이 향하는 쪽(월드)
+    bool TryGetToolPose(out Vector3 grip, out Vector3 handle, out Vector3 edge);
+}
+
 [RequireComponent(typeof(PawnMover))]
 public class PawnProps : MonoBehaviour
 {
     const float Interval = 0.2f;
+    const float TwoHandSpan = 0.3f;   // 두 손이 이보다 벌어지면 한 손(오른손)이 쥔다
 
     Animator      _anim;
     UnitBrain     _brain;
     Equipment     _equip;
     CombatHandler _combat;
+    IToolPose     _pose;
     Transform     _handR, _handL, _chest, _elbowR;
     bool          _handsResolved;
 
@@ -36,6 +46,7 @@ public class PawnProps : MonoBehaviour
         _brain  = GetComponent<UnitBrain>();
         _equip  = GetComponent<Equipment>();
         _combat = GetComponent<CombatHandler>();
+        _pose   = GetComponent<IToolPose>();
     }
 
     void OnDisable()
@@ -91,6 +102,12 @@ public class PawnProps : MonoBehaviour
     {
         if (_right == null || _rightGrip == null || !_rightGrip.TwoHanded) return;
 
+        if (_pose != null && _pose.TryGetToolPose(out var pGrip, out var pHandle, out var pEdge))
+        {
+            Place(pGrip, pHandle, pEdge);
+            return;
+        }
+
         // 자루 방향 — 팔뚝의 연장. 팔꿈치가 없으면(블록 뼈대가 아닌 경우) 두 손을 잇는다.
         Vector3 handle = _elbowR != null ? _handR.position - _elbowR.position
                        : _handL != null  ? _handR.position - _handL.position
@@ -104,13 +121,22 @@ public class PawnProps : MonoBehaviour
         if (away.sqrMagnitude < 1e-4f) away = Vector3.ProjectOnPlane(transform.forward, handle);
         if (away.sqrMagnitude < 1e-4f) return;
 
-        // 도구 로컬 (EdgeAxis, HeadAxis) → 월드 (away, handle).
-        var world = Quaternion.LookRotation(away.normalized, handle);
+        // 밑동을 **두 손 사이**에 둔다 — 둘 다 자루를 쥔 것처럼 보이고, 머리는 팔이 뻗는 쪽이다.
+        // **다만 두 손이 자루 한 뼘 안에 모일 때만이다**(2026-09-19, 사용자: *"손으로 곡괭이를 잡지도
+        // 않아"*). 치비는 두 손이 넓은 몸통 양옆에 떠 있어 클립이 모아도 안 모이고, 그 한가운데는
+        // **몸 앞의 허공**이다. 그때는 오른손이 쥔다 — 떠 있는 손 공 하나가 자루를 잡은 그림이 림월드의 그것이다.
+        bool together = _handL != null && (_handR.position - _handL.position).sqrMagnitude <= TwoHandSpan * TwoHandSpan;
+        Place(together ? (_handR.position + _handL.position) * 0.5f : _handR.position, handle, away.normalized);
+    }
+
+    // 자루 밑동을 `grip`에, 머리를 `handle` 쪽으로, 날을 `edge` 쪽으로.
+    void Place(Vector3 grip, Vector3 handle, Vector3 edge)
+    {
+        // 도구 로컬 (EdgeAxis, HeadAxis) → 월드 (edge, handle).
+        var world = Quaternion.LookRotation(edge, handle);
         var local = Quaternion.LookRotation(_rightGrip.EdgeAxis, _rightGrip.HeadAxis);
         var rot   = world * Quaternion.Inverse(local);
 
-        // 밑동을 **두 손 사이**에 둔다 — 둘 다 자루를 쥔 것처럼 보이고, 머리는 팔이 뻗는 쪽이다.
-        Vector3 grip      = _handL != null ? (_handR.position + _handL.position) * 0.5f : _handR.position;
         Vector3 buttLocal = _rightGrip.HeadAxis.normalized * _rightButt;
 
         _right.transform.rotation = rot;

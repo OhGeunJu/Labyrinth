@@ -114,8 +114,7 @@ public class MineDesignator : MonoBehaviour
 
     void Update()
     {
-        var kb = Keyboard.current;
-        if (kb != null && kb.kKey.wasPressedThisFrame) Toggle();
+        var kb = Keyboard.current;   // 켜는 키는 `CommandMode`가 듣는다(H 채굴 · C 취소)
 
         if (!IsActive) return;
 
@@ -134,10 +133,36 @@ public class MineDesignator : MonoBehaviour
 
         Vector2 cur = mouse.position.ReadValue();
 
-        // **우클릭은 반대로 지운다.**
+        // **우클릭은 반대로 지운다 — 누르면 한 칸, 끌면 상자째**(2026-09-19). 명령 도구 바가 *채굴·채집·운반*
+        // 셋이 되면서 `취소` 타일이 빠졌다(사용자: *"채굴 채집 운반 세 버튼을 명령으로 합쳐서"*) — 넓게 무르는
+        // 길을 **오른쪽 드래그**가 맡는다. 찍는 손놀림 그대로 버튼만 바꾼 것이라 새로 배울 것이 없다.
         if (mouse.rightButton.wasPressedThisFrame)
         {
-            if (TileUnder(cur, out var t)) RockMap.Mark(t, false);
+            _rightDrag = true;
+            _dragStart = cur;
+            _dragging  = false;
+            _hasAnchor = DragPoint(cur, out _dragStartWorld);
+        }
+        if (_rightDrag)
+        {
+            if (_hasAnchor && _cam != null)
+            {
+                var sp = _cam.WorldToScreenPoint(_dragStartWorld);
+                if (sp.z > 0f) _dragStart = new Vector2(sp.x, sp.y);
+            }
+            if (!_dragging && (cur - _dragStart).sqrMagnitude > DragThreshold * DragThreshold) _dragging = true;
+
+            if (mouse.rightButton.isPressed)
+            {
+                if (_dragging) UndoBox(_dragStart, cur);
+                return;
+            }
+
+            // 놓았다 — 안 끌었으면 한 칸(또는 그 자리의 채집·운반 지정 하나).
+            if (!_dragging) UndoOne(cur);
+            _rightDrag = false;
+            _dragging  = false;
+            _hasAnchor = false;
             return;
         }
 
@@ -169,11 +194,8 @@ public class MineDesignator : MonoBehaviour
         // 미리보기 장부(`_preview`)도 안 쓴다. 상자 안의 찍힌 칸을 그대로 지운다.
         if (mouse.leftButton.isPressed && Current == Tool.Cancel)
         {
-            _next.Clear();
-            if (_dragging) CollectBox(_dragStart, cur, _next);
-            else if (TileUnder(cur, out var one)) _next.Add(one);
-
-            foreach (var t in _next) RockMap.Mark(t, false);
+            if (_dragging) UndoBox(_dragStart, cur);
+            else           UndoOne(cur);
             return;
         }
 
@@ -371,7 +393,8 @@ public class MineDesignator : MonoBehaviour
         // **이제는 허공을 겨눴을 때의 폴백이다** — 벽 위에서는 `DragPoint`가 콜라이더로 답한다.
         var map = MapManager.Instance;
         float ground = map != null ? map.SampleGroundHeight(_cam.transform.position) : 0f;
-        float y = ground + RockMap.Height;
+        // 벽이 잘려 그려지면 **보이는 윗면은 자르는 면**이다(`RockRenderer.CutY`).
+        float y = RockRenderer.CutActive ? RockRenderer.CutY : ground + RockMap.Height;
 
         var plane = new Plane(Vector3.up, new Vector3(0f, y, 0f));
         var ray   = _cam.ScreenPointToRay(screen);
@@ -389,8 +412,9 @@ public class MineDesignator : MonoBehaviour
         if (_cam == null) _cam = Camera.main;
         if (_cam == null) return false;
 
+        // **보이는 것을 짚는다**(`VisiblePick`) — 그냥 쏘면 잘려서 화면에 없는 벽 윗부분에 맞는다.
         var ray = _cam.ScreenPointToRay(screen);
-        if (!Physics.Raycast(ray, out var hit, 5000f)) return false;
+        if (!VisiblePick.First(ray, out var pick, 5000f)) return false;
 
         // **맞은 면 안쪽으로 조금 밀어 넣는다**(2026-08-30). 벽의 **옆면**을 누르면 맞은 점이
         // 정확히 **칸 경계**에 떨어지는데, `WorldToTile`은 `Floor`라 그 경계가 어느 칸으로
@@ -399,7 +423,7 @@ public class MineDesignator : MonoBehaviour
         //
         // 법선 반대로 5cm면 언제나 맞은 물체 **안**이다. 윗면·바닥은 법선이 위라 y만 내려가고
         // x·z는 그대로다 — 그쪽 판정은 한 줄도 안 바뀐다.
-        world = hit.point - hit.normal * 0.05f;
+        world = pick.point - pick.normal * 0.05f;
         return true;
     }
 
@@ -408,12 +432,54 @@ public class MineDesignator : MonoBehaviour
     // **버튼도 이 문으로 온다**(`ModeBarUI`) — 키로 켠 것과 같은 상태여야 한다.
     public static void Toggle() { if (_instance != null) _instance.SetActive(!IsActive); }
 
+    // **명령의 `채굴`·`취소`**(`CommandMode`) — 그 도구로 켠다. 이미 켜져 있으면 도구만 바뀐다.
+    public static void Open(Tool t)
+    {
+        Current = t;
+        if (_instance != null) _instance.SetActive(true);
+    }
+
+    public static void Close() { if (_instance != null) _instance.SetActive(false); }
+
+    // **무르는 것은 무엇이든 무른다**(2026-09-19, 사용자: *"취소 버튼도 달아 대신 다 호환되게"*) — 캘 벽의
+    // 표시와 **채집·운반 지정까지**. 도구마다 제 것만 무르면 *"취소를 눌렀는데 버섯 표시가 남는다"*가 된다.
+    // 무른 것이 하나라도 있으면 **그 자리에서 일감을 거두게 한다**(`MineJobBoard.Nudge` — 걸어오던 폰이 멈춘다).
+    void UndoBox(Vector2 a, Vector2 b)
+    {
+        _next.Clear();
+        CollectBox(a, b, _next);
+        bool any = false;
+        foreach (var t in _next) any |= RockMap.Mark(t, false);
+        if (any) MineJobBoard.Nudge();
+        HaulDesignator.UndesignateRect(a, b);
+    }
+
+    void UndoOne(Vector2 p)
+    {
+        if (TileUnder(p, out var t) && RockMap.Mark(t, false)) MineJobBoard.Nudge();
+        HaulDesignator.UndesignateAt(p);
+    }
+
+    // 채집·운반 지정기가 무를 때 **캘 벽 표시도 같이** 무르는 문(위와 짝).
+    public static void UnmarkRect(Vector2 a, Vector2 b)
+    {
+        if (_instance == null) return;
+        _instance._next.Clear();
+        _instance.CollectBox(a, b, _instance._next);
+        bool any = false;
+        foreach (var t in _instance._next) any |= RockMap.Mark(t, false);
+        if (any) MineJobBoard.Nudge();
+    }
+
+    public static void UnmarkAt(Vector2 p)
+    {
+        if (_instance != null && _instance.TileUnder(p, out var t) && RockMap.Mark(t, false)) MineJobBoard.Nudge();
+    }
+
+    bool _rightDrag;
+
     static MineDesignator _instance;
 
-    // 채굴 모드에 들어오기 전의 각도. **여기서 기억한다** — 카메라가 들면 다른 모드가
-    // 겹쳐 눌렀을 때 어느 것으로 돌아갈지가 또 규칙이 된다.
-    float _prevPitch;
-    bool  _pitchSaved;
 
 
     // **한 번에 하나다** — 근거는 `ExclusiveMode`. 켤 때 *"내가 켰다"*만 알리고, 끄는 판단은
@@ -431,30 +497,7 @@ public class MineDesignator : MonoBehaviour
 
         if (on) ExclusiveMode.Claim(this);
 
-        // **채굴할 때는 위에서 내려다본다**(2026-08-29, 사용자). 눕힌 시점에서는 화면
-        // 사각형이 지면에서 사다리꼴이라 **무엇이 찍힐지를 눈으로 못 잰다** — 위에서 보면
-        // 화면의 사각형이 곧 지면의 사각형이다.
-        //
-        // **원래 각도로 돌려준다** — 채굴하러 한 번 들어갔다고 시점이 영영 바뀌면, 그건
-        // 도와주는 것이 아니라 빼앗는 것이다.
-        var cam = CameraController.Active;
-        if (cam == null) return;
-
-        if (on)
-        {
-            _prevPitch  = cam.Pitch;
-            _pitchSaved = true;
-            cam.LerpToPitch(cam.TopDownPitch);
-
-            // **높이도 같이 올린다**(2026-09-07). 벽이 24m가 된 뒤로 각도만 돌리면
-            // **벽 사이에서 천장을 보는 꼴**이라, 무엇을 찍는지가 여전히 안 보인다.
-            // 내려 주지는 않는다 — 멀리서 보며 찍는 것을 모드가 거절할 이유가 없다.
-            cam.RiseTo(cam.MineViewHeight);
-        }
-        else if (_pitchSaved)
-        {
-            cam.LerpToPitch(_prevPitch);
-            _pitchSaved = false;
-        }
+        // **카메라는 안 돌린다**(2026-09-19, 사용자: *"명령 화면 조정하는 거 그냥 없애자"*) — 전에는 여기서 위로
+        // 돌려 **채굴만** 시점이 올랐다.
     }
 }

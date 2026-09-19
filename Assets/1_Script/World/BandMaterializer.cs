@@ -123,7 +123,7 @@ public class BandMaterializer : MonoBehaviour
                 ? MapManager.Instance.SampleGroundHeight(x, z)
                 : TerrainHeight.At(x, z);
 
-            var go = Instantiate(m.Prefab);
+            var go = PawnSpawn.Instantiate(m.Prefab, m.Spec);   // 명세의 성별이 몸을 고른다
             PawnPlacement.PlaceOnGround(go, new Vector3(x, y, z));
 
             var brain = go.GetComponent<UnitBrain>();

@@ -79,6 +79,17 @@ public partial class UnitBrain : MonoBehaviour
     public UnitBlackboard Blackboard => _bb;
     public UnitData Data => unitData;
 
+    // **성별은 몸이 답한다**(`PawnBody`) — 몸이 없는 폰(늑대·골렘·블록 인형)은 `null`이다.
+    // 명세의 성별(`PawnSpec.Gender`)은 몸을 고르는 데 쓰였을 뿐이라 여기서 다시 안 읽는다.
+    public Gender? Gender
+    {
+        get
+        {
+            var body = GetComponent<PawnBody>();
+            return body != null ? body.Gender : (Gender?)null;
+        }
+    }
+
     // 이 폰의 **역할**(없으면 null = 역할 없는 전투/노동 유닛).
     public NpcData Npc => npcData;
 
@@ -185,6 +196,13 @@ public partial class UnitBrain : MonoBehaviour
         if (spec == null) return;
         Spec = spec;
 
+        // **몸과 명세가 성별로 어긋나면 스폰하는 자리가 `PawnSpawn`을 안 거친 것이다** — 여자 몸에 남자 이름이
+        // 붙는다. 조용히 넘기면 *"이름이 이상하다"*로만 보여서 알린다.
+        var g = Gender;
+        if (g.HasValue && spec.Gender.HasValue && g.Value != spec.Gender.Value)
+            Debug.LogWarning($"[몸] {name}: 몸은 {g.Value.DisplayName()}인데 명세는 {spec.Gender.Value.DisplayName()}이다 — " +
+                             "이 폰을 세운 자리가 `PawnSpawn`을 거치지 않았다.", this);
+
         Rename(spec.Name);
 
         if (Stats != null)
@@ -196,6 +214,7 @@ public partial class UnitBrain : MonoBehaviour
         SetTraits(spec.Traits);
         RememberBackstories(spec.Childhood, spec.Adulthood);
         SetBackstories(spec.Childhood, spec.Adulthood);
+        Stats?.SetPassions(spec.Passions);
 
         // 생김새 — 크기 · 재질 · 전용 모델. 늘어나면 여기에 줄이 는다.
         if (spec.BodyScale > 0f) transform.localScale = Vector3.one * spec.BodyScale;
@@ -518,19 +537,24 @@ public partial class UnitBrain : MonoBehaviour
                 RememberBackstories(BackstoryPool.Roll(BackstorySlot.Childhood, rng, group),
                                     BackstoryPool.Roll(BackstorySlot.Adulthood, rng, group));
                 SetBackstories(_rolledChildhood, _rolledAdulthood);
+
+                // **열정은 사람만**(소환물은 성장이 잠겨 있어 붙여 봐야 아무 일도 안 한다 — `IsLocked`).
+                if (!IsSummoned) Stats?.SetPassions(Passions.Roll(rng, _rolledChildhood, _rolledAdulthood));
             }
             return;
         }
 
-        var spec = pawnSpec.Build(unitData);
+        var spec = pawnSpec.Build(unitData, Gender);   // 몸이 이미 있다 — 그 성별로 굴린다
         if (!string.IsNullOrWhiteSpace(fixedName)) spec.Name = fixedName;
         ApplySpec(spec);
     }
 
     string ResolveUnitName()
     {
-        if (unitData != null && unitData.NamePool != null && unitData.NamePool.Count > 0)
-            return unitData.NamePool[UnityEngine.Random.Range(0, unitData.NamePool.Count)];
+        // 이름은 몸의 성별을 따른다(`UnitData.NamesFor` — 성별 풀 + 중성 풀).
+        var names = unitData != null ? unitData.NamesFor(Gender) : null;
+        if (names != null && names.Count > 0)
+            return names[UnityEngine.Random.Range(0, names.Count)];
         if (unitData != null && !string.IsNullOrEmpty(unitData.RaceName))
             return unitData.RaceName;
         return gameObject.name;

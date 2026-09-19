@@ -23,7 +23,7 @@ using UnityEngine;
 // **이름이 곧 묶음이다** — `Head.Shape.Square` · `Head.Hair.Bob.Cap`. 둘째 마디가 묶음,
 // 셋째 마디가 벌이다. 기본 머리만은 리거가 `HeadMesh`로 이름을 바꾸는데, 그것은 **공통 윗반쪽**이라 안 건드린다(턱만 `Head.Shape.*`다).
 //
-// **머리가 바뀌면 머리카락도 같이 옮긴다** — 머리카락은 기준 머리(`…AverageNormal`)에 맞춰 구웠으므로
+// **머리가 바뀌면 머리카락도 같이 옮긴다** — 머리카락은 기준 머리(`…BroadSoft`)에 맞춰 구웠으므로
 // 좁고 긴 머리에 그대로 씌우면 정수리가 뚫고 나온다. 기준의 틀에서 고른 머리의 틀로 같은 비로 옮긴다.
 //
 // **못 박을 수 있다**(2026-09-18, 사용자: *"인스펙터로 바꿀 수 있게 만들자"*) — 둘 다 비우면
@@ -31,14 +31,14 @@ using UnityEngine;
 // 여기 적힌다(`PawnSpecData`가 등급·특성을 못 박는 것과 같은 자리). 인스펙터는 `PawnLookEditor`.
 public class PawnLook : MonoBehaviour
 {
-    // **기준 머리** — 이름이 이것으로 끝나는 머리(`Male_AverageNormal`). 머리카락은 그것에 맞춰 구웠다.
-    public const string BasisShape = "AverageNormal";
+    // **기준 머리** — 이름이 이것으로 끝나는 머리(`Male_BroadSoft`). 머리카락은 그것에 맞춰 구웠다.
+    public const string BasisShape = "BroadSoft";   // 이름은 `ChibiNames`
     public const string Bald       = "Bald";
 
     // **윗머리 모양 둘** — 머리카락 한 장은 이 둘로 굽는다(`Head.Hair.Short.Shell.Box`).
     // 림월드의 `Wide` 턱은 윗머리까지 네모라 둥근 뚜껑을 씌우면 모서리가 뚫고 나온다.
     public const string FitRound = "Round", FitBox = "Box";
-    public static string HairFitOf(string shape) => shape != null && shape.EndsWith("Wide") ? FitBox : FitRound;
+    public static string HairFitOf(string shape) => shape != null && shape.EndsWith("Square") ? FitBox : FitRound;
 
     [Tooltip("얼굴형을 못 박는다. 비우면 씨앗이 고른다.")]
     [SerializeField] string shapeOverride = "";
@@ -51,6 +51,16 @@ public class PawnLook : MonoBehaviour
     [SerializeField] string eyeROverride = "";
     [Tooltip("입 그림. 비우면 기본(없음). `-`면 없음.")]
     [SerializeField] string mouthOverride = "";
+    // **코는 입체다**(2026-09-19, 사용자: *"코는 텍스쳐가 아니라 모델링으로"*) — 머리형마다 모양마다 한 벌
+    // (`Head.Nose.{모양}.{머리형}`)을 구워 두고 **고른 모양 × 지금 머리형** 하나만 켠다. 비우면 없음.
+    [Tooltip("코 모양 — `Button` · `Pointy` · `Long` · `Wide`. 비우거나 `-`면 없음.")]
+    [SerializeField] string noseOverride = "";
+
+    // **귀**(2026-09-19) — 머리카락과 같은 길: 모양마다 한 벌(`Head.Ear.{모양}.L/R`)을 구워 두고 하나만 켠다.
+    // 비우면 **일반 귀**, `-`면 없음. 귀는 판이 아니라 입체라 머리형이 바뀌면 머리카락처럼 **고른 머리로 옮긴다.**
+    public const string DefaultEar = "Human";
+    [Tooltip("귀 모양 — `Human` · `Elf` · `Goblin`. 비우면 일반 귀(`Human`). `-`면 없음.")]
+    [SerializeField] string earOverride = "";
 
     public const string None = "-";
     public static readonly string[] FaceFeatures = { "EyeL", "EyeR", "Mouth" };
@@ -61,6 +71,8 @@ public class PawnLook : MonoBehaviour
 
     readonly SortedDictionary<string, List<Renderer>> _shapes = new();
     readonly SortedDictionary<string, List<Renderer>> _hairs  = new();
+    readonly SortedDictionary<string, List<Renderer>> _ears   = new();
+    readonly SortedDictionary<string, List<Renderer>> _noses  = new();   // 모양 → (머리형마다 한 벌)
     readonly Dictionary<string, Transform> _shapeHead = new();   // 머리형 → 그 머리 살(이목구비 판 말고)
 
     // **머리카락이 지금 어느 머리에 맞춰져 있나** — 옮길 때 *그 머리의 틀*에서 *고른 머리의 틀*로
@@ -72,13 +84,19 @@ public class PawnLook : MonoBehaviour
 
     public string Shape      { get; private set; } = "";
     public string Hair       { get; private set; } = Bald;
+    public string Ear        { get; private set; } = None;
+    public string Nose       { get; private set; } = None;
 
     // 인스펙터가 읽는 목록 — 모은 뒤에만 찬다.
     public IEnumerable<string> ShapeNames => _shapes.Keys;
     public IEnumerable<string> HairNames  => _hairs.Keys;
+    public IEnumerable<string> EarNames   => _ears.Keys;
+    public IEnumerable<string> NoseNames  => _noses.Keys;
 
     public string ShapeOverride      { get => shapeOverride;      set { shapeOverride = value ?? "";      Apply(); } }
     public string HairOverride       { get => hairOverride;       set { hairOverride = value ?? "";       Apply(); } }
+    public string EarOverride        { get => earOverride;        set { earOverride = value ?? "";        Apply(); } }
+    public string NoseOverride       { get => noseOverride;       set { noseOverride = value ?? "";       Apply(); } }
 
     // 이목구비 — 인스펙터가 읽고 쓴다. **눈과 입은 아틀라스가 따로다** — 눈 줄에서 입 그림을
     // 고를 수 없게(사용자: *"같은곳에서 다 불러올 수 있게 만들지 말고"*).
@@ -125,6 +143,12 @@ public class PawnLook : MonoBehaviour
 
     public void Apply()
     {
+        // **옛 이름(림월드 이름)을 새 이름으로**(`ChibiNames`) — 못 박아 둔 얼굴이 조용히 굴림으로 돌아가지 않게.
+        shapeOverride = ChibiNames.Migrate(shapeOverride);
+        eyeLOverride  = ChibiNames.Migrate(eyeLOverride);
+        eyeROverride  = ChibiNames.Migrate(eyeROverride);
+        mouthOverride = ChibiNames.Migrate(mouthOverride);
+
         if (!_gathered) Gather();
         if (_shapes.Count == 0) return;   // 치비 머리가 아닌 폰 — 아무 일도 안 한다
 
@@ -145,6 +169,18 @@ public class PawnLook : MonoBehaviour
         Show(_shapes, Shape);
         Show(_hairs,  Hair);
 
+        // 귀 — 비우면 둥근 귀, `-`면 없음, 모르는 이름이면 둥근 귀.
+        Ear = earOverride == None ? None
+            : _ears.ContainsKey(earOverride) ? earOverride
+            : _ears.ContainsKey(DefaultEar) ? DefaultEar : None;
+        Show(_ears, Ear);
+
+        // 코 — 고른 모양 중 **지금 머리형의 것** 하나만(마지막 마디가 머리형이다).
+        Nose = _noses.ContainsKey(noseOverride) ? noseOverride : None;
+        foreach (var kv in _noses)
+        foreach (var r in kv.Value)
+            if (r != null) r.enabled = kv.Key == Nose && r.name.EndsWith("." + Shape);
+
         // 머리카락은 윗머리 모양이 맞는 벌만 — 마지막 마디가 모양이다(`Shell.Box`).
         string fit = HairFitOf(Shape);
         if (_hairs.TryGetValue(Hair, out var shown))
@@ -163,7 +199,9 @@ public class PawnLook : MonoBehaviour
         {
             Vector3 fP = frame.localPosition, cP = chosen.localPosition;
             Vector3 k  = Div(chosen.localScale, frame.localScale);
-            foreach (var kv in _hairs)
+            // **귀도 같은 셈으로 옮긴다** — 기준 머리에 맞춰 구웠으므로 머리카락과 같은 틀을 탄다(따로 셈하면 한쪽만 어긋난다).
+            foreach (var map in new[] { _hairs, _ears })
+            foreach (var kv in map)
             foreach (var r in kv.Value)
             {
                 if (r == null) continue;
@@ -214,7 +252,7 @@ public class PawnLook : MonoBehaviour
     void Gather()
     {
         _gathered = true;
-        _shapes.Clear(); _hairs.Clear(); _shapeHead.Clear(); _faceParts.Clear();
+        _shapes.Clear(); _hairs.Clear(); _ears.Clear(); _noses.Clear(); _shapeHead.Clear(); _faceParts.Clear();
 
         // 머리 관절 아래를 본다. 리그가 없으면(아직 안 세운 프리팹) 이름으로 찾는다.
         var rig  = GetComponentInChildren<PawnRig>(true);
@@ -239,6 +277,8 @@ public class PawnLook : MonoBehaviour
                     if (parts.Length == 3) _shapeHead[parts[2]] = r.transform;
                     break;
                 case "Hair": Add(_hairs, parts[2], r); break;
+                case "Ear":  Add(_ears,  parts[2], r); break;
+                case "Nose": Add(_noses, parts[2], r); break;
             }
         }
     }

@@ -154,7 +154,7 @@ public class InventoryUI : MonoBehaviour
 
         // 월드맵에서 I를 누르면 **아무도 안 고른 빈 배낭**이 뜬다 — 거기선 선택이 팀 단위라
         // 고른 폰이라는 게 없다. 거래로 폰이 지정돼 있을 때만 연다.
-        if (Keyboard.current[toggleKey].wasPressedThisFrame &&
+        if (Keyboard.current[toggleKey].wasPressedThisFrame && !InputFocus.KeysBlocked() &&
             (GameModeManager.IsField || _boundPawn != null))
             Toggle();
 

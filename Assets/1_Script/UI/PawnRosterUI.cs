@@ -67,6 +67,9 @@ public class PawnRosterUI : MonoBehaviour
 
     void Update()
     {
+        // **건설·명령·밭 구역 동안은 치우고 끝나면 되돌린다**(`FocusMode`) — 무리 목록이 드래그할 자리를 가린다.
+        if (panel != null && panel.activeSelf == FocusMode.Active) panel.SetActive(!FocusMode.Active);
+
         if (panel == null || !panel.activeSelf) return;
 
         EndDragIfMouseReleased();

@@ -178,7 +178,7 @@ public class HierarchicalPathfinder : MonoBehaviour
                 float ddx = last.x - to.x, ddz = last.z - to.z;
                 if (ddx * ddx + ddz * ddz > _wideCell * _wideCell * 2.25f) WarnPartialWideRoute(last, to);
 
-                return Densify(route, from);
+                return Densify(Straighten(route, from), from);
             }
 
             WarnNoWideRoute(from, to);
@@ -240,6 +240,74 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 안에** 둔다. 자르는 자리는 광역이 이미 걸을 수 있다고 답한 직선 위라 새 정보를
     // 지어내지 않는다.
     const float RouteStepMax = 12f;   // 로컬 창 반쪽(20m)보다 넉넉히 작게
+
+    // ── 라우트를 곧게 편다 ──────────────────────────────────────────────────
+    //
+    // (2026-09-19, 사용자: *"왜 그냥 직선으로 쭉 안가고 저렇게 가는지 이해할 수 없어"*.) 광역 라우트는
+    // **셀 경계의 통과점**을 잇는다 — 통과점은 *그 경계에서 열린 구간의 한가운데*라, 목적지가 옆 셀이기만
+    // 해도 폰은 그 점을 들렀다 꺾어 간다. 탁 트인 굴 한복판에서도 **자로 그은 듯한 꺾은선**을 걷는다.
+    //
+    // 그래서 **곧게 펼 수 있는 데까지 건너뛴다**(줄 당기기) — 지금 자리에서 보이는 가장 먼 통과점으로 곧장.
+    // "보이나"는 **폰 몸통 두께로** 잰다(선 하나로 재면 벽 모서리를 스쳐 몸이 걸린다 — `LosOpen`과 같은 이유).
+    // 답은 광역 그래프의 1m 표(`WideGraph.WalkableTile`) — 같은 사실을 다시 굽지 않는다.
+    // **한 번에 너무 멀리 건너뛰지 않는다**(`StraightenMax`) — 로컬 창(40m) 밖을 겨누면 조향이 창 가장자리로 접힌다.
+    const float StraightenMax  = 30f;
+    const float StraightenStep = 0.25f;
+    const float StraightenBody = 0.4f;   // 몸통 반지름(0.35) + 여유
+
+    List<Vector3> Straighten(List<Vector3> route, Vector3 from)
+    {
+        if (route == null || route.Count < 2) return route;
+
+        var outList = new List<Vector3>(route.Count);
+        Vector3 anchor = from;
+        int i = 0;
+        while (i < route.Count)
+        {
+            // 지금 자리에서 곧장 갈 수 있는 가장 먼 통과점.
+            int far = i;
+            for (int k = route.Count - 1; k > i; k--)
+            {
+                if (FlatDist(anchor, route[k]) > StraightenMax) continue;
+                if (Clear(anchor, route[k])) { far = k; break; }
+            }
+            outList.Add(route[far]);
+            anchor = route[far];
+            i = far + 1;
+        }
+        return outList;
+    }
+
+    static float FlatDist(Vector3 a, Vector3 b)
+    {
+        float dx = a.x - b.x, dz = a.z - b.z;
+        return Mathf.Sqrt(dx * dx + dz * dz);
+    }
+
+    bool Clear(Vector3 a, Vector3 b)
+    {
+        var map = MapManager.Instance;
+        if (map == null || _graph == null) return false;
+
+        float d = FlatDist(a, b);
+        if (d < 1e-3f) return true;
+        var dir  = new Vector3((b.x - a.x) / d, 0f, (b.z - a.z) / d);
+        var side = new Vector3(-dir.z, 0f, dir.x) * StraightenBody;
+
+        for (float t = 0f; t <= d; t += StraightenStep)
+        {
+            var p = a + dir * t;
+            if (!Walk(map, p) || !Walk(map, p + side) || !Walk(map, p - side)) return false;
+        }
+        return Walk(map, b);
+    }
+
+    bool Walk(MapManager map, Vector3 p)
+    {
+        var t = map.WorldToTile(p);
+        // 막힘으로 배운 곳은 곧게 펴서 가로지르지 않는다 — 라우트가 일부러 돌아간 자리다.
+        return _graph.WalkableTile(t.x, t.y) && !_graph.TileLearnedBlocked(t.x, t.y);
+    }
 
     static List<Vector3> Densify(List<Vector3> route, Vector3 from)
     {

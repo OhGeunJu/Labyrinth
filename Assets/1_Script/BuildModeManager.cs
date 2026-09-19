@@ -107,7 +107,10 @@ public class BuildModeManager : MonoBehaviour
     {
         if (Keyboard.current == null) return;
 
-        if (Keyboard.current.bKey.wasPressedThisFrame)
+        // 글자 단축키(B · X · Tab · Q/E · [ ])는 이름 칸·모달 화면에서 안 받는다(`InputFocus`) — Esc는 받는다.
+        bool keys = !InputFocus.KeysBlocked();
+
+        if (keys && Keyboard.current.bKey.wasPressedThisFrame)
             SetActive(!_active);
 
         if (Keyboard.current.escapeKey.wasPressedThisFrame && _active)
@@ -115,26 +118,29 @@ public class BuildModeManager : MonoBehaviour
 
         if (!_active) return;
 
-        if (Keyboard.current.xKey.wasPressedThisFrame)
+        if (keys && Keyboard.current.xKey.wasPressedThisFrame)
             ToggleDemolish();
 
         if (_demolish) { UpdateDemolish(); return; }
 
-        if (Keyboard.current.tabKey.wasPressedThisFrame)
-            TogglePlacementMode();
-
-        if (_mode == PlacementMode.Free)
+        if (keys)
         {
-            if (Keyboard.current.qKey.wasPressedThisFrame) _freeYaw -= freeYawStep;
-            if (Keyboard.current.eKey.wasPressedThisFrame) _freeYaw += freeYawStep;
-        }
-        else
-        {
-            if (Keyboard.current.qKey.wasPressedThisFrame) _gridYaw -= gridYawStep;
-            if (Keyboard.current.eKey.wasPressedThisFrame) _gridYaw += gridYawStep;
-        }
+            if (Keyboard.current.tabKey.wasPressedThisFrame)
+                TogglePlacementMode();
 
-        UpdateLevelKeys();
+            if (_mode == PlacementMode.Free)
+            {
+                if (Keyboard.current.qKey.wasPressedThisFrame) _freeYaw -= freeYawStep;
+                if (Keyboard.current.eKey.wasPressedThisFrame) _freeYaw += freeYawStep;
+            }
+            else
+            {
+                if (Keyboard.current.qKey.wasPressedThisFrame) _gridYaw -= gridYawStep;
+                if (Keyboard.current.eKey.wasPressedThisFrame) _gridYaw += gridYawStep;
+            }
+
+            UpdateLevelKeys();
+        }
         UpdatePreview();
     }
 
@@ -663,12 +669,16 @@ public class BuildModeManager : MonoBehaviour
     // **`IPlacementPose`는 지우지 않고 끈다** — 놓일 자리에 따라 모양이 갈리는 건물은
     // 미리보기에서도 그 모양이어야 한다(그게 안 되면 *짓고 나서야 어느 쪽인지 알게 된다*).
     // 꺼 두므로 `OnEnable`이 안 돌고, 그래서 **부수효과를 막는다는 이 함수의 뜻은 그대로다.**
-    static void StripScripts(GameObject model)
+    //
+    // **`keep`** — 남길 것을 부르는 쪽이 고른다(2026-09-20, 캐릭터 생성 화면의 미리보기 폰: 모습을 정하는 `PawnLook`·
+    // 얼굴 판은 남기고 뇌·이동은 뗀다). 같은 일을 두 벌로 짓지 않으려고 여기를 넓혔다 — 순서 규칙이 한 곳에 있다.
+    public static void StripScripts(GameObject model, System.Func<MonoBehaviour, bool> keep = null)
     {
         var left = new List<MonoBehaviour>();
         foreach (var b in model.GetComponentsInChildren<MonoBehaviour>(true))
         {
             if (b == null) continue;
+            if (keep != null && keep(b)) continue;
             if (b is IPlacementPose) { b.enabled = false; continue; }
             left.Add(b);
         }

@@ -330,6 +330,7 @@ Content
 | 씬 오브젝트 | 컴포넌트 | 비고 |
 |---|---|---|
 | `Storage_UI` | `StorageUI` | 창고 필터/그리드 |
+| `CharacterCreation_UI` | `CharacterCreationUI` · `ChoiceRowUI` | 새 게임의 첫 방랑자(2026-09-20). **닫기 버튼이 없다** — `시작`으로만 나간다. 줄 여덟은 `ChoiceRowUI.Key`로 가른다. 생성기 `UI/Create Character Creation`은 자리를 잡으면 지운다 |
 | ~~`Bed_UI`~~ | ~~`BedUI`~~ | **없앴다**(2026-08-12). 배정/해제는 우클릭으로, 정보는 `UnitHP_Panel`로 — 문이 둘인데 한쪽만 죄수 침대 규칙을 알고 있었다 |
 | `Farm_UI` | `FarmUI` | 농장 관리(씨앗 선택·성장·수분) |
 | `PatrolZone_UI` | `PatrolZoneUI` | 순찰 구역 |

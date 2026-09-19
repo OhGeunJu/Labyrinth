@@ -134,6 +134,12 @@ public class WideGraph
     // PickReachableSpread`)가 쓴다. `IsWorkable`을 담아 둔 것이라 같은 답을 다시 뽑을 이유가 없다.
     public bool WalkableTile(int tx, int tz) => Walk(tx, tz);
 
+    // **막힘으로 배운 덩어리 위의 칸인가**(`ReportUnreachable`, 20초). 라우트를 곧게 펴는 쪽
+    // (`HierarchicalPathfinder.Straighten`)이 묻는다 — 안 물으면 **배워서 돌아가게 한 길을 다시 그 벽으로
+    // 곧게 펴** 폰이 같은 자리에서 되풀이해 막힌다. 배운 것이 없으면 바로 거짓이다(대개 그렇다).
+    public bool TileLearnedBlocked(int tx, int tz)
+        => _blocked.Count > 0 && TryNodeAtTile(tx, tz, out int node) && IsBlocked(node);
+
     // ── 굽기 ─────────────────────────────────────────────────────────────
 
     // **굽는 값을 재서 적는다.** 칸 백만 개를 훑는 일이라 *"얼마나 걸리나"*가 짐작이 되면

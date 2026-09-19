@@ -241,6 +241,7 @@ public class CameraController : MonoBehaviour
     void HandleMove()
     {
         Vector3 dir = Vector3.zero;
+        if (InputFocus.KeysBlocked()) return;   // 이름 칸에 `was`를 치면 카메라가 미끄러진다
 
         if (Keyboard.current.wKey.isPressed) dir += transform.forward;
         if (Keyboard.current.sKey.isPressed) dir -= transform.forward;
@@ -358,6 +359,7 @@ public class CameraController : MonoBehaviour
 
     void HandleAnglePreset()
     {
+        if (InputFocus.KeysBlocked()) return;
         if (Keyboard.current.pageUpKey.wasPressedThisFrame)
         {
             _targetPitch = topDownPitch;

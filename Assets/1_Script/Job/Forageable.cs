@@ -94,6 +94,22 @@ public class Forageable : MonoBehaviour, IGatherTarget
         else    DropJob();
     }
 
+    // **이 폰이 따 온다 — 우클릭 명령**(2026-09-19, 사용자: *"양송이 버섯들에 우클릭이 안돼"*). 우클릭에
+    // 채집물 가지가 아예 없었다. 찍기(`SetDesignated`)와 **같은 일감**을 내고 그 폰에게 예약한다 —
+    // 일감을 따로 만들면 *찍어서 딸 때*와 *시켜서 딸 때*가 다르게 돈다. 이미 누가 맡았으면 그대로 둔다.
+    public bool RequestBy(UnitBrain brain)
+    {
+        if (brain == null || Item == null || JobManager.Instance == null) return false;
+
+        if (!_designated) { _designated = true; RefreshMark(); }
+        TryRegister();
+        if (_job == null || _job.Status != JobStatus.Available) return _job != null;
+
+        brain.AbandonWork();   // 하던 일을 놓아야 이 일감을 집는다(명령은 옛 명령을 덮어쓴다)
+        _job.Reserve(brain);
+        return true;
+    }
+
     Transform IGatherTarget.Where => transform;
 
     // **`Awake`가 아니라 `Start`다** — 뿌리기가 `Instantiate` 직후 스케일·표식을 붙이므로,

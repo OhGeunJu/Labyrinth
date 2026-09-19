@@ -43,6 +43,72 @@ public class HaulDesignator : MonoBehaviour
     public static Tool Current { get; private set; } = Tool.Designate;
     public static void Use(Tool t) => Current = t;
 
+    // ── 무엇을 찍나 — 운반 ↔ 채집 (2026-09-19) ──────────────────────────────
+    //
+    // (사용자: *"운반처럼 채집도 한번에 드래그 할 수 있게 해야지 … 채굴 채집 운반 세 버튼을 명령으로
+    //  합쳐서"*.) 이 모드는 원래 바닥 물건·채집물·야생 광맥을 **한꺼번에** 찍었다 — 채집도 이미 드래그로
+    // 되고 있었는데 **버튼 이름이 `운반`이라 아무도 몰랐다.** 명령 도구 바가 둘을 가르면서 여기도 가른다:
+    // **모드는 하나이고 대상만 바뀐다**(조작이 한 글자도 안 다르다는 위의 근거는 그대로다).
+    //   · 운반 = 바닥의 물건(`DroppedItem`)
+    //   · 채집 = 채집물(`Forageable`)과 야생 광맥(`ResourceNode` — 지은 것은 `CanDesignate`가 뺀다)
+    public enum Target { Haul, Gather }
+    public static Target Kind { get; private set; } = Target.Haul;
+
+    // 명령 도구 바가 부른다 — 대상을 바꾸고 켠다(이미 켜져 있으면 대상만 바뀐다).
+    public static void Open(Target kind)
+    {
+        Kind    = kind;
+        Current = Tool.Designate;
+        if (_instance == null) return;
+        _instance.ClearPending();
+        _instance.SetActive(true);
+    }
+
+    static bool Accepts(IGatherTarget t) => Kind == Target.Haul
+        ? t is DroppedItem
+        : t is Forageable || t is ResourceNode;
+
+    // 무를 때는 **무엇이든** 무른다 — 취소는 도구를 안 가린다(`CommandMode` 머리말).
+    bool Takes(IGatherTarget t) => !Designating || Accepts(t);
+
+    public static void Close() { if (_instance != null) _instance.SetActive(false); }
+
+    // **다른 지정기가 무를 때 이쪽 지정도 같이 무르는 문**(채굴 지정기의 취소 · 우클릭 드래그).
+    public static void UndesignateRect(Vector2 a, Vector2 b)
+    {
+        if (_instance == null) return;
+        var cam = _instance.Cam();
+        if (cam == null) return;
+        float minX = Mathf.Min(a.x, b.x), maxX = Mathf.Max(a.x, b.x);
+        float minY = Mathf.Min(a.y, b.y), maxY = Mathf.Max(a.y, b.y);
+        UndoIn<DroppedItem>(cam, minX, maxX, minY, maxY);
+        UndoIn<Forageable>(cam, minX, maxX, minY, maxY);
+        UndoIn<ResourceNode>(cam, minX, maxX, minY, maxY);
+    }
+
+    public static void UndesignateAt(Vector2 p)
+    {
+        if (_instance == null) return;
+        var cam = _instance.Cam();
+        if (cam == null) return;
+        foreach (var hit in VisiblePick.All(cam.ScreenPointToRay(p), 500f))
+        {
+            var t = hit.collider.GetComponentInParent<IGatherTarget>();
+            if (t != null && t.CanDesignate && t.Designated) { t.SetDesignated(false); return; }
+        }
+    }
+
+    static void UndoIn<T>(Camera cam, float minX, float maxX, float minY, float maxY) where T : Component
+    {
+        foreach (var c in FindObjectsByType<T>(FindObjectsSortMode.None))
+        {
+            if (c is not IGatherTarget t || !t.CanDesignate || !t.Designated) continue;
+            var sp = cam.WorldToScreenPoint(t.Where.position);
+            if (sp.z >= 0f && sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY)
+                t.SetDesignated(false);
+        }
+    }
+
 
     static readonly Color Fill = new(0.35f, 0.95f, 0.45f, 0.22f);
     static readonly Color Line = new(0.35f, 0.95f, 0.45f, 0.9f);
@@ -62,8 +128,7 @@ public class HaulDesignator : MonoBehaviour
 
     void Update()
     {
-        var kb = Keyboard.current;
-        if (kb != null && kb.hKey.wasPressedThisFrame) Toggle();
+        var kb = Keyboard.current;   // 켜는 키는 `CommandMode`가 듣는다(J 채집 · K 운반)
 
         if (!IsActive) return;
 
@@ -82,25 +147,39 @@ public class HaulDesignator : MonoBehaviour
 
         Vector2 cur = mouse.position.ReadValue();
 
-        // **우클릭은 반대로 지운다.** 켜는 것과 끄는 것이 같은 모드 안에 있어야 "찍었다 무른다"가
-        // 한 흐름이 된다(모드를 또 만들면 조작이 하나 더 는다).
-        if (mouse.rightButton.wasPressedThisFrame)
+        // **우클릭은 반대로 지운다 — 누르면 하나, 끌면 상자째**(2026-09-19). 켜는 것과 끄는 것이 같은 모드
+        // 안에 있어야 "찍었다 무른다"가 한 흐름이 된다. 명령 도구 바에서 `취소` 타일이 빠지면서(세 칸이
+        // 채굴·채집·운반이 됐다) 넓게 무르는 길을 **오른쪽 드래그**가 맡는다.
+        if (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)
         {
-            var under = PickUnder(cur);
-            under?.SetDesignated(false);
+            _dragStart  = cur;
+            _dragging   = false;
+            _rightHeld  = mouse.rightButton.wasPressedThisFrame;
+        }
+
+        bool held     = _rightHeld ? mouse.rightButton.isPressed : mouse.leftButton.isPressed;
+        bool released = _rightHeld ? mouse.rightButton.wasReleasedThisFrame : mouse.leftButton.wasReleasedThisFrame;
+
+        if (held && !_dragging && Vector2.Distance(_dragStart, cur) > DragThreshold)
+            _dragging = true;
+
+        // 오른쪽을 안 끌고 놓으면 **하나만** 무른다(예전 우클릭 그대로).
+        if (released && _rightHeld && !_dragging)
+        {
+            PickUnder(cur)?.SetDesignated(false);
+            MineDesignator.UnmarkAt(cur);   // 무르는 것은 무엇이든 — 캘 벽 표시도
+            ClearPending();
+            _rightHeld = false;
             return;
         }
 
-        if (mouse.leftButton.wasPressedThisFrame) { _dragStart = cur; _dragging = false; }
-
-        if (mouse.leftButton.isPressed && !_dragging &&
-            Vector2.Distance(_dragStart, cur) > DragThreshold)
-            _dragging = true;
-
         RefreshPending(cur);
 
-        if (mouse.leftButton.wasReleasedThisFrame)
+        if (released)
         {
+            // 상자째 무를 때는 **캘 벽 표시도** 같이 무른다(취소는 도구를 안 가린다).
+            if (_dragging && !Designating) MineDesignator.UnmarkRect(_dragStart, cur);
+
             // **예정 표식을 반드시 끈다.** 안 끄면 `_pendingMark`가 참인 채로 남아, 나중에
             // 운반을 꺼도 초록 구슬이 계속 떠 있다 — 구슬이 곧 "실려 간다"는 말이므로
             // 그때부터 화면이 거짓말을 한다(구슬을 붙인 이유가 바로 그것이었다).
@@ -108,18 +187,29 @@ public class HaulDesignator : MonoBehaviour
             {
                 if (d == null) continue;
                 d.SetPendingHighlight(false);
-                d.SetDesignated(Current == Tool.Designate);
+                d.SetDesignated(Designating);
             }
 
             _pending.Clear();
-            _dragging = false;
+            _dragging  = false;
+            _rightHeld = false;
         }
     }
 
     // **버튼도 이 문으로 온다**(`ModeBarUI`) — 키로 켠 것과 같은 상태여야 한다.
-    public static void Toggle() { if (_instance != null) _instance.SetActive(!IsActive); }
+    // `H`로 켜면 **운반**이다(채집은 명령 도구 바에서 고른다).
+    public static void Toggle()
+    {
+        if (_instance == null) return;
+        if (!IsActive) Kind = Target.Haul;
+        _instance.SetActive(!IsActive);
+    }
 
     static HaulDesignator _instance;
+
+    // 지금 드래그가 **찍는가**(왼쪽 · 찍기 도구) **무르는가**(오른쪽 · 또는 취소 도구).
+    bool _rightHeld;
+    bool Designating => !_rightHeld && Current == Tool.Designate;
 
 
     // **한 번에 하나다** — 근거는 `ExclusiveMode`. 켤 때 *"내가 켰다"*만 알리고, 끄는 판단은
@@ -148,10 +238,10 @@ public class HaulDesignator : MonoBehaviour
         if (cam == null) return null;
 
         var ray = cam.ScreenPointToRay(screen);
-        foreach (var hit in Physics.RaycastAll(ray, 500f))
+        foreach (var hit in VisiblePick.All(ray, 500f))   // 짚는 문은 한 벌(`VisiblePick`)
         {
             var t = hit.collider.GetComponentInParent<IGatherTarget>();
-            if (t != null && t.CanDesignate) return t;
+            if (t != null && t.CanDesignate && Takes(t)) return t;
         }
         return null;
     }
@@ -183,7 +273,7 @@ public class HaulDesignator : MonoBehaviour
         else
         {
             var under = PickUnder(cur);
-            if (under != null && under.Designated != (Current == Tool.Designate)) next.Add(under);
+            if (under != null && under.Designated != Designating) next.Add(under);
         }
 
         foreach (var d in _pending)
@@ -202,8 +292,8 @@ public class HaulDesignator : MonoBehaviour
         foreach (var c in FindObjectsByType<T>(FindObjectsSortMode.None))
         {
             // **취소 도구는 반대를 모은다** — 이미 찍힌 것만 잡아야 지울 것이 생긴다.
-            if (c is not IGatherTarget t || !t.CanDesignate) continue;
-            if (t.Designated == (Current == Tool.Designate)) continue;
+            if (c is not IGatherTarget t || !t.CanDesignate || !Takes(t)) continue;
+            if (t.Designated == Designating) continue;
 
             var sp = cam.WorldToScreenPoint(t.Where.position);
             if (sp.z >= 0f && sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY)
@@ -229,10 +319,8 @@ public class HaulDesignator : MonoBehaviour
     {
         if (!IsActive) return;
 
-        GUI.color = new Color(0.75f, 1f, 0.8f);
-        GUI.Label(new Rect(10, 34, 720, 24),
-                  "[가져오기 지정] 바닥 물건·버섯 · 클릭=단일 / 드래그=일괄 · 우클릭=해제  H=끄기  Esc=나가기");
-        GUI.color = Color.white;
+        // 왼쪽 위의 안내 글은 뺐다(2026-09-19, 사용자: *"왼쪽위에 초록 글씨가 뜨는데 채굴은 그런게 없어 다
+        // 없애버려"*) — 지금 무슨 도구인지는 도구 바가 답한다(`ModeToolBarUI`). 드래그 상자만 그린다.
 
         if (!_dragging || Mouse.current == null) return;
 

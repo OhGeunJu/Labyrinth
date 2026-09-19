@@ -41,7 +41,7 @@ public class FormationController : MonoBehaviour
         if (pick == null) return;
 
         // 글자를 치는 중이면 단축키가 아니다(`DraftController`와 같은 규칙).
-        if (InputFocus.IsTyping()) return;
+        if (InputFocus.KeysBlocked()) return;
 
         Formation.Current = pick.Value;
 

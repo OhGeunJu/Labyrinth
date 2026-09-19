@@ -112,13 +112,18 @@ public class ResourceNodeUI : MonoBehaviour
         SelectionManager.OnNodeSelected  += OnNodeSelected;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
         ResourceNode.OnAssignmentChanged += OnAssignmentChanged;
+        ExclusiveMode.Claimed            += OnModeClaimed;
     }
+
+    // 건설·명령·밭 구역이 켜지면 닫는다(`FocusMode`) — 드래그할 자리를 가린다.
+    void OnModeClaimed(object _) { if (panel != null && panel.activeSelf) Close(); }
 
     void OnDisable()
     {
         SelectionManager.OnNodeSelected  -= OnNodeSelected;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
         ResourceNode.OnAssignmentChanged -= OnAssignmentChanged;
+        ExclusiveMode.Claimed            -= OnModeClaimed;
         Unsubscribe();
     }
 

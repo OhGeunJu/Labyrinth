@@ -680,7 +680,7 @@ public class WorkNode : BTNode
                 bb.CurrentJob = null;
                 return BTStatus.Failure;
             }
-            bb.Mover.SetMoveTarget(TileToWorld(job.TileCoord, bb));
+            bb.Mover.SetMoveTarget(JobTarget(job, bb));
             ResetProgress();   // 새 일감 — 진행 측정을 처음부터
         }
 
@@ -719,17 +719,18 @@ public class WorkNode : BTNode
             _progressFor = currentJob.TileCoord;
         }
 
-        var jobCenter = MapManager.Instance.TileToWorld(currentJob.TileCoord);
+        // **어디서 재나는 일감이 답한다**(`JobBase.DistanceFrom`) — 자원 노드는 한복판이 아니라
+        // 몸에서 잰다(3×3 광맥 옆에 붙어 서도 한복판까지는 2m가 넘어 영영 안 캤다).
+        var jobCenter = currentJob.FacePoint;
         var pos       = bb.Self.transform.position;
-        float dist    = Vector2.Distance(new Vector2(pos.x, pos.z),
-                                         new Vector2(jobCenter.x, jobCenter.z));
+        float dist    = currentJob.DistanceFrom(pos);
 
         if (!Arrived(dist, currentJob.TileCoord, currentJob.Reach))
         {
             // 이동 중이 아닐 때만 목표 재설정 (이미 이동 중이면 기다림)
             bool moving = bb.Mover.HasTarget();
             if (!moving)
-                bb.Mover.SetMoveTarget(TileToWorld(currentJob.TileCoord, bb));
+                bb.Mover.SetMoveTarget(JobTarget(currentJob, bb));
 
             // **직선이 아니라 그은 선으로 잰다**(2026-09-05, 사용자: *"직선말고 그은 선으로
             // 구분하면 안돼?"*).
@@ -874,37 +875,30 @@ public class WorkNode : BTNode
             return BTStatus.Failure;
         }
 
-        var nodeCenter = MapManager.Instance.TileToWorld(node.TileCoord);
         var pos = bb.Self.transform.position;
-        float dist = Vector2.Distance(new Vector2(pos.x, pos.z),
-                                      new Vector2(nodeCenter.x, nodeCenter.z));
 
         // **자원 노드는 둘러서서 캔다 — 한 자리에 붙이지 않는다.**
         // 작업대와 다른 축이다: 작업대는 `WorkSpot`으로 **설 자리를 저작**하지만, 바위·나무는
-        // 그런 자리가 없고 `MaxWorkers`만큼 여럿이 붙는다. 좁게 잡으면 한 칸을 두고 서로
-        // 비켜서다 아무도 못 캔다. 넉넉히 잡아 각자 닿는 데서 캐게 둔다.
-        if (dist > NodeReach)
+        // 그런 자리가 없고 `MaxWorkers`만큼 여럿이 붙는다. **거리는 몸에서 재고 · 갈 자리는 폰 쪽
+        // 둘레다**(`ResourceNode.ReachFrom`/`StandPointFor` — 찍은 일감과 같은 답). 걷는 도중이라도
+        // 닿으면 그 자리에서 멈춰 캔다.
+        if (node.ReachFrom(pos) > NodeReach)
         {
             if (!bb.Mover.HasTarget())
-                bb.Mover.SetMoveTarget(TileToWorld(node.TileCoord, bb));
+            {
+                var p = node.StandPointFor(pos);
+                bb.Mover.SetMoveTarget(new Vector3(p.x, pos.y, p.z));
+            }
         }
         else
         {
             bb.Mover.StopMovement();
-            bb.Mover.FaceTowards(nodeCenter);   // 캐는 쪽을 본다 — 일감 쪽과 같은 규칙
+            bb.Mover.FaceTowards(node.transform.position);   // 캐는 쪽을 본다 — 일감 쪽과 같은 규칙
 
-            var brain = bb.Brain;
             bool isCutting = node.Data != null && node.Data.IsTree;
             bb.Working = isCutting ? WorkAnim.Chopping : WorkAnim.Mining;
-            StatName workStat = isCutting ? StatName.Cutting : StatName.Mining;
-            float skill = brain.Stats.GetStat(workStat);
-            node.Work(skill, bb.TickDelta);
-
-            float required = node.Data != null ? node.Data.RequiredSkill : 0f;
-            float xp = 0.05f * bb.TickDelta
-                     * CombatXp.ChallengeMult(skill, required)
-                     * CombatXp.Sol(skill);
-            brain.Stats.GrowStat(workStat, xp);
+            // **한 틱 캐는 답은 한 벌이다**(`NodeWork.Tick`) — 찍은 일감과 여기가 각자 적으면 스킬이 자라는 속도가 갈린다.
+            NodeWork.Tick(node, bb.Brain, bb.TickDelta);
         }
 
         return BTStatus.Running;
@@ -930,6 +924,14 @@ public class WorkNode : BTNode
         _settled    = true;
         _settledFor = tile;
         return true;
+    }
+
+    // 일감이 제 설 자리를 말하면 그것(자원 노드 — 폰 쪽 둘레), 아니면 목표 칸 둘레.
+    Vector3 JobTarget(JobBase job, UnitBlackboard bb)
+    {
+        var p = job.StandPointFor(bb.Self.transform.position);
+        return p.HasValue ? new Vector3(p.Value.x, bb.Self.transform.position.y, p.Value.z)
+                          : TileToWorld(job.TileCoord, bb);
     }
 
     Vector3 TileToWorld(Vector2Int tile, UnitBlackboard bb)

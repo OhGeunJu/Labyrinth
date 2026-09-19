@@ -26,6 +26,11 @@ public class GatherNodeJob : JobBase
     // **둘러서서 캔다** — 노드 위에 설 수는 없고, `MaxWorkers`만큼 여럿이 붙는다.
     public override float Reach => NodeReach;
 
+    // **몸에서 재고 · 폰 쪽 둘레로 가고 · 몸을 본다** — 배정으로 캐는 쪽과 같은 답(`ResourceNode.ReachFrom`).
+    public override float    DistanceFrom(Vector3 pos)   => _node != null ? _node.ReachFrom(pos) : base.DistanceFrom(pos);
+    public override Vector3? StandPointFor(Vector3 from) => _node != null ? _node.StandPointFor(from) : null;
+    public override Vector3  FacePoint => _node != null ? _node.transform.position : base.FacePoint;
+
     // **없어졌거나 다 캤으면 일감이 아니다.**
     public override bool IsReady => _node != null && !_node.Depleted;
 

@@ -39,7 +39,7 @@ public class HaulPolicyPanel : MonoBehaviour
         var kb = Keyboard.current;
         if (kb == null || panel == null) return;
 
-        if (kb.oKey.wasPressedThisFrame) Toggle();
+        if (kb.oKey.wasPressedThisFrame && !InputFocus.KeysBlocked()) Toggle();
         else if (kb.escapeKey.wasPressedThisFrame && panel.activeSelf) WindowRaiser.Close(panel);
     }
 

@@ -25,6 +25,15 @@ public class PawnSpec
     // 여기 값이 있다는 것 자체가 "생김새는 명세가 든다"는 규약을 세운다.
     public float BodyScale = 1f;
 
+    // **성별 — 아직 몸이 없을 때 몸을 고르는 값이다**(`PawnSpawn`). 몸이 선 뒤에는 몸(`PawnBody`)이 답한다.
+    // 사람만 갖는다(`UsesBackstory`) — 늑대에게 굴려 적지 않는다.
+    public Gender? Gender;
+
+    // 씨앗에서 성별을 뽑는다 — **스탯 굴림과 다른 열**이다. 같은 열(`rng`)에서 한 번 더 뽑으면 뒤가 통째로
+    // 밀려 **같은 시드가 다른 사람을 낳는다**("굴리는 순서가 곧 호환성이다"). 그래서 씨앗을 섞어 따로 뽑는다.
+    public static Gender GenderFor(int seed)
+        => new System.Random(unchecked(seed * 977 + 13)).Next(2) == 0 ? global::Gender.Male : global::Gender.Female;
+
     // **기본 폰이 못 갖는 모습.** 굴려서는 안 나오고 저작해야만 붙는다(`PawnSpecData`) —
     // 이름 있는 동료가 남들과 똑같이 생기면 이름을 붙인 뜻이 절반 사라진다.
     public Material   MaterialOverride;
@@ -41,6 +50,9 @@ public class PawnSpec
     // 뜬 배경과 합류한 폰의 배경이 같아야 한다). 칸이 둘이라 목록이 아니라 필드 둘이다.
     public BackstoryData Childhood;
     public BackstoryData Adulthood;
+
+    // **열정도 태어나기 전에 정해진다**(`Passions`) — 배경과 같은 이유로 여기 든다(보고 데려온 사람의 열정이 같아야 한다).
+    public readonly Dictionary<StatName, Passion> Passions = new();
 
     // 이 사람이 얼마나 쓸 만한가 — 등급 평균(0 = F-). 값 매김·표시의 단일 기준.
     public float GradeAverage { get; private set; }
@@ -61,8 +73,8 @@ public class PawnSpec
     // 몸 크기는 좁게 흔든다. 크게 흔들면 같은 종족이 아니라 다른 종족처럼 보인다.
     public static PawnSpec Roll(UnitData data, int seed, StatGrade min, StatGrade max,
                                 IReadOnlyList<string> nameCandidates = null,
-                                string storyGroup = null)
-        => RollCore(data, seed, nameCandidates, min, max, _ => (min, max), storyGroup);
+                                string storyGroup = null, Gender? gender = null)
+        => RollCore(data, seed, nameCandidates, min, max, _ => (min, max), storyGroup, gender);
 
     // **종족이 스탯별로 정한 범위를 그대로 쓰는 굴리기** — 저작한 고정 개체용.
     //
@@ -71,21 +83,24 @@ public class PawnSpec
     // 고정 개체도 그래야지, 전 스탯이 같은 범위로 뭉개지면 종족을 저작한 뜻이 사라진다.
     public static PawnSpec Roll(UnitData data, int seed,
                                 IReadOnlyList<string> nameCandidates = null,
-                                string storyGroup = null)
+                                string storyGroup = null, Gender? gender = null)
     {
         var min = data != null ? data.DefaultMinGrade : StatGrade.D;
         var max = data != null ? data.DefaultMaxGrade : StatGrade.D;
         return RollCore(data, seed, nameCandidates, min, max,
-                        stat => data != null ? data.GetGradeRange(stat) : (min, max), storyGroup);
+                        stat => data != null ? data.GetGradeRange(stat) : (min, max), storyGroup, gender);
     }
 
     // `tierMin/tierMax` = 이 사람의 **수준**을 뽑는 범위, `rangeOf` = 스탯마다 조일 범위.
     static PawnSpec RollCore(UnitData data, int seed, IReadOnlyList<string> nameCandidates,
                              StatGrade tierMin, StatGrade tierMax,
                              Func<StatName, (StatGrade min, StatGrade max)> rangeOf,
-                             string storyGroup = null)
+                             string storyGroup = null, Gender? gender = null)
     {
         var spec = new PawnSpec { Seed = seed };
+        // 성별은 **이름보다 먼저** 정한다(이름이 성별을 따른다) — 다만 `rng`를 안 쓴다(`GenderFor`).
+        // 몸이 이미 정해진 폰은 부르는 쪽이 그 성별을 넘긴다(`gender`) — 몸이 이긴다.
+        spec.Gender = gender ?? (OfGender(data) ? GenderFor(seed) : (Gender?)null);
         var rng  = new System.Random(seed);
 
         int lo = Mathf.Min((int)tierMin, (int)tierMax);
@@ -113,7 +128,7 @@ public class PawnSpec
         // 앞의 것들은 물론 **기존 스탯의 굴림까지 그대로**다 — 새 스탯이 뽑는 것은 꼬리에
         // 하나 붙는 것뿐이다.
         spec.BodyScale = 0.94f + (float)rng.NextDouble() * 0.12f;   // 0.94 ~ 1.06
-        spec.Name      = PickName(data, rng, nameCandidates);
+        spec.Name      = PickName(data, rng, nameCandidates, spec.Gender);
         spec.Traits.AddRange(TraitPool.RollForPawn(rng));            // 개수(0~3)도 여기서
 
         int sum = 0, count = 0;
@@ -140,6 +155,11 @@ public class PawnSpec
         {
             spec.Childhood = BackstoryPool.Roll(BackstorySlot.Childhood, rng, storyGroup);
             spec.Adulthood = BackstoryPool.Roll(BackstorySlot.Adulthood, rng, storyGroup);
+
+            // **열정은 배경 다음 — 꼬리의 꼬리다**(배경이 어느 갈래에 잘 붙을지를 정하므로 뒤여야 하고,
+            // 꼬리라 앞의 굴림이 안 밀린다). 사람만 갖는다 — 배경과 같은 스위치다.
+            foreach (var kv in global::Passions.Roll(rng, spec.Childhood, spec.Adulthood))
+                spec.Passions[kv.Key] = kv.Value;
         }
 
         spec.GradeAverage = count > 0 ? sum / (float)count : 0f;
@@ -158,11 +178,14 @@ public class PawnSpec
         GradeAverage = sum / (float)Grades.Count;
     }
 
-    static string PickName(UnitData data, System.Random rng, IReadOnlyList<string> candidates)
+    // 성별이 있는 종족인가 — 사람 이력을 갖는 종족이다(`UsesBackstory`). 늑대·골렘은 없다.
+    public static bool OfGender(UnitData data) => data != null && data.UsesBackstory;
+
+    static string PickName(UnitData data, System.Random rng, IReadOnlyList<string> candidates, Gender? gender)
     {
         var pool = candidates != null && candidates.Count > 0
                  ? candidates
-                 : (data != null ? data.NamePool : null);
+                 : (data != null ? data.NamesFor(gender) : null);
 
         if (pool != null && pool.Count > 0) return pool[rng.Next(pool.Count)];
         if (data != null && !string.IsNullOrEmpty(data.RaceName)) return data.RaceName;
