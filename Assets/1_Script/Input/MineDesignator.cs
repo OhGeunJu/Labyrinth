@@ -452,12 +452,14 @@ public class MineDesignator : MonoBehaviour
         foreach (var t in _next) any |= RockMap.Mark(t, false);
         if (any) MineJobBoard.Nudge();
         HaulDesignator.UndesignateRect(a, b);
+        LevelDesignator.UnmarkRect(a, b);   // **땅 고르기 표시도 같이** — 하나라도 빠지면 그것만 남는다
     }
 
     void UndoOne(Vector2 p)
     {
         if (TileUnder(p, out var t) && RockMap.Mark(t, false)) MineJobBoard.Nudge();
         HaulDesignator.UndesignateAt(p);
+        LevelDesignator.UnmarkAt(p);
     }
 
     // 채집·운반 지정기가 무를 때 **캘 벽 표시도 같이** 무르는 문(위와 짝).

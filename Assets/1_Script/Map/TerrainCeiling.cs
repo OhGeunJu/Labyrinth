@@ -390,7 +390,7 @@ public static class TerrainCeiling
             {
                 _warnedUnwritten = true;
                 Debug.LogWarning("[천장] 씬의 천장 프로필에 통로 값이 없다 — **기본값으로 대신한다.** " +
-                                 "`DungeonColony/World/0. Setup World Streaming`을 한 번 돌릴 것.");
+                                 "`DungeonColony/Terrain/0. Setup World Streaming`을 한 번 돌릴 것.");
             }
             return TerrainCeilingProfile.Default;
         }

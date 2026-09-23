@@ -100,8 +100,8 @@ public class ButcherTableUI : MonoBehaviour
         WindowRaiser.Close(panel);
     }
 
-    [SerializeField] float refreshInterval = 0.2f;
-    float _timer;
+    // **박자는 세계에 하나다**(`UiRefresh`) — 한 박(0.15초). 손질 게이지가 도는 창이라 매 박 그린다.
+    int _beat = -1;
 
     void Update()
     {
@@ -110,9 +110,7 @@ public class ButcherTableUI : MonoBehaviour
         if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) { Close(); return; }
         if (_table == null) { Close(); return; }
 
-        _timer -= Time.unscaledDeltaTime;
-        if (_timer > 0f) return;
-        _timer = refreshInterval;
+        if (!UiRefresh.Due(ref _beat)) return;
         Refresh();
     }
 

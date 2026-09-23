@@ -370,6 +370,10 @@ public class RockRenderer : MonoBehaviour
                               "`DungeonColony → World → 0. Create Rock Materials`가 물려 준다.");
 
         RockMap.OnChanged        += OnRockChanged;
+        // **바닥이 바뀌면 벽도 다시 굽는다**(2026-09-24) — 벽은 바닥 위에 서고(`SurfaceOf`)
+        // 옆면은 **이웃 바닥이 낮으면 거기까지 내려 세운다.** 안 들으면 땅을 고른 자리에서
+        // **벽 밑이 뚫려 보인다.** 처리는 `OnRockChanged`와 같다(칸과 이웃 넷의 청크).
+        TerrainHeight.OnHeightChanged += OnRockChanged;
         TerrainStreamer.ChunkLoaded   += OnTerrainChunk;
         TerrainStreamer.ChunkUnloaded += OnTerrainGone;
 
@@ -379,6 +383,7 @@ public class RockRenderer : MonoBehaviour
     void OnDisable()
     {
         RockMap.OnChanged        -= OnRockChanged;
+        TerrainHeight.OnHeightChanged -= OnRockChanged;
         TerrainStreamer.ChunkLoaded   -= OnTerrainChunk;
         TerrainStreamer.ChunkUnloaded -= OnTerrainGone;
 
@@ -581,12 +586,14 @@ public class RockRenderer : MonoBehaviour
                  new Vector3(xa, top, za), new Vector3(xa, top, zb),
                  new Vector3(xb, top, zb), new Vector3(xb, top, za), Vector3.up);
 
-            // 옆면 — **뚫린 이웃 쪽만.**
+            // 옆면 — **뚫린 이웃 쪽만.** 바위끼리 물린 사이의 **단차 띠는 뚜껑 쪽에 넣는다**
+            // (아래 `Side` 참고 — 재질이 갈려 있어서 목록을 잘못 고르면 그 띠만 밝게 뜬다).
             var sideList = marked ? _mark : _side;
-            bool wL = Side(sideList, tile + Vector2Int.left,  xa, za, xa, zb, floor, top, Vector3.left);
-            bool wR = Side(sideList, tile + Vector2Int.right, xb, zb, xb, za, floor, top, Vector3.right);
-            bool wD = Side(sideList, tile + Vector2Int.down,  xb, za, xa, za, floor, top, Vector3.back);
-            bool wU = Side(sideList, tile + Vector2Int.up,    xa, zb, xb, zb, floor, top, Vector3.forward);
+            var capList  = marked ? _mark : _top;
+            bool wL = Side(sideList, capList, tile + Vector2Int.left,  xa, za, xa, zb, floor, top, Vector3.left);
+            bool wR = Side(sideList, capList, tile + Vector2Int.right, xb, zb, xb, za, floor, top, Vector3.right);
+            bool wD = Side(sideList, capList, tile + Vector2Int.down,  xb, za, xa, za, floor, top, Vector3.back);
+            bool wU = Side(sideList, capList, tile + Vector2Int.up,    xa, zb, xb, zb, floor, top, Vector3.forward);
 
             // **광맥은 드러난 옆면에만 박힌다.** 찍힌 칸에는 안 그린다 — *"여기를 판다"*가
             // 그 칸의 전부라, 거기서 또 갈라 봐야 색만 늘고 읽히지는 않는다(윗면·옆면을
@@ -771,18 +778,57 @@ public class RockRenderer : MonoBehaviour
 
     // **그렸는지 돌려준다** — 광맥 알갱이는 *드러난* 면에만 박히는데, 그 판정을 부르는
     // 쪽에서 다시 하면 `IsRock`을 칸마다 두 번 묻게 되고 무엇보다 **답이 두 벌**이 된다.
-    bool Side(List<int> list, Vector2Int neighbor,
+    bool Side(List<int> list, List<int> capList, Vector2Int neighbor,
               float x1, float z1, float x2, float z2, float floor, float top, Vector3 n)
     {
-        if (RockMap.IsRock(neighbor)) return false;   // 맞닿은 바위 — 안 보인다
+        bool rock = RockMap.IsRock(neighbor);
+        float bottom;
 
-        // 이웃 바닥이 더 낮으면 거기까지 내려 세운다. 안 내리면 **벽 밑이 뚫려 보인다.**
-        float bottom = Mathf.Min(floor, RockMap.SurfaceOf(neighbor));
+        if (rock)
+        {
+            // ── 맞닿은 바위라도 윗면이 다르면 그 차이가 틈으로 벌어진다 (2026-09-24) ──
+            //
+            // 여태는 *"맞닿은 바위 — 안 보인다"*로 통째로 건너뛰었고 **그게 맞았다**: 바닥이
+            // 완전 평지라 이웃의 `top`이 언제나 같아서 두 기둥이 딱 맞물렸다.
+            //
+            // **바닥이 계단이 되면서 그 전제가 깨졌다.** `top = SurfaceOf(tile) + Height`라
+            // 이웃 칸의 윗면이 **단만큼(1m) 낮고**, 겹치지 않는 그 구간에는 아무 면도 없어
+            // **벽 위쪽이 뚫려 보인다**(사용자: *"제일 위에서는 벽 위에 틈이 좀 벌어져"*).
+            // 벽이 24m라 아래쪽은 서로 가리므로 **언제나 위쪽에서만** 드러난다.
+            //
+            // **낮은 쪽이 아니라 높은 쪽이 그린다** — 양쪽이 다 그리면 같은 자리에 면이 두
+            // 장 겹쳐 z-파이팅이 난다. 같은 높이면 아무도 안 그린다(예전 그대로).
+            float ntop = RockMap.TopOf(neighbor);
+            if (ntop >= top - 0.001f) return false;
+            bottom = ntop;
+        }
+        else
+        {
+            // 이웃 바닥이 더 낮으면 거기까지 내려 세운다. 안 내리면 **벽 밑이 뚫려 보인다.**
+            bottom = Mathf.Min(floor, RockMap.SurfaceOf(neighbor));
+        }
 
-        Quad(list,
+        // ── 단차 띠는 뚜껑의 색으로 (2026-09-24, 사용자) ────────────────────
+        //
+        // 사용자: *"옆면이 보이는 거 같긴한데 그래도 통일성을 가지고 윗면이랑 똑같은 색으로
+        // 보이면 좋겠다."* 재질이 **10배 갈려 있다** — 윗면은 `(0.05, 0.06, 0.07)`로 거의
+        // 검고(*안 판 자리 = 어둠*이라는 규칙) 옆면은 `(0.52, 0.57, 0.60)`인 밝은 회색이다.
+        // 그래서 이 띠를 옆면 목록에 넣으면 **검은 뚜껑들 사이에 밝은 선**이 줄줄이 선다.
+        //
+        // **뜻으로도 뚜껑이 맞다** — 이것은 *드러난 벽면*이 아니라 **위에서 본 뚜껑의 단차**다
+        // (그래서 아래에서 알갱이도 안 박는다). 위에서 내려다보는 화면에서 뚜껑의 일부로
+        // 읽혀야 한다.
+        //
+        // **법선은 수평으로 둔다.** 위로 기울이면 `RockCut`이 *뚜껑*으로 보고 `min(y, cutY)`로
+        // **끌어내려** 띠가 납작해진다(벽 광석 알갱이가 2026-09-15에 그렇게 **몇 m짜리 가시**를
+        // 세웠다). 자르기는 옆면처럼 걸려야 맞다 — 뚜껑보다 위로 삐져나오면 안 된다.
+        Quad(rock ? capList : list,
              new Vector3(x1, bottom, z1), new Vector3(x1, top, z1),
              new Vector3(x2, top, z2),    new Vector3(x2, bottom, z2), n);
-        return true;
+
+        // **알갱이는 드러난 면에만.** 바위끼리 물린 사이의 얇은 띠는 *벽면*이 아니라 이음매라,
+        // 거기에 광석을 박으면 **못 캐는 자리에 광맥이 보인다**(기반암에 안 박는 것과 같은 이유).
+        return !rock;
     }
 
     // ── 벽면에 광석 알갱이 ──────────────────────────────────────────────────

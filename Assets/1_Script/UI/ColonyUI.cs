@@ -25,11 +25,10 @@ public class ColonyUI : MonoBehaviour
     [Header("레퍼런스")]
     [SerializeField] SelectionManager selectionManager;
 
-    [Header("새로고침 간격 (초)")]
-    [SerializeField] float refreshInterval = 0.5f;
-
     readonly Dictionary<UnitBrain, ColonyRowUI> _rows = new();
-    float _timer;
+
+    // **박자는 세계에 하나다**(`UiRefresh`) — 세 박(0.45초)마다.
+    int _beat = -1;
 
     void OnEnable()
     {
@@ -77,9 +76,7 @@ public class ColonyUI : MonoBehaviour
 
         if (panel == null || !panel.activeSelf) return;
 
-        _timer += Time.deltaTime;
-        if (_timer < refreshInterval) return;
-        _timer = 0f;
+        if (!UiRefresh.Due(ref _beat, 3)) return;
         RefreshAll();
     }
 

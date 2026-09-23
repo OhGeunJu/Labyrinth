@@ -105,7 +105,7 @@ public static class RuntimeShaders
 
         Debug.LogError($"[셰이더] {string.Join(" · ", names)} 를 하나도 못 찾았다 — " +
                        "빌드에서 잘려 나간 것이다(에디터에서는 멀쩡하다). " +
-                       "`World → 0. Setup World Streaming`을 한 번 돌려 " +
+                       "`Terrain → 0. Setup World Streaming`을 한 번 돌려 " +
                        "Always Included Shaders에 등록할 것.");
         return null;
     }

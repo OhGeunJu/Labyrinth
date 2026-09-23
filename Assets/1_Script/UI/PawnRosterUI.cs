@@ -28,11 +28,10 @@ public class PawnRosterUI : MonoBehaviour
     [Header("레퍼런스")]
     [SerializeField] SelectionManager selectionManager;
 
-    [Header("새로고침 간격 (초)")]
-    [SerializeField] float refreshInterval = 0.3f;
-
     readonly Dictionary<UnitBrain, PawnRosterRowUI> _rows = new();
-    float _timer;
+
+    // **박자는 세계에 하나다**(`UiRefresh`) — 두 박(0.3초)마다. 배수라 빠른 창이 도는 프레임에 같이 돈다.
+    int _beat = -1;
 
     void OnEnable()
     {
@@ -74,9 +73,7 @@ public class PawnRosterUI : MonoBehaviour
 
         EndDragIfMouseReleased();
 
-        _timer += Time.deltaTime;
-        if (_timer < refreshInterval) return;
-        _timer = 0f;
+        if (!UiRefresh.Due(ref _beat, 2)) return;
         RefreshAll();
     }
 

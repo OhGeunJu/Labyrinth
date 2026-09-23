@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -305,6 +306,33 @@ public static class WorldStreamingSetup
         Set(st, "profile.HillAmplitude",      0f);
         Set(st, "profile.DetailAmplitude",    0f);
 
+        // ── 바닥은 평지되 층층이다 (2026-09-24, 사용자 결정) ──────────────
+        //
+        // *"너무 평면"*이라 높낮이를 넣었는데 **이어지는 기복이 아니다** — 위의 진폭 셋을
+        // 되살리면 그건 언덕이고, 지하에서 그것이 안 되는 이유는 이미 `BiomeTerrain`에
+        // 적혀 있다(바닥이 물결치면 벽 높이가 칸마다 달라져 **파낸 방이 웅덩이로 보인다**).
+        //
+        // 계단은 그 규칙을 안 깬다 — **한 패치가 통째로 한 높이**라 방은 여전히 평면이고,
+        // 갈리는 것은 *이 평면과 저 평면의 높이*뿐이다. 근거는 `TerrainHeight.Terrace`.
+        //
+        // **새 필드라 씬은 0을 들고 있다** — 안 쓰면 단이 0이라 계단이 통째로 안 난다.
+        // **값은 화면에서 정했다**(2026-09-24, 사용자). 처음엔 단 0.1m으로 넣었는데 재 보니
+        // 전이 경사가 **2.9°**라 화면에서 평면과 구별되지 않았다(`0b. Probe Floor Terraces`가
+        // 그걸 갈랐다 — 층은 여섯 개 났는데 안 읽혔다). 1.0m에서 **26.6°**이고 그것이
+        // 사용자가 고른 값이다.
+        //
+        // **1.0m은 수직 턱이 아니다** — 전이가 정점 한 간격(2m)에 걸치므로 칸당 상승이
+        // 0.5m이고 `PathGrid`가 자연 지형에 허용하는 `SlopeRise`(1.0m/칸) 안이다.
+        // `PawnMover.StepUp`(0.5m)은 **바닥이 만든 수직면**에 쓰는 값이라 여기 안 걸린다.
+        //
+        // **딸려 오는 것 하나** — 평탄 허용치가 `0.6 + 0.2 × 칸`이라 **1×1 건물은 0.8m까지**다.
+        // 단이 그보다 크므로 발자국이 단 경계에 걸치면 거절된다. 패치가 6m라 안쪽이면
+        // 괜찮고, 걸리는 자리는 **기단이 원래 그 답이다**(`BuildingData.LevelFloor`).
+        Set(st,    "profile.TerraceCell",   6f);
+        Set(st,    "profile.TerraceStep",   1.0f);
+        SetInt(st, "profile.TerraceLevels", 6);
+        Set(st,    "profile.TerracePeriod", 40f);
+
         // **저작한 산·분지를 비운다** — 이게 빠지면 진폭을 아무리 0으로 눌러도 **바닥이 안
         // 평평하다.** `TerrainHeight.Procedural`이 노이즈와 **별도로** 특징을 더하기 때문이다.
         //
@@ -392,6 +420,18 @@ public static class WorldStreamingSetup
             return;
         }
         p.floatValue = v;
+    }
+
+    // **정수는 따로 받는다** — `floatValue`를 정수 필드에 넣으면 유니티가 조용히 0으로 둔다.
+    static void SetInt(SerializedObject so, string path, int v)
+    {
+        var p = so.FindProperty(path);
+        if (p == null)
+        {
+            Debug.LogError($"[월드] `{path}`를 못 찾았다 — 필드 이름이 바뀌었나? **이 값은 안 써졌다.**");
+            return;
+        }
+        p.intValue = v;
     }
 
     // ── 지하는 어둡고, 벽 너머는 아무것도 없다 ──────────────────────────────
@@ -566,4 +606,121 @@ public static class WorldStreamingSetup
     }
 
     static GameObject Load(string path) => AssetDatabase.LoadAssetAtPath<GameObject>(path);
+
+    // ── 계단이 실제로 났나 ──────────────────────────────────────────────────
+    //
+    // **`안 보인다`는 두 증상이 같은 말로 들린다**(2026-09-24). 바닥에 계단을 넣은 뒤
+    // *"높낮이가 차이나는 곳이 안 보여"*를 받았는데, 그 한마디에 원인이 셋 들어 있다:
+    //   ① **값이 씬에 안 써졌다** — 새 필드는 씬에서 0이고 단이 0이면 계단이 아예 안 난다
+    //   ② **났는데 안 읽힌다** — 0.1m 단은 전이 경사가 2.9°라 화면에서 평면과 구별되지 않는다
+    //   ③ **굴 바닥에만 안 났다** — 세계의 3분의 2가 바위라 *난 자리*가 전부 벽 속일 수 있다
+    // 셋은 화면에서 똑같이 보이고 **세어 보기 전에는 못 가른다**(바닥 광맥과 버섯에서 연달아
+    // 당했다 — `WorldContentStreamer.ReportCensus`가 그 답이었다).
+    //
+    // **판정과 같은 함수로 잰다** — `TerrainHeight.At`과 `RockMap.IsRock`을 그대로 부른다.
+    // 눈금을 따로 들면 *"진단은 층이 났다는데 화면은 평면"*이 되어 층이 하나 더 는다.
+    [MenuItem("DungeonColony/Terrain/0b. Probe Floor Terraces (계단 진단)")]
+    static void ProbeTerraces()
+    {
+        var s = Object.FindFirstObjectByType<TerrainStreamer>(FindObjectsInactive.Include);
+        if (s == null)
+        {
+            Debug.LogError("[계단] 씬에 `TerrainStreamer`가 없다 — `0. Setup World Streaming`을 먼저 돌릴 것.");
+            return;
+        }
+
+        // 씬 값을 함수에 밀어 넣는다. **이게 없으면 코드 기본값을 재게 되어** 씬이 0을 든
+        // 바로 그 경우에 *"멀쩡하다"*고 답한다.
+        TerrainAuthoring.SyncValues();
+
+        var p = TerrainHeight.Profile;
+        int cells = Mathf.Max(1, Mathf.RoundToInt(p.TerraceCell / TerrainGrid.VertexSpacing));
+        float cell = cells * TerrainGrid.VertexSpacing;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"[계단] 씬(`{s.gameObject.name}`)이 든 값 — 셀 {p.TerraceCell}m → **{cell}m**(정점 간격 " +
+                      $"{TerrainGrid.VertexSpacing}m의 {cells}배로 접힘) · 단 {p.TerraceStep}m · " +
+                      $"층수 ±{p.TerraceLevels} · 주기 {p.TerracePeriod}m · 시드 {p.Seed}");
+
+        if (p.TerraceStep <= 0.0001f || p.TerraceLevels <= 0)
+        {
+            Debug.LogError(sb + "\n**계단이 꺼져 있다** — 단이나 층수가 0이다. 새 필드는 씬에서 0으로 " +
+                           "시작하므로 `Terrain → 0. Setup World Streaming`을 한 번 돌리거나 " +
+                           "`World` 오브젝트의 `Profile`을 펼쳐 손으로 넣을 것.");
+            return;
+        }
+
+        // 보고 있는 자리를 잰다 — *"안 보인다"*는 그 화면의 얘기다.
+        var view = SceneView.lastActiveSceneView;
+        Vector3 c = view != null ? view.pivot : new Vector3(TerrainGrid.WorldSize * 0.5f, 0f,
+                                                            TerrainGrid.WorldSize * 0.5f);
+        const int R = 64;   // ±64m = 129×129칸
+
+        var levels = new Dictionary<int, int>();
+        float lo = float.MaxValue, hi = float.MinValue;
+        int open = 0, total = 0;
+
+        for (int dz = -R; dz <= R; dz++)
+        for (int dx = -R; dx <= R; dx++)
+        {
+            var tile = new Vector2Int(Mathf.FloorToInt(c.x) + dx, Mathf.FloorToInt(c.z) + dz);
+            if (!TerrainGrid.TileInWorld(tile)) continue;
+            total++;
+
+            // **열린 칸만 센다** — 바위 속 바닥은 아무도 못 본다. 여기서 안 가르면
+            // *"층이 일곱 개 났다"*고 답하면서 화면은 여전히 평면일 수 있다.
+            if (RockMap.Enabled && RockMap.IsRock(tile)) continue;
+            open++;
+
+            float y = TerrainHeight.At(tile.x + 0.5f, tile.y + 0.5f);
+            if (y < lo) lo = y;
+            if (y > hi) hi = y;
+
+            int lv = Mathf.RoundToInt(y / p.TerraceStep);
+            levels.TryGetValue(lv, out int n);
+            levels[lv] = n + 1;
+        }
+
+        if (open == 0)
+        {
+            Debug.LogWarning(sb + $"\n({c.x:F0}, {c.z:F0}) 둘레 {R}m에 **열린 칸이 하나도 없다** — " +
+                             "통짜 바위를 보고 있다. 카메라를 굴 쪽으로 옮겨 다시 잴 것.");
+            return;
+        }
+
+        // 이웃 정점 사이 최대 낙차 — **이것이 *보이나*에 답한다.** 단이 아무리 층져도
+        // 전이가 정점 한 간격에 걸쳐 나므로, 화면에 서는 것은 그 각도다.
+        float maxDrop = 0f;
+        int g0x = Mathf.FloorToInt((c.x - R) / TerrainGrid.VertexSpacing);
+        int g0z = Mathf.FloorToInt((c.z - R) / TerrainGrid.VertexSpacing);
+        int gN = (2 * R) / TerrainGrid.VertexSpacing;
+        for (int gz = g0z; gz <= g0z + gN; gz++)
+        for (int gx = g0x; gx <= g0x + gN; gx++)
+        {
+            float h = TerrainHeight.VertexHeightGlobal(gx, gz);
+            maxDrop = Mathf.Max(maxDrop, Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx + 1, gz) - h));
+            maxDrop = Mathf.Max(maxDrop, Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx, gz + 1) - h));
+        }
+        float deg = Mathf.Atan2(maxDrop, TerrainGrid.VertexSpacing) * Mathf.Rad2Deg;
+
+        var keys = new List<int>(levels.Keys);
+        keys.Sort();
+        sb.AppendLine($"({c.x:F0}, {c.z:F0}) 둘레 {R}m — 열린 칸 {open} / {total}칸 · " +
+                      $"바닥 {lo:F2} ~ {hi:F2}m(차 **{hi - lo:F2}m**) · 서로 다른 층 **{keys.Count}개**");
+        foreach (int k in keys)
+            sb.AppendLine($"    {k * p.TerraceStep,6:F2}m ({(k > 0 ? "+" : "")}{k}층) — {levels[k],6}칸 " +
+                          $"{levels[k] * 100f / open,5:F1}%");
+        sb.Append($"이웃 정점 최대 낙차 **{maxDrop:F2}m / {TerrainGrid.VertexSpacing}m = {deg:F1}°** — " +
+                  "화면에 서는 것은 이 각도다(30° 넘으면 절벽 텍스처까지 바뀐다).");
+
+        if (keys.Count <= 1)
+            Debug.LogWarning(sb + "\n**층이 하나뿐이다** — 주기가 이 범위보다 커서 통째로 한 층에 " +
+                             "들어왔을 수 있다. `Terrace Period`를 줄이거나 더 넓게 잴 것.");
+        else if (deg < 5f)
+            Debug.Log(sb + $"\n층은 {keys.Count}개 **실제로 났다** — 다만 {deg:F1}°는 눈에 안 걸리는 " +
+                      "기울기라 화면에서는 평면과 구별되지 않는다. `Terrace Step`을 올리거나 " +
+                      "(0.3m → 8.5° · 0.5m → 14°) `Terrace Cell`을 줄여 전이가 잦아지게 할 것.");
+        else
+            Debug.Log(sb.ToString());
+    }
 }

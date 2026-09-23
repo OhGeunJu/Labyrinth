@@ -412,26 +412,28 @@ public class InspectPanelUI : MonoBehaviour
     // 그건 플레이어 폰의 배낭을 전부 훑는 일이다.
     //
     // 여기 뜨는 값 중 프레임 단위로 움직이는 것은 하나도 없다(혈액이 가장 빠른데 초당 몇이다).
-    // 다른 패널들이 이미 이 방식이다 — `PawnRosterUI` 0.3초, `ColonyUI` 0.5초.
-    [SerializeField] float refreshInterval = 0.15f;
-    float _refreshTimer;
+    // **박자는 세계에 하나다**(`UiRefresh`) — 창마다 제 시계를 들면 붙어 선 판이 다른 순간에 바뀐다.
+    int _beat = -1;
 
     // 지금 올라와 있는 링크. **창마다 제 상태다** — 스탯 창과 같이 떠 있을 수 있다.
     string _hoveredLink;
+
+    // **모드가 갈린 프레임에는 박을 안 기다린다**(2026-09-23). 건설은 `OnActiveChanged`를 들어 즉시
+    // 돌았는데 **명령·밭 구역은 그 문이 없어** 모드를 끄고 최대 한 박 뒤에야 판이 돌아왔다.
+    bool _focus;
 
     void Update()
     {
         bool showing = selectionManager.Selected.Count > 0 || _inspected != null
                     || _blueprint != null || _building != null || _core != null || _node != null;
+
+        if (FocusMode.Active != _focus) { _focus = FocusMode.Active; UiRefresh.Now(ref _beat); }
         if (!showing) return;
 
-        // **올린 칸의 설명** — 갱신 주기와 따로 돈다(마우스는 0.5초를 기다려 주지 않는다).
+        // **올린 칸의 설명** — 박과 따로 돈다(마우스는 0.15초를 기다려 주지 않는다).
         PawnStoryText.Tick(infoText, ref _hoveredLink);
 
-        _refreshTimer -= Time.unscaledDeltaTime;   // 멈춰 놓고 들여다볼 때도 갱신돼야 한다
-        if (_refreshTimer > 0f) return;
-        _refreshTimer = refreshInterval;
-
+        if (!UiRefresh.Due(ref _beat)) return;
         Refresh();
     }
 
@@ -441,9 +443,10 @@ public class InspectPanelUI : MonoBehaviour
     // 문이다. 이 창은 사람이 여는 창이 아니라 **선택이 바뀔 때마다 저절로 갱신되는 상시
     // HUD**라, 갱신될 때마다 형제 맨 뒤로 가서 **밑에 있는 패널(모드 바 등)을 덮었다.**
     //
-    // 뜨는 모양(흐려지며 나타나기)은 그대로 두고 **순서만 안 건드린다** — `UiTween`이
-    // 그 둘을 갈라 놓은 덕에 한 줄로 갈린다.
-    void Show() => UiTween.PopIn(panel);
+    // **그리고 흐려지며 뜨지도 않는다**(2026-09-23, 사용자: *"그냥 바로 뜨게 하고싶어"*). 이 판은 고른 것이
+    // 바뀔 때마다·모드를 켤 때마다 꺼졌다 켜지는 **상시 HUD**라, 뜨는 0.14초가 값을 하는 것이 아니라
+    // **깜빡임**으로 읽힌다. `ShowNow`로 켜는 이유는 `SetActive`가 **도는 트윈을 안 치우기** 때문이다.
+    void Show() => UiTween.ShowNow(panel);
 
     // **폰의 이름 줄 — 한 벌**(상태표 맨 위가 쓴다). 이름 · [유형] (세력). **시체의 소속은 `Corpse`가 든다**
     // (`BecomeCorpse`가 `Faction`을 지운다 — 안 그러면 죽는 순간 소속이 사라진다).
@@ -467,7 +470,23 @@ public class InspectPanelUI : MonoBehaviour
     // 여기서 가르므로 상태표가 또 가르면 두 창이 다른 폰을 보여 주는 순간이 생긴다. 폰이 아니면 null.
     public static UnitBrain ShownPawn { get; private set; }
 
+    // **오른쪽 창(체력 막대)도 여기서 갈린다 — 켜고 끄는 문이 하나다**(2026-09-23, 사용자: *"두 개가 서로
+    // 붙어있는데 켜지는 타이밍이 달라서 불편해"*).
+    //
+    // 그전에는 왼쪽 판을 **이 창이 0.15초 주기로** 켜고 오른쪽 판을 **`PawnSheetUI`가 매 프레임** 켰다 —
+    // 답하는 물음이 *"지금 폰을 보여 주나"* 하나인데 **재는 시계가 둘**이라, 붙어 선 두 판이 서로 다른
+    // 프레임에 뜨고 뜨는 방식마저 갈렸다(왼쪽은 흐려지며, 오른쪽은 즉시). 이제 **여기가 한 번 정하고
+    // 듣는 쪽이 제 판만 맞춘다**(`HaulPolicy.OnChanged`와 같은 규칙 — 이 창이 저쪽 판을 알면 판이 늘 때
+    // 여기가 는다).
+    public static event System.Action<UnitBrain> OnShownChanged;
+
     void Refresh()
+    {
+        RefreshCore();
+        OnShownChanged?.Invoke(ShownPawn);
+    }
+
+    void RefreshCore()
     {
         ShownPawn = null;
         // 운반 스위치는 **바닥 물건을 골랐을 때만** 뜬다 — 여기서 한 번 내리고

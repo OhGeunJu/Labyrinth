@@ -29,10 +29,9 @@ public class FactionPanelUI : MonoBehaviour
     [SerializeField] GameObject      panel;
     [SerializeField] TextMeshProUGUI infoText;
 
-    [Tooltip("다시 그리는 주기(초). 우호도는 사건으로만 움직이므로 자주 볼 이유가 없다.")]
-    [SerializeField] float refreshInterval = 0.5f;
-
-    float _timer;
+    // **박자는 세계에 하나다**(`UiRefresh`) — 세 박(0.45초)마다. 우호도는 사건으로만 움직이므로
+    // 자주 볼 이유가 없다.
+    int _beat = -1;
 
     void Awake()
     {
@@ -66,9 +65,7 @@ public class FactionPanelUI : MonoBehaviour
 
         if (panel == null || !panel.activeSelf) return;
 
-        _timer += Time.unscaledDeltaTime;
-        if (_timer < refreshInterval) return;
-        _timer = 0f;
+        if (!UiRefresh.Due(ref _beat, 3)) return;
         Refresh();
     }
 

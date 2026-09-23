@@ -60,6 +60,7 @@ public static class WorldSceneTerrain
     static double _next;
     static bool _stopped;          // 플레이에 들어가며 한 번 치웠나
     static Vector2Int _center = new(int.MinValue, int.MinValue);
+    static int _heightVersion = -1;   // 높이 저작이 바뀌면 세워 둔 것을 버린다
 
     static WorldSceneTerrain()
     {
@@ -147,6 +148,24 @@ public static class WorldSceneTerrain
         // 지형이 다 찬 뒤에도 이 줄이 돌아야 한다.
         var streamer = TerrainAuthoring.SyncValues();
         if (streamer == null) { Clear(); return; }
+
+        // **높이가 바뀌었으면 세워 둔 것을 버린다**(2026-09-24). `SyncValues`가 정점 캐시를
+        // 비워도 **이미 채운 `TerrainData`는 옛 높이를 그대로 들고 있다** — 그래서 프로필을
+        // 돌려도 씬 뷰가 안 변하고, 손잡이를 돌린 사람에게는 *"값이 안 먹는다"*로 보인다
+        // (지형이 안 선 자리로 카메라를 옮겼다 돌아와야 비로소 바뀌었다).
+        //
+        // **버전 하나만 본다** — 프로필을 여기서 다시 견주면 *무엇이 바뀌면 다시 굽나*라는
+        // 답이 두 벌이 되고, 필드를 하나 늘린 날 이쪽이 뒤처진다.
+        // **첫 틱은 기준만 잡는다** — 도메인 리로드가 `TerrainAuthoring`의 비교용 필드까지
+        // 비우므로 리로드 직후의 `SyncValues`는 **값이 안 바뀌어도 반드시 changed**다.
+        // 그걸 변경으로 읽으면 `Adopt`가 도로 잡아 둔 청크를 **컴파일할 때마다 통째로
+        // 다시 굽는다**(반경 4면 여든한 장이다).
+        if (_heightVersion < 0) _heightVersion = TerrainHeight.Version;
+        else if (_heightVersion != TerrainHeight.Version)
+        {
+            _heightVersion = TerrainHeight.Version;
+            Clear();
+        }
 
         // **벽은 지형이 다 선 뒤에도 계속 돌봐야 한다** — 예약된 청크를 굽는 것이 여기고,
         // 에디터에는 프레임이 없어 아무도 대신 해 주지 않는다.

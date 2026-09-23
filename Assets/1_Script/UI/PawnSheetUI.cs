@@ -65,17 +65,42 @@ public class PawnSheetUI : MonoBehaviour
     [SerializeField] Color hurt    = new(0.60f, 0.45f, 0.10f, 1f);
     [SerializeField] Color broken  = new(0.55f, 0.12f, 0.10f, 1f);
     [SerializeField] Color need    = new(0.65f, 0.52f, 0.12f, 1f);
-    [SerializeField] float refreshInterval = 0.15f;
 
     class Bar { public GameObject Go; public RectTransform Fill; public Image FillImg; public TextMeshProUGUI Label, Value; }
     readonly List<Bar> _bars = new();
 
     UnitBrain _shownFor;
-    float     _next;
+    int       _beat = -1;   // **박자는 세계에 하나다**(`UiRefresh`) — 왼쪽 판과 같은 프레임에 바뀐다.
 
     void Awake()
     {
         if (barTemplate != null) barTemplate.SetActive(false);
+    }
+
+    // **오른쪽 창을 켜고 끄는 것은 살펴보기 창이 알린다**(2026-09-23) — 여기서 매 프레임 다시 재던 때는
+    // 왼쪽이 **0.15초 주기**로 켜지고 오른쪽이 **매 프레임** 따라붙어, 붙어 선 두 판이 서로 다른 순간에
+    // 떴다. 같은 물음(*지금 폰을 보여 주나*)에 시계가 둘이면 반드시 갈린다.
+    void OnEnable()
+    {
+        InspectPanelUI.OnShownChanged += ApplyShown;
+        // 구독하기 전에 이미 한 번 정해졌을 수 있다(스크립트 순서) — 지금 값으로 맞춰 둔다.
+        ApplyShown(InspectPanelUI.ShownPawn);
+    }
+
+    // **뜨는 방식도 왼쪽과 같다 — 둘 다 곧바로 뜬다**(2026-09-23, 사용자: *"그냥 바로 뜨게 하고싶어"*).
+    // 붙어 선 두 판이라 한쪽만 흐려지며 뜨면 **한 창이 두 번에 나눠 나타난다.**
+    //
+    // **`WindowRaiser.Open`을 안 쓴다** — 그건 맨 앞으로 올리는 문인데 이 판은 사람이 여는 창이 아니라
+    // **상시 HUD**라, 갱신될 때마다 밑의 패널을 덮는다(살펴보기 창이 `Show()`에서 직접 부르는 것과 같은
+    // 이유). **`SetActive`로 켜지 않는 이유**는 그것이 도는 트윈을 안 치우기 때문이다(`UiTween.ShowNow`).
+    void ApplyShown(UnitBrain pawn)
+    {
+        if (healthPanel == null) return;
+        bool isPawn = pawn != null;
+        if (healthPanel.activeSelf == isPawn) return;
+
+        if (isPawn) UiTween.ShowNow(healthPanel);
+        else        healthPanel.SetActive(false);
     }
 
     void Update()
@@ -84,21 +109,19 @@ public class PawnSheetUI : MonoBehaviour
         var  pawn   = open ? InspectPanelUI.ShownPawn : null;
         bool isPawn = pawn != null;
 
-        // 오른쪽 창은 **왼쪽 창이 폰을 보여 줄 때만** — 왼쪽이 꺼지면 같이 꺼진다.
-        if (healthPanel != null && healthPanel.activeSelf != isPawn) healthPanel.SetActive(isPawn);
         if (!open) return;
 
         // 폰이면 상태·능력치 칸을 켜고 글을 그 아래로 · 아니면 끄고 글이 판을 채운다.
         if (pawnView != null && pawnView.activeSelf != isPawn) pawnView.SetActive(isPawn);
         Layout(isPawn);
 
-        if (pawn != _shownFor) { _shownFor = pawn; _next = 0f; }
+        // 보여 주는 폰이 바뀌면 **박을 안 기다린다** — 고른 사람은 방금 누른 것이라 값이 바로 바뀌어야 한다.
+        if (pawn != _shownFor) { _shownFor = pawn; UiRefresh.Now(ref _beat); }
         if (!isPawn) { PawnStoryText.Clear(ref _hovered); return; }
 
         HoverLinks();
 
-        if (Time.unscaledTime < _next) return;
-        _next = Time.unscaledTime + refreshInterval;
+        if (!UiRefresh.Due(ref _beat)) return;
         Fill(pawn);
     }
 
@@ -283,7 +306,11 @@ public class PawnSheetUI : MonoBehaviour
         return RectTransformUtility.RectangleContainsScreenPoint(t.rectTransform, screen, cam);
     }
 
-    void OnDisable() => PawnStoryText.Clear(ref _hovered);
+    void OnDisable()
+    {
+        InspectPanelUI.OnShownChanged -= ApplyShown;
+        PawnStoryText.Clear(ref _hovered);
+    }
 
     static void Set(TextMeshProUGUI t, string s) { if (t != null && t.text != s) t.text = s; }
 

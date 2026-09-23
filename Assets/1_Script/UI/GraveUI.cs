@@ -59,8 +59,8 @@ public class GraveUI : MonoBehaviour
 
     // **매 프레임 안 그린다** — 여기 뜨는 값 중 빠르게 움직이는 것이 없다
     // (묻힌 몸은 시간이 멈춰 있어 아예 안 변한다).
-    [SerializeField] float refreshInterval = 0.25f;
-    float _timer;
+    // **박자는 세계에 하나다**(`UiRefresh`) — 두 박(0.3초).
+    int _beat = -1;
 
     void Update()
     {
@@ -71,9 +71,7 @@ public class GraveUI : MonoBehaviour
         // 무덤이 철거되면 창도 닫는다 — 없는 것을 들여다보고 있을 이유가 없다.
         if (_grave == null) { Close(); return; }
 
-        _timer -= Time.unscaledDeltaTime;
-        if (_timer > 0f) return;
-        _timer = refreshInterval;
+        if (!UiRefresh.Due(ref _beat, 2)) return;
         Refresh();
     }
 

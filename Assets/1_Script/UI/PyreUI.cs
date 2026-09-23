@@ -65,8 +65,8 @@ public class PyreUI : MonoBehaviour
     }
 
     // 게이지가 도는 창이라 자주 그린다 — 그래도 매 프레임은 아니다.
-    [SerializeField] float refreshInterval = 0.1f;
-    float _timer;
+    // **박자는 세계에 하나다**(`UiRefresh`) — 게이지가 도는 창이라 매 박(0.15초) 그린다.
+    int _beat = -1;
 
     void Update()
     {
@@ -75,9 +75,7 @@ public class PyreUI : MonoBehaviour
         if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) { Close(); return; }
         if (_pyre == null) { Close(); return; }
 
-        _timer -= Time.unscaledDeltaTime;
-        if (_timer > 0f) return;
-        _timer = refreshInterval;
+        if (!UiRefresh.Due(ref _beat)) return;
         Refresh();
     }
 

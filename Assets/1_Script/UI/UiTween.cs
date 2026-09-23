@@ -104,6 +104,34 @@ public static class UiTween
           });
     }
 
+    // **트윈 없이 곧바로 켠다**(2026-09-23, 사용자: *"그냥 바로 뜨게 하고싶어"*).
+    //
+    // 흐려지며 뜨는 것은 **사람이 여는 창**의 몫이다 — 한 번 열면 한동안 떠 있으니 0.14초가 값을 한다.
+    // **상시 HUD는 다르다**: 고른 것이 바뀔 때마다·모드를 켤 때마다 꺼졌다 켜지므로 그 0.14초가 곧
+    // **깜빡임**으로 읽힌다(`PawnSheet_Panel` ↔ `PawnHealth_Panel`).
+    //
+    // **그래도 `SetActive(true)`를 직접 부르지 않고 이 문으로 켠다** — 그러면 **도는 트윈을 안 치운다**:
+    // 뜨는 도중에 꺼진 판은 알파가 0.3쯤에, 크기가 0.96쯤에 멈춰 있어 **다음에 켤 때 반투명하게 작은
+    // 채로** 뜬다(`FadeOut`이 `OnKill`에서 되돌리는 것과 같은 자리이고, 증상은 그때보다 찾기 어렵다 —
+    // 코드에는 트윈이 한 줄도 없는데 화면만 흐리다).
+    public static void ShowNow(GameObject panel)
+    {
+        if (panel == null) return;
+        panel.SetActive(true);
+
+        // **완료시키며 죽인다** — 원래 크기로 되돌리는 것이 그 트윈의 끝이다(`PopIn`과 같은 규칙).
+        DOTween.Kill(panel.transform, true);
+
+        // 없으면 만들지 않는다 — 트윈이 없었으면 되돌릴 것도 없다.
+        var cg = panel.GetComponent<CanvasGroup>();
+        if (cg == null) return;
+
+        DOTween.Kill(cg);
+        cg.alpha          = 1f;
+        cg.blocksRaycasts = true;
+        cg.interactable   = true;
+    }
+
     // ── 강조 ───────────────────────────────────────────────────────────────
 
     // 톡 튀어나온다. 손에 집은 아이콘처럼 **방금 생긴 것**에 쓴다.

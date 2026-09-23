@@ -45,6 +45,12 @@ public static class JobCategoryInfo
         //
         // **이제 둘 다다**(채굴과 같은 모양): 기지에 심은 나무는 **직접 배정**, 야생은 **큐**.
         JobCategory.Logging,
+        // **땅 고르기는 벌목 뒤, 제작 앞이다**(2026-09-24). 파는 것과 **막히는 자리가 다르다** —
+        // 채굴은 *길을 내는 일*이라 맨 앞이어야 하지만 고르기는 *다듬는 일*이다: 늦어도 그
+        // 뒤의 일이 안 밀린다(고를 자리는 이미 걸을 수 있는 땅이다). 그렇다고 운반보다
+        // 뒤에 두면 짐이 흐르는 동안 정지 작업이 영영 시작 안 된다 — 건설의 앞자리를 준비하는
+        // 일이라 **제작보다는 먼저**다.
+        JobCategory.Leveling,
         JobCategory.Crafting,
         // **도축은 제작 뒤, 운반 앞이다.** 시체는 삭으므로(신선 2일 → 썩음 4일 → 뼈) 늦으면
         // 나올 것이 줄어든다 — 운반보다는 급하고, 사람이 걸어 둔 제작 주문보다는 덜하다.
@@ -100,6 +106,7 @@ public static class JobCategoryInfo
         JobCategory.Warden       => "간수",
         JobCategory.Butcher      => "도축",
         JobCategory.Foraging     => "채집",
+        JobCategory.Leveling     => "땅고르기",
         _                        => "-",
     };
 }

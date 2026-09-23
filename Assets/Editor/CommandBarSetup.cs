@@ -154,27 +154,64 @@ public static class CommandBarSetup
         foreach (var (t, p) in kids) { Undo.RecordObject(t, "명령"); t.position = p; }
     }
 
-    // ── 2. 도구 바 — 넷째 타일(취소) ─────────────────────────────────────────
-
+    // ── 2. 도구 바 — 넷째·다섯째 타일 ────────────────────────────────────────
+    //
+    // **한 칸씩 이어 붙인다**(2026-09-24에 다섯째가 늘었다). 넷째만 세우던 코드를 되풀이하지
+    // 않고 *"마지막 칸 다음에 하나"*를 반복한다 — 다음 칸이 늘어도 이름 하나만 더 적는다.
     static void ToolBar(List<string> log)
     {
         var bar = Object.FindFirstObjectByType<ModeToolBarUI>(FindObjectsInactive.Include);
         if (bar == null) { log.Add("도구 바 없음"); return; }
 
-        var so     = new SerializedObject(bar);
-        var fourth = so.FindProperty("fourthItem");
-        if (fourth.objectReferenceValue != null) return;
+        var so = new SerializedObject(bar);
 
-        var first  = so.FindProperty("primaryItem").objectReferenceValue as BuildingItemUI;
-        var second = so.FindProperty("extraItem").objectReferenceValue as BuildingItemUI;
-        var third  = so.FindProperty("cancelItem").objectReferenceValue as BuildingItemUI;
-        if (third == null) { log.Add("도구 바 셋째 타일 없음"); return; }
+        // 앞 칸이 없으면 뒤 칸을 못 세운다(자리를 그 보폭에서 낸다).
+        if (so.FindProperty("cancelItem").objectReferenceValue == null)
+        { log.Add("도구 바 셋째 타일 없음"); return; }
 
-        var rt3    = (RectTransform)third.transform;
-        var parent = rt3.parent as RectTransform;
-        var prev   = (second != null ? second : first);
-        Vector2 stepVec = prev != null ? rt3.anchoredPosition - ((RectTransform)prev.transform).anchoredPosition
-                                       : new Vector2(rt3.rect.width, 0f);
+        // (필드 이름, 오브젝트 이름) — **순서가 곧 칸 순서다.**
+        var wanted = new[]
+        {
+            ("fourthItem", "Tile_Level"),
+            ("fifthItem",  "Tile_Cancel"),
+        };
+
+        foreach (var (field, goName) in wanted)
+        {
+            var prop = so.FindProperty(field);
+            if (prop == null) { log.Add($"`{field}` 필드 없음"); continue; }
+            if (prop.objectReferenceValue != null) continue;
+
+            if (!AppendTile(so, goName, out var added)) { log.Add("도구 바 칸을 못 세웠다"); break; }
+            prop.objectReferenceValue = added;
+            so.ApplyModifiedProperties();
+            log.Add($"도구 바에 `{goName}` 칸 세움");
+        }
+    }
+
+    // **지금 물려 있는 마지막 칸 다음에 하나를 복제해 놓는다.** 보폭은 앞의 두 칸 사이에서
+    // 재고(레이아웃 묶음이면 순서만 맞춘다), 판이 점에 앵커돼 있으면 그만큼 늘인다.
+    static bool AppendTile(SerializedObject so, string goName, out BuildingItemUI added)
+    {
+        added = null;
+
+        // 물려 있는 칸들을 순서대로 — **마지막이 기준이다.**
+        var names = new[] { "primaryItem", "extraItem", "cancelItem", "fourthItem", "fifthItem" };
+        var items = new List<BuildingItemUI>();
+        foreach (var n in names)
+        {
+            var p = so.FindProperty(n);
+            if (p?.objectReferenceValue is BuildingItemUI it) items.Add(it);
+        }
+        if (items.Count == 0) return false;
+
+        var last   = (RectTransform)items[items.Count - 1].transform;
+        var parent = last.parent as RectTransform;
+
+        // 보폭 — 마지막 두 칸의 간격. 하나뿐이면 제 너비로.
+        Vector2 stepVec = items.Count >= 2
+            ? last.anchoredPosition - ((RectTransform)items[items.Count - 2].transform).anchoredPosition
+            : new Vector2(last.rect.width, 0f);
 
         bool grouped = parent != null && parent.GetComponent<HorizontalOrVerticalLayoutGroup>() != null;
         if (!grouped && parent != null)
@@ -183,16 +220,15 @@ public static class CommandBarSetup
             Resize(parent, axis, Mathf.Abs(stepVec[axis]));
         }
 
-        var go = Object.Instantiate(third.gameObject, rt3.parent);
+        var go = Object.Instantiate(last.gameObject, last.parent);
         Undo.RegisterCreatedObjectUndo(go, "명령");
-        go.name = "Tile_Cancel";
-        go.transform.SetSiblingIndex(third.transform.GetSiblingIndex() + 1);
-        if (!grouped) ((RectTransform)go.transform).anchoredPosition = rt3.anchoredPosition + stepVec;
+        go.name = goName;
+        go.transform.SetSiblingIndex(last.transform.GetSiblingIndex() + 1);
+        if (!grouped) ((RectTransform)go.transform).anchoredPosition = last.anchoredPosition + stepVec;
         if (grouped && parent != null) LayoutRebuilder.ForceRebuildLayoutImmediate(parent);
 
-        fourth.objectReferenceValue = go.GetComponent<BuildingItemUI>();
-        so.ApplyModifiedProperties();
-        log.Add("도구 바에 `취소` 칸 세움");
+        added = go.GetComponent<BuildingItemUI>();
+        return added != null;
     }
 
     // ── 4. 하단 가운데 ───────────────────────────────────────────────────────
@@ -219,7 +255,7 @@ public static class CommandBarSetup
         {
             var so = new SerializedObject(tool);
             var items = new List<RectTransform>();
-            foreach (var name in new[] { "primaryItem", "extraItem", "cancelItem", "fourthItem" })
+            foreach (var name in new[] { "primaryItem", "extraItem", "cancelItem", "fourthItem", "fifthItem" })
                 if (so.FindProperty(name).objectReferenceValue is Component c) items.Add((RectTransform)c.transform);
             if (Row(items, top + Margin * 0.5f, out _)) log.Add("도구 바 그 위 가운데");
         }

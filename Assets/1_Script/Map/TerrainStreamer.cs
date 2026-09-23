@@ -69,7 +69,27 @@ public class TerrainStreamer : MonoBehaviour
     public TerrainPalette   Palette  => palette;
     public TerrainHeightmap Heightmap => heightmap;
 
-    void Awake() => Apply();
+    void Awake()
+    {
+        // ── 판이 열릴 때 런타임 상태를 비운다 (2026-09-24) ───────────────────
+        //
+        // 캔 칸(`RockMap._mined`)·고른 땅(`TerrainHeight._leveled`)·찍어 둔 표시는 **static이라
+        // 플레이를 나갔다 들어와도 살아남는다**(도메인 리로드를 끈 설정에서 실제로 남고,
+        // 에디터가 컴파일하지 않은 채 다시 들어가면 기본 설정에서도 남는다).
+        //
+        // **`RockMap.Clear`는 *"판을 새로 열 때"*라고 적어 두고 부르는 자리가 없었다** —
+        // 도메인 리로드가 대신 해 주고 있었을 뿐이라, 그 전제가 바뀌는 날 지난 판에서 판
+        // 굴이 새 판에 남는다. 고른 땅을 여기서만 비우면 **캔 칸은 남고 땅은 돌아오는**
+        // 반쪽 상태가 되므로 셋을 같이 비운다.
+        //
+        // **`Apply`가 아니라 `Awake`다** — `Apply`는 `OnValidate`도 부르므로, 거기 두면
+        // 인스펙터를 만질 때마다 고른 땅이 사라진다.
+        RockMap.Clear();
+        TerrainHeight.ForgetLeveled();
+        GroundLevel.Clear();
+
+        Apply();
+    }
 
     void OnDestroy()
     {
@@ -281,7 +301,9 @@ public class TerrainStreamer : MonoBehaviour
 
     bool _loggedFirst;
 
-    void Build(Vector2Int chunk)
+    // 청크 하나의 높이를 지금 함수 값으로 채운다 — **`Build`와 `Refill`이 같은 식을 쓴다.**
+    // 갈라 두면 런타임에 고친 땅이 새로 서는 청크와 이미 선 청크에서 다르게 나온다.
+    float[,] FillHeights(Vector2Int chunk)
     {
         int res = TerrainGrid.VertsPerAxis;   // 129 = 2^7 + 1 — 유니티가 요구하는 형태
 
@@ -293,6 +315,45 @@ public class TerrainStreamer : MonoBehaviour
         for (int vx = 0; vx < res; vx++)
             h[vz, vx] = Mathf.Clamp01(
                 (TerrainHeight.VertexHeight(chunk, vx, vz) - MinHeight) / HeightRange);
+
+        return h;
+    }
+
+    // ── 이미 선 청크의 높이를 갈아 끼운다 (2026-09-24) ───────────────────────
+    //
+    // **땅 고르기가 필요해서 생긴 문이다.** 전에는 세우거나 버리는 길뿐이라, 높이가 런타임에
+    // 바뀌면 그 청크를 **`Unload` 후 다시 `Build`** 하는 수밖에 없었다 — 그러면 청크에 딸린
+    // 나무·바위·광맥이 통째로 파괴되고 다시 뿌려져 **한 칸을 고를 때마다 화면이 깜빡인다.**
+    //
+    // `TerrainData`는 그릇이고 `SetHeights`는 덮어쓰므로 **내용만 갈면 된다**(풀링이 이미
+    // 그 전제로 돌고 있다). `TerrainCollider`가 같은 `TerrainData`를 가리키므로 **콜라이더도
+    // 따라온다** — 따로 굽지 않는다.
+    //
+    // **없는 청크는 아무 일도 안 한다** — 화면 밖이면 다음에 설 때 새 높이로 선다.
+    public static void Refill(Vector2Int chunk)
+    {
+        if (_instance != null) _instance.RefillChunk(chunk);
+    }
+
+    void RefillChunk(Vector2Int chunk)
+    {
+        if (!_live.TryGetValue(chunk, out var terrain) || terrain == null) return;
+
+        var data = terrain.terrainData;
+        if (data == null) return;
+
+        var h = FillHeights(chunk);
+        data.SetHeights(0, 0, h);
+
+        // **텍스처도 같이 깐다** — 경사가 바뀌었으므로(고른 땅은 평평해진다) 안 다시 깔면
+        // 암반 무늬가 **없어진 비탈에 그대로 남는다.**
+        TerrainSplat.Apply(data, chunk, h);
+    }
+
+    void Build(Vector2Int chunk)
+    {
+        int res = TerrainGrid.VertsPerAxis;
+        var h = FillHeights(chunk);
 
         Terrain terrain = null;
         while (_pool.Count > 0 && terrain == null) terrain = _pool.Pop();   // 파괴된 것은 버린다

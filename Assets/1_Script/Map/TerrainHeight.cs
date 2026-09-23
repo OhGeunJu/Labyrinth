@@ -197,8 +197,79 @@ public static class TerrainHeight
         // 언덕은 바이옴이 **크기**를, 잔기복은 **잘기**를 정한다.
         h += Octave(worldX, worldZ, s + 311f, p.HillPeriod)   * p.HillAmplitude   * b.Amplitude;
         h += Octave(worldX, worldZ, s + 977f, p.DetailPeriod) * p.DetailAmplitude * b.Roughness;
+        h += Terrace(worldX, worldZ);
         return h;
     }
+
+    // ── 계단 — 평평한 패치가 층층이 ─────────────────────────────────────────
+    //
+    // **2026-09-24, 사용자:** *"바닥에 높낮이를 추가하면 좋겠어 너무 평면이니깐 ... 근데
+    // 이어지는 높낮이가 아니라 마크처럼 / 한칸씩 말고 0.1칸씩?"*
+    //
+    // 위의 두 층과 **다른 축이다.** 언덕·잔기복은 연속이라 *어디까지가 한 평면인가*를 못
+    // 정하는데, 여기서 지키는 것은 **한 패치가 통째로 한 높이**라는 사실이다.
+    //
+    // **셀 한복판으로 노이즈를 묻는 것이 요점이다** — 좌표를 그대로 묻고 값만 양자화하면
+    // 그건 *연속 기복을 끊은 것*이라, 패치 안에서도 미세하게 기울고 층 경계가 노이즈
+    // 등고선을 따라 구불거린다(격자가 아니라 **지도의 등고선**이 된다). 셀로 접어서 물으면
+    // 셀 안의 모든 좌표가 같은 값을 받으므로 패치가 **구조적으로** 평평하다.
+    //
+    // **셀은 정점 간격의 배수로 접는다** — 아니면 셀 경계가 정점 사이에 떨어져 한 패치가
+    // 두 높이에 걸치고, 그러면 평평하게 만든 이유가 사라진다.
+    //
+    // ── 수직 계단은 구조적으로 안 된다 ─────────────────────────────────────
+    //
+    // 유니티 `Terrain`은 정점 격자를 **선형 보간**해서 그린다 — 어떤 단이든 전이가 최소
+    // 한 정점 간격, 즉 **2m 폭 경사**로 나온다(정점을 1m로 내려도 1m 경사다. 데이터는 네
+    // 배가 된다). 진짜 수직면은 바닥을 메시로 그려야 나오고 — `FloorRenderer`·`RockRenderer`가
+    // 정확히 그 모양이다 — 그건 스플랫·콜라이더·스트리밍을 통째로 옮기는 일이다.
+    //
+    // **그래서 단이 곧 보이는 각도다** — `atan(단 / 2m)`. 처음 0.1m로 넣었는데 **2.9°는
+    // 화면에서 평면과 구별되지 않았다**(층은 여섯 개 실제로 났다 — `0b. Probe Floor
+    // Terraces`가 그걸 갈랐다: *안 났다*와 *났는데 안 읽힌다*는 화면에서 같은 말로 들린다).
+    // 사용자가 고른 값은 **1.0m = 26.6°**다.
+    //
+    // **1.0m이 수직 턱을 만드는 것은 아니다** — 전이가 2m에 걸치므로 칸당 상승이 0.5m이고
+    // `PathGrid`가 자연 지형에 허용하는 `SlopeRise`(1.0m/칸) 안이다. `PawnMover.StepUp`은
+    // **바닥이 만든 수직면**에 쓰는 값이라 여기 안 걸린다. 걸리는 것은 하나뿐이다 —
+    // **0.8m을 넘으면 1×1 건물이 단 경계에 못 놓인다**(`MapManager.Allowed`, 기단이 그 답).
+    //
+    // ── 바이옴을 안 탄다 ───────────────────────────────────────────────────
+    //
+    // 언덕·잔기복은 바이옴 진폭을 곱하는데 **여기에 곱하면 양자화가 깨진다** — 바이옴은
+    // 이웃 넷을 이중선형으로 섞어 **연속**이라, 곱하면 단 높이가 셀마다 조금씩 달라져
+    // *같은 층이 이어지지 않는다.* 계단은 세계가 한 벌을 쓴다.
+    static float Terrace(float worldX, float worldZ)
+    {
+        var p = Profile;
+        if (p.TerraceStep <= 0.0001f || p.TerraceLevels <= 0) return 0f;
+
+        // **정점 간격의 배수로 접는다.** 0이나 음수가 들어와도 정점 간격 하나로 떨어진다.
+        int cells = Mathf.Max(1, Mathf.RoundToInt(p.TerraceCell / TerrainGrid.VertexSpacing));
+        float cell = cells * TerrainGrid.VertexSpacing;
+
+        float cx = (Mathf.Floor(worldX / cell) + 0.5f) * cell;
+        float cz = (Mathf.Floor(worldZ / cell) + 0.5f) * cell;
+
+        float n = Octave(cx, cz, p.Seed * 0.7913f + 2221f, p.TerracePeriod);   // −1 ~ +1
+
+        // **펴 주지 않으면 층수가 거짓말을 한다**(2026-09-24). 펄린은 값이 0 근처에 몰려
+        // 이론상의 ±1까지 거의 안 간다 — ±3으로 적어 두고 재 보니 실제로 난 것은 **−3~+2**
+        // 였고 그 양 끝이 각각 5%였다(0층 혼자 34%). 그 상태로 층수를 올리면 **올린 만큼
+        // 안 올라간다**: 상한만 멀어지고 도달은 더 드물어져, *"최대 높이가 낮다"*는 인상이
+        // 층수를 만질수록 굳는다. 통로 폭을 미터로 저작하려고 능선 거리를 거친 것과 같은
+        // 자리다 — **적은 값이 실제로 걸리지 않으면 저작이 짐작이 된다.**
+        //
+        // **클램프가 덤을 준다** — 펴다 넘친 자리가 최대 층에 딱 붙어 **넓은 고원**이 된다
+        // (마크의 메사가 그 모양이다). 그래서 자르는 편이 실효 범위로 정확히 나누는 것보다
+        // 화면에서 낫다.
+        n = Mathf.Clamp(n / TerraceSpread, -1f, 1f);
+        return Mathf.Round(n * p.TerraceLevels) * p.TerraceStep;
+    }
+
+    // 펄린이 실제로 오가는 폭. 손잡이로 안 낸다 — **층수가 곧 상한**이라는 약속을 지키는
+    // 값이라, 밖에서 돌릴 수 있게 두면 그 약속이 다시 깨진다.
+    const float TerraceSpread = 0.75f;
 
     // **지도가 쓰는 높이 — 잔기복을 뺀 것**(2026-08-26).
     //
@@ -310,10 +381,18 @@ public static class TerrainHeight
     static float[] _vertex;
     static bool[]  _vertexKnown;
 
+    // **버린 횟수를 밖에서도 볼 수 있어야 한다** — `TerrainCeiling.Version`과 같은 장치이고
+    // 같은 이유다: 여기 값이 바뀐 것을 **이미 구워 둔 메시**가 알 방법이 없다. 그래서
+    // 저작 화면(`WorldSceneTerrain`)이 지형을 세워 둔 채 프로필을 돌리면 **정점 캐시만
+    // 비워지고 화면은 그대로**여서, 손잡이를 돌려도 아무 일이 안 일어난 것으로 보인다.
+    // **되부르지 않고 번호를 보게 한다** — 의존이 한 방향으로만 흐른다.
+    public static int Version { get; private set; }
+
     public static void ForgetVertices()
     {
         _vertex      = null;
         _vertexKnown = null;
+        Version++;
     }
 
     public static float VertexHeightGlobal(int gx, int gz)
@@ -335,8 +414,69 @@ public static class TerrainHeight
         return h;
     }
 
+    // ── 런타임에 고른 땅 ────────────────────────────────────────────────────
+    //
+    // **`RockMap._mined`와 같은 자리다**(2026-09-24). 높이의 원본은 *함수 + 저작 델타*인데
+    // 델타는 `Resources` 에셋이라 **런타임에 쓸 수 없다** — 그래서 판이 열린 뒤에 바뀌는
+    // 높이는 별 층이 든다(캔 칸이 그러는 것과 같다).
+    //
+    // **여기가 델타보다 먼저다** — 방금 고른 땅이 굽힌 값에 지면 *"팠는데 그대로다"*가 된다.
+    //
+    // **`ForgetVertices`가 이걸 안 비운다** — 캐시는 함수를 다시 셀 수 있지만 이건 **되살릴
+    // 근거가 없는 상태**다(캔 칸을 잊으면 벽이 도로 서는 것과 같다).
+    static readonly Dictionary<int, float> _leveled = new();
+
+    public static int LeveledCount => _leveled.Count;
+
+    // **높이가 런타임에 바뀌었다** — 그 칸 둘레. `RockMap.OnChanged`와 같은 규약이고,
+    // 듣는 쪽이 제 것만 다시 굽는다(`RockRenderer`가 벽 밑면을 굽는다: 벽이 바닥 위에 서므로
+    // 안 들으면 **벽 밑이 뚫려 보인다**).
+    //
+    // **지형 메시는 이 이벤트로 안 알린다** — 다시 채울 청크를 알려면 *어느 정점이 바뀌었나*를
+    // 알아야 하고 그건 고치는 쪽만 안다(`GroundLevel.Refresh`가 직접 `Refill`을 부른다).
+    // 칸 하나로 청크를 짐작하면 **청크 경계의 정점**에서 한쪽만 다시 굽혀 이음매가 갈린다.
+    public static event System.Action<Vector2Int> OnHeightChanged;
+
+    public static void NotifyHeightChanged(Vector2Int tile) => OnHeightChanged?.Invoke(tile);
+
+    // 고른 값이 있으면 그것. 없으면 `null` — **판정이 아니라 조회용**이다(0을 돌려주면
+    // 바닥이 0인 세계에서 *"안 골랐다"*와 *"0으로 골랐다"*가 구별되지 않는다).
+    public static bool TryLeveled(int gx, int gz, out float y)
+    {
+        y = 0f;
+        if ((uint)gx >= GlobalVerts || (uint)gz >= GlobalVerts) return false;
+        return _leveled.TryGetValue(gz * GlobalVerts + gx, out y);
+    }
+
+    // 정점 하나를 그 높이로 못 박는다. **바뀌었으면 참** — 부르는 쪽이 다시 굽는 일을
+    // 그 답으로 가른다(`RockMap.Mark`와 같은 규약).
+    //
+    // **캐시도 같이 고친다.** 안 고치면 `VertexHeightGlobal`이 이미 담아 둔 옛 값을 계속
+    // 돌려줘, 사전에는 새 높이가 있는데 **화면과 판정은 옛 높이**로 남는다.
+    public static bool SetLeveled(int gx, int gz, float y)
+    {
+        if ((uint)gx >= GlobalVerts || (uint)gz >= GlobalVerts) return false;
+
+        int i = gz * GlobalVerts + gx;
+        if (_leveled.TryGetValue(i, out float cur) && Mathf.Abs(cur - y) < 0.001f) return false;
+
+        _leveled[i] = y;
+        if (_vertexKnown != null)
+        {
+            _vertex[i]      = y;
+            _vertexKnown[i] = true;
+        }
+        return true;
+    }
+
+    // **판을 새로 열 때 비운다** — static이라 플레이를 나갔다 들어와도 살아남는다.
+    public static void ForgetLeveled() => _leveled.Clear();
+
     static float ComputeVertexHeight(int gx, int gz)
     {
+        if ((uint)gx < GlobalVerts && (uint)gz < GlobalVerts
+            && _leveled.TryGetValue(gz * GlobalVerts + gx, out float lv)) return lv;
+
         var chunk = new Vector2Int(
             Mathf.Clamp(gx / OwnedPerChunk, 0, TerrainGrid.ChunksPerAxis - 1),
             Mathf.Clamp(gz / OwnedPerChunk, 0, TerrainGrid.ChunksPerAxis - 1));

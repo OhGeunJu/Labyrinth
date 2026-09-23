@@ -17,12 +17,15 @@ using UnityEngine.InputSystem;
 //   채굴 지정기의 `Cancel`로 돌고, 무르는 김에 채집·운반 쪽도 같이 무른다(`HaulDesignator.UndesignateRect`).
 public class CommandMode : MonoBehaviour
 {
-    public enum Tool { Mine, Gather, Haul, Cancel }
+    // **값은 꼬리에 붙인다** — `ModeBarUI`가 순서로 버튼을 짓는다.
+    public enum Tool { Mine, Gather, Haul, Cancel, Level }
 
-    public static bool IsActive => MineDesignator.IsActive || HaulDesignator.IsActive;
+    public static bool IsActive =>
+        MineDesignator.IsActive || HaulDesignator.IsActive || LevelDesignator.IsActive;
 
     public static Tool Current =>
-        MineDesignator.IsActive
+        LevelDesignator.IsActive ? Tool.Level
+      : MineDesignator.IsActive
             ? (MineDesignator.Current == MineDesignator.Tool.Cancel ? Tool.Cancel : Tool.Mine)
             : HaulDesignator.Kind == HaulDesignator.Target.Gather ? Tool.Gather : Tool.Haul;
 
@@ -35,8 +38,18 @@ public class CommandMode : MonoBehaviour
             case Tool.Cancel: MineDesignator.Open(MineDesignator.Tool.Cancel);      break;
             case Tool.Gather: HaulDesignator.Open(HaulDesignator.Target.Gather);    break;
             case Tool.Haul:   HaulDesignator.Open(HaulDesignator.Target.Haul);      break;
+            case Tool.Level:  LevelDesignator.Open(LevelDesignator.Tool.Designate); break;
         }
     }
+
+    public static string NameOf(Tool t) => t switch
+    {
+        Tool.Mine   => "채굴",
+        Tool.Gather => "채집",
+        Tool.Haul   => "운반",
+        Tool.Level  => "땅고르기",
+        _           => "취소",
+    };
 
     // 그 도구가 이미 켜져 있으면 명령을 끄고, 아니면 그 도구로 연다(키를 두 번 누르면 나간다).
     public static void Toggle(Tool t)
@@ -49,6 +62,7 @@ public class CommandMode : MonoBehaviour
     {
         MineDesignator.Close();
         HaulDesignator.Close();
+        LevelDesignator.Close();
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -63,6 +77,9 @@ public class CommandMode : MonoBehaviour
             else if (kb.jKey.wasPressedThisFrame) Toggle(Tool.Gather);
             else if (kb.kKey.wasPressedThisFrame) Toggle(Tool.Haul);
             else if (kb.cKey.wasPressedThisFrame) Toggle(Tool.Cancel);
+            // **`V`가 땅 고르기다.** `G`가 아닌 이유 — 그건 원정 편성이 씬 필드로 들고 있어
+            // (`ExpeditionUI.toggleKey = Key.G`) 빼앗으면 **두 창이 같이 열린다.**
+            else if (kb.vKey.wasPressedThisFrame) Toggle(Tool.Level);
         }
     }
 }
