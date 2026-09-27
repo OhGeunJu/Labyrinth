@@ -30,7 +30,8 @@ public static class WorldSiteAuthoring
         var center = TerrainGrid.ChunkAt(look);
 
         HideHere();
-        var root = new GameObject(TerrainAuthoring.PreviewRoot);
+        // **씬에 안 남긴다** — 저장된 채 Play에 들어가면 런타임 청크와 겹쳐 옛 높이의 벽이 된다(2026-09-26).
+        var root = new GameObject(TerrainAuthoring.PreviewRoot) { hideFlags = HideFlags.DontSave };
         Undo.RegisterCreatedObjectUndo(root, "지형 띄우기");
 
         int res = TerrainGrid.VertsPerAxis;
@@ -50,7 +51,7 @@ public static class WorldSiteAuthoring
 
             TerrainAuthoring.Fill(data, c);
 
-            var go = new GameObject("Preview_" + TerrainGrid.KeyOf(c));
+            var go = new GameObject("Preview_" + TerrainGrid.KeyOf(c)) { hideFlags = HideFlags.DontSave };
             go.transform.SetParent(root.transform, false);
             go.transform.position = TerrainGrid.OriginOf(c) + Vector3.up * TerrainStreamer.MinHeight;
             go.layer = LayerMask.NameToLayer("Ground");

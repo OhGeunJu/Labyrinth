@@ -9,7 +9,8 @@ using UnityEngine;
 //   첫 화면이 통짜 바위다.
 // - **만든 폰은 여기 선다**(`CharacterCreationUI`).
 // - **하나만 둔다** — 둘이면 어느 쪽인지가 씬의 순서에 달린다(`Awake`가 경고한다).
-// - 씬 배선은 `World → I. Place Start Spot`이 한다(씬의 방랑자를 치우고 첫 자리에 이것을 둔다).
+// - 씬에 **손으로 하나** 놓는다(빈 오브젝트 + 이 컴포넌트). 처음 한 번 씬의 방랑자를 치우고 표식을 두던 도구
+//   (`Place Start Spot`)는 2026-09-26에 지웠다 — 끝난 이행이었는데 메뉴 번호가 겹쳐 잘못 눌렸다.
 [DisallowMultipleComponent]
 public class StartSpot : MonoBehaviour
 {

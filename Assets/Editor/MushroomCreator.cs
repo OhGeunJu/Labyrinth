@@ -52,6 +52,13 @@ public static class MushroomCreator
     // 발광 버섯이 아무 굴에나 나면 **균사림이 특별할 이유가 없어진다** — 그 지대를 읽게
     // 만드는 것이 빛인데 그 빛이 어디에나 있으면 신호가 아니다. 그렇다고 먹을 것을 한
     // 바이옴에만 두면 *거기로 가는 길*이 유일한 공략이 되므로, **평범한 양송이**을 따로 낸다.
+    // 이 도구가 도형부터 다시 짓는 프리팹 — 굽고 나서 `PropDresser`가 모델을 다시 입힌다.
+    static readonly string[] Rebuilt =
+    {
+        "Node_CapMushroom", "Node_CaveMushroom", "Node_GiantMushroom", "Node_BlueMould",
+        "Node_MossPatch", "Node_MossTree", "Node_HardwoodTrunk", "Node_Pebbles",
+    };
+
     static readonly Biome[] FungalOnly = { Biome.Fungal };
     static readonly Biome[] MossOnly   = { Biome.Mossgrotto };
     static readonly Biome[] SwampOnly  = { Biome.Swamp };
@@ -81,8 +88,11 @@ public static class MushroomCreator
         var caveFood  = Food("Food_CaveMushroom", "양송이", 3, 14f,
                              "어느 굴에나 돋는 흔한 버섯. 맛은 없지만 거저 얻는다.");
 
+        // **초록을 뺀 파랑**(2026-09-28, 사용자: *"야광버섯을 지금 형광색인데 파랑느낌으로는 못바꾸나?"*) — 전에는
+        // 초록이 파랑의 절반 가까이(0.38 : 0.85)라 발광·블룸이 얹히면 **청록 형광**으로 날았다. 초록을 낮추고
+        // 빨강을 조금 두면 발광해도 **남색 쪽 파랑**으로 남는다. 버섯 셋(갓버섯·거대버섯·푸른 곰팡이)과 그 등이 같이 간다.
         var capPrefab   = BuildCap(glowFood, "Node_CapMushroom",
-                                   new Color(0.18f, 0.38f, 0.85f), glow: true);
+                                   GlowCap, glow: true);
         var cavePrefab  = BuildCap(caveFood, "Node_CaveMushroom",
                                    new Color(0.52f, 0.42f, 0.32f), glow: false);
 
@@ -161,7 +171,7 @@ public static class MushroomCreator
         var mossPatch  = BuildPatch("Node_MossPatch",  "herbs",       2, 4,
                                     new Color(0.26f, 0.52f, 0.22f), glow: false);
         var mouldPatch = BuildPatch("Node_BlueMould",  "alch_essence", 2, 3,
-                                    new Color(0.22f, 0.44f, 0.92f), glow: true);
+                                    new Color(0.20f, 0.26f, 0.90f), glow: true);
 
         // ── 이끼굴의 나무 (2026-09-15, 사용자: *"이끼굴은 흙컨셉으로 해서 나무를 여기에"*) ──
         //
@@ -189,6 +199,12 @@ public static class MushroomCreator
         DropStaleCapNode();
         WireScatter(capPrefab, cavePrefab, giantPrefab, pebblePrefab, hardPrefab,
                     mossPatch, mouldPatch, treePrefab);
+
+        // **다시 입힌다**(2026-09-28, 사용자: *"버섯들이 그냥 예전버섯으로 돌아간 거 같은데"* · *"돌도 바뀐 거 같아"*).
+        // 위에서 프리팹을 **도형부터 다시 지어 덮어썼으므로** `Building → 1`이 입혀 둔 모델(`[Art]`)이 날아갔다.
+        // 입히는 표는 `PropDresser` 하나다 — 여기서 모델을 따로 고르지 않고 그 표를 이 프리팹들에만 다시 부른다.
+        AssetDatabase.SaveAssets();
+        PropDresser.DressOnly(Rebuilt);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -348,7 +364,7 @@ public static class MushroomCreator
 
         var cap = Prim(PrimitiveType.Sphere, "Cap", root.transform,
                        new Vector3(2.40f, 1.10f, 2.40f), new Vector3(0f, 2.70f, 0f));
-        Paint(cap, "Mdl_Cap_Giant", new Color(0.16f, 0.34f, 0.78f), emissive: true);
+        Paint(cap, "Mdl_Cap_Giant", new Color(0.16f, 0.22f, 0.80f), emissive: true);
 
         // **여기는 트리거가 아니다.** 나무 자리를 대신하니 몸으로 막는 것이 맞다.
         var col = root.AddComponent<CapsuleCollider>();
@@ -589,6 +605,10 @@ public static class MushroomCreator
     //
     // **켜는 사람이 없다** — `Campfire`가 때를 보고 켜는 불과 달리 버섯은 그냥 빛난다
     // (`LightSource.AlwaysLit`). **깜빡이지도 않는다**(`flicker` 0): 불이 아니라 빛이다.
+    // 발광 버섯의 빛깔 — 갓과 등이 **같은 파랑**이어야 한다(갓만 남색이고 등이 청록이면 둘레가 형광으로 물든다).
+    static readonly Color GlowCap   = new(0.18f, 0.24f, 0.88f);
+    static readonly Color GlowLight = new(0.32f, 0.40f, 1f);
+
     static void Glow(GameObject root, float radius, float strength,
                      float intensity, float range, float height = 0.35f)
     {
@@ -598,7 +618,7 @@ public static class MushroomCreator
 
         var lamp = lampGo.AddComponent<Light>();
         lamp.type      = LightType.Point;
-        lamp.color     = new Color(0.35f, 0.55f, 1f);
+        lamp.color     = GlowLight;
         lamp.intensity = intensity;
         lamp.range     = range;
         lamp.shadows   = LightShadows.None;   // 수백 개가 그림자를 던지면 프레임이 죽는다
@@ -733,6 +753,12 @@ public static class MushroomCreator
     //
     // **없으면 조용히 넘어가지 않고 말한다** — 에셋만 만들어 두고 아무것도 안 나면 원인이
     // 코드가 아니라 배선에 있고, 그건 화면에서 절대 안 보인다.
+    // **다시 나는 것은 전부 2~3일 안에**(2026-09-28, 사용자: *"5일 이상은 너무 길어 한 2~3일에 다 다시 나와야지"*).
+    // 기지에 잠깐 들렀다 떠나는 게임이라, 다녀오는 사이에 둘레가 돌아와 있어야 한다. 먹을 것·약초는 2일,
+    // 나무·곰팡이는 3일(크거나 귀한 것이 조금 늦다).
+    const float FoodRegrowDays = 2f;
+    const float TreeRegrowDays = 3f;
+
     static void WireScatter(GameObject capPrefab, GameObject cavePrefab, GameObject giantPrefab,
                             GameObject pebblePrefab, GameObject trunkPrefab,
                             GameObject mossPrefab, GameObject mouldPrefab,
@@ -750,43 +776,46 @@ public static class MushroomCreator
         //
         // **퍼짐은 1칸이다** — 제 칸과 맞닿은 여덟. 다섯이면 한 칸도 안 비고 뭉친다.
         // 2로 올리면 3×3을 넘어서서 *한 무더기*가 아니라 *느슨한 밭*이 된다.
-        ScatterWiring.Set(rules, "갓버섯", capPrefab, perChunk: 5f, spacing: 12f, regrowDays: 3f,
+        ScatterWiring.Set(rules, "갓버섯", capPrefab, perChunk: 5f, spacing: 12f, regrowDays: FoodRegrowDays,
              biomes: FungalOnly, cluster: (3, 5), spread: 1);
 
         // **양송이는 안 빛난다** — 그래서 더 흔해도 된다(빛이 아니라 먹을 것이다).
-        ScatterWiring.Set(rules, "양송이", cavePrefab, perChunk: 4f, spacing: 14f, regrowDays: 3f,
+        ScatterWiring.Set(rules, "양송이", cavePrefab, perChunk: 4f, spacing: 14f, regrowDays: FoodRegrowDays,
              biomes: PlainCaves, cluster: (2, 4), spread: 1);
 
         // **거대버섯은 균사림에만** — 그리고 균사림 안에서는 흔하다(청크당 넷). 바이옴으로
         // 걸러 놓고 밀도까지 낮추면 *"목재가 나는 곳"*에 가서도 목재를 못 본다.
         // **무리는 안 짓는다** — 나무 자리라 하나씩 서는 것이 맞다.
-        ScatterWiring.Set(rules, "거대버섯", giantPrefab, perChunk: 4f, spacing: 14f, regrowDays: 0f,
+        // **다시 자란다**(2026-09-28, 사용자: *"버섯, 나무 캐고나면 나중에 다시 자라게"*) — 기지는 한자리에 머무는데
+        // 목재가 안 돌아오면 둘레를 한 번 베고 나서 **목재 축이 통째로 끝난다.** 버섯(2일)보다 조금 길다: 나무는 크다.
+        ScatterWiring.Set(rules, "거대버섯", giantPrefab, perChunk: 4f, spacing: 14f, regrowDays: TreeRegrowDays,
              biomes: FungalOnly, cluster: (1, 1), spread: 0);
 
 
         // **물먹은 둥치는 지저늪에만** — 2층의 목재다. 거대버섯(청크당 넷)보다 드물게
         // 둔다: 원목은 *늘 쓰는 것*이고 이건 **상위 재료**라, 같은 밀도면 티어가 안 읽힌다.
-        // **다시 안 난다**(0) — 죽은 나무는 자라지 않는다.
+        // **다시 난다**(2026-09-28에 바꿨다 — 전에는 *"죽은 나무는 자라지 않는다"*로 0이었다). 2층의 목재가 이것뿐이라
+        // 안 돌아오면 2층 목재가 유한해진다.
         ScatterWiring.Set(rules, "물먹은 둥치", trunkPrefab, perChunk: 2.5f, spacing: 16f,
-             regrowDays: 0f, biomes: SwampOnly, cluster: (1, 1), spread: 0);
+             regrowDays: TreeRegrowDays, biomes: SwampOnly, cluster: (1, 1), spread: 0);
 
         // **이끼 낀 나무는 이끼굴에만** — 1층 목재의 두 원천 중 하나다(다른 하나가
         // 균사림의 거대버섯). 거대버섯(청크당 넷)보다 조금 성기게 둔다: 나무 한 그루가
         // 칸을 막고 서 있으므로, 같은 밀도면 굴이 **숲이 아니라 장애물밭**이 된다.
         ScatterWiring.Set(rules, "이끼 낀 나무", treePrefab, perChunk: 3f, spacing: 13f,
-             regrowDays: 0f, biomes: MossOnly, cluster: (1, 1), spread: 0);
+             regrowDays: TreeRegrowDays, biomes: MossOnly, cluster: (1, 1), spread: 0);
 
         // **이끼는 이끼굴에 흔하다** — 바이옴 이름이 그것이고, 무엇보다 **약초가 여기서만
         // 난다**(1층 전체의 치료가 이 한 바이옴에 달렸으니 드물면 병목이 된다).
         // **다시 난다**(3일) — 약초는 이어지는 수입이어야 한다(갓버섯과 같은 규칙).
         ScatterWiring.Set(rules, "이끼 무더기", mossPrefab, perChunk: 5f, spacing: 11f,
-             regrowDays: 3f, biomes: MossOnly, cluster: (3, 5), spread: 1);
+             regrowDays: FoodRegrowDays, biomes: MossOnly, cluster: (3, 5), spread: 1);
 
         // **푸른 곰팡이는 균사림에만.** 이제 **만들 길이 없으므로**(배양 레시피를 지웠다)
         // 여기가 세계에서 유일한 원천이다 — 드물게 두면 물약이 통째로 막힌다.
         // 이끼보다 조금 성기되(허브가 먹는 레시피가 더 많다) **양을 늘려** 맞춘다(2~3).
         ScatterWiring.Set(rules, "푸른 곰팡이", mouldPrefab, perChunk: 4f, spacing: 13f,
-             regrowDays: 4f, biomes: FungalOnly, cluster: (2, 4), spread: 1);
+             regrowDays: TreeRegrowDays, biomes: FungalOnly, cluster: (2, 4), spread: 1);
 
         // **돌은 어디에나, 그리고 흔하다** — 버섯보다 눈에 안 띄는 물건이라 드물면 없는 것과
         // 같다. **다시 안 난다**(0): 자연에 떨어져 있던 것이지 자라는 것이 아니다.

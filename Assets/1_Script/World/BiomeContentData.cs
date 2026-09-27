@@ -54,6 +54,23 @@ public class BiomeContentData : ScriptableObject
     [Header("이 바이옴에서 등장하는 자원 노드 풀")]
     public List<ResourceNodeData> ResourceNodes = new();
 
+    // ── 벽에 박힌 조명 (2026-09-28) ─────────────────────────────────────────
+    //
+    // **바위 칸 하나가 이것을 품을 확률**이다 — 드러난 벽면에서만 보인다(`RockMap.WallLightAt`).
+    // 여럿을 적으면 확률이 **이어 붙는다**(0.03 + 0.05 = 칸의 8%에 무언가 박힌다).
+    [System.Serializable]
+    public class WallLightEntry
+    {
+        public WallLightData Light;
+
+        [Tooltip("바위 칸 하나가 이것을 품을 확률. 0.03이면 벽 서른세 칸에 하나꼴.")]
+        [Range(0f, 0.3f)] public float Chance = 0.03f;
+    }
+
+    [Header("벽에 박힌 조명 (야광석 · 횃불)")]
+    [Tooltip("비어 있으면 이 바이옴 벽에는 아무것도 안 박힌다.")]
+    public List<WallLightEntry> WallLights = new();
+
     // ── 매장 자원 (월드맵 칸) ────────────────────────────────────────────────
     // "이 바이옴 칸을 파면 무엇이 얼마나 나오는가". 실제 칸별 수량은 **칸 좌표로 결정적으로**
     // 굴린다(`WorldDeposits`) — 저작 없이도 칸마다 다르고, 다시 실행해도 같은 값이 나온다.

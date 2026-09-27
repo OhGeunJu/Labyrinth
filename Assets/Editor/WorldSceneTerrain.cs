@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 // **씬 뷰에서 땅을 밟는다**(2026-08-27, 2026-09-12에 게임 씬까지 넓혔다).
@@ -68,6 +69,31 @@ public static class WorldSceneTerrain
         // 안 잡으면 화면에는 있는데 사전은 비어 **영영 안 치워지는 청크**가 남는다.
         Adopt();
         EditorApplication.update += Tick;
+
+        EditorSceneManager.sceneOpened += (_, _) => DropSavedPreview();
+        EditorApplication.delayCall += DropSavedPreview;
+    }
+
+    // **씬에 저장돼 버린 지형 미리보기를 치운다**(2026-09-28, 사용자: *"씬에서 화면을 옮기면 그 배경이 안
+    // 옮겨져"*). `Show Terrain Here`의 미리보기(3×3 청크)는 **한자리에 박힌 땅**이다 — 09-26 전에는 씬에
+    // 저장됐고, 그렇게 남은 것이 `Scene1`에 있었다. 판에서는 `TerrainStreamer`가 치우지만(그 경고가 판마다
+    // 찍혔다) **씬 뷰에서는 그대로 서서**, 이 스트리밍 지형과 겹쳐 화면을 옮겨도 따라오지 않는 땅이 됐다.
+    //
+    // **`DontSave`가 없는 것만 치운다** — 방금 띄운 미리보기(저작 중)는 그 표시를 달고 있다. 표시가 없다는
+    // 것은 **씬 파일에서 읽혔다**는 뜻이다. 씬을 더럽혀 두므로 저장하면 파일에서도 빠진다.
+    static void DropSavedPreview()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+        var root = GameObject.Find(TerrainAuthoring.PreviewRoot);
+        if (root == null || (root.hideFlags & HideFlags.DontSave) != 0) return;
+
+        var scene = root.scene;
+        Object.DestroyImmediate(root);
+        if (scene.IsValid()) EditorSceneManager.MarkSceneDirty(scene);
+
+        Debug.LogWarning($"[지형] 씬에 저장돼 있던 지형 미리보기(`{TerrainAuthoring.PreviewRoot}`)를 치웠다 — " +
+                         "한자리에 박힌 땅이라 씬 뷰를 옮겨도 안 따라왔다. **씬을 저장하면** 파일에서도 빠진다.");
     }
 
     // ── 켜고 끄기 ───────────────────────────────────────────────────────────
@@ -243,6 +269,7 @@ public static class WorldSceneTerrain
         var terrain = go.AddComponent<Terrain>();
         terrain.terrainData      = data;
         terrain.materialTemplate = streamer.ChunkMaterial();
+        Chasm.PrepareMaterial(terrain.materialTemplate);
         terrain.drawInstanced    = true;
         terrain.allowAutoConnect = true;
         terrain.groupingID       = 0;

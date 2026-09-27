@@ -137,6 +137,16 @@ public class MineJob : JobBase
             }
         }
 
+        // **벽에 박혀 있던 것은 덤으로 나온다**(2026-09-28, 야광석). 광맥과 **따로** 굴린다 —
+        // 한 칸에 광맥과 야광석이 같이 있을 수 있고, 그때 하나만 나오면 벽에 보이던 것이 사라진다.
+        // 횃불처럼 나오는 것이 없는 조명은 벽과 함께 없어질 뿐이다.
+        var lit = RockMap.WallLightAt(_tile);
+        if (lit != null && lit.DropItem != null)
+        {
+            int amount = Random.Range(lit.DropMin, lit.DropMax + 1);
+            if (amount > 0) DroppedItem.Spawn(lit.DropItem, amount, drop)?.SetHaulAllowed(true);
+        }
+
         Status = JobStatus.Done;
     }
 }

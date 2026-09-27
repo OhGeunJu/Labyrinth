@@ -47,6 +47,7 @@ struct Attributes
     float2 texcoord     : TEXCOORD0;
     float2 staticLightmapUV   : TEXCOORD1;
     float2 dynamicLightmapUV  : TEXCOORD2;
+    float2 rockLift           : TEXCOORD3;   // ← 더한 것: 뚜껑 위에 뜬 만큼(`RockCut.hlsl`)
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
@@ -186,7 +187,7 @@ Varyings LitPassVertex(Attributes input)
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
     // ── 고친 한 줄: 가까운 벽을 낮춘다 (`RockCut.hlsl`) ──────────────────
-    input.positionOS.xyz = RockCutOS(input.positionOS.xyz, input.normalOS);
+    input.positionOS.xyz = RockCutOS(input.positionOS.xyz, input.normalOS, input.rockLift.x);
 
     VertexPositionInputs vertexInput = GetVertexPositionInputs(input.positionOS.xyz);
 

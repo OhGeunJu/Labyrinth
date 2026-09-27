@@ -108,21 +108,30 @@ void RockCutBackface(float3 ws, float3 normalWS)
 // UV가 그대로인 채 면만 짧아져 **옆면 무늬가 세로로 눌리고**, 무엇보다 **꺼 두면 자르기가
 // 통째로 안 걸린 것처럼 보인다** — 실제로 그 상태를 *"한쪽을 빼먹은 것 아니냐"*로 읽었다.
 // **고를 이유가 없는 갈래는 손잡이가 아니라 함정이다.**
-float3 RockCutWS(float3 ws, float3 normalWS)
+//
+// **뚜껑 위에 얹은 것은 뜬 만큼을 지킨 채 같이 내려온다**(2026-09-28, 윗면 광맥 — 사용자: *"광물이 박힌 벽 위에도
+// 광물이 박혀서 직관적으로 볼 수 있게"*). 알갱이를 뚜껑 위에 얹으면 그 정점도 뚜껑이라(`RockIsCap`) 끌려
+// 내려오는데, `min` 하나로는 **전부 자르는 높이 한 평면으로 눌려** 뚜껑과 z-파이팅한다. 그래서 정점마다
+// *뚜껑에서 얼마나 떠 있나*(`lift` — 메시의 uv3.x)를 받아 **빼고 내린 뒤 도로 더한다.** 보통 뚜껑은 0이라
+// 한 줄도 안 바뀐다.
+float3 RockCutWS(float3 ws, float3 normalWS, float lift)
 {
     if (_RockCutOn < 0.5 || !RockIsCap(normalWS))
         return ws;   // 옆면은 프래그먼트가 자른다
 
-    ws.y = min(ws.y, RockCutPlaneY());
+    ws.y = min(ws.y - lift, RockCutPlaneY()) + lift;
     return ws;
 }
 
 // 정점 하나를 물체 공간에서 받아 **자리를 잡기 전에** 내린다 — `GetVertexPositionInputs`
 // 앞이어야 화면 좌표·월드 좌표·그림자 좌표가 **한 자리를 가리킨다.**
-float3 RockCutOS(float3 positionOS, float3 normalOS)
+//
+// **`lift`는 패스 셋이 다 받아야 한다**(Forward·DepthOnly·DepthNormals) — 하나라도 빠지면 그 패스만 알갱이를
+// 눌러 깊이와 색이 어긋난다(자르기를 패스 셋 전부에 건 것과 같은 규칙).
+float3 RockCutOS(float3 positionOS, float3 normalOS, float lift)
 {
     float3 ws = TransformObjectToWorld(positionOS);
-    return TransformWorldToObject(RockCutWS(ws, normalOS));
+    return TransformWorldToObject(RockCutWS(ws, normalOS, lift));
 }
 
 #endif

@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 // **모드 안의 도구 둘 — 바 하나가 셋을 다 든다**(2026-09-02).
 //
 //   밭 구역 : `새 구역`(또는 `확장`) / `삭제`
-//   명령    : `채굴` / `채집` / `운반` / `취소`(2026-09-19 — 채굴·운반 모드를 하나로, `CommandMode`)
+//   명령    : `취소` / `채굴` / `채집` / `운반` / `올리기` / `내리기` / `평탄화`(2026-09-19 — `CommandMode` ·
+//             09-25에 취소를 맨 앞으로, 땅고르기를 올리기/내리기/평탄화 셋으로)
 //
 // 셋 다 **같은 물음에 답한다**: *"지금 이 드래그가 무엇을 하는가."* 그래서 바를 셋 만들지
 // 않는다 — 만들면 씬에서 자리를 세 번 맞춰야 하고, 셋 중 하나만 옮겨 두면 모드를 바꿀 때마다
@@ -17,19 +19,33 @@ using UnityEngine;
 // 따로 기억하면 다른 길로 바뀌었을 때 버튼만 옛 상태로 남는다.
 public class ModeToolBarUI : MonoBehaviour
 {
-    [Tooltip("씬에 놓인 타일. **코드가 만들지 않는다** — 여기 물린 것을 그대로 쓴다.")]
-    [SerializeField] BuildingItemUI primaryItem;
-    [Tooltip("밭 구역에만 쓰는 셋째 타일(`확장`). 다른 모드에서는 꺼진다.")]
-    [SerializeField] BuildingItemUI extraItem;
-    [SerializeField] BuildingItemUI cancelItem;
-    [Tooltip("명령에만 쓰는 넷째 타일(`땅고르기`). 밭 구역에서는 꺼진다. `UI → Setup Command Bar`가 세운다.")]
-    [SerializeField] BuildingItemUI fourthItem;
-    // **다음에 도구가 하나 더 늘면 배열로 옮길 것**(2026-09-24) — 서수 필드는 늘어날수록
-    // *"어느 칸이 무엇인가"*가 이름에서 안 읽히고, `Farm`이 남는 칸을 끄는 줄도 같이 는다.
-    // 옮기는 방법은 이미 선례가 있다: `BuildingData.Costs`가 **옛 한 칸을 이름을 지켜
-    // 흡수했다**(직렬화 키가 필드 이름이라 이름을 바꾸면 구운 씬의 배선이 통째로 날아간다).
-    [Tooltip("명령에만 쓰는 다섯째 타일(`취소`). 밭 구역에서는 꺼진다.")]
-    [SerializeField] BuildingItemUI fifthItem;
+    // **칸은 목록이다**(2026-09-25 — 도구가 여섯이 되며 서수 필드 다섯을 넘었다). 순서가 곧
+    // 화면의 순서이고, 모드마다 앞에서부터 쓰고 **남는 칸은 끈다.** 씬에 놓인 타일이다 —
+    // **코드가 만들지 않는다**(`UI → Setup Command Bar`가 모자란 만큼 세운다).
+    [Tooltip("씬에 놓인 타일, 화면 순서대로. `UI → Setup Command Bar`가 채운다.")]
+    [SerializeField] List<BuildingItemUI> tiles = new();
+
+    // **옛 서수 칸 다섯 — `tiles`가 비었을 때 한 번 흡수한다.** 직렬화 키가 필드 이름이라
+    // 지우면 구운 씬의 배선이 통째로 날아간다(`BuildingData.Costs`가 옛 한 칸을 흡수한 그 방법).
+    [SerializeField, HideInInspector] BuildingItemUI primaryItem;
+    [SerializeField, HideInInspector] BuildingItemUI extraItem;
+    [SerializeField, HideInInspector] BuildingItemUI cancelItem;
+    [SerializeField, HideInInspector] BuildingItemUI fourthItem;
+    [SerializeField, HideInInspector] BuildingItemUI fifthItem;
+
+    public const int CommandTiles = 7;   // 명령이 쓰는 칸 수 — 설치 도구가 이만큼 세운다
+
+    // 옛 칸을 목록으로 옮긴다. 설치 도구도 같은 것을 부른다(한 벌).
+    public bool AbsorbLegacy()
+    {
+        if (tiles.Count > 0) return false;
+        foreach (var it in new[] { primaryItem, extraItem, cancelItem, fourthItem, fifthItem })
+            if (it != null) tiles.Add(it);
+        primaryItem = extraItem = cancelItem = fourthItem = fifthItem = null;
+        return tiles.Count > 0;
+    }
+
+    public IReadOnlyList<BuildingItemUI> Tiles => tiles;
 
     [Tooltip("보였다 사라지는 자식(창 규약). 뿌리를 끄면 `Update`가 안 돌아 다시 못 켠다.")]
     [SerializeField] GameObject panel;
@@ -50,11 +66,16 @@ public class ModeToolBarUI : MonoBehaviour
 
     void Awake()
     {
-        if (primaryItem == null || cancelItem == null)
+        AbsorbLegacy();
+        tiles.RemoveAll(t => t == null);
+
+        if (tiles.Count < 3)
         {
             Debug.LogWarning("[도구 바] 타일이 안 물렸다 — `UI → Setup Command Bar`를 돌릴 것.");
             enabled = false;
         }
+        else if (tiles.Count < CommandTiles)
+            Debug.LogWarning($"[도구 바] 칸이 {tiles.Count}개라 명령 도구 {CommandTiles}개 중 일부가 안 뜬다 — `UI → Setup Command Bar`를 돌릴 것.");
     }
 
     void Update()
@@ -69,35 +90,39 @@ public class ModeToolBarUI : MonoBehaviour
         if (mode != _shownMode)
         {
             _shownMode = mode;
-            primaryItem?.ForgetName();
-            extraItem?.ForgetName();
-            cancelItem?.ForgetName();
-            fourthItem?.ForgetName();
-            fifthItem?.ForgetName();
+            foreach (var t in tiles) t?.ForgetName();
         }
 
         if (mode == Mode.Farm) Farm();
         else Command();
     }
 
-    // **명령 — 채굴 · 채집 · 운반 · 취소**(2026-09-19, 사용자: *"채굴 채집 운반 세 버튼을 명령으로 합쳐서
-    // 한번에 뜨게"* · *"원래 있던 취소 버튼도 달아 대신 다 호환되게"*).
+    // **명령 — 취소 · 채굴 · 채집 · 운반 · 올리기 · 내리기 · 평탄화**(2026-09-19, 사용자: *"채굴 채집 운반 세 버튼을
+    // 명령으로 합쳐서 한번에 뜨게"* · *"원래 있던 취소 버튼도 달아 대신 다 호환되게"*).
     //
-    // 전에는 채굴·운반이 모드 바의 **따로 된 버튼**이고 여기에는 그 모드의 `찍기/취소`가 떴다. 채집은 운반
-    // 모드가 같이 찍고 있었는데 **이름이 `운반`이라 아무도 몰랐다.** 이제 넷이 **한 줄에 같이** 뜬다 —
-    // 무엇이 켜졌나는 `CommandMode.Current` 하나가 답한다. **취소는 도구를 안 가린다**(무엇이든 무른다).
-    // 설명은 **무엇을 시키나 한 줄**이다(사용자: *"딱 뭐를 시킨다 만 적어"*). 키는 이름에 붙인다.
-    //
-    // 타일 이름(`cancelItem`)은 씬 배선이라 그대로 두고 **셋째 칸(운반)**으로 쓴다 — 넷째는 `fourthItem`.
+    // 무엇이 켜졌나는 `CommandMode.Current` 하나가 답한다. **취소는 도구를 안 가린다**(무엇이든 무른다) —
+    // 그래서 **맨 앞**이다(2026-09-25, 사용자). 설명은 **무엇을 시키나 한 줄**이다(사용자: *"딱 뭐를
+    // 시킨다 만 적어"*). 키는 이름에 붙인다.
     void Command()
     {
         var cur = CommandMode.Current;
-        Bind(primaryItem, "채굴 (H)", "벽을 캐게 한다.",               cur == CommandMode.Tool.Mine,   () => CommandMode.Use(CommandMode.Tool.Mine));
-        Bind(extraItem,   "채집 (J)", "버섯과 채집물을 따게 한다.",     cur == CommandMode.Tool.Gather, () => CommandMode.Use(CommandMode.Tool.Gather));
-        Bind(cancelItem,  "운반 (K)", "바닥 물건을 창고로 옮기게 한다.", cur == CommandMode.Tool.Haul,   () => CommandMode.Use(CommandMode.Tool.Haul));
-        Bind(fourthItem,  "땅고르기 (V)", "땅을 처음 누른 칸의 높이로 깎거나 메우게 한다.",
-             cur == CommandMode.Tool.Level,  () => CommandMode.Use(CommandMode.Tool.Level));
-        Bind(fifthItem,   "취소 (C)", "찍어 둔 명령을 무른다.",          cur == CommandMode.Tool.Cancel, () => CommandMode.Use(CommandMode.Tool.Cancel));
+        int i = 0;
+        Bind(At(i++), "취소 (C)",   "찍어 둔 명령을 무른다.",                  cur == CommandMode.Tool.Cancel, () => CommandMode.Use(CommandMode.Tool.Cancel));
+        Bind(At(i++), "채굴 (H)",   "벽을 캐게 한다.",                          cur == CommandMode.Tool.Mine,   () => CommandMode.Use(CommandMode.Tool.Mine));
+        Bind(At(i++), "채집 (J)",   "버섯과 채집물을 따게 한다.",                cur == CommandMode.Tool.Gather, () => CommandMode.Use(CommandMode.Tool.Gather));
+        Bind(At(i++), "운반 (K)",   "바닥 물건을 창고로 옮기게 한다.",            cur == CommandMode.Tool.Haul,   () => CommandMode.Use(CommandMode.Tool.Haul));
+        Bind(At(i++), "올리기 (V)", "찍은 땅을 한 단 올리게 한다. 돌을 먹는다.",  cur == CommandMode.Tool.Raise,  () => CommandMode.Use(CommandMode.Tool.Raise));
+        Bind(At(i++), "내리기 (N)", "찍은 땅을 한 단 내리게 한다. 돌이 나온다.",  cur == CommandMode.Tool.Lower,  () => CommandMode.Use(CommandMode.Tool.Lower));
+        Bind(At(i++), "평탄화 (T)", "처음 누른 곳 높이로 찍은 땅을 고르게 한다.", cur == CommandMode.Tool.Flatten, () => CommandMode.Use(CommandMode.Tool.Flatten));
+        HideFrom(i);
+    }
+
+    BuildingItemUI At(int i) => i < tiles.Count ? tiles[i] : null;
+
+    void HideFrom(int i)
+    {
+        for (; i < tiles.Count; i++)
+            if (tiles[i] != null && tiles[i].gameObject.activeSelf) tiles[i].gameObject.SetActive(false);
     }
 
     // 밭 구역은 도구가 셋이다 — **`새 구역`과 `확장`을 가른다.** 하나로 두고 *"고른 게
@@ -106,18 +131,17 @@ public class ModeToolBarUI : MonoBehaviour
     void Farm()
     {
         var cur = FarmZoneDesignator.Current;
-        if (fourthItem != null && fourthItem.gameObject.activeSelf) fourthItem.gameObject.SetActive(false);
-        if (fifthItem  != null && fifthItem.gameObject.activeSelf)  fifthItem.gameObject.SetActive(false);
+        HideFrom(3);
 
-        Bind(primaryItem, "새 구역", "끌어서 **새 구역**을 만든다.\n붙어 있어도 다른 구역이 된다.",
+        Bind(At(0), "새 구역", "끌어서 **새 구역**을 만든다.\n붙어 있어도 다른 구역이 된다.",
              cur == FarmZoneDesignator.Tool.New,
              () => FarmZoneDesignator.Use(FarmZoneDesignator.Tool.New));
 
-        Bind(extraItem, "확장", "**처음 누른 칸의 구역**이 커진다.\n빈 땅에서 시작하면 처음 걸린 구역이다.",
+        Bind(At(1), "확장", "**처음 누른 칸의 구역**이 커진다.\n빈 땅에서 시작하면 처음 걸린 구역이다.",
              cur == FarmZoneDesignator.Tool.Extend,
              () => FarmZoneDesignator.Use(FarmZoneDesignator.Tool.Extend));
 
-        Bind(cancelItem, "삭제", "끌어서 **구역에서 뺀다.**\n뺀 밭은 저 혼자가 된다.",
+        Bind(At(2), "삭제", "끌어서 **구역에서 뺀다.**\n뺀 밭은 저 혼자가 된다.",
              cur == FarmZoneDesignator.Tool.Erase,
              () => FarmZoneDesignator.Use(FarmZoneDesignator.Tool.Erase));
     }

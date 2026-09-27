@@ -180,6 +180,10 @@ public static class RockMap
 
         if (_mined.Contains(tile)) return false;
 
+        // **절벽 칸은 바위가 아니다**(2026-09-26) — 허공이다. 막는 것은 `Chasm.Blocks`가 따로 하고,
+        // 여기서 거짓이어야 그 위에 벽 덩어리가 안 서고 채굴 표시도 안 붙는다(절벽은 캘 것이 없다).
+        if (Chasm.IsChasm(tile)) return false;
+
         var map   = MapManager.Instance;
         var phase = map != null ? map.GridPhase : Vector2.zero;
 
@@ -615,5 +619,49 @@ public static class RockMap
 
         int h = tile.x * 73856093 ^ tile.y * 19349663;
         return pool[Mathf.Abs(h) % pool.Count];
+    }
+
+    // ── 벽에 박힌 조명 (2026-09-28) ─────────────────────────────────────────
+    //
+    // **이 칸에 야광석·횃불이 박혔나** — 광맥과 같이 좌표 해시로 정하고 저장하지 않는다. 표는
+    // 바이옴이 든다(`BiomeContentData.WallLights`). **바위인지는 안 묻는다** — 파낸 뒤에도 같은
+    // 답이어야 `MineJob`이 파고 나서 덤을 떨굴 수 있다. 보일지는 그리는 쪽(`RockRenderer`)이
+    // *드러난 면이 있나*로 가른다.
+    //
+    // **기반암에는 안 박는다** — 못 캐는 벽에 캐면 나오는 것이 보이면 거짓말이다(광맥과 같은 규칙).
+    public static WallLightData WallLightAt(Vector2Int tile)
+    {
+        if (!Enabled || IsBedrock(tile)) return null;
+
+        var map = MapManager.Instance;
+        Vector3 w = map != null ? map.TileToWorld(tile)
+                                : new Vector3(tile.x + 0.5f, 0f, tile.y + 0.5f);
+
+        var content = BiomeContent.Get(WorldMap.BiomeAtWorld(new Vector2(w.x, w.z)));
+        var list    = content != null ? content.WallLights : null;
+        if (list == null || list.Count == 0) return null;
+
+        // **광맥과 다른 씨앗을 쓴다** — 같은 해시면 광맥 덩어리 안에서만 조명이 몰린다.
+        float r = Hash01(tile, 0x9E3779B9u);
+        foreach (var e in list)
+        {
+            if (e == null || e.Light == null) continue;
+            if (r < e.Chance) return e.Light;
+            r -= e.Chance;
+        }
+        return null;
+    }
+
+    // 칸 좌표 → [0, 1). **`Random`을 안 쓴다** — 다시 와도 같은 자리에 같은 것이 있어야 한다.
+    public static float Hash01(Vector2Int t, uint salt)
+    {
+        unchecked
+        {
+            uint h = (uint)t.x * 73856093u ^ (uint)t.y * 19349663u ^ salt;
+            h ^= h >> 16; h *= 0x7FEB352Du;
+            h ^= h >> 15; h *= 0x846CA68Bu;
+            h ^= h >> 16;
+            return (h & 0xFFFFFF) / 16777216f;
+        }
     }
 }

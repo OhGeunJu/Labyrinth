@@ -11,7 +11,7 @@ using UnityEngine;
 public static class TerrainAuthoring
 {
     // **미리보기 지형의 루트 이름은 여기 하나다.** 이름을 아는 곳이 둘이면 한쪽이 못 찾는다.
-    public const string PreviewRoot = "__TerrainPreview";
+    public const string PreviewRoot = TerrainStreamer.EditorPreviewRoot;   // 판이 열릴 때 스트리머가 치운다
 
     // 마지막으로 밀어 넣은 값 — 바뀐 것을 알아채려고만 든다(위 `SyncValues` 참고).
     static TerrainProfile        _lastProfile;
@@ -91,6 +91,7 @@ public static class TerrainAuthoring
         for (int vx = 0; vx < res; vx++)
             h[vz, vx] = Norm(TerrainHeight.VertexHeight(chunk, vx, vz));
         data.SetHeights(0, 0, h);
+        Chasm.ApplyHoles(data, chunk);   // 절벽 — 런타임과 같은 문
 
         // **텍스처도 같은 자리에서 깐다** — 채우는 문이 하나여야 저작 씬에서 본 땅과
         // 게임의 땅이 같은 색이다(`TerrainSplat`).

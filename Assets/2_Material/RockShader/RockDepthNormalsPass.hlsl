@@ -38,6 +38,7 @@ struct Attributes
     float4 positionOS   : POSITION;
     float4 tangentOS    : TANGENT;
     float2 texcoord     : TEXCOORD0;
+    float2 rockLift     : TEXCOORD3;   // ← 더한 것: 뚜껑 위에 뜬 만큼(`RockCut.hlsl`)
     float3 normal       : NORMAL;
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
@@ -78,7 +79,7 @@ Varyings DepthNormalsVertex(Attributes input)
     #endif
     // ── 고친 곳 하나: 윗면을 내린다 (`RockCut.hlsl`) ────────────────────────
     // **자리를 잡기 전이어야** 화면 좌표와 월드 좌표가 한 자리를 가리킨다.
-    input.positionOS.xyz = RockCutOS(input.positionOS.xyz, input.normal);
+    input.positionOS.xyz = RockCutOS(input.positionOS.xyz, input.normal, input.rockLift.x);
 
     output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
 

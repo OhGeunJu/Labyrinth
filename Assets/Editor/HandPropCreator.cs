@@ -96,7 +96,7 @@ public static class HandPropCreator
         (WorkAnim.SkinningGround, "Knife"),
     };
 
-    [MenuItem("DungeonColony/Pawn/3. Create Hand Props (도구 · 무기)")]
+    [MenuItem("DungeonColony/Pawn/6. Create Hand Props (도구 · 무기)")]
     public static void Create()
     {
         EnsureDir(PrefabDir);

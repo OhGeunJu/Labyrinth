@@ -76,6 +76,12 @@ crashlytics-build.properties
 
 /[Aa]ssets/assetsss/*
 
+# 팩 텍스처의 색조를 돌린 사본 — `Building → 1. Dress Buildings`(`PropDresser.HueShifted`)가 굽는다.
+# **남의 그림을 바꾼 것이라 저장소에 안 넣는다**(팩 원본을 안 넣는 것과 같은 이유). 지워져도 다시 돌리면 선다.
+# 재질(`*.mat`)은 넣는다 — guid로 가리키는 것뿐이라 그림이 아니다.
+/[Aa]ssets/2_Material/Glow/*_h[0-9]*.png
+/[Aa]ssets/2_Material/Glow/*_h[0-9]*.png.meta
+
 # DOTween — 2026-08-29에 깐 에셋 스토어 플러그인. 저장소에 안 넣는다(받아서 다시 깐다).
 #
 # **`.meta`까지 같이 무시한다.** 짝만 남기면 유니티가 없는 파일의 메타를 지우며 diff를 만든다.

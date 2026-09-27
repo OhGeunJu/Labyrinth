@@ -229,7 +229,8 @@ public static class TerrainHeight
     // Terraces`가 그걸 갈랐다: *안 났다*와 *났는데 안 읽힌다*는 화면에서 같은 말로 들린다).
     // 사용자가 고른 값은 **1.0m = 26.6°**다.
     //
-    // **1.0m이 수직 턱을 만드는 것은 아니다** — 전이가 2m에 걸치므로 칸당 상승이 0.5m이고
+    // **1.0m이 수직 턱을 만드는 것은 아니다** — *맞닿은 셀이 한 단 차일 때는*(09-26부터 봉투가
+    // 그걸 지킨다 — 아래 `TerraceLevel`) 전이가 2m에 걸치므로 칸당 상승이 0.5m이고
     // `PathGrid`가 자연 지형에 허용하는 `SlopeRise`(1.0m/칸) 안이다. `PawnMover.StepUp`은
     // **바닥이 만든 수직면**에 쓰는 값이라 여기 안 걸린다. 걸리는 것은 하나뿐이다 —
     // **0.8m을 넘으면 1×1 건물이 단 경계에 못 놓인다**(`MapManager.Allowed`, 기단이 그 답).
@@ -244,12 +245,117 @@ public static class TerrainHeight
         var p = Profile;
         if (p.TerraceStep <= 0.0001f || p.TerraceLevels <= 0) return 0f;
 
-        // **정점 간격의 배수로 접는다.** 0이나 음수가 들어와도 정점 간격 하나로 떨어진다.
-        int cells = Mathf.Max(1, Mathf.RoundToInt(p.TerraceCell / TerrainGrid.VertexSpacing));
-        float cell = cells * TerrainGrid.VertexSpacing;
+        float cell = TerraceCellSize(p);
+        int ix = Mathf.FloorToInt(worldX / cell);
+        int iz = Mathf.FloorToInt(worldZ / cell);
+        return TerraceLevel(ix, iz) * p.TerraceStep;
+    }
 
-        float cx = (Mathf.Floor(worldX / cell) + 0.5f) * cell;
-        float cz = (Mathf.Floor(worldZ / cell) + 0.5f) * cell;
+    // **정점 간격의 배수로 접는다.** 0이나 음수가 들어와도 정점 간격 하나로 떨어진다.
+    public static float TerraceCellSize(TerrainProfile p) =>
+        Mathf.Max(1, Mathf.RoundToInt(p.TerraceCell / TerrainGrid.VertexSpacing)) * TerrainGrid.VertexSpacing;
+
+    // ── 어디든 걸어갈 수 있게 — 맞닿은 셀은 한 단까지만 ─────────────────────
+    //
+    // **2026-09-26, 사용자:** *"땅이 한칸씩 해서 무조건 이동할 수 있게"*
+    //
+    // 셀마다 노이즈를 따로 반올림하면 **맞닿은 두 셀이 두 단 이상** 벌어질 수 있다 — 전이가
+    // 정점 한 간격(2m)에 걸치므로 2m 넘게 오르면 칸당 상승이 `SlopeRise`(1m)를 넘어 **아무도
+    // 못 넘는 턱**이 된다. 층이 가두면 길찾기가 *"거기는 못 간다"*를 정직하게 답하므로
+    // 화면에는 *폰이 멈춘다*로만 보인다(절벽 다리를 건넌 뒤 못 움직이던 것의 한 원인).
+    //
+    // **답은 1-립시츠 봉투 둘의 가운데다.** 날것 층 r에 대해
+    //   · 아래 봉투  lo(c) = min_c' ( r(c') + d(c, c') )
+    //   · 위 봉투    hi(c) = max_c' ( r(c') − d(c, c') )     (d = 체비쇼프 셀 거리)
+    // 는 둘 다 이웃끼리 한 단 넘게 안 다르고(대각선 이웃도 — 그래서 체비쇼프다) lo ≤ r ≤ hi다.
+    // **둘의 평균을 내림하면 여전히 한 단 이내**다(|x−y| ≤ 1이면 ⌊x⌋와 ⌊y⌋도 한 단 이내 —
+    // 반올림은 0.5 → 0 · 1.5 → 2가 되어 **안 된다**). 한쪽 봉투만 쓰면 고원이 층수만큼 셀씩
+    // 깎이거나 골짜기가 메워진다 — 가운데를 쓰면 **벼랑이 제자리에서 비탈이 된다.**
+    //
+    // **창은 2 × 층수면 정확하다** — 그보다 먼 셀은 r(c') + d > −L + 2L = L ≥ r(c)라 아래
+    // 봉투를 못 이긴다(위도 대칭). 그래서 **결정적이고 지역적이다**: 청크가 어느 순서로 서도
+    // 같은 셀은 같은 층을 받는다(이음매가 안 생긴다).
+    //
+    // **한 셀은 한 번만 센다** — 정점 캐시(`VertexHeightGlobal`)는 정점마다 한 번이지만 한
+    // 셀에 정점이 아홉이라, 캐시가 없으면 같은 봉투를 아홉 번 잰다.
+    // 진단(`Terrain → 0b. Probe Floor Terraces`)이 **판정과 같은 함수로** 재도록 연다.
+    public static int TerraceCellLevel(int ix, int iz)
+    {
+        var p = Profile;
+        if (p.TerraceStep <= 0.0001f || p.TerraceLevels <= 0) return 0;
+        return TerraceLevel(ix, iz);
+    }
+
+    static int TerraceLevel(int ix, int iz)
+    {
+        var p = Profile;
+        EnsureTerraceCache(p);
+
+        int L = p.TerraceLevels;
+        int gx = ix - _terOrigin, gz = iz - _terOrigin;
+        bool inside = (uint)gx < (uint)_terSize && (uint)gz < (uint)_terSize;
+        if (inside && _terFinal[gz * _terSize + gx] != short.MinValue)
+            return _terFinal[gz * _terSize + gx];
+
+        int self = RawTerraceLevel(ix, iz);
+
+        // **고리마다 넓히다 더 못 이기는 거리에서 멈춘다** — r ≥ −L이므로 거리 k의 고리는
+        // 아래 봉투를 k − L보다 낮출 수 없다(위도 대칭). 평지 한복판이면 몇 고리에서 끝난다.
+        int lo = self, hi = self;
+        for (int k = 1; k <= 2 * L; k++)
+        {
+            bool loDone = k - L >= lo, hiDone = L - k <= hi;
+            if (loDone && hiDone) break;
+
+            for (int d = -k; d <= k; d++)
+            {
+                RingPair(ix, iz, d, k, ref lo, ref hi);
+            }
+            for (int d = -k + 1; d <= k - 1; d++)
+            {
+                RingSide(ix, iz, d, k, ref lo, ref hi);
+            }
+        }
+
+        int level = FloorDiv(lo + hi, 2);
+        if (inside) _terFinal[gz * _terSize + gx] = (short)level;
+        return level;
+    }
+
+    // 고리의 위·아래 변(z = ±k)
+    static void RingPair(int ix, int iz, int d, int k, ref int lo, ref int hi)
+    {
+        Touch(RawTerraceLevel(ix + d, iz - k), k, ref lo, ref hi);
+        Touch(RawTerraceLevel(ix + d, iz + k), k, ref lo, ref hi);
+    }
+
+    // 고리의 왼·오른 변(x = ±k) — 모서리는 위에서 셌다
+    static void RingSide(int ix, int iz, int d, int k, ref int lo, ref int hi)
+    {
+        Touch(RawTerraceLevel(ix - k, iz + d), k, ref lo, ref hi);
+        Touch(RawTerraceLevel(ix + k, iz + d), k, ref lo, ref hi);
+    }
+
+    static void Touch(int r, int k, ref int lo, ref int hi)
+    {
+        if (r + k < lo) lo = r + k;
+        if (r - k > hi) hi = r - k;
+    }
+
+    static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
+
+    // **날것 층 — 봉투를 씌우기 전의 셀 값.** 봉투가 이웃을 몇 겹씩 다시 읽으므로 이것도 담는다.
+    static int RawTerraceLevel(int ix, int iz)
+    {
+        int gx = ix - _terOrigin, gz = iz - _terOrigin;
+        bool inside = (uint)gx < (uint)_terSize && (uint)gz < (uint)_terSize;
+        if (inside && _terRaw[gz * _terSize + gx] != short.MinValue)
+            return _terRaw[gz * _terSize + gx];
+
+        var p = Profile;
+        float cell = TerraceCellSize(p);
+        float cx = (ix + 0.5f) * cell;
+        float cz = (iz + 0.5f) * cell;
 
         float n = Octave(cx, cz, p.Seed * 0.7913f + 2221f, p.TerracePeriod);   // −1 ~ +1
 
@@ -264,7 +370,39 @@ public static class TerrainHeight
         // (마크의 메사가 그 모양이다). 그래서 자르는 편이 실효 범위로 정확히 나누는 것보다
         // 화면에서 낫다.
         n = Mathf.Clamp(n / TerraceSpread, -1f, 1f);
-        return Mathf.Round(n * p.TerraceLevels) * p.TerraceStep;
+        int level = Mathf.RoundToInt(n * p.TerraceLevels);
+        if (inside) _terRaw[gz * _terSize + gx] = (short)level;
+        return level;
+    }
+
+    // ── 셀 캐시 ─────────────────────────────────────────────────────────────
+    //
+    // 세계 한 변 + 봉투 창만큼 여유를 둔 정사각 격자. **값을 만든 손잡이를 같이 적어 두고**
+    // 달라지면 통째로 버린다 — 캐시를 비우는 문을 따로 두면 손잡이를 돌리는 자리
+    // (`TerrainStreamer`·`TerrainAuthoring`)가 그 문을 잊는 날 옛 계단이 남는다.
+    // 밖(세계에서 창 너머)은 안 담고 그때그때 센다 — 세계 밖은 바위라 거의 안 묻는다.
+    static short[] _terRaw, _terFinal;
+    static int _terOrigin, _terSize;
+    static int _terSeed = int.MinValue, _terLevels, _terCells;
+    static float _terPeriod;
+
+    static void EnsureTerraceCache(TerrainProfile p)
+    {
+        int cells = Mathf.RoundToInt(TerraceCellSize(p) / TerrainGrid.VertexSpacing);
+        if (_terRaw != null && _terSeed == p.Seed && _terLevels == p.TerraceLevels &&
+            _terCells == cells && _terPeriod == p.TerracePeriod) return;
+
+        _terSeed = p.Seed; _terLevels = p.TerraceLevels; _terCells = cells; _terPeriod = p.TerracePeriod;
+
+        // 층은 short에 담는다 — short.MinValue가 *"아직 안 셌다"*다.
+        int L = p.TerraceLevels;
+        int worldCells = Mathf.CeilToInt(TerrainGrid.WorldSize / TerraceCellSize(p));
+        _terOrigin = -2 * L;
+        _terSize   = worldCells + 4 * L;
+        _terRaw    = new short[_terSize * _terSize];
+        _terFinal  = new short[_terSize * _terSize];
+        System.Array.Fill(_terRaw,   short.MinValue);
+        System.Array.Fill(_terFinal, short.MinValue);
     }
 
     // 펄린이 실제로 오가는 폭. 손잡이로 안 낸다 — **층수가 곧 상한**이라는 약속을 지키는

@@ -375,7 +375,7 @@ public static class UnderworldSetup
 
     // ── 지상 굽기 산출물 지우기 ─────────────────────────────────────────────
 
-    [MenuItem("DungeonColony/World/0e. Clear Surface Bakes")]
+    // **메뉴에서 뗐다**(2026-09-26) — 지상 시절을 치우는 단계라 `1. Rebuild Underworld`가 직접 부른다. 따로 누를 일이 없다.
     public static void ClearSurfaceBakes()
     {
         // **높이맵과 마스크** — 비가 깎은 지형이다. 지하에는 비가 안 온다.

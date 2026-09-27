@@ -87,8 +87,29 @@ public class TerrainStreamer : MonoBehaviour
         RockMap.Clear();
         TerrainHeight.ForgetLeveled();
         GroundLevel.Clear();
+        Chasm.ClearRuntime();
+
+        if (Application.isPlaying) DropEditorPreview();
 
         Apply();
+    }
+
+    // ── 에디터가 띄운 미리보기 지형은 판에 들이지 않는다 (2026-09-26) ─────────
+    //
+    // `Authoring → Show Terrain Here`가 씬 뷰에 3×3 지형을 띄우는데(**콜라이더까지 단다** — 프리팹을 딛고 놓으려고),
+    // 그것이 씬에 저장된 채 Play에 들어오면 **런타임 청크와 겹쳐 선다.** 게다가 띄운 그때의 높이로 구워져 있어
+    // 코드가 높이를 바꾸면(이날 계단 이완) 그대로 뒤처진다 — 폰이 청크 경계(z = 192)에서 **함수는 0m인데 콜라이더는
+    // 2m인 벽**에 막혀 섰다(`Chunk_2_2` ↔ `Preview_2_3`, 이동진단의 *"발밑 지형"* 줄이 갈랐다).
+    // 이제 판이 열릴 때 치우고 알린다. 띄우는 쪽도 씬에 안 남게 한다(`WorldSiteAuthoring.ShowHere`).
+    public const string EditorPreviewRoot = "__TerrainPreview";
+
+    static void DropEditorPreview()
+    {
+        var root = GameObject.Find(EditorPreviewRoot);
+        if (root == null) return;
+        Debug.LogWarning($"[지형] 에디터 미리보기 지형(`{EditorPreviewRoot}`)이 씬에 남아 있어 판에서 치웠다 — " +
+                         "런타임 청크와 겹쳐 옛 높이의 벽이 된다. 씬에서 `Authoring → Hide Terrain`으로 지우고 저장할 것.");
+        Destroy(root);
     }
 
     void OnDestroy()
@@ -232,6 +253,10 @@ public class TerrainStreamer : MonoBehaviour
             if (TerrainGrid.InWorld(c)) _wanted.Add(c);
         }
 
+#if UNITY_EDITOR
+        AddSceneViewChunks(center);
+#endif
+
         // ② 벗어난 것 버리기 — **먼저 버린다.** 나중에 버리면 잠깐 둘 다 올라가 있다.
         //
         // **여기도 한 프레임에 몇 개만이다.** 걸어 다닐 때는 한둘씩이라 티가 안 나지만,
@@ -266,6 +291,49 @@ public class TerrainStreamer : MonoBehaviour
     }
 
     static int Sqr(Vector2Int v) => v.x * v.x + v.y * v.y;
+
+#if UNITY_EDITOR
+    // ── 판 중에 씬 뷰로 둘러볼 때 (2026-09-28) ──────────────────────────────
+    //
+    // 사용자: *"게임을 실행한 상태에서 … 씬에서 뭔가를 조절해보고 싶어서 카메라를 옮기는거야 메인 카메라말고
+    // 그냥 씬 카메라"* — **씬 뷰로 가면 땅이 없었다.** 여기는 메인 카메라 둘레만 세우고, 세계가 1,024m ·
+    // 청크 64m가 된 뒤로 그 둘레가 세계의 일부뿐이다(청크가 256m였을 때는 반경만으로 세계가 거의 다 덮여
+    // *"원래는 됐던"* 것처럼 보였다).
+    //
+    // **씬 뷰 둘레도 세운다 — 에디터에서만.** 땅이 서면 벽·안개·뿌린 것이 `ChunkLoaded`를 듣고 따라온다.
+    // **판정 축은 안 옮긴다** — `SimLocality`(누가 도나)는 여전히 메인 카메라다. 둘러보려고 씬 뷰를 옮겼다고
+    // 거기 적이 깨어나면 안 된다.
+    //
+    // **씬 뷰를 만지는 동안만** — 게임 뷰를 누르면 내려놓는다. 씬 뷰의 초점만 보면 인스펙터에서 값을 고치는
+    // 순간 땅이 사라진다(그게 사용자가 씬 뷰로 간 이유다).
+    [Tooltip("에디터에서 판이 도는 동안 씬 뷰가 보는 곳 둘레에도 땅을 세운다(판정은 여전히 메인 카메라).")]
+    [SerializeField] bool followSceneView = true;
+
+    bool _sceneViewActive;
+
+    void AddSceneViewChunks(Vector2Int mainCenter)
+    {
+        if (!followSceneView) return;
+
+        var focused = UnityEditor.EditorWindow.focusedWindow;
+        if (focused is UnityEditor.SceneView)             _sceneViewActive = true;
+        else if (focused != null && focused.GetType().Name == "GameView") _sceneViewActive = false;
+        if (!_sceneViewActive) return;
+
+        var view = UnityEditor.SceneView.lastActiveSceneView;
+        if (view == null) return;
+
+        var sc = TerrainGrid.ChunkAt(view.pivot);
+        if (sc == mainCenter) return;   // 같은 자리 — 더할 것이 없다
+
+        for (int dz = -radius; dz <= radius; dz++)
+        for (int dx = -radius; dx <= radius; dx++)
+        {
+            var c = new Vector2Int(sc.x + dx, sc.y + dz);
+            if (TerrainGrid.InWorld(c) && !_wanted.Contains(c)) _wanted.Add(c);
+        }
+    }
+#endif
 
     int GroundLayer => Mathf.Clamp(terrainLayer, 0, 31);
 
@@ -344,6 +412,7 @@ public class TerrainStreamer : MonoBehaviour
 
         var h = FillHeights(chunk);
         data.SetHeights(0, 0, h);
+        Chasm.ApplyHoles(data, chunk);
 
         // **텍스처도 같이 깐다** — 경사가 바뀌었으므로(고른 땅은 평평해진다) 안 다시 깔면
         // 암반 무늬가 **없어진 비탈에 그대로 남는다.**
@@ -392,6 +461,8 @@ public class TerrainStreamer : MonoBehaviour
         }
 
         data.SetHeights(0, 0, h);
+        Chasm.ApplyHoles(data, chunk);   // 절벽 — 그릇을 돌려 쓰므로 없는 청크도 한 번 묻는다
+        Chasm.PrepareMaterial(terrain.materialTemplate);
 
         // **텍스처를 깐다** — 높이·경사·바이옴에서 결정적으로. 저장되는 것은 없다.
         TerrainSplat.Apply(data, chunk, h);

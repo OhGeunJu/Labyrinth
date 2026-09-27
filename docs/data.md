@@ -447,3 +447,37 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 - **`ItemId` 문자열 경로를 낸 곳**(에셋 참조와 나란히 두고 `Resolve()`가 고른다): `MerchantPoolEntry` · `LoadoutData`(장비·주머니) · **`ResearchData.Ingredient`**(2026-08-24). **읽는 쪽은 반드시 `Resolve()`를 쓸 것** — `Item`을 직접 읽으면 JSON 재료가 조용히 null이다. 실제로 공방 연구 다섯이 천·약초·붕대·두꺼운 가죽을 요구하는데 전부 JSON이라, 도구가 `DataManager.GetItem`으로 넣으려다 **에디터에서는 레지스트리가 안 서 있어 재료가 통째로 비었다** — 화면에는 *"재료 없음"*으로 떠서 틀린 줄도 몰랐다. **에디터 도구는 `AssetDatabase`로 먼저 찾고 없으면 `ItemId`를 적는다.**
 - **JSON이 나은 것**: 레시피로만 만들고 쓰는 것(무기·방어구 대부분). 모드가 고치거나 덮어쓸 수 있다. 2026-08-02에 옛 장비 16종을 이 기준으로 JSON에 옮겼다(참조 0건 실측 후).
 - **모드 자산(`ModAssets`)**: JSON의 `iconPath`/`modelPath`를 **그 콘텐츠 폴더 → 에셋 번들 → Resources** 순으로 찾는다. **1번이 본체** — 그림은 PNG/JPG, 모델은 **`.obj`(+`.mtl`+텍스처)** 를 폴더에 넣기만 하면 실린다(`ObjModel`이 직접 파싱). `.fbx`는 런타임 해석 불가 → 그렇게 알려 준다. 번들은 OBJ로 표현 못 하는 것(프리팹·뼈대·애니메이션)용 보조 경로(`DungeonColony → Build Mod AssetBundle`). 폴더 밖(`../`) 경로는 무시. 예시는 `StreamingAssets/Mods/ExampleMod/`. 상세 `docs/data.md`.
+
+
+# 자원 묶음 · CraftSkill · ItemQuality — CLAUDE.md에서 내려온 원문 (2026-09-25)
+
+CLAUDE.md를 절반 아래로 줄이며 옮겼다(사용자). **원문 그대로다** — CLAUDE.md에는 절마다 몇 줄과 포인터만 남았다.
+
+### 자원 — 종류는 아이템, 묶음만 enum (`ResourceGroup`)
+
+**`ResourceType` enum은 없다**(2026-08-02 삭제). 그 22개 값은 `ResourceItemData` 에셋과 정확히 1:1이라 한 자원에 이름이 셋(에셋 Id · enum 값 · 표시명) 있는 꼴이었고, 표시명 테이블도 두 벌이었다.
+
+- **무슨 자원인가** = `ItemData` 참조. `BuildingData.CostItem` / `MinionData.SummonCostItem` / `ResourceNodeData.DropItem` / `SettlementManager.OfflineYieldEntry.Item`.
+- **어느 묶음인가** = `ResourceGroup { Stone, Ore, Gem, Ingot, Wood, Currency, Bone, Hide, Cloth }` — `ResourceItemData.Group`이 직접 들고 있다. **값은 꼬리에 붙인다**(정수 직렬화). `Hide`·`Cloth`는 2026-09-06에 붙였다: 그전에는 생가죽·가죽·두꺼운가죽·천·두꺼운천 **여섯이 전부 `Wood`**여서 **창고를 "목재"로 걸어 두면 생가죽이 들어갔다.** 저작 실수가 아니라 **자리가 없던 것**이고, 묶음은 콘텐츠가 아니라 화면을 나누는 축이라 자리를 내는 편이 싸다. 딸린 이득 하나: `ResourceNodeData.IsTree`가 `Wood` 묶음에서 파생되므로 **"생가죽을 떨구는 노드는 나무"가 더는 참이 아니다.** 창고 필터·UI 분류 전용이고 **콘텐츠가 아니라 화면을 나누는 축**이라 enum으로 남겼다.
+- 표시명은 `ItemName` 한 곳. `ResourceGroupExt.DisplayName()`은 묶음 이름만 답한다.
+- **노드의 범주는 `DropItem`에서 파생된다 — 저작하지 않는다**(`ResourceNode.NeededCategory` 하나가 답한다). `IsTree`(목재 묶음) → 벌목 · 나머지 → 채굴. 노드마다 손으로 적게 하면 **저작 실수 하나가 "찍히는데 아무도 안 가는" 노드**를 만들고 화면에는 아무 표시도 안 난다.
+- 모드가 새 자원을 넣는 법: 아이템 JSON에 `"type": "resource", "resourceGroup": "Ore"`. 옛 `resourceType`도 받아 묶음으로 옮기고 경고한다.
+
+
+### CraftSkill 타입
+
+Labor, WeaponCrafting, **ArmorCrafting**(갑주 제작대 — 금속 갑옷), Cooking, Alchemy, Research, Smelting, Stonecutting, Woodworking, Gemcutting, **Tailoring**(재봉대 — 가죽·천 갑옷)
+
+**갑옷 작업대가 둘인 이유**(2026-08-25): 하나였을 때는 **무엇으로 잠글지가 성립하지 않았다** — 가죽 모자부터 강철 투구까지 한 대에서 나오니 *재봉으로 열면* 실만 배운 사람이 강철 투구를 두들기고, *주조로 열면* 쇳물을 다루기 전에는 가죽옷 한 벌 못 만든다(초반이 통째로 막힌다). **스킬을 하나 내는 것으로 갈라진다** — 레시피의 `requiredSkillType`이 이미 어느 작업대에 걸릴지를 정한다(`CraftingTable.tableType`). 재봉대 ← 직조 · 갑주 제작대 ← 주조.
+
+### ItemQuality
+
+Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에픽) / Legendary(전설)
+
+`StatMultiplier()`: 1.0 / 1.2 / 1.5 / 2.0 / 2.5 / 3.0. 같은 등급끼리만 스택.
+`ItemInstance.DisplayName` — `[희귀] 철검` 형태 표시명
+
+**등급은 장비만 갖는다 — `ItemData.HasQuality`**(`WeaponData`·`ArmorData`만 참). "같은 물건이 얼마나 잘 만들어졌나"가 성립하는 것은 무기·방어구뿐이다 — 잘 만든 빵이나 잘 만든 붕대는 없고, **약의 효능 차이는 등급이 아니라 별개 아이템**이다(넝마 ↔ 구급낭). `CraftJob`이 장비에만 등급을 굴리는 것도 같은 규칙이고, 이제 그 물음에 `is WeaponData`가 아니라 **물건이 답한다**(`TypeName`과 같은 자리 — 밖에서 갈라 쓰면 종류가 늘 때 분기를 전부 찾아야 하고 하나 빠뜨리면 조용히 틀린다).
+
+**`Inventory.TryAdd`/`CanFit`이 강제한다** — 등급 없는 물건의 등급은 `Common`으로 눌린다. 안 그러면 저작 실수 하나(상인 목록에 "희귀 붕대", 전리품 표에 "고급 빵")로 **같은 물건이 두 뭉치로 갈라진다**(스택은 같은 등급끼리만 합쳐진다) — 창고가 조각나고, 등급을 안 넘기고 꺼내는 코드에게 그 뭉치는 없는 것이 된다. **들어오는 문에서 한 번 누른다**: 읽는 쪽마다 묻게 하면 반드시 한 곳이 빠진다.
+

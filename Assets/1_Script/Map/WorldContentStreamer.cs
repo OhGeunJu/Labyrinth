@@ -133,6 +133,8 @@ public class WorldContentStreamer : MonoBehaviour
         _placedUp.Clear();
         _content.Clear();
         _taken.Clear();
+        _regrowAt.Clear();
+        _liveIds.Clear();
         _foot.Clear();
     }
 
@@ -191,12 +193,14 @@ public class WorldContentStreamer : MonoBehaviour
 
     // ── 뿌리기 ──────────────────────────────────────────────────────────────
 
-    void Scatter(Vector2Int chunk, List<GameObject> into)
+    // `regrowOnly` — **이미 선 청크에 다시 날 것만 더한다**(`RegrowLive`). 자리 판정은 처음과 똑같이 다시 돈다
+    // (결정적이라 같은 답이 나온다) — 지금 서 있는 것만 건너뛴다(`_liveIds`). 결산은 안 센다.
+    void Scatter(Vector2Int chunk, List<GameObject> into, bool regrowOnly = false)
     {
         _placed.Clear();
 
         if (_census == null || _census.Length != scatter.Length) _census = new Census[scatter.Length];
-        bool census = _censusChunks < CensusChunks;
+        bool census = !regrowOnly && _censusChunks < CensusChunks;
 
         for (int r = 0; r < scatter.Length; r++)
         {
@@ -294,6 +298,7 @@ public class WorldContentStreamer : MonoBehaviour
                     // 이미 딴 것의 순번이 다른 것을 가리킨다.
                     long mid = Id(chunk, r, i * ClusterStride + j);
                     if (StillTaken(mid)) continue;
+                    if (_liveIds.Contains(mid)) continue;   // 지금 서 있다(다시 뿌릴 때)
 
                     float mx = spots[j].x, mz = spots[j].y;
                     float mh = TerrainHeight.At(mx, mz);
@@ -326,7 +331,9 @@ public class WorldContentStreamer : MonoBehaviour
                     // 되찾을 수 있지만, **저작이 바뀌면 그 순번이 다른 규칙을 가리킨다.**
                     var tag = go.AddComponent<ScatterTag>();
                     tag.Id         = mid;
+                    tag.Chunk      = chunk;
                     tag.RegrowDays = rule.RegrowDays;
+                    _liveIds.Add(mid);
 
                     into.Add(go);
                 }
@@ -714,10 +721,60 @@ public class WorldContentStreamer : MonoBehaviour
     //
     // **이미 적힌 것보다 늦게 덮어쓰지 않는다** — 같은 id가 두 번 오는 일은 없어야 하지만,
     // 온다면 그건 *두 번 캤다*는 뜻이라 나중 것이 맞다. 그냥 덮어쓴다.
-    public static void MarkTaken(long id, float regrowDays)
-        => _taken[id] = regrowDays > 0f
-                      ? GameTimeManager.CurrentDay + regrowDays
-                      : float.PositiveInfinity;
+    public static void MarkTaken(long id, float regrowDays, Vector2Int chunk)
+    {
+        float back = regrowDays > 0f ? GameTimeManager.CurrentDay + regrowDays : float.PositiveInfinity;
+        _taken[id] = back;
+        if (regrowDays > 0f) _regrowAt[id] = (back, chunk);
+    }
+
+    // ── 선 자리에서 다시 난다 (2026-09-28) ──────────────────────────────────
+    //
+    // 사용자: *"버섯, 나무 캐고나면 나중에 다시 자라게"*. 버섯은 09-06부터 `RegrowDays`가 있었는데 **확인하는 자리가
+    // 청크를 새로 세울 때(`Load`) 하나뿐이었다** — 기지처럼 늘 로드돼 있는 곳에서는 날짜가 지나도 **영영 안 났다.**
+    // 딴 자리 바로 옆에 사는 것이 이 게임의 기지인데, 정확히 거기서만 안 자랐다.
+    //
+    // 그래서 **서 있는 청크도 가끔 훑는다.** 날짜가 된 것이 있는 청크만 다시 뿌린다(`Scatter(…, regrowOnly)`) —
+    // 뿌리기가 결정적이므로 **같은 자리에 같은 것**이 선다. 막혔으면(그 자리에 무언가 지었으면) 판정이 거절한다.
+    //
+    // **다시 날 것만 따로 든다**(`_regrowAt`) — `_taken`에는 영영 안 나는 것(바닥 돌 등)이 판 내내 쌓이므로 그걸 훑지 않는다.
+    static readonly Dictionary<long, (float day, Vector2Int chunk)> _regrowAt = new();
+
+    // 지금 세계에 서 있는 뿌린 것의 순번 — 다시 뿌릴 때 **두 벌** 세우지 않으려고.
+    static readonly HashSet<long> _liveIds = new();
+
+    public static void Forget(long id) => _liveIds.Remove(id);
+
+    const float RegrowCheckSeconds = 3f;   // 실시간 — 날짜는 하루에 한 번 바뀌므로 촘촘할 필요가 없다
+    float _nextRegrowCheck;
+    static readonly HashSet<Vector2Int> _dueChunks = new();
+    static readonly List<long>          _dueIds    = new();
+
+    void Update()
+    {
+        if (Time.unscaledTime < _nextRegrowCheck || _regrowAt.Count == 0) return;
+        _nextRegrowCheck = Time.unscaledTime + RegrowCheckSeconds;
+        RegrowLive();
+    }
+
+    void RegrowLive()
+    {
+        _dueChunks.Clear();
+        _dueIds.Clear();
+
+        int today = GameTimeManager.CurrentDay;
+        foreach (var kv in _regrowAt)
+        {
+            if (today < kv.Value.day) continue;
+            _dueIds.Add(kv.Key);
+            if (_live.ContainsKey(kv.Value.chunk)) _dueChunks.Add(kv.Value.chunk);
+            // 안 선 청크는 **세워질 때** `Load`가 알아서 다시 낸다 — 여기서는 목록에서만 뺀다.
+        }
+        foreach (var id in _dueIds) _regrowAt.Remove(id);
+
+        foreach (var c in _dueChunks)
+            if (_live.TryGetValue(c, out var list)) Scatter(c, list, regrowOnly: true);
+    }
 
     // 아직 안 났나. **여기서 지운다** — 훑는 김에 만료된 것을 걷어내지 않으면 딸 때마다
     // 사전이 자라기만 한다(한 판 내내 딴 버섯이 전부 남는다).
@@ -735,6 +792,7 @@ public class WorldContentStreamer : MonoBehaviour
 public class ScatterTag : MonoBehaviour
 {
     [HideInInspector] public long Id;
+    [HideInInspector] public Vector2Int Chunk;   // 다시 날 때 어느 청크를 훑을지
 
     // 딴 뒤 며칠 만에 다시 나나(0이면 안 난다). **뿌릴 때 규칙에서 받아 든다** —
     // 파괴되는 시점에 규칙 배열을 되짚으면 그 사이 저작이 바뀌었을 때 엉뚱한 값을 쓴다.
@@ -746,6 +804,7 @@ public class ScatterTag : MonoBehaviour
 
     void OnDestroy()
     {
-        if (!Unloading && Application.isPlaying) WorldContentStreamer.MarkTaken(Id, RegrowDays);
+        WorldContentStreamer.Forget(Id);
+        if (!Unloading && Application.isPlaying) WorldContentStreamer.MarkTaken(Id, RegrowDays, Chunk);
     }
 }

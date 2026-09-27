@@ -140,9 +140,15 @@ public class PawnMover : MonoBehaviour
     // 캡슐 높이(1.8m)에 견주면 여전히 한참 낮아 컨트롤러가 싫어할 값도 아니다.
     public const float StepUp = 0.5f;
 
-    // 자연 지형에서 한 칸(1m) 오를 때 허용되는 높이차(m). 비탈은 턱이 아니라서
-    // `slopeLimit`(45도)가 판단한다 — 1m당 1m가 그 각이다.
-    public const float SlopeRise = 1.0f;
+    // **폰이 걸어 오르는 비탈의 한계 각(도)** — `CharacterController.slopeLimit`에 `Awake`가 밀어 넣는다.
+    // 프리팹마다 45로 들고 있었는데(`StepUp`과 같은 사고 자리 — 프리팹이 각자 들면 길찾기와 갈린다) 사용자가
+    // *"폰이 높은 곳을 못 올라가니 오를 수 있는 각도를 수정하자"*(2026-09-26)고 해 올렸다. 계단 바닥의 한 단은
+    // 26.6°이고 층 모서리가 만나는 삼각형은 35°까지 선다 — 45°는 여유가 10°뿐이라 조향이 비스듬히 들어가면
+    // 미끄러졌다.
+    public const float SlopeLimit = 60f;
+
+    // 자연 지형에서 한 칸(1m) 오를 때 허용되는 높이차(m) — **위 각도에서 나온다**(길찾기가 몸과 같은 답을 쓴다).
+    public static readonly float SlopeRise = Mathf.Tan(SlopeLimit * Mathf.Deg2Rad) * 0.95f;
 
     // **폰의 몸통 반경(m).** 프리팹에는 0.5로 저작돼 있었는데, 그러면 **지름이 정확히 한 칸**이라
     // **한 칸짜리 틈은 어디도 못 지나간다** — 오두막 문간이 딱 그 자리였다(틈 1.04m, 몸 1.00m).
@@ -177,12 +183,16 @@ public class PawnMover : MonoBehaviour
     //
     // **이 값이 계단의 뜻을 정한다** — 크게 잡을수록 계단 없이도 잘 다니고, 작게
     // 잡을수록 어디로 오르내릴지를 플레이어가 짓게 된다.
-    public const float DropDown = 1.2f;
+    //
+    // **비탈 한도보다 작으면 안 된다**(2026-09-26) — 걸어 오른 비탈을 못 내려와 되돌아올 수 없게 된다.
+    // (`SlopeRise`보다 뒤에 선언해야 한다 — 정적 초기화는 적힌 순서다.)
+    public static readonly float DropDown = Mathf.Max(1.2f, SlopeRise);
 
     void Awake()
     {
         _cc = GetComponent<CharacterController>();
         _cc.stepOffset = StepUp;
+        _cc.slopeLimit = SlopeLimit;
         _cc.radius     = BodyRadius;
 
         // **몸이 얼마나 굵은가의 답은 한 벌이다**(2026-09-08).
@@ -394,8 +404,36 @@ public class PawnMover : MonoBehaviour
         Vector3 pos = transform.position;
         MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
                                       pos, _finalGoal, _localPath != null, gameObject, _cc,
-                                      RoutePoints, SelectSteeringTarget(pos));
+                                      RoutePoints, SelectSteeringTarget(pos), DescribeLastSideHit(pos));
         StopMovement();
+    }
+
+    // ── 몸이 옆으로 부딪힌 마지막 면 — 진단용 ───────────────────────────────
+    //
+    // **2026-09-26** — 청크 경계(z = 192)에서 폰이 멈췄는데 포기 로그가 *"앞을 막은 것: 없음(물리적으로 안 막힘)"*
+    // 이었다. 그 탐침은 **허리 높이(0.8m)의 구**라 발밑의 턱·지형 이음매는 못 본다. 컨트롤러가 실제로 부딪힌 것은
+    // 컨트롤러만 안다 — 그래서 여기서 받아 적는다. **발을 딛는 면(기울기가 `SlopeLimit` 안)은 안 적는다** — 걷는
+    // 내내 땅에 닿으므로 그걸 적으면 진짜 범인이 묻힌다.
+    Collider _sideHit;
+    Vector3  _sideHitPoint, _sideHitNormal;
+    float    _sideHitTime = -999f;
+
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (hit.normal.y >= Mathf.Cos(SlopeLimit * Mathf.Deg2Rad)) return;   // 딛는 면
+        _sideHit       = hit.collider;
+        _sideHitPoint  = hit.point;
+        _sideHitNormal = hit.normal;
+        _sideHitTime   = Time.time;
+    }
+
+    string DescribeLastSideHit(Vector3 pos)
+    {
+        if (_sideHit == null || Time.time - _sideHitTime > 2f) return "최근 2초 없음";
+        float slope = Vector3.Angle(_sideHitNormal, Vector3.up);
+        return $"`{_sideHit.name}`({LayerMask.LayerToName(_sideHit.gameObject.layer)}, {_sideHit.GetType().Name}) " +
+               $"면 기울기 {slope:F0}° · 발에서 {_sideHitPoint.y - pos.y:+0.00;-0.00}m · " +
+               $"@ ({_sideHitPoint.x:F2}, {_sideHitPoint.z:F2}) · {Time.time - _sideHitTime:F1}초 전";
     }
 
     // **못 서는 자리를 겨누면 폰은 영영 도착하지 못한다.**
@@ -1157,7 +1195,10 @@ public class PawnMover : MonoBehaviour
         if (!RockMap.Enabled) return false;
 
         var map = MapManager.Instance;
-        return map != null && RockMap.IsRock(map.WorldToTile(p));
+        if (map == null) return false;
+        var t = map.WorldToTile(p);
+        // **절벽도 벽처럼 막는다**(다리가 깔린 칸은 연다) — 안 막으면 땅이 안 선 곳에서 걷다 허공으로 들어간다.
+        return RockMap.IsRock(t) || Chasm.Blocks(t);
     }
 
     // **한 축씩 미끄러뜨린다** — 컨트롤러의 collide-and-slide와 같은 모양이다. 통째로 막으면

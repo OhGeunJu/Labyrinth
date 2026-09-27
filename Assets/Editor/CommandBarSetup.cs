@@ -14,8 +14,8 @@ using UnityEngine.UI;
 //   1. **모드 바** — `채굴` 칸을 `명령`으로(이름 · `ModeBarUI.Mode.Command`), `운반` 칸을 지우고,
 //      **빈 틈을 당겨 닫는다.** 첫 판은 가로로만 당겨서 **세로 바에 구멍이 남았다**(사용자: *"모양이 이상해"*) —
 //      이제 칸들이 어느 축으로 늘어섰는지를 **자리에서 잰다.**
-//   2. **도구 바** — 넷째 타일(`취소`)이 없으면 셋째를 복제해 **한 칸 뒤에** 세우고 `fourthItem`에 물린다.
-//      판이 점에 앵커돼 있으면 그만큼 늘린다(첫 칸 쪽 모서리는 그대로).
+//   2. **도구 바** — 칸 목록이 `ModeToolBarUI.CommandTiles`(일곱)보다 적으면 마지막 칸을 복제해 **한 칸씩 뒤에**
+//      세운다. 판이 점에 앵커돼 있으면 그만큼 늘린다(첫 칸 쪽 모서리는 그대로).
 //   3. **스탯 창 키** — C는 명령의 `취소`가 가져갔다. 씬이 값을 들고 있어 여기서 U로 바꾼다.
 //   4. **하단 가운데로**(사용자: *"UI 위치가 좀 거슬리네 … 하단 가운데에 만들자"* — 켄시의 아이콘 줄) — 모드 바를
 //      화면 아래 가운데 **가로 한 줄**로, 도구 바를 그 **바로 위 가운데**로. 칸 크기는 지금 칸에서 잰다.
@@ -29,6 +29,9 @@ public static class CommandBarSetup
     static void Run()
     {
         var log = new List<string>();
+        Wake<ModeBarUI>("모드 바", log);
+        Wake<ModeToolBarUI>("도구 바", log);
+        HoistOffPanel(log);
         ModeBar(log);
         ToolBar(log);
         StatsKey(log);
@@ -36,6 +39,65 @@ public static class CommandBarSetup
 
         EditorSceneManager.MarkAllScenesDirty();
         Debug.Log("[명령] " + (log.Count > 0 ? string.Join(" · ", log) : "이미 다 돼 있다") + " — **씬을 저장할 것.**");
+    }
+
+    // ── 0. 뿌리를 켠다 ───────────────────────────────────────────────────────
+    //
+    // **뿌리는 늘 켜져 있고 판만 열리고 닫힌다**(창 규약) — 도구 바는 `Update`에서 명령 모드를
+    // 물어 판을 켜므로, 뿌리가 꺼지면 **명령을 눌러도 아무것도 안 뜨고 경고도 없다**(2026-09-25,
+    // 사용자: *"명령 눌러도 뭐가 안보이는데 … 패널들을 다 꺼놔서 그런건지"*). 씬이 바이너리라 밖에서
+    // 들여다볼 수도 없어서, 여기서 켜고 **무엇을 켰는지 말한다.** 판(자식)은 안 건드린다 — 그건 런타임이 켠다.
+    static void Wake<T>(string label, List<string> log) where T : Behaviour
+    {
+        var ui = Object.FindFirstObjectByType<T>(FindObjectsInactive.Include);
+        if (ui == null) return;
+
+        for (var t = ui.transform; t != null; t = t.parent)
+        {
+            if (t.GetComponent<Canvas>() != null && t.parent == null) break;   // 캔버스 자신은 안 건드린다
+            if (t.gameObject.activeSelf) continue;
+            Undo.RecordObject(t.gameObject, "명령");
+            t.gameObject.SetActive(true);
+            log.Add($"{label} `{t.name}` 켬");
+        }
+        if (!ui.enabled)
+        {
+            Undo.RecordObject(ui, "명령");
+            ui.enabled = true;
+            log.Add($"{label} 컴포넌트 켬");
+        }
+    }
+
+    // **컴포넌트는 판 위가 아니라 뿌리에 산다.** 판을 끄는 것이 기본 상태인데(창 규약), 도구 바가
+    // 판 자신이나 판 안쪽에 붙어 있으면 **판을 끄는 순간 `Update`가 죽어 다시는 판을 못 켠다** —
+    // 명령을 눌러도 아무것도 안 뜨고 경고도 없다. 판의 부모로 옮긴다(배선은 그대로 따라간다).
+    // 어떻게 생겼는지를 먼저 적는다 — 씬이 바이너리라 **이 한 줄이 밖에서 보는 유일한 창이다.**
+    static void HoistOffPanel(List<string> log)
+    {
+        var bar = Object.FindFirstObjectByType<ModeToolBarUI>(FindObjectsInactive.Include);
+        if (bar == null) { log.Add("도구 바 컴포넌트가 씬에 없음"); return; }
+
+        var so    = new SerializedObject(bar);
+        var panel = so.FindProperty("panel").objectReferenceValue as GameObject;
+
+        string Path(Transform t)
+        {
+            var parts = new List<string>();
+            for (; t != null; t = t.parent) parts.Insert(0, t.name + (t.gameObject.activeSelf ? "" : "(꺼짐)"));
+            return string.Join("/", parts);
+        }
+        Debug.Log($"[명령] 도구 바 컴포넌트: {Path(bar.transform)} · 판: {(panel != null ? Path(panel.transform) : "안 물림")}");
+
+        if (panel == null) { log.Add("도구 바 `panel`이 안 물렸다"); return; }
+        if (!bar.transform.IsChildOf(panel.transform)) return;   // 판 밖(뿌리)에 있다 — 정상
+
+        var host = panel.transform.parent;
+        if (host == null) { log.Add("판에 부모가 없어 도구 바를 못 옮김"); return; }
+
+        UnityEditorInternal.ComponentUtility.CopyComponent(bar);
+        UnityEditorInternal.ComponentUtility.PasteComponentAsNew(host.gameObject);
+        Undo.DestroyObjectImmediate(bar);
+        log.Add($"도구 바 컴포넌트를 판(`{panel.name}`)에서 `{host.name}`로 옮김");
     }
 
     // ── 1. 모드 바 ───────────────────────────────────────────────────────────
@@ -154,63 +216,50 @@ public static class CommandBarSetup
         foreach (var (t, p) in kids) { Undo.RecordObject(t, "명령"); t.position = p; }
     }
 
-    // ── 2. 도구 바 — 넷째·다섯째 타일 ────────────────────────────────────────
+    // ── 2. 도구 바 — 모자란 칸을 세운다 ─────────────────────────────────────
     //
-    // **한 칸씩 이어 붙인다**(2026-09-24에 다섯째가 늘었다). 넷째만 세우던 코드를 되풀이하지
-    // 않고 *"마지막 칸 다음에 하나"*를 반복한다 — 다음 칸이 늘어도 이름 하나만 더 적는다.
+    // **칸은 목록이다**(2026-09-25 — 도구가 여섯이 되며 서수 필드를 넘었다). 옛 필드 다섯은
+    // `ModeToolBarUI.AbsorbLegacy`가 목록으로 옮기고(런타임과 **같은 함수**다), 모자란 만큼
+    // *"마지막 칸 다음에 하나"*를 되풀이한다. 무엇이 어느 칸인지는 런타임이 순서로 정한다.
     static void ToolBar(List<string> log)
     {
         var bar = Object.FindFirstObjectByType<ModeToolBarUI>(FindObjectsInactive.Include);
         if (bar == null) { log.Add("도구 바 없음"); return; }
 
-        var so = new SerializedObject(bar);
+        Undo.RecordObject(bar, "명령");
+        if (bar.AbsorbLegacy()) { EditorUtility.SetDirty(bar); log.Add("도구 바 칸을 목록으로 옮김"); }
 
-        // 앞 칸이 없으면 뒤 칸을 못 세운다(자리를 그 보폭에서 낸다).
-        if (so.FindProperty("cancelItem").objectReferenceValue == null)
-        { log.Add("도구 바 셋째 타일 없음"); return; }
+        var so    = new SerializedObject(bar);
+        var list  = so.FindProperty("tiles");
 
-        // (필드 이름, 오브젝트 이름) — **순서가 곧 칸 순서다.**
-        var wanted = new[]
+        for (int i = list.arraySize - 1; i >= 0; i--)
+            if (list.GetArrayElementAtIndex(i).objectReferenceValue == null) list.DeleteArrayElementAtIndex(i);
+
+        if (list.arraySize == 0) { so.ApplyModifiedProperties(); log.Add("도구 바에 칸이 하나도 없다"); return; }
+
+        while (list.arraySize < ModeToolBarUI.CommandTiles)
         {
-            ("fourthItem", "Tile_Level"),
-            ("fifthItem",  "Tile_Cancel"),
-        };
-
-        foreach (var (field, goName) in wanted)
-        {
-            var prop = so.FindProperty(field);
-            if (prop == null) { log.Add($"`{field}` 필드 없음"); continue; }
-            if (prop.objectReferenceValue != null) continue;
-
-            if (!AppendTile(so, goName, out var added)) { log.Add("도구 바 칸을 못 세웠다"); break; }
-            prop.objectReferenceValue = added;
-            so.ApplyModifiedProperties();
-            log.Add($"도구 바에 `{goName}` 칸 세움");
+            if (!AppendTile(list, $"Tile_{list.arraySize + 1}", out var added)) { log.Add("도구 바 칸을 못 세웠다"); break; }
+            list.arraySize++;
+            list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = added;
+            log.Add($"도구 바에 `{added.name}` 칸 세움");
         }
+        so.ApplyModifiedProperties();
     }
 
-    // **지금 물려 있는 마지막 칸 다음에 하나를 복제해 놓는다.** 보폭은 앞의 두 칸 사이에서
+    // **목록의 마지막 칸 다음에 하나를 복제해 놓는다.** 보폭은 마지막 두 칸 사이에서
     // 재고(레이아웃 묶음이면 순서만 맞춘다), 판이 점에 앵커돼 있으면 그만큼 늘인다.
-    static bool AppendTile(SerializedObject so, string goName, out BuildingItemUI added)
+    static bool AppendTile(SerializedProperty list, string goName, out BuildingItemUI added)
     {
         added = null;
+        int n = list.arraySize;
+        if (n == 0) return false;
 
-        // 물려 있는 칸들을 순서대로 — **마지막이 기준이다.**
-        var names = new[] { "primaryItem", "extraItem", "cancelItem", "fourthItem", "fifthItem" };
-        var items = new List<BuildingItemUI>();
-        foreach (var n in names)
-        {
-            var p = so.FindProperty(n);
-            if (p?.objectReferenceValue is BuildingItemUI it) items.Add(it);
-        }
-        if (items.Count == 0) return false;
-
-        var last   = (RectTransform)items[items.Count - 1].transform;
+        var last   = (RectTransform)((Component)list.GetArrayElementAtIndex(n - 1).objectReferenceValue).transform;
         var parent = last.parent as RectTransform;
 
-        // 보폭 — 마지막 두 칸의 간격. 하나뿐이면 제 너비로.
-        Vector2 stepVec = items.Count >= 2
-            ? last.anchoredPosition - ((RectTransform)items[items.Count - 2].transform).anchoredPosition
+        Vector2 stepVec = n >= 2
+            ? last.anchoredPosition - ((RectTransform)((Component)list.GetArrayElementAtIndex(n - 2).objectReferenceValue).transform).anchoredPosition
             : new Vector2(last.rect.width, 0f);
 
         bool grouped = parent != null && parent.GetComponent<HorizontalOrVerticalLayoutGroup>() != null;
@@ -253,10 +302,9 @@ public static class CommandBarSetup
         var tool = Object.FindFirstObjectByType<ModeToolBarUI>(FindObjectsInactive.Include);
         if (tool != null)
         {
-            var so = new SerializedObject(tool);
             var items = new List<RectTransform>();
-            foreach (var name in new[] { "primaryItem", "extraItem", "cancelItem", "fourthItem", "fifthItem" })
-                if (so.FindProperty(name).objectReferenceValue is Component c) items.Add((RectTransform)c.transform);
+            foreach (var c in tool.Tiles)
+                if (c != null) items.Add((RectTransform)c.transform);
             if (Row(items, top + Margin * 0.5f, out _)) log.Add("도구 바 그 위 가운데");
         }
     }

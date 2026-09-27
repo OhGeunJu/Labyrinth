@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// **찍힌 칸과 땅 고르기 일감을 맞춘다**(2026-09-24).
+// **찍힌 정점과 땅 고르기 일감을 맞춘다**(2026-09-24 · 09-25에 칸에서 정점으로 — `GroundLevel`).
+//
+// 아래 주석의 *칸*은 전부 **높이 정점**이다(표시의 열쇠가 그것이다).
 //
 // `MineJobBoard`와 **같은 모양이고 같은 이유다**: 찍을 때 일감을 한 번 내고 끝내면 그 일감이
 // 취소되는 순간(폰이 못 가서 포기했다) **그 칸은 영영 안 고쳐진다** — 표시는 남았는데 내는
@@ -92,7 +94,7 @@ public class LevelJobBoard : MonoBehaviour
         // **찍힌 목록을 그대로 훑지 않는다** — 훑는 도중에 일감이 끝나며 `GroundLevel.Apply`가
         // 그 목록을 고치면 `InvalidOperationException`으로 죽는다.
         _pending.Clear();
-        foreach (var t in GroundLevel.MarkedTiles) _pending.Add(t);
+        foreach (var t in GroundLevel.MarkedVertices) _pending.Add(t);
 
         foreach (var t in _pending)
         {
@@ -102,7 +104,7 @@ public class LevelJobBoard : MonoBehaviour
             // **이미 맞은 칸은 표시를 푼다** — 이웃 칸을 고르며 같이 맞는 일이 흔하다
             // (칸 하나를 덮는 정점이 최대 3×3이라 주변 6m가 따라온다). 안 풀면 **아무도
             // 안 오는 표시**가 남아 *"고르기가 안 된다"*로 보인다.
-            if (GroundLevel.IsSettled(t, target) || !GroundLevel.CanLevel(t))
+            if (GroundLevel.IsSettled(t, target) || !GroundLevel.CanMoveVertex(t))
             {
                 GroundLevel.Unmark(t);
                 continue;

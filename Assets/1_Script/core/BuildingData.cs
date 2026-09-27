@@ -128,6 +128,9 @@ public class BuildingData : ScriptableObject
     public bool             UsesBlueprint = false;
     [Tooltip("바닥(floor) substrate. 코어 무관·공허에 배치 가능(바닥 요구 우회), 휴면/장애물 처리 안 함. 프리팹에 Floor 컴포넌트 필요.")]
     public bool             IsFloor = false;
+    [Tooltip("다리 — 절벽을 가로질러야만 놓인다(`Bridge.WhyNot`). 프리팹에 `Bridge` 컴포넌트가 있어야 한다. " +
+             "격자 배치로만 놓는다.")]
+    public bool             IsBridge = false;
 
     // **경사를 따르는 포장 ↔ 경사를 무시하는 기단.** 두 물음이 다르다 —
     // 포장은 *"이 땅을 딛기 좋게 한다"*이고 기단은 *"여기에 평평한 자리를 만든다"*다.

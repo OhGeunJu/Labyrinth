@@ -75,7 +75,7 @@ public static class MovementDiagnostics
     // 막고 있을 때 그게 지워져 진짜 범인이 사라진다.
     public static void LogGiveUp(string pawnName, Vector3 pos, Vector3 goal, bool hasLocalPath,
                                  GameObject self = null, CharacterController cc = null,
-                                 int routePoints = -1, Vector3? steer = null)
+                                 int routePoints = -1, Vector3? steer = null, string sideHit = null)
     {
         if (!Enabled || !LogEvents) return;
 
@@ -108,9 +108,38 @@ public static class MovementDiagnostics
                          $"목표칸 {DescribeTile(goal)}\n" +
                          $"  선 자리: {DescribeTile(pos)}{DescribeFooting(pos, cc)}\n" +
                          $"  앞을 막은 것: {DescribeBlocker(pos, goal, self, cc)}\n" +
+                         (sideHit != null ? $"  몸이 옆으로 부딪힌 면: {sideHit}\n" : "") +
+                         $"  발밑 지형: {DescribeGroundSeam(pos, goal)}\n" +
                          $"  곧장 그은 선: {DescribePathTiles(pos, goal)}\n" +
                          $"  선 자리 둘레:\n{DescribeNeighborhood(pos)}" +
                          DescribeCorner(pos, goal));
+    }
+
+    // **발밑 지형이 청크 이음매에서 어긋났나**(2026-09-26) — 가는 쪽으로 0.25m씩 1.5m를 지형 콜라이더로 쏴 내려
+    // 맞은 높이와 **높이 함수**(`SampleGroundHeight`)를 나란히 적는다. 둘이 다르면 그려진 지형이 함수와 어긋난 것이고,
+    // 이웃한 두 표본의 콜라이더 높이가 확 뛰면 거기가 턱이다. 맞은 콜라이더 이름이 바뀌는 자리가 청크 이음매다.
+    static string DescribeGroundSeam(Vector3 pos, Vector3 goal)
+    {
+        var map = MapManager.GetForPosition(pos);
+        Vector3 dir = goal - pos; dir.y = 0f;
+        if (dir.sqrMagnitude < 0.01f) return "방향 없음";
+        dir.Normalize();
+
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i <= 6; i++)
+        {
+            var p = pos + dir * (i * 0.25f);
+            float fn = map != null ? map.SampleGroundHeight(p) : float.NaN;
+            string col = "-";
+            float cy = float.NaN;
+            foreach (var h in Physics.RaycastAll(new Vector3(p.x, p.y + 5f, p.z), Vector3.down, 20f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (!(h.collider is TerrainCollider)) continue;
+                if (float.IsNaN(cy) || h.point.y > cy) { cy = h.point.y; col = h.collider.name; }
+            }
+            sb.Append($"\n    +{i * 0.25f:F2}m ({p.x:F2}, {p.z:F2}) 함수 {fn:F2} · 콜라이더 {cy:F2} `{col}`");
+        }
+        return sb.ToString();
     }
 
     // **"무언가에 막혔다"를 "무엇에 막혔다"로 바꾼다.** 로컬 경로가 있는데도 못 나아가면

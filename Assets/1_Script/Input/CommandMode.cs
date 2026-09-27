@@ -11,20 +11,22 @@ using UnityEngine.InputSystem;
 //
 // - **카메라는 안 건드린다**(2026-09-19, 사용자: *"명령 화면 조정하는 거 그냥 없애자"*). 한때 채굴이 시점을
 //   위로 돌렸고(채굴만 그래서 통일성이 없었다), 명령 전체로 옮겼다가 통째로 뺐다.
-// - **단축키는 여기 하나다**(H 채굴 · J 채집 · K 운반 · C 취소 — 사용자가 정했다). 지정기마다 제 키를
+// - **단축키는 여기 하나다**(H 채굴 · J 채집 · K 운반 · C 취소 · V 올리기 · N 내리기 · T 평탄화 — 사용자가 정했다). 지정기마다 제 키를
 //   들면 *"이 키는 어느 도구를 여나"*가 파일 둘에 흩어진다. **같은 키를 다시 누르면 명령을 끈다.**
 // - **취소는 무엇이든 무른다** — 채굴 표시든 채집·운반 지정이든(사용자: *"다 호환되게"*). 취소 도구는
 //   채굴 지정기의 `Cancel`로 돌고, 무르는 김에 채집·운반 쪽도 같이 무른다(`HaulDesignator.UndesignateRect`).
 public class CommandMode : MonoBehaviour
 {
     // **값은 꼬리에 붙인다** — `ModeBarUI`가 순서로 버튼을 짓는다.
-    public enum Tool { Mine, Gather, Haul, Cancel, Level }
+    public enum Tool { Mine, Gather, Haul, Cancel, Raise, Lower, Flatten }
 
     public static bool IsActive =>
         MineDesignator.IsActive || HaulDesignator.IsActive || LevelDesignator.IsActive;
 
     public static Tool Current =>
-        LevelDesignator.IsActive ? Tool.Level
+        LevelDesignator.IsActive
+            ? (LevelDesignator.Current == LevelDesignator.Tool.Lower   ? Tool.Lower
+             : LevelDesignator.Current == LevelDesignator.Tool.Flatten ? Tool.Flatten : Tool.Raise)
       : MineDesignator.IsActive
             ? (MineDesignator.Current == MineDesignator.Tool.Cancel ? Tool.Cancel : Tool.Mine)
             : HaulDesignator.Kind == HaulDesignator.Target.Gather ? Tool.Gather : Tool.Haul;
@@ -38,7 +40,9 @@ public class CommandMode : MonoBehaviour
             case Tool.Cancel: MineDesignator.Open(MineDesignator.Tool.Cancel);      break;
             case Tool.Gather: HaulDesignator.Open(HaulDesignator.Target.Gather);    break;
             case Tool.Haul:   HaulDesignator.Open(HaulDesignator.Target.Haul);      break;
-            case Tool.Level:  LevelDesignator.Open(LevelDesignator.Tool.Designate); break;
+            case Tool.Raise:  LevelDesignator.Open(LevelDesignator.Tool.Raise);     break;
+            case Tool.Lower:  LevelDesignator.Open(LevelDesignator.Tool.Lower);     break;
+            case Tool.Flatten: LevelDesignator.Open(LevelDesignator.Tool.Flatten); break;
         }
     }
 
@@ -47,7 +51,9 @@ public class CommandMode : MonoBehaviour
         Tool.Mine   => "채굴",
         Tool.Gather => "채집",
         Tool.Haul   => "운반",
-        Tool.Level  => "땅고르기",
+        Tool.Raise  => "올리기",
+        Tool.Lower  => "내리기",
+        Tool.Flatten => "평탄화",
         _           => "취소",
     };
 
@@ -77,9 +83,11 @@ public class CommandMode : MonoBehaviour
             else if (kb.jKey.wasPressedThisFrame) Toggle(Tool.Gather);
             else if (kb.kKey.wasPressedThisFrame) Toggle(Tool.Haul);
             else if (kb.cKey.wasPressedThisFrame) Toggle(Tool.Cancel);
-            // **`V`가 땅 고르기다.** `G`가 아닌 이유 — 그건 원정 편성이 씬 필드로 들고 있어
+            // **`V` 올리기 · `N` 내리기 · `T` 평탄화.** `G`를 안 쓰는 이유 — 원정 편성이 씬 필드로 들고 있어
             // (`ExpeditionUI.toggleKey = Key.G`) 빼앗으면 **두 창이 같이 열린다.**
-            else if (kb.vKey.wasPressedThisFrame) Toggle(Tool.Level);
+            else if (kb.vKey.wasPressedThisFrame) Toggle(Tool.Raise);
+            else if (kb.nKey.wasPressedThisFrame) Toggle(Tool.Lower);
+            else if (kb.tKey.wasPressedThisFrame) Toggle(Tool.Flatten);
         }
     }
 }

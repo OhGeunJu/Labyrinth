@@ -279,7 +279,9 @@ public class MapManager : MonoBehaviour
     // 처음엔 천장 높이를 직접 쟀는데, 바위를 **캘 수 있게** 만들면서 답이 한 겹 더 생겼다:
     // 판 칸은 천장 함수로는 여전히 바위다(함수는 판 것을 모른다). **`RockMap`이 그 둘을
     // 합쳐 답하므로** 여기서 다시 재면 갈린다 — 판 자리를 폰이 계속 벽으로 본다.
-    public bool HasHeadroom(Vector2Int tile) => !RockMap.IsRock(tile);
+    // **절벽도 여기서 막는다**(2026-09-26) — 바위와 같은 자리라 길찾기·건설·일감이 통째로 따라온다.
+    // 다리가 깔린 절벽 칸은 지나간다(`Chasm.Blocks`).
+    public bool HasHeadroom(Vector2Int tile) => !RockMap.IsRock(tile) && !Chasm.Blocks(tile);
     public bool IsStandable(Vector3 world)   => IsStandable(WorldToTile(world));
 
     // 폰이 **실제로 설 수 있는** 칸인가 — 통행 가능 + 바닥 있음.
@@ -324,7 +326,7 @@ public class MapManager : MonoBehaviour
     // **길찾기와 일자리 고르기가 같은 답을 써야 한다** — 갈리면 *"경로는 있는데 서 있을
     // 자리가 없다"*(또는 그 반대)가 되고, 폰은 그 자리에서 일감을 집었다 놓기만 한다.
     public float ClimbLimitAt(Vector2Int tile) =>
-        IsFloored(tile) ? PawnMover.StepUp : PawnMover.SlopeRise;
+        IsFloored(tile) || Chasm.HasDeck(tile) ? PawnMover.StepUp : PawnMover.SlopeRise;   // 다리 윗면은 기단과 같은 턱
 
     // `from`에 선 폰이 `to`에 설 수 있나 — **양쪽으로** 묻는다(가서 일하고 돌아와야 한다).
     public bool SameLevel(Vector2Int from, Vector2Int to)
@@ -445,6 +447,7 @@ public class MapManager : MonoBehaviour
     public float SurfaceHeight(Vector2Int tile)
     {
         if (_floored.TryGetValue(tile, out float floorY)) return floorY;
+        if (Chasm.TryDeck(tile, out float deckY)) return deckY;   // 다리 윗면 — 슬래브는 안 그린다
         return SampleGroundHeight(tile.x + 0.5f + _gridPhase.x, tile.y + 0.5f + _gridPhase.y);
     }
 
@@ -553,6 +556,7 @@ public class MapManager : MonoBehaviour
             // **파야 지을 수 있다.** *"못 짓는다"*가 아니라 **무엇을 하면 되는지**를 말한다 —
             // 지하에서는 자리가 없는 것이 아니라 아직 안 판 것이다.
             if (RockMap.IsRock(pos)) return "바위다 — 먼저 파야 한다 (K)";
+            if (Chasm.IsChasm(pos))  return "절벽이다 — 다리만 놓을 수 있다";
         }
         return WhyNotFlat(footprint);
     }
@@ -579,6 +583,7 @@ public class MapManager : MonoBehaviour
             if (!IsInBuildZone(pos)) return false;      // 최대 경계 클램프
             if (_floored.ContainsKey(pos)) return false;   // 이미 바닥
             if (IsOccupied(pos)) return false; // 점유
+            if (Chasm.IsChasm(pos)) return false;   // 절벽 위에는 기단을 못 깐다(다리의 일이다)
         }
         return level || IsFlatEnough(footprint);
     }

@@ -67,6 +67,16 @@ public static class PropDresser
         // 모델 하나를 색만 바꿔 돌려 쓴다(`Glow`와 같이 재질을 복제한다).
         public Color   Tint;
 
+        // **색조를 돌린다**(0~1, 0이면 안 돌린다 — 2026-09-28, 사용자: *"야광버섯을 지금 형광색인데 파랑느낌으로"*).
+        // `Tint`는 **곱하기**라 초록 텍스처에 파랑을 곱하면 **탁한 청록**이 된다(초록 × 파랑 = 거의 검정 + 남은 초록).
+        // 팩 버섯은 초록·빨강 두 빛깔뿐이라, 텍스처의 **색조만** 원하는 쪽으로 돌린 사본을 구워 쓴다 — 무늬·명암은 그대로다.
+        public float   Hue;
+
+        // **키로 맞춘다**(m, 0이면 안 쓴다 — 2026-09-28, 사용자: *"나무 버섯 원래 큰 모델인데 … 엄청 작게"*). 발자국 맞추기는
+        // 칸에 드는 물건의 규칙이라, **발자국이 없는 노드**(1×1로 친다)에 나무만 한 모델을 넣으면 1m 안으로 접혀
+        // **원래의 0.4배**가 됐다. 나무는 칸이 아니라 **키**가 모습이다 — 켜면 발자국·`KeepHeight`를 안 보고 이 키로 늘이고 줄인다.
+        public float   Height;
+
         // **긴 축에 맞춘다 — 짧은 쪽으로 삐져나와도 둔다**(2026-09-18, 사용자: *"비율에
         // 맞춰서 키워줘 콜라이더보다 모델이 그냥 더 나와도 괜찮을 거 같아"*).
         //
@@ -237,8 +247,10 @@ public static class PropDresser
         // **번호마다 자라는 자리가 다르다** — 벽에 붙는 것과 바닥에 서는 것이 섞여 있다.
 
         // 갓버섯 — **균사림의 야광 버섯**(초록 + 발광).
+        // **파랑이다**(2026-09-28, 사용자: *"형광색인데 파랑느낌으로"*) — 전에는 초록 모델에 초록 발광(0.30·0.95·0.45)이라
+        // 형광 연두였다. 모델은 초록 것을 쓰되 **색조를 파랑으로 돌리고**(`Hue`) 발광도 파랑으로 준다.
         new Dress { Building = "Node_CapMushroom", Folder = "Node", Variants = true, KeepHeight = true,
-            Glow = new Color(0.30f, 0.95f, 0.45f),
+            Hue = 0.62f, Glow = new Color(0.12f, 0.20f, 0.70f),
             Props = new[]{ "C/Plants/Fungus/fungus_green/cave_mushroom1_04_green",
                            "C/Plants/Fungus/fungus_green/cave_mushroom1_05_green",
                            "C/Plants/Fungus/fungus_green/cave_mushroom2_04_green",
@@ -252,13 +264,17 @@ public static class PropDresser
                            "C/Plants/Fungus/fungus_red/cave_mushroom2_05_red" } },
 
         // 거대버섯 — **버섯 나무.** 벌목해서 목재를 얻는 것이라 이것만 크다.
-        new Dress { Building = "Node_GiantMushroom", Folder = "Node", Variants = true, KeepHeight = true,
+        // **키 3.2m** — 도형으로 지었을 때의 키(`MushroomCreator.BuildGiant`)이자 *나무만큼 크다*의 그 크기.
+        // **파랑**(2026-09-28, 사용자: *"거대버섯 색이 초록색이라 이것도 파란색으로"*) — 갓버섯과 같은 색조(`Hue` 0.62)로
+        // 돌린다. 균사림은 *푸른 버섯 숲*이다: 갓버섯·곰팡이가 파란데 나무만 초록이면 한 숲으로 안 읽힌다.
+        new Dress { Building = "Node_GiantMushroom", Folder = "Node", Variants = true, KeepHeight = true, Height = 3.2f,
+            Hue = 0.62f,
             Props = new[]{ "C/Plants/Fungus/fungus_green/cave_mushroom4_large_green",
                            "C/Plants/Fungus/fungus_green/cave_mushroom4_08_green" } },
 
         // 푸른 곰팡이 — **무리로 난 균사**가 그 그림이다(낱개가 아니라 덩어리).
         new Dress { Building = "Node_BlueMould", Folder = "Node", Variants = true, KeepHeight = true,
-            Glow = new Color(0.22f, 0.44f, 0.92f),
+            Glow = new Color(0.20f, 0.28f, 0.90f),   // 갓버섯과 같은 파랑 쪽으로(2026-09-28 — 초록을 줄였다)
             Props = new[]{ "C/Plants/Fungus/v1_fungus/fungus1_cluster",
                            "C/Plants/Fungus/v1_fungus/fungus2_cluster1",
                            "C/Plants/Fungus/v1_fungus/fungus3_cluster",
@@ -268,7 +284,8 @@ public static class PropDresser
         new Dress { Building = "Node_MossPatch", Folder = "Node", Props = new[]{ "C/Plants/Ferns/v1_ferns/swordfern1" }, KeepHeight = true },
 
         // 나무 — 굴에서 자라는 것은 **나무고사리**다(잎 달린 활엽수는 지하에 안 어울린다).
-        new Dress { Building = "Node_MossTree", Folder = "Node", Props = new[]{ "C/Plants/Ferns/cave_treefern1_01" }, KeepHeight = true },
+        // **키 3.8m** — 거대버섯과 같은 이유다(1×1로 접혀 0.24배였다). 도형 시절의 키(가지 끝 이끼까지).
+        new Dress { Building = "Node_MossTree", Folder = "Node", Props = new[]{ "C/Plants/Ferns/cave_treefern1_01" }, KeepHeight = true, Height = 3.8f },
         new Dress { Building = "Tree",          Folder = "Node", Props = new[]{ "C/Plants/Ferns/cave_treefern1_02" }, KeepHeight = true },
 
         // 물먹은 둥치 — **이름부터 둥치(trunk)다.** 가지가 삭아 없어진 그 모습 그대로.
@@ -314,8 +331,45 @@ public static class PropDresser
         // **표가 답이라면 표에 없는 것도 표가 답해야 한다.**
         int stripped = StripUnlisted(notes);
 
+        DressEntries(null, notes, ref done, ref missing);
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        // **못 찾은 것은 경고로 올린다**(2026-09-17). 전에는 `Debug.Log` 한 줄에 섞여
+        // 들어가서, 광맥 넷이 **잘못된 폴더를 보느라 한 번도 안 입혀진 채로 늙었다** —
+        // `VeinArt`가 따로 메시를 구워 화면에는 멀쩡해 보였기 때문에 더 안 보였다.
+        // **세기만 하고 넘어가면 그런 줄이 조용히 늙는다.**
+        string report = $"[모델] {done}채에 얼굴을 입혔다(못 찾은 것 {missing} · 되돌린 것 {stripped}).\n  "
+                      + string.Join("\n  ", notes)
+                      + "\n되돌리려면 프리팹에서 `[Art]` 자식을 지우고 꺼진 렌더러를 켜면 된다.";
+
+        if (missing > 0) Debug.LogWarning(report);
+        else             Debug.Log(report);
+    }
+
+    // **표의 일부만 입힌다** — 프리팹을 새로 굽는 도구가 굽고 나서 부른다(2026-09-28, 사용자: *"버섯들이 그냥 예전버섯으로
+    // 돌아간 거 같은데"* · *"돌도 바뀐 거 같아"*). `World → 7`은 버섯·돌·나무 프리팹을 **도형부터 다시 지어 덮어쓰므로**
+    // 입혀 둔 `[Art]`가 통째로 날아갔다. 입히는 문을 둘로 늘리지 않고 **이 표를 그대로 다시 부른다.**
+    public static void DressOnly(ICollection<string> buildings)
+    {
+        int done = 0, missing = 0;
+        var notes = new List<string>();
+        DressEntries(buildings, notes, ref done, ref missing);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        string report = $"[모델] 다시 지은 것 {done}채에 얼굴을 다시 입혔다(못 찾은 것 {missing}).\n  "
+                      + string.Join("\n  ", notes);
+        if (missing > 0) Debug.LogWarning(report); else Debug.Log(report);
+    }
+
+    static void DressEntries(ICollection<string> only, List<string> notes, ref int done, ref int missing)
+    {
         foreach (var d in Table)
         {
+            if (only != null && !only.Contains(d.Building)) continue;
+
             string path = PathOf(d);
             if (AssetDatabase.LoadAssetAtPath<GameObject>(path) == null)
             {
@@ -334,20 +388,6 @@ public static class PropDresser
 
             if (Dressing(path, d, prop)) { done++; notes.Add($"{d.Building} ← {prop.name}"); }
         }
-
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-
-        // **못 찾은 것은 경고로 올린다**(2026-09-17). 전에는 `Debug.Log` 한 줄에 섞여
-        // 들어가서, 광맥 넷이 **잘못된 폴더를 보느라 한 번도 안 입혀진 채로 늙었다** —
-        // `VeinArt`가 따로 메시를 구워 화면에는 멀쩡해 보였기 때문에 더 안 보였다.
-        // **세기만 하고 넘어가면 그런 줄이 조용히 늙는다.**
-        string report = $"[모델] {done}채에 얼굴을 입혔다(못 찾은 것 {missing} · 되돌린 것 {stripped}).\n  "
-                      + string.Join("\n  ", notes)
-                      + "\n되돌리려면 프리팹에서 `[Art]` 자식을 지우고 꺼진 렌더러를 켜면 된다.";
-
-        if (missing > 0) Debug.LogWarning(report);
-        else             Debug.Log(report);
     }
 
     // ── 되돌리기 ────────────────────────────────────────────────────────────
@@ -589,7 +629,7 @@ public static class PropDresser
                     var one = LoadProp(rel);
                     if (one == null) continue;
 
-                    var v = Place(root, one, $"{PropVariant.Prefix}{n}]", keepHeight, d.Glow, d.Tint, d.Margin, d.KeepTall, d.FillLong);
+                    var v = Place(root, one, $"{PropVariant.Prefix}{n}]", keepHeight, d.Glow, d.Tint, d.Margin, d.KeepTall, d.FillLong, d.Hue, d.Height);
                     if (v == null) continue;
 
                     // **0번만 켜 둔다** — `PropVariant`가 붙기 전 한 프레임 동안 전부
@@ -603,7 +643,7 @@ public static class PropDresser
             }
             else
             {
-                if (Place(root, first, ArtName, keepHeight, d.Glow, d.Tint, d.Margin, d.KeepTall, d.FillLong) == null) return false;
+                if (Place(root, first, ArtName, keepHeight, d.Glow, d.Tint, d.Margin, d.KeepTall, d.FillLong, d.Hue, d.Height) == null) return false;
 
                 // 침대면 **눕는 자리를 입힌 모델에서 잰다**(`FitBed`).
                 FitBed(root);
@@ -622,7 +662,8 @@ public static class PropDresser
 
     // 소품 하나를 얹는다 — 이름만 다르고 나머지는 같다(`[Art]` 또는 `[Var n]`).
     static GameObject Place(GameObject root, GameObject prop, string name, bool keepHeight,
-                            Color glow, Color tint, float margin, bool keepTall, bool fillLong)
+                            Color glow, Color tint, float margin, bool keepTall, bool fillLong, float hue = 0f,
+                            float height = 0f)
     {
         if (prop == null) return null;
 
@@ -639,8 +680,9 @@ public static class PropDresser
         // 몸이 부딪혀 폰이 처박힌다. 건물의 콜라이더는 이미 루트 쪽에 있다.
         foreach (var c in art.GetComponentsInChildren<Collider>(true)) Object.DestroyImmediate(c);
 
-        Fit(root, art, keepHeight, margin, keepTall, fillLong);
-        if (glow.maxColorComponent > 0.001f || tint.maxColorComponent > 0.001f) Recolor(art, glow, tint);
+        if (height > 0f) FitHeight(art, height);
+        else             Fit(root, art, keepHeight, margin, keepTall, fillLong);
+        if (glow.maxColorComponent > 0.001f || tint.maxColorComponent > 0.001f || hue > 0f) Recolor(art, glow, tint, hue);
         return art;
     }
 
@@ -651,7 +693,7 @@ public static class PropDresser
     // 밝히는 것**이고 여기는 **그 물건이 빛나 보이는 것**이라 다른 축이다).
     //
     // **재질을 복제한다** — 팩 재질을 그대로 건드리면 **그 소품을 쓰는 모든 것이 같이 빛난다.**
-    static void Recolor(GameObject art, Color glow, Color tint)
+    static void Recolor(GameObject art, Color glow, Color tint, float hue = 0f)
     {
         foreach (var r in art.GetComponentsInChildren<MeshRenderer>(true))
         {
@@ -663,7 +705,8 @@ public static class PropDresser
 
             // **색을 이름에 넣는다** — 같은 소품을 다른 색으로 쓰는 날
             // **먼저 만든 쪽이 뒤엣것까지 물들인다**(`VeinArt.OreMat`이 겪은 그 자리).
-            string key  = ColorUtility.ToHtmlStringRGB(tint) + "_" + ColorUtility.ToHtmlStringRGB(glow);
+            string key  = ColorUtility.ToHtmlStringRGB(tint) + "_" + ColorUtility.ToHtmlStringRGB(glow)
+                        + (hue > 0f ? $"_h{Mathf.RoundToInt(hue * 100)}" : "");
             string path = $"{dir}/{src.name}_{key}.mat";
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (m == null)
@@ -672,6 +715,17 @@ public static class PropDresser
                 AssetDatabase.CreateAsset(m, path);
             }
             else m.CopyPropertiesFromMaterial(src);
+
+            if (hue > 0f)
+            {
+                // 바탕·발광 맵이 같은 텍스처인 일이 흔하다 — 같은 사본을 물린다.
+                foreach (var prop in new[] { "_BaseMap", "_MainTex", "_EmissionMap" })
+                {
+                    if (!m.HasProperty(prop)) continue;
+                    var tex = m.GetTexture(prop) as Texture2D;
+                    if (tex != null) m.SetTexture(prop, HueShifted(tex, hue));
+                }
+            }
 
             if (tint.maxColorComponent > 0.001f)
             {
@@ -689,6 +743,40 @@ public static class PropDresser
 
             r.sharedMaterial = m;
         }
+    }
+
+    // 텍스처의 색조를 `hue`로 돌린 사본(`2_Material/Glow/{이름}_h{색조}.png`). **채도와 명도는 그대로** — 무늬가 남는다.
+    //
+    // **원본을 파일에서 읽는다** — 팩 텍스처는 읽기 가능 표시가 꺼져 있어 `GetPixels`가 던진다. 가져오기 설정을
+    // 건드리면 팩 에셋이 바뀌므로, 바이트를 새 텍스처로 풀어 읽는다. 이미 있으면 다시 굽지 않는다.
+    static Texture2D HueShifted(Texture2D src, float hue)
+    {
+        string dir  = "Assets/2_Material/Glow";
+        string path = $"{dir}/{src.name}_h{Mathf.RoundToInt(hue * 100)}.png";
+        var have = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (have != null) return have;
+
+        string srcPath = AssetDatabase.GetAssetPath(src);
+        if (string.IsNullOrEmpty(srcPath) || !System.IO.File.Exists(srcPath)) return src;
+
+        var img = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        if (!img.LoadImage(System.IO.File.ReadAllBytes(srcPath))) { Object.DestroyImmediate(img); return src; }
+
+        var px = img.GetPixels32();
+        for (int i = 0; i < px.Length; i++)
+        {
+            Color c = px[i];
+            Color.RGBToHSV(c, out _, out float s, out float v);
+            var o = Color.HSVToRGB(hue, s, v);
+            o.a = c.a;
+            px[i] = o;
+        }
+        img.SetPixels32(px);
+        System.IO.File.WriteAllBytes(path, img.EncodeToPNG());
+        Object.DestroyImmediate(img);
+
+        AssetDatabase.ImportAsset(path);
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path) ?? src;
     }
 
     static GameObject LoadProp(string rel) =>
@@ -746,6 +834,17 @@ public static class PropDresser
         art.transform.localScale = keepTall ? new Vector3(s, 1f, s) : Vector3.one * s;
 
         // 바닥에 발을 붙이고 발자국 한복판에 놓는다 — 소품의 피벗은 팩마다 다르다.
+        if (!Bounds(art, out b)) return;
+        var c = b.center;
+        art.transform.localPosition += new Vector3(-c.x, -b.min.y, -c.z);
+    }
+
+    // 키가 `height`가 되게 균등하게 늘이고 줄인 뒤 발을 바닥 한복판에 붙인다(`Height` 참고).
+    static void FitHeight(GameObject art, float height)
+    {
+        if (!Bounds(art, out var b) || b.size.y <= 0.0001f) return;
+        art.transform.localScale *= height / b.size.y;
+
         if (!Bounds(art, out b)) return;
         var c = b.center;
         art.transform.localPosition += new Vector3(-c.x, -b.min.y, -c.z);

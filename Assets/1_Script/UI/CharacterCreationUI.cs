@@ -80,7 +80,7 @@ public class CharacterCreationUI : MonoBehaviour
         if (!showOnStart) return;
         if (FindFirstObjectByType<StartSpot>() == null)
         {
-            Debug.Log("[캐릭터 생성] 씬에 `StartSpot`이 없어 안 띄운다 — 씬에 놓인 폰으로 시작한다(`World → I. Place Start Spot`).");
+            Debug.Log("[캐릭터 생성] 씬에 `StartSpot`이 없어 안 띄운다 — 씬에 놓인 폰으로 시작한다(씬에 빈 오브젝트 + `StartSpot`을 하나 놓으면 뜬다).");
             return;
         }
         Open();

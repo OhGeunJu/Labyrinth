@@ -328,6 +328,12 @@ public class InspectPanelUI : MonoBehaviour
         else
             sb.AppendLine("<color=#F90>파도 나오는 것이 없습니다 — " +
                           "`World → 0. Create Rock Materials`가 맨바위 산출을 물립니다.</color>");
+
+        // 벽에 박힌 조명 — 덤으로 나오는 것이 있으면 같이 적는다(`MineJob`이 따로 떨군다).
+        var lit = RockMap.WallLightAt(tile);
+        if (lit != null && lit.DropItem != null)
+            sb.AppendLine($"덤으로  <b>{lit.DropItem.ItemName}</b>  " +
+                          $"<color=#888>{lit.DropMin}~{lit.DropMax}개</color>");
         sb.AppendLine();
 
         sb.AppendLine(marked

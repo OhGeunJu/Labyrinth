@@ -1395,7 +1395,9 @@ public class BuildModeManager : MonoBehaviour
         var map = MapManager.Instance;
         var sel = SelectedBuilding;
         // 바닥은 바닥요구를 우회(공허에 깖), 건물은 바닥 위+점유+평탄(IsBuildable로 일원화).
-        string why = sel != null && sel.IsFloor
+        // **다리는 판정이 거꾸로다** — 다른 건물은 절벽을 거절하고 다리는 절벽을 요구한다(`Bridge.WhyNot`).
+        string why = sel != null && sel.IsBridge ? Bridge.WhyNot(footprint)
+            : sel != null && sel.IsFloor
             ? (map.CanPlaceFloor(footprint, LevelFloorSelected) ? null : "바닥을 깔 수 없는 자리")
             : map.WhyNotBuildable(footprint);
         if (why != null) return why;
@@ -1425,6 +1427,10 @@ public class BuildModeManager : MonoBehaviour
     {
         var map = MapManager.Instance;
         if (!map.IsInBuildZone(worldPoint)) return "빌드존 밖 — 핵에서 너무 멀다";
+
+        // **다리는 격자로만** — 양 끝이 땅에 닿는지를 칸으로 재야 한다.
+        if (SelectedBuilding != null && SelectedBuilding.IsBridge) return "다리는 격자 배치로만 놓을 수 있다";
+        if (Chasm.IsChasm(map.WorldToTile(worldPoint))) return "절벽이다 — 다리만 놓을 수 있다";
 
         // 모델 A: 코어 union은 건설을 차단하지 않음(union 밖은 BuildingDormancy가 휴면 처리).
 

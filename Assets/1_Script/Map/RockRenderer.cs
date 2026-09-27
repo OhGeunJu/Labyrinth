@@ -194,6 +194,26 @@ public class RockRenderer : MonoBehaviour
 
         // **박스로 막는다 — 메시가 아니다**(2026-08-30). 근거는 `FitBoxes` 위에 적었다.
         public readonly List<BoxCollider> Boxes = new();
+
+        // 이 청크 벽에 붙은 조명(칸 → 선 것). **청크의 자식이다** — 청크를 버리면 같이 간다.
+        public readonly Dictionary<Vector2Int, PlacedLight> Lights = new();
+    }
+
+    struct PlacedLight
+    {
+        public GameObject    Go;
+        public int           Face;
+        public WallLightData Data;
+    }
+
+    struct WantedLight
+    {
+        public Vector2Int    Tile;
+        public int           Face;
+        public WallLightData Data;
+        public GameObject    Prefab;
+        public Vector3       Pos;
+        public Quaternion    Rot;
     }
 
     readonly Dictionary<Vector2Int, Chunk> _chunks = new();
@@ -541,6 +561,8 @@ public class RockRenderer : MonoBehaviour
     {
         _verts.Clear(); _norms.Clear(); _uvs.Clear(); _top.Clear(); _side.Clear(); _mark.Clear();
         _oreKinds.Clear();
+        _wantLights.Clear();
+        _liftAt.Clear();
 
         var map = MapManager.Instance;
         int x0 = chunk.x * ChunkTiles, y0 = chunk.y * ChunkTiles;
@@ -595,7 +617,14 @@ public class RockRenderer : MonoBehaviour
             bool wD = Side(sideList, capList, tile + Vector2Int.down,  xb, za, xa, za, floor, top, Vector3.back);
             bool wU = Side(sideList, capList, tile + Vector2Int.up,    xa, zb, xb, zb, floor, top, Vector3.forward);
 
-            // **광맥은 드러난 옆면에만 박힌다.** 찍힌 칸에는 안 그린다 — *"여기를 판다"*가
+            // **조명은 찍힌 칸에도 선다** — 광맥 알갱이와 다르다: 알갱이는 *무엇이 박혔나*를 알리는
+            // 표시라 *"여기를 판다"*와 겹치면 읽히지 않지만, 불빛은 **표시가 아니라 물건**이다.
+            // 찍었다고 꺼지면 굴이 한 칸씩 어두워진다.
+            if (!border && (wL || wR || wD || wU))
+                CollectWallLight(map, tile, wL, wR, wD, wU, xa, xb, za, zb, floor);
+
+            // **광맥은 드러난 칸에만 박힌다** — 옆면과, 그 칸의 **윗면**(2026-09-28, 아래 `TopSpecks`).
+            // 찍힌 칸에는 안 그린다 — *"여기를 판다"*가
             // 그 칸의 전부라, 거기서 또 갈라 봐야 색만 늘고 읽히지는 않는다(윗면·옆면을
             // 한 벌로 보내는 것과 같은 규칙).
             if (border || marked || !(wL || wR || wD || wU)) continue;
@@ -610,6 +639,7 @@ public class RockRenderer : MonoBehaviour
             if (wR) Specks(ore, tile, 1, xb, zb, xb, za, floor, Vector3.right);
             if (wD) Specks(ore, tile, 2, xb, za, xa, za, floor, Vector3.back);
             if (wU) Specks(ore, tile, 3, xa, zb, xb, zb, floor, Vector3.forward);
+            TopSpecks(ore, tile, xa, za, top);
         }
 
         if (_top.Count == 0 && _side.Count == 0 && _mark.Count == 0) { Drop(chunk); return; }
@@ -623,6 +653,7 @@ public class RockRenderer : MonoBehaviour
         mesh.SetVertices(_verts);
         mesh.SetNormals(_norms);
         mesh.SetUVs(0, _uvs);
+        SetLift(mesh);
         mesh.subMeshCount = 3 + _oreKinds.Count;
         mesh.SetTriangles(_top,  0);
         mesh.SetTriangles(_side, 1);
@@ -664,6 +695,102 @@ public class RockRenderer : MonoBehaviour
         // **콜라이더를 단다** — 커서가 바위를 짚어야 캘 자리를 고를 수 있고, 몸도 막아야 한다.
         // (천장에 안 다는 것과 정반대다 — 저쪽은 위에 있어서 짚으면 안 되고, 이쪽은 짚어야 한다.)
         FitBoxes(ch, chunk, lowest, highest);
+
+        SyncWallLights(ch);
+    }
+
+    // ── 벽에 박힌 조명 (2026-09-28) ─────────────────────────────────────────
+    //
+    // 무엇이 어디에 박혔나는 `RockMap.WallLightAt`이 답하고, 여기는 **드러난 면에 세우기만** 한다.
+    // 근거는 `WallLightData` 머리에 적었다.
+    //
+    // **판 안에서만 세운다** — 씬 뷰에서도 벽을 굽는데(`EditorShow`) 거기서 프리팹을 세우면
+    // `LightSource` 레지스트리가 편집 중에 차고 씬 저장을 막는 표시를 따로 챙겨야 한다. 저작할
+    // 때 볼 것은 *벽이 어디 있나*이고 불빛은 판에서 본다.
+    readonly List<WantedLight> _wantLights = new();
+    readonly HashSet<Vector2Int> _keepLights = new();
+    static readonly List<Vector2Int> _dropLights = new();
+
+    void CollectWallLight(MapManager map, Vector2Int tile, bool wL, bool wR, bool wD, bool wU,
+                          float xa, float xb, float za, float zb, float floor)
+    {
+        if (!Application.isPlaying) return;
+
+        var data   = RockMap.WallLightAt(tile);
+        var prefab = data != null ? data.PrefabFor(tile) : null;
+        if (prefab == null) return;
+
+        // **면은 해시가 고른다** — 늘 첫 면(왼쪽)부터 보면 모서리 칸의 조명이 전부 같은 쪽을 본다.
+        int start = (int)(RockMap.Hash01(tile, 0x85EBCA6Bu) * 4f) & 3;
+        for (int i = 0; i < 4; i++)
+        {
+            int f = (start + i) & 3;
+            bool open = f switch { 0 => wL, 1 => wR, 2 => wD, _ => wU };
+            if (!open) continue;
+
+            Vector2Int d; Vector3 n, along, center;
+            float mx = (xa + xb) * 0.5f, mz = (za + zb) * 0.5f;
+            switch (f)
+            {
+                case 0:  d = Vector2Int.left;  n = Vector3.left;    along = Vector3.forward; center = new Vector3(xa, 0f, mz); break;
+                case 1:  d = Vector2Int.right; n = Vector3.right;   along = Vector3.forward; center = new Vector3(xb, 0f, mz); break;
+                case 2:  d = Vector2Int.down;  n = Vector3.back;    along = Vector3.right;   center = new Vector3(mx, 0f, za); break;
+                default: d = Vector2Int.up;    n = Vector3.forward; along = Vector3.right;   center = new Vector3(mx, 0f, zb); break;
+            }
+
+            // **높이는 벽 앞 바닥에서 잰다** — 벽 칸의 바닥(`floor`)은 이웃이 파여 낮아지면 그만큼
+            // 떠 보인다(옆면을 이웃 바닥까지 내려 세우는 것과 같은 이유).
+            float ground = map != null ? map.SurfaceHeight(tile + d) : floor;
+            float h      = Mathf.Lerp(data.HeightMin, data.HeightMax, RockMap.Hash01(tile, 0xC2B2AE35u));
+            float slide  = (RockMap.Hash01(tile, 0x27D4EB2Fu) * 2f - 1f) * data.Jitter;
+
+            _wantLights.Add(new WantedLight
+            {
+                Tile = tile, Face = f, Data = data, Prefab = prefab,
+                Pos  = center + along * slide + Vector3.up * (ground + h),
+                Rot  = Quaternion.LookRotation(n, Vector3.up) * data.TwistFor(tile),
+            });
+            return;
+        }
+    }
+
+    // **있던 것은 그대로 둔다** — 한 칸을 팔 때마다 청크 전체가 다시 구워지는데, 그때마다 불을
+    // 세웠다 부수면 `LightSource`가 들고 나며 불꽃 박자가 새로 굴러 **깜빡인다.** 면이나 종류가
+    // 바뀐 것만 새로 세우고, 자리는 늘 다시 맞춘다(땅을 고르면 바닥 높이가 바뀐다).
+    void SyncWallLights(Chunk ch)
+    {
+        _keepLights.Clear();
+
+        foreach (var w in _wantLights)
+        {
+            _keepLights.Add(w.Tile);
+
+            if (ch.Lights.TryGetValue(w.Tile, out var have) && have.Go != null
+                && have.Face == w.Face && have.Data == w.Data)
+            {
+                have.Go.transform.SetPositionAndRotation(w.Pos, w.Rot);
+                continue;
+            }
+
+            if (have.Go != null) Toss(have.Go);
+
+            var go = Instantiate(w.Prefab, w.Pos, w.Rot, ch.Go.transform);
+            w.Data.AddMembers(go, w.Tile);   // 곁가지 — 모양만(불빛은 무리에 하나)
+            w.Data.Dress(go, w.Tile);        // 크기·빛깔 — 칸마다 다르다, 곁가지까지 같이
+            ch.Lights[w.Tile] = new PlacedLight { Go = go, Face = w.Face, Data = w.Data };
+        }
+
+        if (ch.Lights.Count == _keepLights.Count) return;
+
+        _dropLights.Clear();
+        foreach (var kv in ch.Lights)
+            if (!_keepLights.Contains(kv.Key)) _dropLights.Add(kv.Key);
+
+        foreach (var t in _dropLights)
+        {
+            if (ch.Lights[t].Go != null) Toss(ch.Lights[t].Go);
+            ch.Lights.Remove(t);
+        }
     }
 
     // ── 막는 것은 박스다 ────────────────────────────────────────────────────
@@ -915,6 +1042,102 @@ public class RockRenderer : MonoBehaviour
     }
 
     static float Frac(float v) => v - Mathf.Floor(v);
+
+    // ── 윗면에도 박는다 (2026-09-28) ────────────────────────────────────────
+    //
+    // 사용자: *"광물이 박힌 벽 있잖아? 그 벽위에도 광물이 박혀서 직관적으로 볼 수 있게"*. 카메라는 내려다보므로
+    // 화면에서 벽은 **대부분 윗면**이다 — 옆면에만 박으면 광맥이 벽 가장자리의 가느다란 띠로만 보인다.
+    //
+    // **드러난 칸의 윗면에만** 박는다(옆면이 하나라도 트인 칸 — 옆면 알갱이와 같은 칸). 09-14에 윗면을 뺀
+    // 이유는 *안 판 바위 속이 들여다보인다*였고, 그것은 **아직 안 드러난 칸**의 이야기다. 드러난 칸의
+    // 윗면은 이미 보이는 벽의 머리라 새로 알려 주는 것이 없다 — *판 만큼 드러난다*는 그대로다.
+    //
+    // **자르기와 싸우지 않게** — 윗면은 자르기가 **끌어내리는 면**(`RockCut`)이다. 알갱이 정점도 법선을
+    // 위로 둬 뚜껑으로 읽히게 하고, **뚜껑에서 뜬 만큼**(`lift`, uv3)을 넘겨 같이 내려오게 한다. 안 넘기면
+    // 전부 한 평면으로 눌려 뚜껑과 z-파이팅한다.
+    const float TopOreOut = 0.02f;   // 뚜껑에서 이만큼 띄운다
+
+    // 정점 번호 → 뚜껑에서 뜬 높이. 나머지 정점은 0이다(`SetLift`가 채운다).
+    readonly List<(int index, float lift)> _liftAt = new();
+    readonly List<Vector2> _lift = new();
+
+    // **옆면 것보다 크고 많다**(2026-09-28, 사용자: *"벽위에 딱히 광물이 박혀있지도 않아"*). 윗면은 늘 **멀리서
+    // 내려다보는** 면이라 옆면 크기(큰 알 12cm)로는 화면에서 두세 픽셀이었고, 뚜껑이 거의 검어 묻혔다.
+    const int   TopClustersMin = 2;
+    const int   TopClustersMax = 3;
+    const float TopBigR        = 0.20f;   // 덩어리의 첫 알
+    const float TopSmallR      = 0.09f;
+
+    void TopSpecks(List<int> list, Vector2Int tile, float xa, float za, float top)
+    {
+        int clusters = TopClustersMin +
+                       Mathf.FloorToInt(Hash(tile, 4, 99) * (TopClustersMax - TopClustersMin + 1));
+
+        for (int c = 0; c < clusters; c++)
+        {
+            float cx = 0.2f + Hash(tile, 4, 100 + c * 7) * 0.6f;
+            float cz = 0.2f + Hash(tile, 4, 101 + c * 7) * 0.6f;
+
+            for (int k = 0; k < OreNuggets; k++)
+            {
+                int salt = 200 + c * 31 + k * 5;
+                float dx = (Hash(tile, 4, salt)     - 0.5f) * 0.30f;
+                float dz = (Hash(tile, 4, salt + 1) - 0.5f) * 0.30f;
+                float r  = (k == 0 ? TopBigR : TopSmallR) + Hash(tile, 4, salt + 2) * 0.07f;
+
+                var center = new Vector3(xa + Mathf.Clamp(cx + dx, 0.08f, 0.92f), top + TopOreOut,
+                                         za + Mathf.Clamp(cz + dz, 0.08f, 0.92f));
+                TopNugget(list, center, top, r, Hash(tile, 4, salt + 3));
+            }
+        }
+    }
+
+    // `Nugget`을 눕힌 것. **법선의 y를 0.5 위에 둔다** — 뚜껑으로 읽혀야 자르기가 끌어내린다
+    // (옆면으로 읽히면 자르는 높이 위에서 **잘려 사라진다**). 둘레는 바깥으로 기울되 위가 주인이다.
+    void TopNugget(List<int> list, Vector3 center, float top, float r, float seed)
+    {
+        int i0 = _verts.Count;
+
+        var tip = center + Vector3.up * (r * 0.5f);
+        _verts.Add(tip); _norms.Add(Vector3.up); Uv(tip, Vector3.up);
+        _liftAt.Add((i0, tip.y - top));
+
+        float spin = seed * Mathf.PI * 2f;
+        for (int k = 0; k < OreRim; k++)
+        {
+            float a  = spin + (k + (Frac(seed * 13.7f + k * 0.37f) - 0.5f) * 0.5f) / OreRim * Mathf.PI * 2f;
+            float rr = r * (0.65f + Frac(seed * 7.3f + k * 0.61f) * 0.5f);
+
+            var radial = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+            var p      = center + radial * rr;
+
+            _liftAt.Add((_verts.Count, p.y - top));
+            _verts.Add(p);
+            _norms.Add((Vector3.up * 0.8f + radial * 0.6f).normalized);   // y 0.8 — 뚜껑
+            Uv(p, Vector3.up);
+        }
+
+        for (int k = 0; k < OreRim; k++)
+        {
+            list.Add(i0);
+            list.Add(i0 + 1 + (k + 1) % OreRim);
+            list.Add(i0 + 1 + k);
+        }
+    }
+
+    // uv3.x = 뚜껑에서 뜬 높이. **알갱이가 없어도 채널을 반드시 채운다**(2026-09-28에 겪었다).
+    //
+    // 처음엔 *"없는 채널은 셰이더에서 0으로 읽힌다"*고 보고 알갱이 없는 청크는 건너뛰었다. **아니었다** — 0이 아닌
+    // 값이 들어와 `min(y - lift, 자르는 높이) + lift`가 뚜껑을 안 내렸고, 화면에는 **광맥이 박힌 청크만 벽과 같이
+    // 내려가고 나머지는 윗면이 벽에서 떨어져 떠 있는 것**으로 보였다(사용자: *"박혀있는 쪽만 벽이랑 같이 내려가는
+    // 거 같아"*). **셰이더가 읽는 채널은 메시가 늘 들고 있어야 한다.**
+    void SetLift(Mesh mesh)
+    {
+        _lift.Clear();
+        for (int i = 0; i < _verts.Count; i++) _lift.Add(Vector2.zero);
+        foreach (var (index, lift) in _liftAt) _lift[index] = new Vector2(lift, 0f);
+        mesh.SetUVs(3, _lift);
+    }
 
     // 0~1. **`string.GetHashCode`를 안 쓴다** — 실행마다 달라지면 알갱이가 판마다 옮겨 다닌다.
     static float Hash(Vector2Int tile, int dir, int salt)

@@ -30,3 +30,38 @@
 | `WorldRansom` | **붙잡힌 사람을 돈으로 되찾는다.** `Gold`(`Wallet.Balance`) / `PriceFor(폰\|여럿)` / `Available(party)` / `TryPay`. **값 = 스탯 + 장비**이고 사람 값은 고용가(`PawnSpec.PriceBase/PricePerGrade`)와 **같은 상수**를 쓴다(값이 두 벌이면 "고용은 싼데 되찾는 건 비싸다"가 사고가 된다). 되사는 값이라 ×1.4, **흔들림 없음**(창을 여닫을 때마다 바뀌면 값이 나올 때까지 여닫게 된다). 등급 평균은 명세가 아니라 **실제 스탯**에서 낸다(굴려서 태어난 폰도 붙잡히고, 자란 만큼도 값에 실린다). 지불은 **배낭 먼저 그다음 창고**(`MaterialPool.Consume`과 같은 순서) — `TakeGold`가 전액 아니면 0이므로 **가진 만큼만 청구**한다(부족한 액수를 그대로 넣으면 한 푼도 안 나와 "둘을 합치면 되는데 못 낸다"가 된다) |
 | `WorldBattle` | **지도 위의 자동 전투**(M&B의 auto-resolve). `PowerOf(BandMember/UnitBrain/멤버들)` / `Resolve(party, band)` / `ResolveBands(a, b)`. 전력 = **공격·방어·강인함·회피** 넷의 가중합(전부 다 세면 요리 실력이 전투를 바꾼다). **공격 스탯은 부르는 쪽이 넘긴다**(2026-08-26) — 원정대원은 **실제로 든 것**이 쓰는 스탯 그대로(맨손=무술 · 근접=근접공격 · **원거리=인지력**), 무리 멤버는 무엇을 들었는지 모르므로 근접공격↔인지력 중 큰 쪽. **원정대원 쪽에 `Max`를 쓰면 안 된다** — 옛 짝(`정밀사격`)은 전투 전용이라 안전했지만 **인지력은 누구나 가진 속성**이라 인지력 100짜리 학자가 공격력 100으로 잡힌다(원정대는 일꾼도 데려간다). **장비는 양쪽 다 세되 표현이 다르다** — 원정대는 실제 무기·갑옷을 읽고, 무리는 `WorldBandData.PowerMultiplier`가 그 자리를 대신한다(한쪽만 세면 무장한 쪽이 늘 이겨 판정이 결론이 된다). 결과는 **인원 삭제가 아니라 피해** — `BodyPartSystem.TakeDamage`를 여러 번 나눠 때리고 기절/사망은 기존 체계가 정한다. 조우도 소굴 습격도 **같은 판정**(규칙이 둘이면 어느 쪽이 나은지가 계산이 아니라 눈치가 된다) |
 | `WorldMap` | 추상 바둑판 월드맵. `GetTile` / `SetContent` / `RegisterSettlement` / `Neighbors` / `Distance` / `OnNodeChanged`. **매장 자원**: 칸마다 무엇이 얼마나 묻혔는지는 `WorldDeposits.At(node, tile, seed)` — 종류는 `BiomeContentData.Deposits`(바이옴), 수량은 **칸 좌표+시드 해시로 결정적**(같은 축으로 `TownMerchants`가 마을 상인을 고른다). 값은 항상 같고 **조사(`IsSurveyed`/`MarkSurveyed`)해야 보인다**(안개 아님 — 가려지는 건 세부 수치뿐). `ResourceSite` 칸은 ×2.5. **저작한다, 절차 생성하지 않는다** — `mapData`(`WorldMapData` SO)를 연결하면 그대로 싣고 크기·시작 노드도 데이터가 이긴다. 없으면 빈 맵 + 경고. 칸이 갖는 건 **바이옴(콘텐츠 게이팅) · 내용물**뿐 — 높이·생김새는 저작한 지형 몫이다. 저작은 `DungeonColony → World Map Editor`(브러시 3종). **안개 없음**(2026-06-20 결정) |
+
+
+# Key Singletons 표 — CLAUDE.md에서 내려온 원문 (2026-09-25)
+
+CLAUDE.md를 절반 아래로 줄이며 옮겼다(사용자). **원문 그대로다** — CLAUDE.md에는 절마다 몇 줄과 포인터만 남았다.
+
+### Key Singletons
+
+**항목마다의 근거와 겪은 사고는 `docs/singletons.md`.** 여기 표에는 **주요 API와 어기면 조용히 틀리는 한 줄**만 둔다.
+
+| Class | 주요 API · 어기기 쉬운 것 |
+|---|---|
+| `RangeCircle` | 핵·부핵 영역선. **칸을 따라 그린다 — 매끄러운 원이 아니다**(2026-09-06): 판정이 칸 단위라 매끄러운 원은 **경계에서 그림과 판정이 어긋났다**(원 안에 보이는 칸이 실은 밖 → *"왜 여기는 안 지어지지"*). **안팎이 갈리는 변만 낸다**(`FarmZoneOverlay`와 같은 규칙) · **선 하나로 안 잇는다**(다각형 추적이 필요하고 화면에서는 똑같다) · 격자가 없는 씬에서는 예전처럼 원 |
+| `GridOverlay` | 건설 격자. **메시로 그린다**(`MeshTopology.Lines`) — 즉시 모드(`GL.Begin`)로 카메라 렌더 끝에 그리면 **오버레이 UI 위에 격자가 얹힌다**. **경계를 손으로 잡을 것**(선이 얇아 자동 경계가 카메라 밖 판정이면 통째로 사라진다) |
+| `MapManager` | `TileToWorld`(Y=0, 길찾기용) / `TileToGround`(표면 스냅, 배치·시각화용) / `SurfaceHeight` / `WorldToTile` / `SampleGroundHeight` / `IsFlatEnough` / `IsBuildable` / `FindWorkableNear` / `OnTileChanged`. 점유는 **절대좌표 희소 저장**(핵 이동에도 유지) |
+| `Irrigation` | `Covers(worldPos)` / `Radius`(6m). **레지스트리다**(휴면이 `OnDisable`로 뺀다). **수분을 채우지는 않는다** — 저절로 차오르면 물 긷는 일이 통째로 사라지고 **심자마자 자란다** |
+| `JobManager` | `RegisterJob` / `RequestJob(unit)`(방랑자·하수인 공통, 폰의 `WorkSettings`로 필터) / `ReserveFor` / `FindReserved` |
+| `DungeonCore` | `Summon` / `Minions` / `IsWithinAnyRangeWorld` / `RegisterSubCore` / `RelocateTo` / `OnTerritoryChanged`. **창고·재료는 핵 영역 단위다** — `All`이 레지스트리이고 `Instance`는 *"지금 조작 중인 거점"*이다(전부 더하면 **16km 밖 창고의 목재로 여기서 집을 짓는다**). `CurrentMinionCount`는 **셀 때마다 다시 센다** |
+| `EventManager` | `checkInterval`(기본 300초) 주기 추첨. **`Awake`가 60초 미만이면 경고한다** — 씬에 `10`이 박혀 하루 **180번** 돌던 적이 있다(코드 기본값은 씬이 값을 들면 아무 힘이 없다). 스폰 자리는 **핵에서 바깥으로 걸어 나가** 찾는다(좌표를 굴려 검사만 하면 바닥 밖 섬을 못 거른다) |
+| `GameTimeManager` | **하루 1800초 · 다섯 때**(새벽 00\~04 · 아침 05\~09 · 낮 10\~16 · 저녁 17\~20 · 밤 21\~23). **모든 지속시간 데이터의 기준 축** — 하루 길이를 바꾸면 허기·작물·연구·제작·채굴을 같이 옮겨야 한다(`docs/data.md` "시간 축"). **때는 시각(`Hour`)이 정한다**(비율로 얹으면 시계와 라벨이 따로 논다). **판은 아침에 시작한다**(`startHour` 7) — **`Elapsed`에는 안 얹는다**(이벤트 게이팅이 쓰는 축이라 더하면 판이 열리자마자 일곱 시간이 지난 것이 된다) |
+| `HierarchicalPathfinder` | `ComputeCoarseRoute` + `FindLocalPath` / `RebakeObstacleAt`. **웨이포인트 사이는 로컬 창(40m)보다 좁아야 한다**(`Densify`, 12m — Theta\*는 any-angle이라 **한 구간이 수백 미터**가 될 수 있고, 그러면 조향 목표가 창 밖이라 **창 가장자리로 접힌 직선 투영**을 겨눈다: 지하에서 그건 거의 늘 바위 속이라 **로컬 경로가 통째로 안 나온다**. 진단에는 *선 자리 통행가능 · 앞을 막은 것 없음 · 로컬경로 없음*이라는 모순처럼 읽히는 세 줄이 남는다 — 그래서 **조향 목표를 로그에 같이 적는다**). **코스 라우트는 도착점이 아니라 복도 안내다** — 마지막 구간에서 `_finalGoal`을 직접 안 겨누면 폰이 셀 중심에 서서 **2~3m 앞에서 영영 맴돈다**. **못 서는 칸은 목적지가 못 된다**(`SetMoveTarget`이 `FindWorkableNear`로 접는다 — 안 접으면 **멈추지도 포기하지도 않고 건물 둘레를 돈다**). **접을 때 바위 건너편을 안 고른다**(2026-09-10 — 캘 바위 둘레에서 *가장 가까운* 자리가 **폰의 반대쪽**일 수 있다: 한 칸 옆인데 길이 없어 일감을 집었다 놓기를 되풀이했다(10초에 포기 275건). `FindWorkableNear(prefer:)`에 *내 쪽으로 뚫렸나*를 넘긴다 — **거르는 것이 아니라 고르는 눈금이다**(조건에 맞는 자리가 없으면 설 자리를 잃는 것이 더 나쁘다). 그러면서 `LineIsClear`가 **바위를 보게** 됐다 — 점유만 보던 시절은 지상이었고, 지하에서는 통짜 바위를 뚫린 것으로 답했다). **움직이는 것과 가까워지는 것은 다르다**(`TrackGoalGain`) · **길을 다시 낼 때 기록은 올리되 시계는 안 만진다**(2026-09-10 — 다시 낸 길이 더 길면 옛 기록이 다시는 못 깨는 값이라 **기록은 올려야** 하는데, **시계까지 되돌리면 포기하는 그물이 통째로 풀린다**: 막힐 때마다 0으로 돌아가 폰이 거점 둘레를 하염없이 돌았다. 새 길로 25cm만 나아가면 시계는 저절로 되돌아간다) |
+| `ResearchManager` | `IsUnlocked` / `GetRequiredResearch` / `CanResearch` / `Complete`. **한 연구대는 한 번에 하나만 맡는다**(갈아타도 진행도는 남는다). **잠금은 양방향 어느 쪽으로 적어도 걸린다**(`ResearchData.UnlockedRecipes` ∥ `RecipeData.RequiredResearch`). **연구는 그래프이고 자리는 저작한다** — **씬에 놓인 것이 진짜다**(런타임은 노드 자리도 크기도 안 건드리고 선만 `RectTransform`에서 다시 긋는다). **다시 구워도 옮긴 자리는 안 없어진다.** 저작 규칙·시간 곡선은 `docs/build.md` |
+| `DataManager` | static. `GetItem` / `GetRecipe` / `GetRecipesBySkill` / `GetBuilding` / `GetUnit` / `AllItems` / `AllRecipes` / `AllResearch` / `AllBuildings` / `AllUnits` / `AllMinions` / `AllFactions` |
+| `GameModeManager` | **화면·입력이 필드냐 월드냐의 단일 소유자.** `Current` / `IsField` / `IsWorld` / `SwitchTo` / `Toggle` / `OnModeChanged`. **UI 캔버스는 하나** — 캔버스가 아니라 그 **직속 자식들**을 다룬다. 필드 UI는 떠날 때 열려 있던 상태를 **기억했다 복원**(일괄로 켜면 닫아 뒀던 패널까지 따라 열린다). **정착지 루트는 안 건드린다 — 거점 시뮬은 월드맵을 보는 동안에도 계속 돈다** |
+| `OutpostManager` | 채집기지. `Build` / `At` / `LoadInto` / `CanAfford` / `OnChanged`. **필드맵을 만들지 않는 추상 시설** — 매일 캐서 쌓고 **원정대가 들러 등짐으로 실어와야** 창고에 들어간다 |
+| `ExpeditionFormation` | `Begin` / `Cancel` / `IsGathering` / `ArrivedCount`. **도착 판정은 자리가 아니라 원이다**(자리는 안내지 조건이 아니라서, 그 칸에 못 서는 폰 하나가 출발을 막으면 안 된다). 붙들어 두는 것은 `HoldPosition`(`ManualMove`는 목적지 소진 시 자동 해제라 못 잡는다) |
+| `ExpeditionParty` | `Members` / `CurrentNode` / `Cargo` / `Capacity`(멤버 근력 합 × 5) / `TryAdd`(실제 받은 개수) / `ClearCargo`. 등짐도 **무게로 센다** |
+| `SettlementManager` | `Active` / `SwitchTo` / `SwitchToNode` / `ActiveBiome`. **루트 활성화의 소유자** — 한 번에 하나만 시뮬되는 건 모드가 아니라 "활성 정착지는 하나"라는 규칙 때문 |
+| `BiomeTier` | **지역 난도의 단일 출처.** `Of(biome)`(1~5) / `PowerMult`(티어마다 +35%) / `Label`·`Color`. **막지 않고** 무리·소굴 전력에 곱해지고 **도착 메뉴가 경고한다**(오픈월드다 — 갈 수 있고 대개 죽는다). **무리 에셋을 티어마다 복제하지 않는다** |
+| `WorldBandManager` | `Bands` / `FindContact` / `PushApart` / `RemoveIfDead` / `BandFor` / `TryGetRaidFrom`. **습격 빈도는 지도 전체가 하나로 정한다** — 소굴마다 제 시계를 들면 **소굴이 늘어난 만큼 습격이 곱해진다**(소굴은 *누가 올 차례인가*만 겨룬다). 포로를 되찾는 길 다섯은 **전부 `WorldMapView.RestoreParty` 하나로 모은다** |
+| `WorldLairs` | `At` / `BuildAll()`(가보지 않은 지역의 소굴도 저 혼자 내보내야 하므로 미리 다 깨운다) / `Clear` / `RegenAll`. **날짜는 안 섞는다** — 병력은 누적된 상태라 매일 굴리면 **어제 친 소굴이 멀쩡해진다** |
+| `WorldRansom` | `Gold` / `PriceFor` / `Available` / `TryPay` / `CanSell` / `PayoutFor` / `Sell`. **값 = 스탯 + 장비**이고 사람 값은 고용가와 **같은 상수**를 쓴다(두 벌이면 "고용은 싼데 되찾는 건 비싸다"가 사고가 된다). **흔들림 없음** |
+| `WorldBattle` | `PowerOf` / `Resolve` / `ResolveBands`. **공격 스탯은 부르는 쪽이 넘긴다** — **원정대원 쪽에 `Max`를 쓰면 안 된다**(인지력은 누구나 가진 속성이라 인지력 100짜리 학자가 공격력 100으로 잡힌다). 결과는 **인원 삭제가 아니라 피해** |
+| `WorldMap` | `GetTile` / `RegisterSettlement` / `Neighbors` / `Distance` / `OnNodeChanged`. **저작한다, 절차 생성하지 않는다**(`mapData`가 크기·시작 노드까지 이긴다). 매장 자원은 `WorldDeposits.At(node, tile, seed)`로 **결정적**이고 **조사해야 보인다**. **안개 없음** |
+

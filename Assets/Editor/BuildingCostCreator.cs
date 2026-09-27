@@ -97,10 +97,44 @@ public static class BuildingCostCreator
         ["CraftingTable_Alchemy"] = new[] { (Cut, 20) },                   // 120G
         ["SubCore"]               = new[] { (Cut, 40) },                   // 240G
         ["BoneAltar"]             = new[] { (Bone, 20) },                  // 160G
+
+        // ── 다리 — 2026-09-26 (`World → J. Create Bridges`가 에셋을 만든다) ─────────────
+        // **돌다리는 돌, 나무·판자 다리는 판자** — 짜 맞춘 것은 판자라는 위 규칙 그대로다.
+        // 길이가 곧 값이다(6칸 돌다리 ↔ 4칸 판자 다리).
+        ["Bridge_RockMoss"]       = new[] { (Stone, 30) },                 //  60G
+        ["Bridge_RockFrozen"]     = new[] { (Stone, 30) },                 //  60G
+        ["Bridge_RockShadow"]     = new[] { (Stone, 30) },                 //  60G
+        ["Bridge_Wood"]           = new[] { (Plank, 14) },                 // 112G
+        ["Bridge_WoodRail"]       = new[] { (Plank, 18) },                 // 144G
+        ["Bridge_WoodMoss"]       = new[] { (Plank, 14) },                 // 112G
+        ["Bridge_WoodMossRail"]   = new[] { (Plank, 18) },                 // 144G
+        ["Bridge_PlankShort"]     = new[] { (Plank, 6) },                  //  48G
+        ["Bridge_PlankLong"]      = new[] { (Plank, 10) },                 //  80G
     };
 
+    // 표 + **다리 크기 둘**(작은 `_S` · 큰 `_L` — `BridgeCreator.Sizes`). 보통이 표의 값이고 크기는 배율로 낸다
+    // (넓이가 배율의 제곱으로 늘지만 값까지 제곱으로 올리면 큰 다리를 아무도 안 짓는다 — 길이만큼만). 에셋이
+    // 있을 때만 — `World → J`를 돌리기 전에는 없다.
+    static IEnumerable<KeyValuePair<string, (string, int)[]>> Rows()
+    {
+        foreach (var kv in Table)
+        {
+            yield return kv;
+            if (!kv.Key.StartsWith("Bridge_")) continue;
+            foreach (var (suffix, mult) in new[] { ("_S", 0.6f), ("_L", 1.5f) })
+            {
+                string id = kv.Key + suffix;
+                if (AssetDatabase.LoadAssetAtPath<BuildingData>($"{BuildingDir}/{id}.asset") == null) continue;
+                var cost = new (string, int)[kv.Value.Length];
+                for (int i = 0; i < cost.Length; i++)
+                    cost[i] = (kv.Value[i].Item1, Mathf.Max(1, Mathf.RoundToInt(kv.Value[i].Item2 * mult)));
+                yield return new KeyValuePair<string, (string, int)[]>(id, cost);
+            }
+        }
+    }
+
     [MenuItem("DungeonColony/World/F. Wire Building Costs (건설 비용)")]
-    static void Wire()
+    internal static void Wire()
     {
         var items = new Dictionary<string, ItemData>();
         foreach (var id in new[] { Stone, Cut, Wood, Plank, Bone })
@@ -113,7 +147,7 @@ public static class BuildingCostCreator
         int wired = 0, missing = 0;
         var lines = new List<string>();
 
-        foreach (var kv in Table)
+        foreach (var kv in Rows())
         {
             var b = AssetDatabase.LoadAssetAtPath<BuildingData>($"{BuildingDir}/{kv.Key}.asset");
             if (b == null) { Debug.LogWarning($"[건설 비용] 건물 에셋이 없습니다 — {kv.Key}"); missing++; continue; }

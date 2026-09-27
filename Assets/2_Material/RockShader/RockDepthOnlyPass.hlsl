@@ -24,6 +24,7 @@ struct Attributes
     float4 position     : POSITION;
     float3 normalOS     : NORMAL;   // ← 더한 것: 뚜껑인지 옆면인지는 법선이 답한다
     float2 texcoord     : TEXCOORD0;
+    float2 rockLift     : TEXCOORD3;   // ← 더한 것: 뚜껑 위에 뜬 만큼(`RockCut.hlsl`)
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
@@ -52,7 +53,7 @@ Varyings DepthOnlyVertex(Attributes input)
 
     // ── 고친 곳 하나: 윗면을 내린다 (`RockCut.hlsl`) ────────────────────────
     // **자리를 잡기 전이어야** 화면 좌표와 월드 좌표가 한 자리를 가리킨다.
-    input.position.xyz = RockCutOS(input.position.xyz, input.normalOS);
+    input.position.xyz = RockCutOS(input.position.xyz, input.normalOS, input.rockLift.x);
 
     output.positionWS = TransformObjectToWorld(input.position.xyz);
     output.normalWS   = TransformObjectToWorldNormal(input.normalOS);
