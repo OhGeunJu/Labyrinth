@@ -172,9 +172,10 @@ public class WanderNode : BTNode
     {
         var map = MapManager.Instance;
 
+        float radius = bb.WanderRadius > 0f ? bb.WanderRadius : _radius;   // 무리는 좁게(`WildSpawner`)
         for (int i = 0; i < PickAttempts; i++)
         {
-            Vector2 rnd = Random.insideUnitCircle * _radius;
+            Vector2 rnd = Random.insideUnitCircle * radius;
             dest = bb.HomePosition + new Vector3(rnd.x, 0f, rnd.y);
             if (map == null || map.IsStandable(dest)) return true;
         }

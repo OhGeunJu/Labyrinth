@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class ResearchJob : JobBase
@@ -8,6 +9,7 @@ public class ResearchJob : JobBase
     float _startTime;
     float _carriedSeconds;   // 이번에 붙기 전까지 이미 해 둔 몫
     bool  _consumed;
+    readonly List<(ItemData item, int amount)> _taken = new();   // 실제로 뺀 것 — 환불은 이것을 돌려준다
     bool  _timerStarted;
     bool  _requeueOnCancel = true;
 
@@ -18,6 +20,8 @@ public class ResearchJob : JobBase
     public void SuppressRequeue() => _requeueOnCancel = false;
 
     public override JobCategory Category => JobCategory.Research;
+
+    public override Component Site => _table;   // 배치 칸이 거른다(`WorkPosts`)
 
     // 이어서 하는 연구인가 — 재료는 처음 착수할 때 한 번만 들어간다.
     bool Resuming => _data != null && ResearchManager.Instance != null
@@ -96,8 +100,9 @@ public class ResearchJob : JobBase
                 }
             }
 
+            _taken.Clear();
             foreach (var ing in _data.Ingredients)
-                MaterialPool.Consume(ing.Resolve(), ing.Amount, ReservedBy);   // 배낭 먼저
+                MaterialPool.Consume(ing.Resolve(), ing.Amount, ReservedBy, _taken);   // 배낭 먼저
             _consumed = true;
         }
 
@@ -124,8 +129,7 @@ public class ResearchJob : JobBase
         {
             _consumed = false;
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
-            foreach (var ing in _data.Ingredients)
-                MaterialPool.Refund(ing.Resolve(), ing.Amount, pos + Vector3.up * 0.3f);
+            MaterialPool.Refund(_taken, pos + Vector3.up * 0.3f);   // 실제로 뺀 것 그대로(`CraftJob`과 같다)
         }
 
         if (_requeueOnCancel) _table?.QueueResearch(_data);

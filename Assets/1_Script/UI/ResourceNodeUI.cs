@@ -212,7 +212,7 @@ public class ResourceNodeUI : MonoBehaviour
             }
         }
         else if (_current.CanDesignate)
-            sb.AppendLine("<color=#F90>야생입니다 — 배정이 아니라 찍어서 캡니다(H).</color>");
+            sb.AppendLine("<color=#F90>야생입니다 — 배정이 아니라 찍어서 캡니다(C 명령의 채굴).</color>");
         else
             sb.AppendLine("<color=#F90>붙은 폰이 없습니다.</color>");
 
@@ -335,7 +335,7 @@ public class ResourceNodeUI : MonoBehaviour
         // 것은 **고칠 방법이 다르다**(찍어서 캐라 ↔ 기다려라).
         if (rejected > 0)
             Debug.Log(_current.CanDesignate
-                ? $"[자원 노드] {_current.name}: 야생 자원은 배정하지 않습니다 — 찍어서 캡니다(H)."
+                ? $"[자원 노드] {_current.name}: 야생 자원은 배정하지 않습니다 — 찍어서 캡니다(C 명령의 채굴)."
                 : $"[자원 노드] {_current.name}: 자리가 {_current.MaxWorkers}명뿐이라 " +
                   $"{rejected}명은 배정하지 못했습니다.");
 

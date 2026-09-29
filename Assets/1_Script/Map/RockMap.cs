@@ -67,26 +67,23 @@ public static class RockMap
 
     static readonly HashSet<Vector2Int> _mined = new();
 
-    // ── 천장 격자 ───────────────────────────────────────────────────────────
+    // ── 내가 판 칸 — 언제 다시 메워지나 (2026-09-28) ──────────────────────
     //
-    // **림월드의 그 격자다**(2026-09-18, 사용자: *"그냥 아예 림월드처럼 해달라니깐"*).
-    // 답하는 물음은 ***"이 칸에 아직 안 무너진 천장이 있나"*** 하나이고, 그 답이 곧
-    // **무너질 수 있는 칸**이다.
+    // 사용자: *"붕괴 시스템이 고장난 거 같아 그냥 붕괴를 만들지 말고 던전핵이나 건설목을 세운곳이 아니면
+    // 이틀 뒤에 재생되는 걸로"*. **천장 격자와 붕괴를 걷어내고 이것으로 바꿨다**(`RockRegrow`가 메운다).
     //
-    // **`_mined`와 다른 물음이라 집합이 둘이다** — 저쪽은 *여기가 열렸나*(여유 함수의 답을
-    // 뒤집은 칸)이고 이쪽은 *그 위에 뚫어 놓은 천장이 남아 있나*다. 같은 물음에 답이 둘인
-    // 것이 아니다.
-    //
-    // 들어오는 문은 **`Mine` 하나**다 — 파야 천장이 생긴다(사용자: *"내가 파기 시작한
-    // 곳부터 천장"*). 그래서 **자연 굴과, 판이 열릴 때 뚫어 주는 시작 공터·길**
-    // (`OpenAround`·`OpenPathToCave`)은 여기 없다: 원래부터 서 있던 천장이라 안 내려앉는다.
-    //
-    // 나가는 문도 하나다 — **무너지면 빠진다**(천장이 떨어졌으니 두 번 떨어지지 않는다).
-    static readonly HashSet<Vector2Int> _cutRoof = new();
+    // 값은 **다시 메워질 게임 시각**(`GameTimeManager.Elapsed`)이다. 들어오는 문은 **`Mine` 하나** —
+    // 자연 굴과 판이 열릴 때 뚫어 준 시작 공터·길(`OpenAround`·`OpenPathToCave`)은 여기 없다: 사람이 판
+    // 것이 아니라 원래 있던 굴이라 안 메워진다. 나가는 문은 `Refill` 하나다.
+    static readonly Dictionary<Vector2Int, float> _dug = new();
 
-    // 파서 생긴 천장이 아직 있나. **`IsRock`의 반대가 아니다** — 자연 굴은 열려 있지만
-    // 이 격자 밖이고, 무너진 자리도 열려 있지만 이 격자 밖이다.
-    public static bool HasCutRoof(Vector2Int tile) => _cutRoof.Contains(tile);
+    public static IReadOnlyDictionary<Vector2Int, float> Dug => _dug;
+
+    // 다시 볼 시각을 미룬다 — 지켜지는 칸이거나 그 자리에 무엇이 있을 때(`RockRegrow`).
+    public static void Postpone(Vector2Int tile, float at)
+    {
+        if (_dug.ContainsKey(tile)) _dug[tile] = at;
+    }
 
     // 캘 것으로 찍어 둔 칸. **바위인지와 다른 축이다** — 찍어 놓고 아직 안 판 상태가 있다.
     static readonly HashSet<Vector2Int> _marked = new();
@@ -105,7 +102,7 @@ public static class RockMap
     // `TerrainCeiling`이 정점을 기억하지만, **여기서 한 겹 더 접으면 lerp 넷까지 사라진다.**
     //
     // **캔 칸은 캐시 앞에서 답한다** — 캐시가 담는 것은 *함수의 답*뿐이고, 판 것은 `_mined`가
-    // 든다(캘 때 캐시를 손볼 일이 없다. 되메우는 길이 없으니 한 방향뿐이다).
+    // 든다(캘 때도 메울 때도 캐시를 손볼 일이 없다 — `Refill`은 `_mined`에서 빼기만 하면 함수의 답이 다시 선다).
     //
     // 버리는 때는 둘: **천장 저작이 바뀌었을 때**(`TerrainCeiling.Version`)와 **격자 위상이
     // 움직였을 때**다. 위상은 지하에서 0으로 못 박히지만(`ProposeGrid`가 안 건드린다) 여기서
@@ -316,7 +313,7 @@ public static class RockMap
         if (!IsRock(tile)) return false;
 
         _mined.Add(tile);
-        _cutRoof.Add(tile);      // **여기부터 천장이다** — 무너짐이 보는 것은 이 격자다
+        _dug[tile] = GameTimeManager.Elapsed + RockRegrow.Days * GameTimeManager.DayDuration;
         _marked.Remove(tile);
 
         // **길찾기에 알린다.** 안 알리면 격자가 옛 상태로 남아 **판 자리를 폰이 계속 벽으로
@@ -338,7 +335,6 @@ public static class RockMap
         OnChanged?.Invoke(tile);
 
         VerifyOpened(tile);
-        Collapse(tile);
         return true;
     }
 
@@ -372,44 +368,24 @@ public static class RockMap
                        + (hp == null ? " · **길찾기가 씬에 없다**" : ""));
     }
 
-    // ── 무너짐 ──────────────────────────────────────────────────────────────
+    // ── 다시 메운다 (2026-09-28) ────────────────────────────────────────────
     //
-    // **판 자리 둘레에서 천장이 지지를 잃으면 내려앉는다**(2026-09-18, `RockSupport`).
+    // **판 칸을 바위로 되돌린다** — `Mine`을 거꾸로 돈다. 메울지 말지(핵 영역 · 버팀목 · 그 자리에 무엇이
+    // 있나)는 `RockRegrow`가 정하고, 여기는 *바위로 되돌리는 일*만 한다(`RockMap`은 *무엇이 바위인가*에만 답한다).
     //
-    // **천장 격자에 있는 칸만 무너진다** — 자연 굴과 판이 열릴 때 뚫어 준 자리는 원래부터
-    // 서 있던 천장이라 안 내려앉는다(`_cutRoof`).
-    //
-    // **`_mined`는 안 건드린다** — 떨어지는 것은 천장이고 굴은 남는다. 그래서 `IsRock`의
-    // 답이 안 바뀌고, 길찾기·그리기·캐시도 그대로다.
-    static readonly System.Collections.Generic.List<Vector2Int> _collapsing = new();
-
-    static void Collapse(Vector2Int mined)
+    // **길찾기와 그리는 쪽에 알리는 것은 `Mine`과 같은 두 줄이다** — 한쪽만 알리면 메워진 벽을 폰이
+    // 뚫고 가거나(격자가 옛 답) 보이지 않는 벽에 막힌다(메시가 옛 답).
+    public static bool Refill(Vector2Int tile)
     {
-        _collapsing.Clear();
-        if (RockSupport.CollectCollapsed(mined, _collapsing) == 0) return;
+        if (!_dug.Remove(tile)) return false;
+        if (!_mined.Remove(tile)) return false;
 
-        // **천장만 떨어진다 — 굴은 남는다**(림월드의 그 규칙, 2026-09-18 사용자 결정).
-        //
-        // 전에는 `_mined`에서 빼서 **판 칸을 도로 바위로 되메웠다.** 그러면 파는 일이
-        // *아무 일도 아닌 것*이 된다 — 폰이 몇 초 파고, 열리자마자 닫히고, 찍힘은 이미
-        // 지워졌으니 **진행이 0**이다. 둘레의 판 칸까지 같이 닫혀 뚫어 둔 길이 끊기므로
-        // 남은 일감이 `HasFace`를 잃고 취소·재시도를 되풀이했다(*"무너지고 나면 더 안 파고
-        // 왔다갔다만 한다"*).
-        //
-        // 림월드는 무너진 천장을 **없앤다** — 그 자리에 있던 것이 깔릴 뿐, 공간은 남는다.
-        // 그래서 값은 *진행의 무효화*가 아니라 **거기 있던 폰과 물건**이 치른다.
-        //
-        // 딸려 오는 것 둘: **`IsRock`의 답이 안 바뀌므로** 길찾기·그리기·캐시를 건드릴
-        // 일이 없다(`Forget`도 `RebakeObstacleAt`도 안 부른다 — 판 칸마다 세계 전체 캐시를
-        // 날리던 것이 사라진다) · **천장 격자에서 빠지므로 그 칸은 두 번 안 무너진다.**
-        foreach (var t in _collapsing) _cutRoof.Remove(t);
+        var map = MapManager.Instance;
+        if (map != null) HierarchicalPathfinder.Instance?.RebakeObstacleAt(map.TileToWorld(tile));
 
-        OnCollapse?.Invoke(_collapsing);
+        OnChanged?.Invoke(tile);
+        return true;
     }
-
-    // **무너졌다는 사실을 밖에 알린다** — 누가 다치는지, 화면에 무엇을 띄우는지는
-    // 여기가 알 일이 아니다(`RockMap`은 *무엇이 바위인가*에만 답한다).
-    public static event System.Action<System.Collections.Generic.List<Vector2Int>> OnCollapse;
 
     // **시작 자리를 열어 둔다**(2026-08-29).
     //
@@ -569,7 +545,7 @@ public static class RockMap
     public static void Clear()
     {
         _mined.Clear();
-        _cutRoof.Clear();
+        _dug.Clear();
         _marked.Clear();
         OnChanged?.Invoke(Vector2Int.zero);
     }

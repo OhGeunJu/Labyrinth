@@ -83,9 +83,9 @@ public static class MineSupportCreator
         }
 
         data.BuildingName = "갱도 버팀목";
-        data.Description  = "천장을 받치는 나무 기둥. 둘레 네 칸의 천장이 무너지지 않는다. "
-                          + "받치는 것 없이 넓게 파면 굴이 내려앉는다.";
-        data.Category     = BuildCategory.Defense;   // 길을 막는 것은 아니지만 **파는 일을 지키는 물건**이라 방어와 결이 같다
+        data.Description  = "굴을 지키는 나무 기둥. 둘레 네 칸의 판 굴이 다시 메워지지 않는다. "
+                          + "핵 영역 밖에서 판 굴은 이틀 뒤 바위로 돌아온다.";
+        data.Category     = BuildCategory.Mining;    // 파는 일을 지키는 물건 — 광맥 갈래와 같이 연다(2026-09-29)
         data.SortOrder    = 20;
         data.Size         = Vector2Int.one;
         data.Prefab       = prefab;
@@ -100,8 +100,7 @@ public static class MineSupportCreator
         AssetDatabase.Refresh();
 
         Debug.Log("[버팀목] 갱도 버팀목을 만들었습니다 — 원목 12 · 둘레 "
-                + RockSupport.SafeRadius + "칸을 받칩니다.\n"
-                + "**받치는 반경은 `RockSupport.SafeRadius`와 같은 눈금**이라, "
-                + "하나 세우면 그 자리에 바위가 있는 것과 같습니다.");
+                + RockSupport.SafeRadius + "칸의 판 굴을 지킵니다(핵 밖의 판 굴은 "
+                + RockRegrow.Days + "일 뒤 메워진다).");
     }
 }

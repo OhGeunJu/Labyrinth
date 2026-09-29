@@ -203,8 +203,11 @@ public static class MetalCreator
         // **무리를 안 짓는다**(1) — 버섯은 *밭을 만났다*가 되어야 하지만 광맥은 덩이 하나가
         // 여러 번 산출한다(`TotalYields`). 넷이 붙어 서면 그 자리가 곧 광산이 된다.
         //
-        // **다시 안 난다**(0) — 자연은 유한하다는 축이 야생 노드의 전부다.
-        ScatterWiring.Set(rules, "바닥 광맥", null, perChunk: 6f, spacing: 14f, regrowDays: 0f,
+        // **캐면 사흘 뒤 같은 자리에 다시 난다**(2026-09-28, 사용자: *"광맥은 캐야지 사라지고
+        // 그 사라진 상태에서 위에 건물을 설치하면 리스폰이 안되는거고 건물을 부시면 다시 리스폰이
+        // 되야해"*). 나무와 같은 날수다. 지은 자리에는 안 나고 부수면 다시 난다 —
+        // `WorldContentStreamer.BuiltOn`이 모든 규칙에 대해 답한다(여기 적을 것이 없다).
+        ScatterWiring.Set(rules, "바닥 광맥", null, perChunk: 6f, spacing: 14f, regrowDays: 3f,
                           biomes: null, cluster: (1, 1), spread: 0, fromBiomePool: true);
 
         ScatterWiring.Commit(so);

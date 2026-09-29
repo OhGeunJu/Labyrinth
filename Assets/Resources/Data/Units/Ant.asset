@@ -1,0 +1,78 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Name: Ant
+  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  Id: 
+  RaceName: "\uAC1C\uBBF8"
+  Icon: {fileID: 0}
+  NamePool: []
+  MaleNames: []
+  FemaleNames: []
+  MaxHP: 60
+  MoveSpeed: 5
+  AttackDamage: 10
+  AttackRange: 1.2
+  DetectRange: 10
+  NightVision: 1
+  IsUndead: 0
+  IsConstruct: 0
+  Resistances:
+  - Type: 0
+    Amount: 0.25
+  - Type: 1
+    Amount: 0.25
+  - Type: 2
+    Amount: -0.25
+  - Type: 3
+    Amount: -0.35
+  UsesBackstory: 0
+  DefaultMinGrade: 1
+  DefaultMaxGrade: 4
+  StatGrades:
+  - Stat: 26
+    Min: 6
+    Max: 8
+  - Stat: 25
+    Min: 3
+    Max: 5
+  - Stat: 24
+    Min: 7
+    Max: 9
+  - Stat: 1
+    Min: 10
+    Max: 12
+  - Stat: 0
+    Min: 8
+    Max: 11
+  - Stat: 2
+    Min: 0
+    Max: 1
+  - Stat: 3
+    Min: 0
+    Max: 0
+  StatGrowthRates: []
+  ButcherYield:
+  - Item: {fileID: 0}
+    ItemId: food_meat_ant
+    Chance: 0.6
+    MinCount: 1
+    MaxCount: 1
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_chitin
+    Chance: 0.9
+    MinCount: 1
+    MaxCount: 3
+  RollStats: 1
+  CanEquip: 0
+  DisabledJobs: 

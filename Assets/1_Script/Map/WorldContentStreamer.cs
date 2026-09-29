@@ -95,6 +95,9 @@ public class WorldContentStreamer : MonoBehaviour
         // 밀도를 얼마나 올려야 하는지를 그 숫자로는 못 낸다.
         public int     Tight;
 
+        // **지은 자리라 안 선 것**(2026-09-28) — 바위와 갈라 센다. 건물을 부수면 다시 난다.
+        public int     Built;
+
         // **어디에 섰는지도 적는다** — *"몇 개 섰다"*만으로는 *"안 보인다"*를 못 푼다.
         // 숫자가 0이 아닌데 화면에 없으면 다음 물음은 **어디에**이고, 그 답이 없으면
         // 찾으러 다니는 수밖에 없다. 처음 선 것 하나면 족하다(거기 가 보면 끝난다).
@@ -136,6 +139,7 @@ public class WorldContentStreamer : MonoBehaviour
         _regrowAt.Clear();
         _liveIds.Clear();
         _foot.Clear();
+        _underBuilt.Clear();
     }
 
     void OnEnable()
@@ -175,6 +179,7 @@ public class WorldContentStreamer : MonoBehaviour
 
     void Unload(Vector2Int chunk)
     {
+        _underBuilt.Remove(chunk);   // 다시 세울 때(`Load`) 새로 적힌다
         if (!_live.TryGetValue(chunk, out var list)) return;
         _live.Remove(chunk);
         foreach (var go in list)
@@ -198,6 +203,7 @@ public class WorldContentStreamer : MonoBehaviour
     void Scatter(Vector2Int chunk, List<GameObject> into, bool regrowOnly = false)
     {
         _placed.Clear();
+        CollectBuilt(chunk, _builtTiles);
 
         if (_census == null || _census.Length != scatter.Length) _census = new Census[scatter.Length];
         bool census = !regrowOnly && _censusChunks < CensusChunks;
@@ -232,6 +238,14 @@ public class WorldContentStreamer : MonoBehaviour
                 var prefab = rule.FromBiomePool ? PoolPrefab(chunk, r, i, wx, wz) : rule.Prefab;
                 if (prefab == null) { if (census) _census[r].NoPrefab++; continue; }
 
+                var foot = FootOf(prefab);
+
+                // **지은 자리에는 안 난다 — 바위 판정보다 먼저 묻는다.** 칸을 막는 건물은 아래
+                // `IsWorkable`도 거절하지만, 거기서 걸리면 *바위라서*와 갈리지 않아 **부순 뒤에
+                // 다시 날 자리로 적히지 않는다**(`_underBuilt`).
+                if (BuiltOn(new Vector3(wx, 0f, wz), foot, chunk))
+                { if (census) _census[r].Built++; continue; }
+
                 // **바위 속에는 안 세운다 — 그리고 *발자국*으로 묻는다**(2026-09-15).
                 //
                 // 경사·고도는 지상의 물음이고, 지하에서 *설 수 있나*에 답하는 것은
@@ -254,7 +268,6 @@ public class WorldContentStreamer : MonoBehaviour
                     var map = MapManager.Instance;
                     if (map == null) { if (census) _census[r].Rock++; continue; }
 
-                    var foot = FootOf(prefab);
                     if (!map.IsWorkable(map.WorldToTile(new Vector3(wx, 0f, wz))))
                     { if (census) _census[r].Rock++; continue; }
 
@@ -287,7 +300,7 @@ public class WorldContentStreamer : MonoBehaviour
 
                 // **자리를 먼저 고르고 나서 세운다.** 칸 목록을 미리 고르는 이유는
                 // *"같은 칸에 둘"*을 막기 위해서다 — 자리를 그때그때 굴리면 겹친다.
-                var spots = ClusterSpots(chunk, r, i, wx, wz, k, rule, FootOf(prefab));
+                var spots = ClusterSpots(chunk, r, i, wx, wz, k, rule, foot);
 
                 for (int j = 0; j < spots.Count; j++)
                 {
@@ -301,6 +314,10 @@ public class WorldContentStreamer : MonoBehaviour
                     if (_liveIds.Contains(mid)) continue;   // 지금 서 있다(다시 뿌릴 때)
 
                     float mx = spots[j].x, mz = spots[j].y;
+
+                    // 식구도 묻는다 — 씨점은 비었어도 무리의 한 칸에 지었을 수 있다.
+                    if (BuiltOn(new Vector3(mx, 0f, mz), foot, chunk)) continue;
+
                     float mh = TerrainHeight.At(mx, mz);
 
                     var rot = Quaternion.Euler(0f, Rand(chunk, r, i * ClusterStride + j, 3) * 360f, 0f);
@@ -377,7 +394,7 @@ public class WorldContentStreamer : MonoBehaviour
     {
         var sb = new System.Text.StringBuilder();
         sb.Append($"[뿌리기] 첫 {CensusChunks}청크({TerrainGrid.ChunkSize}m) 결산 — ");
-        sb.Append("규칙마다 `찍음 → 버림(경사/바위/좁음/바이옴/풀없음/간격) → 세움`\n");
+        sb.Append("규칙마다 `찍음 → 버림(경사/바위/좁음/바이옴/풀없음/간격/건물) → 세움`\n");
 
         for (int r = 0; r < scatter.Length; r++)
         {
@@ -387,7 +404,7 @@ public class WorldContentStreamer : MonoBehaviour
 
             sb.Append($"  · {name}: {c.Tried} → " +
                       $"경사 {c.Steep} · 바위 {c.Rock} · 좁음 {c.Tight} · 바이옴 {c.Biome} · " +
-                      $"풀없음 {c.NoPrefab} · 간격 {c.Close}" +
+                      $"풀없음 {c.NoPrefab} · 간격 {c.Close} · 건물 {c.Built}" +
                       $" → **{c.Made}개**");
 
             if (c.Made == 0)
@@ -752,9 +769,97 @@ public class WorldContentStreamer : MonoBehaviour
 
     void Update()
     {
-        if (Time.unscaledTime < _nextRegrowCheck || _regrowAt.Count == 0) return;
+        if (Time.unscaledTime < _nextRegrowCheck) return;
+        if (_regrowAt.Count == 0 && _underBuilt.Count == 0) return;
         _nextRegrowCheck = Time.unscaledTime + RegrowCheckSeconds;
         RegrowLive();
+        RegrowUnbuilt();
+    }
+
+    // ── 지은 자리에는 안 난다 · 부수면 다시 난다 (2026-09-28) ─────────────────
+    //
+    // 사용자: *"광맥은 캐야지 사라지고 그 사라진 상태에서 위에 건물을 설치하면 리스폰이 안되는거고
+    // 건물을 부시면 다시 리스폰이 되야해"*.
+    //
+    // **지은 것은 칸 점유로 묻지 않는다** — 점유는 *길을 막나*의 답이라 창고·침대·밭처럼 안 막는
+    // 건물과 **청사진**(짓는 동안 폰이 지나다녀야 한다)이 빠진다. 그 위에 버섯이 솟는다.
+    // 발자국 전체(`PlacedBuilding.FootprintAt`)와 바닥(`IsFloored`)을 본다.
+    //
+    // **부순 것을 알리는 문을 따로 안 둔다.** 철거 · 이전 · 청사진 취소 · 바닥 걷기가 저마다
+    // 알려야 하면 그중 하나는 반드시 빠진다. 대신 **막혔던 칸을 적어 두고 가끔 다시 본다** —
+    // 칸이 풀렸으면 그 청크를 다시 뿌린다(뿌리기가 결정적이라 같은 자리에 같은 것이 선다).
+    // 아직 날 날이 안 된 것은 `StillTaken`이 그대로 거른다.
+    static readonly HashSet<Vector2Int> _builtTiles = new();
+    static readonly HashSet<Vector2Int> _builtProbe = new();
+    static readonly Dictionary<Vector2Int, HashSet<Vector2Int>> _underBuilt = new();
+    static readonly List<Vector2Int> _freed = new();
+
+    // 청크 경계 밖에 선 건물도 발자국이 넘어올 수 있다 — 가장 큰 건물보다 넉넉히.
+    const float BuiltMargin = 8f;
+
+    // 이 청크에 걸친 지은 칸을 모은다. **뿌리기 한 번에 한 번** — 자리마다 건물 목록을 훑지 않는다.
+    static void CollectBuilt(Vector2Int chunk, HashSet<Vector2Int> into)
+    {
+        into.Clear();
+        float s  = TerrainGrid.ChunkSize;
+        float x0 = chunk.x * s - BuiltMargin, x1 = (chunk.x + 1) * s + BuiltMargin;
+        float z0 = chunk.y * s - BuiltMargin, z1 = (chunk.y + 1) * s + BuiltMargin;
+
+        foreach (var pb in PlacedBuilding.All)
+        {
+            if (pb == null || pb.Data == null) continue;
+            var p = pb.transform.position;
+            if (p.x < x0 || p.x > x1 || p.z < z0 || p.z > z1) continue;
+            foreach (var t in PlacedBuilding.FootprintAt(p, pb.Data.Size, pb.transform.rotation)) into.Add(t);
+        }
+
+        foreach (var bp in BuildingBlueprint.All)
+        {
+            if (bp == null) continue;
+            var p = bp.transform.position;
+            if (p.x < x0 || p.x > x1 || p.z < z0 || p.z > z1) continue;
+            foreach (var t in bp.Area) into.Add(t);
+        }
+    }
+
+    static bool IsBuilt(MapManager map, HashSet<Vector2Int> built, Vector2Int t) =>
+        built.Contains(t) || (map != null && map.IsFloored(t));
+
+    // 이 자리에 지은 것이 있나. 있으면 **그 칸을 적어 둔다** — 부순 뒤에 다시 날 자리다.
+    static bool BuiltOn(Vector3 at, Vector2Int foot, Vector2Int chunk)
+    {
+        var map = MapManager.Instance;
+        bool hit = false;
+
+        foreach (var t in ResourceNode.FootprintAt(at, foot))
+            if (IsBuilt(map, _builtTiles, t)) { hit = true; break; }
+        if (!hit) return false;
+
+        if (!_underBuilt.TryGetValue(chunk, out var tiles)) _underBuilt[chunk] = tiles = new HashSet<Vector2Int>();
+        foreach (var t in ResourceNode.FootprintAt(at, foot)) tiles.Add(t);
+        return true;
+    }
+
+    void RegrowUnbuilt()
+    {
+        if (_underBuilt.Count == 0) return;
+        var map = MapManager.Instance;
+
+        _freed.Clear();
+        foreach (var kv in _underBuilt)
+        {
+            if (!_live.ContainsKey(kv.Key)) continue;
+            CollectBuilt(kv.Key, _builtProbe);
+            foreach (var t in kv.Value)
+                if (!IsBuilt(map, _builtProbe, t)) { _freed.Add(kv.Key); break; }
+        }
+
+        // **적어 둔 것을 비우고 다시 뿌린다** — 아직 지어져 있는 칸은 뿌리기가 다시 적는다.
+        foreach (var c in _freed)
+        {
+            _underBuilt.Remove(c);
+            if (_live.TryGetValue(c, out var list)) Scatter(c, list, regrowOnly: true);
+        }
     }
 
     void RegrowLive()

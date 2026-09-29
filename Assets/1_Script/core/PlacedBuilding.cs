@@ -43,6 +43,11 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     // 배치로 지은 건물은 이미 `OccupyTiles`가 불렸으므로 여기서 다시 하지 않는다.
     void Start()
     {
+        // **체력을 단다**(`BuildingHealth` — 핵은 빼고). 청사진 고스트는 컴포넌트를 꺼 `Start`가 안 돌아 안 붙는다.
+        if (GetComponent<BuildingHealth>() == null
+            && GetComponent<DungeonCore>() == null && GetComponent<SubCore>() == null)
+            gameObject.AddComponent<BuildingHealth>();
+
         if (_occupiedTiles.Count > 0) return;             // 배치 경로가 이미 등록했다
         OccupyFootprint();
     }
@@ -235,6 +240,28 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         Destroy(gameObject);
 
         // 벽 등 철거 후 코스 격자 복구
+        HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
+    }
+
+    // ── 부서짐 ──────────────────────────────────────────────────────────────
+    //
+    // **철거와 같은 길이고 갈리는 것은 자재뿐이다** — 철거는 창고로 전액(`Refund`), 부서지면 **그 자리에 `ratio`만큼
+    // 떨어진다**(`BuildingHealth.DropRatio` 75%). 창고로 안 보내는 이유: 싸우다 부서진 벽의 잔해가 저절로 창고에
+    // 들어가면 부서진 것이 아니라 철거한 것이다. 주워 오는 일(운반)이 그 값이다.
+    public void Break(float ratio)
+    {
+        var pos = transform.position;
+
+        if (data != null)
+            foreach (var c in data.Costs)
+            {
+                if (c.Item == null || c.Amount <= 0) continue;
+                int n = Mathf.FloorToInt(c.Amount * ratio);
+                if (n > 0) DroppedItem.Spawn(c.Item, n, pos + Vector3.up * 0.3f);
+            }
+
+        ReleaseTiles();
+        Destroy(gameObject);
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
     }
 

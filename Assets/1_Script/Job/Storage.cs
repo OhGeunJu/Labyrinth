@@ -66,6 +66,8 @@ public class Storage : MonoBehaviour, IWorldClickable
 
         // 콕 집어 허용한 것이 먼저다 — 묶음에 없는 자원(또는 자원이 아닌 것)도 이걸로 받을 수 있다.
         if (allowedItems.Contains(item)) return true;
+        // `생고기`를 받는 창고는 늑대 고기도 받는다 — 같은 자리에 쓰이는 물건이다(`ItemData.CountsAs`).
+        if (item.CountsAs != null && allowedItems.Contains(item.CountsAs)) return true;
 
         // 자원 아이템만 묶음으로 걸러진다. 무기·방어구는 필터가 비어 있을 때만 들어온다.
         return item is ResourceItemData r && allowedGroups.Contains(r.Group);
@@ -119,12 +121,14 @@ public class Storage : MonoBehaviour, IWorldClickable
         {
             if (!sb.IsActive) continue;
             if (!Territory.Same(sb.transform.position, near)) continue;
-            total += sb.Inventory.GetTotalQuantity(item);
+            total += sb.Inventory.CountSatisfying(item, false);   // 늑대 고기도 생고기로 센다(`ItemData.CountsAs`)
         }
         return total;
     }
 
-    public static bool ConsumeByItem(ItemData item, int amount, Vector3 near)
+    // `taken`을 주면 실제로 뺀 물건을 적는다(쳐 주는 고기 등 — `Inventory.RemoveSatisfying`).
+    public static bool ConsumeByItem(ItemData item, int amount, Vector3 near,
+                                     List<(ItemData item, int amount)> taken = null)
     {
         if (GetTotalByItem(item, near) < amount) return false;
         int remaining = amount;
@@ -133,7 +137,7 @@ public class Storage : MonoBehaviour, IWorldClickable
             if (remaining <= 0) break;
             if (!sb.IsActive) continue;
             if (!Territory.Same(sb.transform.position, near)) continue;
-            remaining -= sb.Inventory.Remove(item, remaining);
+            remaining -= sb.Inventory.RemoveSatisfying(item, remaining, false, taken);
         }
         return remaining <= 0;
     }

@@ -33,7 +33,7 @@ public static class BenchArtCreator
     // **팩이 둘이고 결이 같다** — 같은 제작자의 `Fantastic ~ Pack` 형제라 섞어도 어울린다.
     // 던전 팩에는 **용광로도 모루도 없어서**(불은 화로·벽난로·모닥불뿐) 작업대의 정체를
     // 바탕이 말할 수가 없었다 — 제련소가 화로라 사용자에게 *"조리대 같다"*로 읽혔다.
-    const string PackDungeon  = "Assets/assetsss/Fantastic Dungeon Pack/prefabs/PROPS";
+    const string PackDungeon  = "Assets/assetsss/djf/prefabs/PROPS";   // 팩 폴더가 `djf`로 바뀌었다(2026-09-30 확인)
     const string PackInterior = "Assets/assetsss/Fantastic Interior Pack/prefabs/PROPS";
 
     const string PrefabDir = "Assets/3_Prefab/Building";

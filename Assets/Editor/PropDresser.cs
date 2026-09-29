@@ -36,7 +36,7 @@ public static class PropDresser
     //
     // **`ithappy/Fantasy`는 안 쓴다** — 성·집·동물이 있지만 로우폴리 판타지라 **결이 통째로
     // 다르다.** 모양이 맞아도 톤이 어긋나면 *들어맞는 것*이 아니다.
-    const string Pack         = "Assets/assetsss/Fantastic Dungeon Pack/prefabs/PROPS";
+    const string Pack         = "Assets/assetsss/djf/prefabs/PROPS";   // 팩 폴더가 `djf`로 바뀌었다(2026-09-30 확인)
     const string PackInterior = "Assets/assetsss/Fantastic Interior Pack/prefabs/PROPS";
     const string PackCave     = "Assets/assetsss/3DForge/Cave Adventure kit/Prefabs";
 
@@ -161,9 +161,8 @@ public static class PropDresser
         new Dress { Building = "QualityBed", FillLong = true, Margin = 0.95f, Props = new[]{ "I/Beds/P_PROP_bed_interior_02" } },
         new Dress { Building = "PrisonBed",  FillLong = true, Margin = 0.95f, Props = new[]{ "I/Beds/P_PROP_bed_interior_04" } },
 
-        // ── 수용 — **쇠창살이 그대로 있다.**
-        new Dress { Building = "PrisonCage", Props = new[]{ "comps/COMP_PROP_cage_dungeon_01",
-                                                            "construction/P_PROP_bars_wall_dungeon_01" } },
+        // ── 수용 — **우리는 여기서 뺐다**(2026-09-30) — 매달린 새장을 1칸에 줄여 입혀 사람보다 작았다.
+        // 2×2로 둘러 세우는 것은 `PrisonCageBuilder`(`Building → D`)가 든다(`[Cage]` — `[Art]`가 아니라서 여기서 안 벗긴다).
 
         // ── 울타리
         //
@@ -286,7 +285,13 @@ public static class PropDresser
         // 나무 — 굴에서 자라는 것은 **나무고사리**다(잎 달린 활엽수는 지하에 안 어울린다).
         // **키 3.8m** — 거대버섯과 같은 이유다(1×1로 접혀 0.24배였다). 도형 시절의 키(가지 끝 이끼까지).
         new Dress { Building = "Node_MossTree", Folder = "Node", Props = new[]{ "C/Plants/Ferns/cave_treefern1_01" }, KeepHeight = true, Height = 3.8f },
-        new Dress { Building = "Tree",          Folder = "Node", Props = new[]{ "C/Plants/Ferns/cave_treefern1_02" }, KeepHeight = true },
+        // **심는 나무는 활엽수다**(2026-09-30, 사용자: *"고사리는 별로야"* → 새로 들인 `Silent_Trees`). 굴 나무(이끼 낀
+        // 나무)와 갈라진다 — 이것은 *사람이 심어 기르는 나무*이고 2층 숲의 야생 나무(`Wood`)도 이 프리팹이다.
+        // 셋을 자리 해시로 돌린다(`Variants`) — 한 줄로 심으면 같은 나무가 늘어서 보인다. 단풍 셋·침엽 둘은 남겨 뒀다.
+        new Dress { Building = "Tree",          Folder = "Node", Variants = true, KeepHeight = true, Height = 4.2f,
+            Props = new[]{ "Assets/assetsss/Silent_Trees/Prefabs/Tree_Deciduous_01",
+                           "Assets/assetsss/Silent_Trees/Prefabs/Tree_Deciduous_02",
+                           "Assets/assetsss/Silent_Trees/Prefabs/Tree_Deciduous_03" } },
 
         // 물먹은 둥치 — **이름부터 둥치(trunk)다.** 가지가 삭아 없어진 그 모습 그대로.
         new Dress { Building = "Node_HardwoodTrunk", Folder = "Node", Props = new[]{ "C/Plants/Ferns/v1_ferns/fern_trunk1" }, KeepHeight = true },
@@ -328,7 +333,7 @@ public static class PropDresser
         // 그 프리팹을 아예 안 보기 때문이다. 그래서 *빼는 것*이 화면에서 아무 일도 안 하고,
         // 되돌리려면 `2. Undress`를 따로 눌러야 했다(그 사실을 아는 사람만).
         //
-        // **표가 답이라면 표에 없는 것도 표가 답해야 한다.**
+        // **다만 "표에 없다"로 고르지 않는다**(2026-09-30) — 다른 도구도 `[Art]`를 붙인다. 되돌릴 것은 `Retired`에 적는다.
         int stripped = StripUnlisted(notes);
 
         DressEntries(null, notes, ref done, ref missing);
@@ -521,18 +526,28 @@ public static class PropDresser
         so.ApplyModifiedPropertiesWithoutUndo();
     }
 
-    // 표에 없는데 얼굴이 붙어 있는 프리팹을 원래대로 되돌린다.
+    // **표에서 뺐다고 적은 것만** 원래대로 되돌린다(`Retired`).
+    //
+    // **2026-09-30에 좁혔다** — 전에는 *표에 없는 모든 프리팹*의 `[Art]`를 지웠다. 그런데 `[Art]`는 이 도구만 쓰는 이름이
+    // 아니었다: 소환진·바리케이드·갱도 버팀목·다리 서른이 **제 도구로** `[Art]`를 붙이는데, `Dress Buildings` 한 번에
+    // **전부 벗겨져 옛 도형으로 돌아갔다**(사용자: *"소환진은 미리보기가 안 보이는데 그냥 모델이 없는 게 맞아?"*).
+    // *표에 없다*는 *이 도구가 입힌 적이 있다*가 아니다 — 무엇을 되돌릴지는 **표에서 뺄 때 여기 적는다.**
+    static readonly string[] Retired =
+    {
+        // 표에서 한 줄을 지우면 그 건물(또는 노드) 이름을 여기 적는다 — 다음 `Dress Buildings`가 그 `[Art]`를 걷는다.
+    };
+
     static int StripUnlisted(List<string> notes)
     {
-        var listed = new HashSet<string>();
-        foreach (var d in Table) listed.Add(PathOf(d));
+        var retired = new HashSet<string>(Retired);
+        if (retired.Count == 0) return 0;
 
         int n = 0;
         foreach (var folder in new[] { "Building", "Node" })
         foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { $"Assets/3_Prefab/{folder}" }))
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (listed.Contains(path)) continue;
+            if (!retired.Contains(System.IO.Path.GetFileNameWithoutExtension(path))) continue;
 
             var root = PrefabUtility.LoadPrefabContents(path);
             try

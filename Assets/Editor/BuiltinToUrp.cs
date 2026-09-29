@@ -33,9 +33,18 @@ public static class BuiltinToUrp
     static readonly string[] Folders =
     {
         "Assets/assetsss/3DForge",
+        "Assets/assetsss/polyperfect",   // 2026-09-30, 사용자: *"polyperfect 여기 핑크색으로 보여"*
     };
 
-    const string UrpLit = "Universal Render Pipeline/Lit";
+    const string UrpLit      = "Universal Render Pipeline/Lit";
+    const string UrpParticle = "Universal Render Pipeline/Particles/Unlit";
+
+    // ── 2026-09-30에 넓혔다 — `polyperfect`에는 Standard 말고도 섞여 있었다 ─────────────
+    //
+    //   · **스카이박스는 건너뛴다** — Lit으로 바꾸면 하늘이 회색 판이 된다(내장 `Skybox/*`는 URP에서도 돈다).
+    //   · **파티클은 URP 파티클로** — Lit으로 바꾸면 불꽃이 불투명한 네모가 된다.
+    //   · **투명(Standard `_Mode` 2·3 = Fade·Transparent)은 투명으로** — 유리가 불투명한 벽이 된다.
+    //   · **잎(`Nature/*`·`Leaves`)은 알파 컷을 켠다** — 키워드가 없어도 잎은 잎이다.
 
     [MenuItem("DungeonColony/Building/5. Convert Built-in Materials To URP")]
     static void Convert()
@@ -60,6 +69,14 @@ public static class BuiltinToUrp
             // 이미 URP면 건너뛴다. **이름으로 본다** — `Shader` 참조를 비교하면 URP의
             // 다른 변형(Simple Lit·Unlit)까지 옮겨 버린다.
             if (m.shader.name.StartsWith("Universal Render Pipeline/")) { already++; continue; }
+            string oldName = m.shader.name;
+            if (oldName.StartsWith("Skybox/")) { already++; continue; }
+
+            if (oldName.StartsWith("Particles/") || oldName.StartsWith("Legacy Shaders/Particles/"))
+            {
+                if (ToParticle(m)) { notes.Add(System.IO.Path.GetFileNameWithoutExtension(path) + "(파티클)"); moved++; }
+                continue;
+            }
 
             // **옮기기 전에 읽어 둔다** — 셰이더를 바꾸는 순간 옛 프로퍼티는 사라진다.
             var tex    = Get(m, "_MainTex");
@@ -72,7 +89,11 @@ public static class BuiltinToUrp
             float metal = m.HasProperty("_Metallic")   ? m.GetFloat("_Metallic")   : 0f;
             float gloss = m.HasProperty("_Glossiness") ? m.GetFloat("_Glossiness") : 0.5f;
             float cut   = m.HasProperty("_Cutoff")     ? m.GetFloat("_Cutoff")     : 0.5f;
-            bool  alpha = m.IsKeywordEnabled("_ALPHATEST_ON");
+            bool  alpha = m.IsKeywordEnabled("_ALPHATEST_ON")
+                       || oldName.StartsWith("Nature/") || oldName.Contains("Leaves");
+            float mode  = m.HasProperty("_Mode") ? m.GetFloat("_Mode") : 0f;   // Standard: 0 불투명 · 1 컷 · 2 페이드 · 3 투명
+            if (mode == 1f) alpha = true;
+            bool  clear = mode >= 2f;
             var   scale = m.HasProperty("_MainTex") ? m.GetTextureScale("_MainTex")  : Vector2.one;
             var   off   = m.HasProperty("_MainTex") ? m.GetTextureOffset("_MainTex") : Vector2.zero;
 
@@ -109,8 +130,20 @@ public static class BuiltinToUrp
                 m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
             }
 
+            if (clear)
+            {
+                m.SetFloat("_Surface", 1f);   // 투명
+                m.SetFloat("_Blend", 0f);     // 알파
+                m.SetOverrideTag("RenderType", "Transparent");
+                m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                m.SetInt("_ZWrite", 0);
+                m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            }
+
             EditorUtility.SetDirty(m);
-            notes.Add(System.IO.Path.GetFileNameWithoutExtension(path));
+            notes.Add(System.IO.Path.GetFileNameWithoutExtension(path) + (clear ? "(투명)" : alpha ? "(컷)" : ""));
             moved++;
         }
 
@@ -119,6 +152,31 @@ public static class BuiltinToUrp
 
         Debug.Log($"[재질] URP로 옮긴 것 {moved}개 · 이미 URP였던 것 {already}개.\n  "
                 + string.Join(", ", notes));
+    }
+
+    // 파티클 — 텍스처와 색만 이어 주고 **더하기로 섞는다**(불꽃·촛불은 빛이라 겹칠수록 밝아야 한다).
+    static bool ToParticle(Material m)
+    {
+        var sh = Shader.Find(UrpParticle);
+        if (sh == null) return false;
+
+        var tex   = Get(m, "_MainTex");
+        var color = m.HasProperty("_TintColor") ? m.GetColor("_TintColor")
+                  : m.HasProperty("_Color")     ? m.GetColor("_Color") : Color.white;
+
+        m.shader = sh;
+        if (tex != null) m.SetTexture("_BaseMap", tex);
+        m.SetColor("_BaseColor", color);
+        m.SetFloat("_Surface", 1f);
+        m.SetFloat("_Blend", 2f);   // 더하기
+        m.SetOverrideTag("RenderType", "Transparent");
+        m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+        m.SetInt("_ZWrite", 0);
+        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        EditorUtility.SetDirty(m);
+        return true;
     }
 
     static Texture Get(Material m, string name) =>

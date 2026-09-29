@@ -34,10 +34,24 @@ public enum BuildCategory
     Floor,      // 바닥 — substrate. 무료·코어 무관이라 다른 무엇과도 성질이 다르다
     Storage,    // 보관 — 창고
     Production, // 제작 — 작업대·연구대·도축대 (폰이 붙어 일하는 설비)
-    Prison,     // 수용 — 우리·죄수 침대
+    Prison,     // 수용 — 우리·죄수 침대·감옥
+
+    // ── 2026-09-29에 붙였다(사용자: *"건축에서 카테고리를 더 알맞게 바꿔줘 추가도 해주고"*). **반드시 꼬리에** ──
+    Furniture,  // 가구 — 침대·화톳불·벽걸이 횃불 (들어가는 집이 아니라 그 안에 놓는 것)
+    Mining,     // 광맥 — 광맥 심기·돌·갱도 버팀목
+    Dungeon,    // 던전 — 핵·서브코어·소환진·하수인 유지 시설
+    Bridge,     // 다리 — 절벽을 건너는 것(스물일곱 벌)
 }
 
 // **갈래를 쪼개는 값은 "고를 것이 갈리는가"다.**
+//
+// **2026-09-29에 다시 갈랐다** — 아래 두 되돌림의 근거는 *갈래가 비거나 둘뿐*이었는데, 목록이 불어 그 전제가
+// 깨졌다: `기타`에 다리 스물일곱이 쌓여 무덤·핵이 그 사이에 묻혔고, `건물`에 집 껍데기·침대·횃불·충전대가
+// 섞여 *들어가는 집*이라는 이름과 안 맞았고, `자원`에 밭 다섯과 광맥 열셋이 한 칸이었다. 그래서
+//   · 자원 → **농사**(밭·온실·수로·물·나무 심기) + **광맥**(광맥 열셋·돌·갱도 버팀목)
+//   · 건물 → **건물**(집 껍데기) + **가구**(침대·화톳불·횃불) · 망루는 방어로 · 곳간은 보관으로 · 감옥은 수용으로
+//   · 기타 → **다리** + **던전**(핵·서브코어·소환진·충전대·제단) + **장례**(무덤·화장터 — 표시명만 바꿨다, 값은 `Misc`)
+// **짓는 사람이 여는 이유가 하나인가**로 잘랐다 — 밭을 짓는 사람과 광맥을 심는 사람은 다른 것을 찾는다.
 //
 // 광맥 열셋을 `자원`에서 떼어 봤다가 되돌렸다 — 밭·우물·나무·돌과 광맥은 **둘 다 지형에 놓는
 // 것**이라 짓는 사람이 그 둘 사이에서 헷갈릴 일이 없었고, 갈래만 하나 늘어 칸을 한 번 더
@@ -50,14 +64,18 @@ public static class BuildCategoryExt
 {
     public static string DisplayName(this BuildCategory c) => c switch
     {
-        BuildCategory.Resource   => "자원",
+        BuildCategory.Resource   => "농사",
         BuildCategory.Defense    => "방어",
         BuildCategory.Living     => "건물",
-        BuildCategory.Misc       => "기타",
+        BuildCategory.Misc       => "장례",
         BuildCategory.Floor      => "바닥",
         BuildCategory.Storage    => "보관",
         BuildCategory.Production => "제작",
         BuildCategory.Prison     => "수용",
+        BuildCategory.Furniture  => "가구",
+        BuildCategory.Mining     => "광맥",
+        BuildCategory.Dungeon    => "던전",
+        BuildCategory.Bridge     => "다리",
         _                        => c.ToString()
     };
 
@@ -65,8 +83,8 @@ public static class BuildCategoryExt
     // 사람을 재우고, 그다음이 붙잡아 두는 것과 치우는 것이다. 자원·광맥은 지형에 놓는 것이라
     // 뒤로 뺐다(자주 여는 갈래가 아니다).
     //
-    // **여덟이라 네 열에 두 줄로 떨어진다** — 줄 수가 곧 아래 띠의 높이다. 갈래를 더할 때는
-    // 줄이 늘어나는지 보고 띠도 같이 키울 것(`BuildMenuUpdater`).
+    // **판은 두 열 그대로 위로 길어진다**(`BuildModeUI.FitCategoryGrid` — 열둘이면 여섯 줄). 숫자 키는 갈래마다가 아니라
+    // `1` 이전 · `3` 다음이다(`BuildModeUI.CategoryKeys`).
     //
     // **여기 안 적은 갈래는 화면에 안 뜬다.** 목록의 유일한 근거라 새 갈래를 더하면 여기에도
     // 적어야 한다 — 빠뜨리면 조용히 사라지는 것이 아니라 **그 갈래의 건물이 통째로 안 보인다.**
@@ -77,8 +95,12 @@ public static class BuildCategoryExt
         BuildCategory.Storage,
         BuildCategory.Production,
         BuildCategory.Living,
+        BuildCategory.Furniture,
         BuildCategory.Prison,
         BuildCategory.Resource,
+        BuildCategory.Mining,
+        BuildCategory.Dungeon,
+        BuildCategory.Bridge,
         BuildCategory.Misc,
     };
 }

@@ -33,6 +33,21 @@ public static class BTTargetUtil
         bool going = board?.LeavingMap   ?? false;
         return !(down || held || going) || (bb != null && bb.FinishTarget == go);
     }
+
+    // **표적까지의 거리 — 건물은 가장 가까운 면까지**(2026-09-30, `BuildingHealth`). 한가운데까지 재면 회관(13×10)은
+    // 벽에 붙어 서도 6m라 **영영 사거리에 안 들어** 폰이 그 앞에서 헛걸음을 한다. 폰은 예전 그대로 몸의 중심.
+    public static float DistanceTo(Vector3 from, GameObject go)
+    {
+        var b = go.GetComponent<BuildingHealth>();
+        return b != null ? b.DistanceFrom(from) : Vector3.Distance(from, go.transform.position);
+    }
+
+    // 다가갈 자리 — 건물은 가장 가까운 면(그 칸이 막혀 있으면 `PawnMover`가 설 수 있는 칸으로 접는다).
+    public static Vector3 ApproachPoint(Vector3 from, GameObject go)
+    {
+        var b = go.GetComponent<BuildingHealth>();
+        return b != null ? b.ClosestPoint(from) : go.transform.position;
+    }
 }
 
 // 조건 체크
@@ -76,6 +91,9 @@ public class DetectNode : BTNode
             bb.Target = holder;
             return BTStatus.Success;
         }
+
+        // **막힌 길은 뚫는다**(2026-09-30, `BuildingHealth` — 적만). 도발 다음 자리다: 도발에 붙들린 놈은 벽을 안 친다.
+        if (Breach(bb, selfPos)) return BTStatus.Success;
 
         // 이미 잡은 타겟이 유효하면 유지하되, 훨씬 가까운 적이 생기면 갈아탄다.
         // (옆에 적을 두고 멀리 있는 상대를 패러 가는 것 방지 — 단 매 틱 흔들리지 않게 여유를 둔다)
@@ -172,6 +190,86 @@ public class DetectNode : BTNode
         // 기존 타겟보다 확실히 가까울 때만 교체 (SwitchMargin 배 이내면 그대로 — 타겟 흔들림 방지)
         bb.Target = (current == null || bestDistSqr * SwitchMargin < currentDistSqr) ? best : current;
         return BTStatus.Success;
+    }
+
+    // ── 뚫기 ────────────────────────────────────────────────────────────────
+    //
+    // 적이 **길을 포기하면**(`PawnMover.GaveUpAt`) 가려던 쪽으로 `BreachRadius` 안에 있는 **우리 건물 중 길을 막는 것**을
+    // 표적으로 삼는다. 부수면 길이 열려 원래 표적에게 간다(탐지가 다시 고른다).
+    //
+    // - **적만**(`UsesEnemyAi`) — 내 폰이 저 혼자 벽을 치면 안 된다(부수는 것은 우클릭 명령이다).
+    // - **우리 핵 영역의 것만** — 마을·폐허의 저작된 건물을 적이 부수면 세계가 저절로 허물어진다.
+    // - **길을 막는 것만**(`OccupiesTile`·`BlockMask`) — 침대·바닥은 길을 안 막으므로 부숴 봐야 길이 안 열린다.
+    // - **붙든 동안은 벽을 친다** — 매 틱 더 가까운 폰으로 갈아타면(탐지의 기본) 벽 너머의 폰을 다시 문다 →
+    //   다시 막힌다 → 다시 벽 … 로 흔들린다. **사거리 안에 내 편이 오면** 그때만 놓는다.
+    const float BreachRadius = 4f;
+    const float BreachWindow = 1.5f;   // 포기한 뒤 이만큼 안에만 뚫기를 고른다(실시간 초)
+
+    static bool Breach(UnitBlackboard bb, Vector3 selfPos)
+    {
+        if (bb.Brain == null || !bb.Brain.UsesEnemyAi) return false;
+
+        if (bb.BreachTarget != null)
+        {
+            if (!BTTargetUtil.IsAttackable(bb.BreachTarget)) { bb.BreachTarget = null; return false; }
+
+            var near = bb.Faction != null
+                ? FactionScan.NearestHostile(bb.Self, bb.Faction, bb.AttackRange * 1.5f, theirsToMine: false)
+                : null;
+            if (near != null) { bb.BreachTarget = null; return false; }   // 막아선 폰이 먼저다
+
+            bb.Target  = bb.BreachTarget;
+            bb.Engaged = true;
+            return true;
+        }
+
+        var mover = bb.Mover;
+        if (mover == null || Time.time - mover.GaveUpAt > BreachWindow) return false;
+
+        var wall = BlockingBuilding(selfPos, mover.GaveUpGoal);
+        if (wall == null) return false;
+
+        bb.BreachTarget = wall.gameObject;
+        bb.Target       = wall.gameObject;
+        bb.Engaged      = true;
+        return true;
+    }
+
+    // 가려던 쪽(`goal`)으로 가장 가까운 **우리 영역의 길막이 건물**.
+    static BuildingHealth BlockingBuilding(Vector3 from, Vector3 goal)
+    {
+        var toGoal = goal - from; toGoal.y = 0f;
+        bool hasDir = toGoal.sqrMagnitude > 0.01f;
+        if (hasDir) toGoal.Normalize();
+
+        BuildingHealth best = null;
+        float bestScore = float.MaxValue;
+        foreach (var hp in BuildingHealth.All)
+        {
+            if (hp == null) continue;
+            var data = hp.Building != null ? hp.Building.Data : null;
+            if (data == null || !(data.OccupiesTile || (data.BlockMask != null && data.BlockMask.Length > 0))) continue;
+
+            float d = hp.DistanceFrom(from);
+            if (d > BreachRadius) continue;
+
+            var p = hp.ClosestPoint(from) - from; p.y = 0f;
+            float along = hasDir && p.sqrMagnitude > 0.0001f ? Vector3.Dot(p.normalized, toGoal) : 0f;
+            if (hasDir && along < -0.2f) continue;               // 등 뒤의 벽은 길을 안 막는다
+
+            if (!InPlayerTerritory(hp.transform.position)) continue;
+
+            float score = d - along;                               // 가깝고, 가려던 쪽일수록
+            if (score < bestScore) { bestScore = score; best = hp; }
+        }
+        return best;
+    }
+
+    static bool InPlayerTerritory(Vector3 pos)
+    {
+        foreach (var c in DungeonCore.All)
+            if (c != null && c.IsWithinAnyRangeWorld(pos)) return true;
+        return false;
     }
 
     const float SwitchMargin = 1.5f;   // 새 후보가 기존 타겟보다 이 배수만큼 가까워야 갈아탄다
@@ -498,8 +596,7 @@ public class FightNode : BTNode
             return BTStatus.Failure;
         }
 
-        float dist = Vector3.Distance(bb.Self.transform.position,
-                                       bb.Target.transform.position);
+        float dist = BTTargetUtil.DistanceTo(bb.Self.transform.position, bb.Target);   // 건물은 가장 가까운 면까지
 
         // 공격 범위 밖이면 이동
         if (dist > bb.AttackRange)
@@ -527,7 +624,7 @@ public class FightNode : BTNode
     // **소집이 아니면 한 줄도 안 바뀐다** — 평소 전투는 예전 그대로 표적까지 간다.
     static Vector3 Approach(UnitBlackboard bb)
     {
-        var to = bb.Target.transform.position;
+        var to = BTTargetUtil.ApproachPoint(bb.Self.transform.position, bb.Target);
         if (!bb.IsDrafted) return to;
 
         // **사람이 지목한 표적은 목줄을 안 탄다** — 명령이 진형보다 위다. 안 그러면
@@ -633,6 +730,12 @@ public class WorkNode : BTNode
         // 돌려주므로 **폰이 시체를 든 채 영영 서 있는다.**
         if (bb.IsDrafted) return BTStatus.Failure;
         if (bb.Carrying != null && bb.CurrentJob == null) return BTStatus.Failure;
+
+        // **배치가 있으면 그 순위대로**(`WorkPosts`) — 들고 있는 일감이 없을 때만 고른다(하던 것은 끝낸다).
+        // 배치가 하나도 없는 폰은 여기를 지나 **예전 그대로** 일한다.
+        var posts = WorkPosts.Of(bb.Brain);
+        if (posts != null && posts.Any && bb.CurrentJob == null)
+            return TickPosts(bb, posts);
 
         // 배정된 노드가 있으면 우선 처리.
         //
@@ -851,6 +954,85 @@ public class WorkNode : BTNode
             }
         }
 
+        return BTStatus.Running;
+    }
+
+    // ── 배치 — 1순위부터 할 일이 있는 첫 칸 (2026-09-29) ──────────────────
+    //
+    // **노드를 캐는 중에도 `RepickSeconds`마다 위를 다시 본다** — 노드는 끝이 없는 일이라 안 보면 2순위 광맥을 캐던 폰이
+    // 1순위 작업대에 주문이 들어와도 영영 안 돌아간다. 일감(작업대 · 밭 · 운반)은 끝나면 저절로 여기로 돌아온다.
+    // **셋 다 없으면 논다** — `Failure`를 돌려주면 트리가 다음 가지(대기)로 간다. 저 혼자 광맥 잡기(`ClaimFreeFor`)도 안 한다.
+    const float RepickSeconds = 3f;
+    float _repick;
+
+    BTStatus TickPosts(UnitBlackboard bb, WorkPosts posts)
+    {
+        var brain = bb.Brain;
+        var jobs  = JobManager.Instance;
+        if (jobs == null) return BTStatus.Failure;
+
+        _repick -= bb.TickDelta;
+        if (bb.AssignedNode != null && _repick > 0f) return TickAssigned(bb);
+        _repick = RepickSeconds;
+
+        // **자기 배낭 비우기는 늘 먼저** — 캔 것을 못 내려놓으면 노드 배치가 스스로 멎는다.
+        var unload = jobs.RequestJob(brain, j => j.Category == JobCategory.Unload);
+        if (unload != null) { ReleaseNode(bb); return StartJob(bb, unload); }
+
+        for (int i = 0; i < WorkPosts.Count; i++)
+        {
+            var post = posts[i];
+            if (!post.IsSet) continue;
+
+            if (post.Kind == PostKind.Node)
+            {
+                var node = post.Target as ResourceNode;
+                if (!NodeOpen(node, brain)) continue;
+                if (bb.AssignedNode != node && !node.Assign(brain)) continue;   // 자리가 찼거나 못 하는 일
+                return TickAssigned(bb);
+            }
+
+            var job = jobs.RequestJob(brain, post.Takes);
+            if (job == null) continue;
+            ReleaseNode(bb);
+            return StartJob(bb, job);
+        }
+
+        ReleaseNode(bb);
+        return BTStatus.Failure;   // 논다
+    }
+
+    // 이 노드를 지금 캘 수 있나 — 없어짐 · 휴면 · 다 캠 · 힘 없음 · 자리 없음.
+    static bool NodeOpen(ResourceNode node, UnitBrain brain)
+    {
+        if (node == null || !node.isActiveAndEnabled || node.Depleted) return false;
+        if (node.IsBuilt && !PowerUser.Ok(node)) return false;
+        if (node.IsFull)
+        {
+            foreach (var b in node.AssignedPawns) if (b == brain) return true;
+            return false;
+        }
+        return true;
+    }
+
+    static void ReleaseNode(UnitBlackboard bb)
+    {
+        if (bb.AssignedNode != null) bb.AssignedNode.Unassign(bb.Brain);
+    }
+
+    // 일감을 쥐고 걷기 시작한다 — 큐에서 받은 것과 같은 순서(`Start` → 곧바로 끝났으면 놓는다 → 걸음).
+    BTStatus StartJob(UnitBlackboard bb, JobBase job)
+    {
+        bb.CurrentJob = job;
+        job.Start();
+        if (job.IsComplete())
+        {
+            JobManager.Instance.CompleteJob(job);
+            bb.CurrentJob = null;
+            return BTStatus.Failure;
+        }
+        bb.Mover.SetMoveTarget(JobTarget(job, bb));
+        ResetProgress();
         return BTStatus.Running;
     }
 

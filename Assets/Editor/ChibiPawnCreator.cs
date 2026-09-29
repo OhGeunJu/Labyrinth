@@ -683,10 +683,13 @@ public static class ChibiPawnCreator
 
         var made   = new List<string>();
         var bodies = new List<string>();   // 방랑자가 태어날 수 있는 몸들(`BodyVariants`)
+        Mesh  goblinTorso = null;
+        float goblinMaxR  = 0f;
         foreach (var shape in Shapes)
         {
             var s = shape;
             var torso = Lathe($"Chibi_Torso_{s.Suffix}", t => TorsoRadius(s, t), 40, 36, out float maxR);
+            if (s.Suffix == GoblinShape) { goblinTorso = torso; goblinMaxR = maxR; }
             string target = $"{OutDir}/Chibi_{s.Suffix}.prefab";
 
             // **guid를 지킨다 — 지우고 다시 만들지 않는다.** 방랑자의 몸 목록(`BodyVariants`)이 이 여섯을 guid로
@@ -717,6 +720,21 @@ public static class ChibiPawnCreator
             // `Model`을 비우고 다시 굽으므로 원본이 치비여도 결과는 같다.
             if (s.Suffix == WandererShape && Dress(Source, s, torso, maxR, headParts, mats, atlases, isSource: true))
                 made.Add($"방랑자(Wanderer_Human = {s.Label})");
+        }
+
+        // **고블린도 치비 몸이다 — 초록 피부로**(2026-09-29, 사용자: *"고블린도 지금 폰에 맞춰서 바꿔줘 초록색 피부로"*).
+        // 방랑자와 같은 길이다 — **제자리에서 `Model`만 간다**(소굴 무리·로드아웃·씬이 guid로 가리킨다). `Model`의 크기(0.8~0.85)는
+        // 그대로 남아 사람보다 작게 선다. 재질만 고블린 벌(`GoblinMaterials`)을 쓰고, 얼굴은 민머리 · 고블린 귀 · 긴 코로 못 박는다.
+        if (goblinTorso != null)
+        {
+            var gShape = Array.Find(Shapes, x => x.Suffix == GoblinShape);
+            var gMats  = GoblinMaterials(mats);
+            foreach (var gp in GoblinPrefabs)
+            {
+                if (!File.Exists(gp)) { Debug.LogWarning($"[치비] 고블린 프리팹이 없다 — {gp}"); continue; }
+                if (Dress(gp, gShape, goblinTorso, goblinMaxR, headParts, gMats, atlases, isSource: false, GoblinLook))
+                    made.Add($"고블린({Path.GetFileNameWithoutExtension(gp)})");
+            }
         }
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
@@ -757,9 +775,69 @@ public static class ChibiPawnCreator
     // 방랑자에게 입힐 체형(`Shapes`의 `Suffix`).
     const string WandererShape = "Male";
 
+    // ── 고블린 (2026-09-29) ─────────────────────────────────────────────────
+    //
+    // 체형은 **마른 남성** — 작고 가늘다(키는 프리팹 `Model`의 0.8~0.85가 준다). 적 셋과 내 하수인 하나가 같은 몸이다.
+    const string GoblinShape = "ThinMale";
+    static readonly string[] GoblinPrefabs =
+    {
+        $"{OutDir}/Enemy_Goblin.prefab",
+        $"{OutDir}/Enemy_GoblinArcher.prefab",
+        $"{OutDir}/Enemy_GoblinSpear.prefab",
+        $"{OutDir}/Minion_Goblin.prefab",
+    };
+
+    static readonly Color GoblinSkin = new Color32(0x86, 0xA8, 0x5A, 0xFF);   // 초록 살
+    static readonly Color GoblinRag  = new Color32(0x6E, 0x56, 0x38, 0xFF);   // 해진 갈색 천
+    static readonly Color GoblinEye  = new Color32(0xD8, 0xB0, 0x30, 0xFF);   // 누런 눈
+
+    // **살 재질은 모든 치비가 같이 쓴다** — 그대로 칠하면 방랑자까지 초록이 된다. 그래서 고블린 벌을 **사본으로** 따로 든다
+    // (`Chibi_Skin_Goblin` …). 사본은 원본의 값을 매번 다시 받아(외곽선 · 스텐실 · 음영) 원본을 고치면 따라오고,
+    // 색만 고블린 것이다. **눈·입 판도 살색을 든다**(`_SkinColor` — 판의 바탕이 살과 섞인다) — 안 바꾸면 초록 얼굴에
+    // 살색 눈두덩이 뜬다.
+    static Dictionary<string, Material> GoblinMaterials(Dictionary<string, Material> baseMats)
+    {
+        var map = new Dictionary<string, Material>(baseMats);
+        foreach (var n in new[] { "Skin", "HeadSkin", "SkinFine" })
+            map[n] = Variant(baseMats[n], $"Chibi_{n}_Goblin", "_BaseColor", GoblinSkin);
+        map["Shirt"] = Variant(baseMats["Shirt"], "Chibi_Shirt_Goblin", "_BaseColor", GoblinRag);
+
+        var eyes = Variant(baseMats["FaceEyes"], "Chibi_FaceEyes_Goblin", "_SkinColor", GoblinSkin);
+        eyes.SetColor("_AccentColor", GoblinEye);
+        map["FaceEyes"]   = eyes;
+        map["FaceMouths"] = Variant(baseMats["FaceMouths"], "Chibi_FaceMouths_Goblin", "_SkinColor", GoblinSkin);
+        return map;
+    }
+
+    static Material Variant(Material src, string name, string colorProp, Color color)
+    {
+        string path = $"{MatDir}/{name}.mat";
+        var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (m == null) { m = new Material(src) { name = name }; AssetDatabase.CreateAsset(m, path); }
+        else { m.shader = src.shader; m.CopyPropertiesFromMaterial(src); }
+        m.renderQueue = src.renderQueue;
+        m.SetColor(colorProp, color);
+        EditorUtility.SetDirty(m);
+        return m;
+    }
+
+    // 얼굴을 못 박는다 — 민머리 · 고블린 귀 · 긴 코. 머리형은 씨앗이 고른다(고블린마다 턱이 다르다).
+    static void GoblinLook(GameObject root)
+    {
+        var look = root.GetComponent<PawnLook>();
+        if (look == null) return;
+        var so = new SerializedObject(look);
+        so.FindProperty("hairOverride").stringValue = PawnLook.Bald;
+        so.FindProperty("earOverride").stringValue  = "Goblin";
+        so.FindProperty("noseOverride").stringValue = "Long";
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
     // 프리팹 하나의 `Model` 자식을 치비 살로 갈아 끼우고 치비 컴포넌트를 붙인다. **루트는 안 건드린다.**
+    // `finish` — 저장 직전에 한 번 더 손볼 것(고블린의 얼굴처럼).
     static bool Dress(string path, Shape s, Mesh torso, float maxR, Dictionary<string, List<Part>> headParts,
-                      Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, bool isSource)
+                      Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, bool isSource,
+                      Action<GameObject> finish = null)
     {
         var root = PrefabUtility.LoadPrefabContents(path);
         try
@@ -797,6 +875,7 @@ public static class ChibiPawnCreator
                 if (bv != null) UnityEngine.Object.DestroyImmediate(bv);
             }
 
+            finish?.Invoke(root);
             PrefabUtility.SaveAsPrefabAsset(root, path);
             return true;
         }

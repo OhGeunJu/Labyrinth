@@ -103,7 +103,7 @@ public static class BridgeCreator
             {
                 data.BuildingName  = prefix + k.Name;
                 data.Description   = k.Desc + $" 폭 {width}칸 · 길이 {length}칸 — 절벽 폭 {Mathf.Max(0, length - 2)}m까지 건넌다.";
-                data.Category      = BuildCategory.Misc;
+                data.Category      = BuildCategory.Bridge;
                 data.SortOrder     = 80 + order++;
                 data.Size          = new Vector2Int(width, length);
                 data.Prefab        = prefab;

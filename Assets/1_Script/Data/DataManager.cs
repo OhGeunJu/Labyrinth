@@ -191,6 +191,8 @@ public static class DataManager
                 LoadJsonRecipes( Path.Combine(modDir, "recipes"));
             }
 
+        ResolveCountsAs();
+
         Debug.Log($"[DataManager] 로드 완료: 아이템 {_items.Count}개, 레시피 {_recipes.Count}개, " +
                   $"연구 {_research.Count}개, 건물 {_buildings.Count}개, " +
                   $"종족 {_units.Count}개(소환 가능 {_minionOrder.Count}개)");
@@ -285,6 +287,29 @@ public static class DataManager
             if (c != 0) return c;
             return string.Compare(a.BuildingName, b.BuildingName, StringComparison.OrdinalIgnoreCase);
         });
+    }
+
+    // JSON의 `countsAs`를 푼다 — **아이템을 다 읽은 뒤에**(가리키는 것이 SO일 수도, 뒤에 읽힐 JSON일 수도 있다).
+    // 오타는 조용히 *아무 레시피에도 안 쓰이는 고기*가 되므로 시끄럽게 알린다.
+    static void ResolveCountsAs()
+    {
+        foreach (var item in _items.Values)
+        {
+            if (item == null) continue;
+            if (string.IsNullOrEmpty(item.CountsAsId))
+            {
+                if (item.CountsAs != null) item.CountsAs.HasStandIns = true;   // SO가 인스펙터에서 든 것
+                continue;
+            }
+            var target = GetItem(item.CountsAsId);
+            if (target == null || target == item)
+            {
+                Debug.LogWarning($"[DataManager] '{item.Id}'의 countsAs '{item.CountsAsId}'를 못 찾았습니다 — 재료로 안 쳐 줍니다.");
+                continue;
+            }
+            item.CountsAs = target;
+            target.HasStandIns = true;
+        }
     }
 
     // ── 아이템 JSON ────────────────────────────────────────────────────────
@@ -403,6 +428,7 @@ public static class DataManager
         item.Height      = Mathf.Max(1, s.height);
         item.BaseValue   = Mathf.Max(0, s.baseValue);
         item.Stack       = Mathf.Max(1, s.maxStack);
+        item.CountsAsId  = string.IsNullOrWhiteSpace(s.countsAs) ? null : s.countsAs.Trim();
 
         // 그림·모델은 **이 콘텐츠가 온 폴더 안에서** 먼저 찾는다(`ModAssets`).
         // 그래야 모드가 자기 PNG를 들고 올 수 있다 — 예전엔 `Resources.Load`뿐이라

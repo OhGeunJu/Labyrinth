@@ -273,12 +273,22 @@ public class RockRenderer : MonoBehaviour
     // 절반은 줄어도 알아보는 데 문제없다, 줄인 걸 위로 올려라"*). 면당 2~3 → **1~2** 덩어리,
     // 높이 6 → **10m**, 아래로 몰림 1.5 → **1.15**. 광맥은 *여기에 있다*만 읽히면 되고, 빽빽하면
     // 벽이 아니라 **광석 판**으로 보인다. 값도 그만큼 줄었다(면당 꼭짓점 42~63 → 21~42).
-    const int   OreClustersMin = 1;    // 면 하나에 덩어리 몇 — 이 사이에서
-    const int   OreClustersMax = 2;
+    //
+    // **높이를 칸으로 나눠 고르게 편다**(2026-09-29, 사용자: *"너무 밑에만 붙어 있어서 위는 조금 비어 보이지 않아?"*).
+    // 높이를 덩어리마다 따로 굴리면 우연히 둘 다 아래에 떨어지는 면이 많다 — 아래로 몰림(1.15)까지 얹혀
+    // 벽의 윗부분이 비었다. 이제 띠를 덩어리 수만큼 **층으로 나눠 층마다 하나씩** 둔다(층 안의 자리만 굴린다).
+    // 덩어리는 면당 1~2 → **1~3**(평균 1.5 → 2)만 늘렸다 — 09-15의 *"오밀조밀하다"*를 다시 밟지 않게,
+    // 개수보다 **퍼짐**으로 채운다.
+    //
+    // **벽 꼭대기까지 박는다**(같은 날, 사용자: *"그냥 맨 위까지 광맥이 박히게 하면 용량에 뭐 문제가 생기나?"*).
+    // 14m로 두면 물러나 벽이 통째로 보일 때 위 3분의 1이 비었다. 촘촘함은 14m일 때(1~3 = 1m에 0.14덩어리)
+    // 그대로 두고 높이만 편다 → 2~5. 값은 광맥 면 하나에 꼭짓점 70개 남짓이라 청크 한 장(수천)에 비하면 작다.
+    // 자르는 면 위의 것은 그려지지 않을 뿐이다(`RockCut`).
+    const int   OreClustersMin = 2;    // 면 하나에 덩어리 몇 — 이 사이에서
+    const int   OreClustersMax = 5;
     const int   OreNuggets  = 3;       // 덩어리 하나에 알갱이 몇
     const int   OreRim      = 6;       // 알갱이 둘레 꼭짓점
-    const float OreBand     = 10f;     // 바닥에서 이 높이까지
-    const float OreLowBias  = 1.15f;   // 1이면 고르게, 클수록 아래로 몰린다
+    const float OreBand     = RockMap.Height - 0.6f;   // 바닥에서 이 높이까지 — 꼭대기 한 뼘 아래
     const float OreOut      = 0.03f;   // 벽면에서 이만큼 띄운다(z-파이팅)
 
     Transform _root;
@@ -566,6 +576,7 @@ public class RockRenderer : MonoBehaviour
 
         var map = MapManager.Instance;
         int x0 = chunk.x * ChunkTiles, y0 = chunk.y * ChunkTiles;
+        BeginWobble(map);
 
         // **도는 김에 콜라이더 쪽이 쓸 것까지 채운다**(2026-09-02). `FitBoxes`가 같은 256칸을
         // 한 번 더 돌며 `IsRock`과 `SurfaceHeight`를 **다시** 물었었다 — 답이 안 바뀌는 물음을
@@ -603,10 +614,21 @@ public class RockRenderer : MonoBehaviour
             float xa = c.x - 0.5f, xb = c.x + 0.5f;
             float za = c.z - 0.5f, zb = c.z + 0.5f;
 
-            // 윗면 — 늘 그린다.
-            Quad(marked ? _mark : _top,
-                 new Vector3(xa, top, za), new Vector3(xa, top, zb),
-                 new Vector3(xb, top, zb), new Vector3(xb, top, za), Vector3.up);
+            // 윗면 — 늘 그린다. **벽선에 닿은 칸은 넷으로 쪼갠다** — 벽선의 가운데 점이 흔들리므로(`Wobble`)
+            // 뚜껑 가장자리도 그 점을 가져야 벽과 틈 없이 맞는다. 사방이 바위인 칸은 한 장이다.
+            var capL = marked ? _mark : _top;
+            if (TouchesOpen(tile))
+            {
+                float xm = c.x, zm = c.z;
+                Quad(capL, new Vector3(xa, top, za), new Vector3(xa, top, zm), new Vector3(xm, top, zm), new Vector3(xm, top, za), Vector3.up);
+                Quad(capL, new Vector3(xm, top, za), new Vector3(xm, top, zm), new Vector3(xb, top, zm), new Vector3(xb, top, za), Vector3.up);
+                Quad(capL, new Vector3(xa, top, zm), new Vector3(xa, top, zb), new Vector3(xm, top, zb), new Vector3(xm, top, zm), Vector3.up);
+                Quad(capL, new Vector3(xm, top, zm), new Vector3(xm, top, zb), new Vector3(xb, top, zb), new Vector3(xb, top, zm), Vector3.up);
+            }
+            else
+                Quad(capL,
+                     new Vector3(xa, top, za), new Vector3(xa, top, zb),
+                     new Vector3(xb, top, zb), new Vector3(xb, top, za), Vector3.up);
 
             // 옆면 — **뚫린 이웃 쪽만.** 바위끼리 물린 사이의 **단차 띠는 뚜껑 쪽에 넣는다**
             // (아래 `Side` 참고 — 재질이 갈려 있어서 목록을 잘못 고르면 그 띠만 밝게 뜬다).
@@ -747,7 +769,7 @@ public class RockRenderer : MonoBehaviour
             _wantLights.Add(new WantedLight
             {
                 Tile = tile, Face = f, Data = data, Prefab = prefab,
-                Pos  = center + along * slide + Vector3.up * (ground + h),
+                Pos  = center + along * slide + Wobble(center + along * slide) + Vector3.up * (ground + h),
                 Rot  = Quaternion.LookRotation(n, Vector3.up) * data.TwistFor(tile),
             });
             return;
@@ -949,9 +971,13 @@ public class RockRenderer : MonoBehaviour
         // **법선은 수평으로 둔다.** 위로 기울이면 `RockCut`이 *뚜껑*으로 보고 `min(y, cutY)`로
         // **끌어내려** 띠가 납작해진다(벽 광석 알갱이가 2026-09-15에 그렇게 **몇 m짜리 가시**를
         // 세웠다). 자르기는 옆면처럼 걸려야 맞다 — 뚜껑보다 위로 삐져나오면 안 된다.
-        Quad(rock ? capList : list,
-             new Vector3(x1, bottom, z1), new Vector3(x1, top, z1),
-             new Vector3(x2, top, z2),    new Vector3(x2, bottom, z2), n);
+        // **가운데에서 둘로 나눈다** — 벽선이 칸마다 한 번이 아니라 반 칸마다 굽는다(`Wobble`).
+        var l = rock ? capList : list;
+        float xm = (x1 + x2) * 0.5f, zm = (z1 + z2) * 0.5f;
+        Quad(l, new Vector3(x1, bottom, z1), new Vector3(x1, top, z1),
+                new Vector3(xm, top, zm),    new Vector3(xm, bottom, zm), n);
+        Quad(l, new Vector3(xm, bottom, zm), new Vector3(xm, top, zm),
+                new Vector3(x2, top, z2),    new Vector3(x2, bottom, z2), n);
 
         // **알갱이는 드러난 면에만.** 바위끼리 물린 사이의 얇은 띠는 *벽면*이 아니라 이음매라,
         // 거기에 광석을 박으면 **못 캐는 자리에 광맥이 보인다**(기반암에 안 박는 것과 같은 이유).
@@ -985,7 +1011,8 @@ public class RockRenderer : MonoBehaviour
         for (int c = 0; c < clusters; c++)
         {
             float cu = 0.18f + Hash(tile, dir, 100 + c * 7) * 0.64f;
-            float cy = baseY + Mathf.Pow(Hash(tile, dir, 101 + c * 7), OreLowBias) * OreBand;
+            // 층 c 안에서만 굴린다 — 층마다 하나씩이라 위아래로 고르게 퍼진다(위 상수 설명).
+            float cy = baseY + (c + 0.15f + Hash(tile, dir, 101 + c * 7) * 0.7f) / clusters * OreBand;
 
             for (int k = 0; k < OreNuggets; k++)
             {
@@ -1008,6 +1035,7 @@ public class RockRenderer : MonoBehaviour
     void Nugget(List<int> list, Vector3 center, Vector3 t, Vector3 n, float r, float seed)
     {
         int i0 = _verts.Count;
+        center += Wobble(center - n * OreOut);   // 굽은 벽을 따라 옮긴다 — 벽선 위 자리로 잰다
 
         var tip = center + n * (r * 0.5f);
         _verts.Add(tip); _norms.Add(n); Uv(tip, n);
@@ -1097,6 +1125,7 @@ public class RockRenderer : MonoBehaviour
     void TopNugget(List<int> list, Vector3 center, float top, float r, float seed)
     {
         int i0 = _verts.Count;
+        center += Wobble(center);   // 뚜껑 가장자리가 굽은 만큼 같이
 
         var tip = center + Vector3.up * (r * 0.5f);
         _verts.Add(tip); _norms.Add(Vector3.up); Uv(tip, Vector3.up);
@@ -1204,11 +1233,112 @@ public class RockRenderer : MonoBehaviour
         m.SetFloat("_Smoothness", vein.VeinSmoothness);
 
         m.EnableKeyword("_EMISSION");
-        m.SetColor("_EmissionColor", vein.VeinColor * (vein.VeinGlow ? 0.9f : 0.06f));
+        // **빛나지 않는 광맥도 은은하게는 뜬다**(2026-09-29, 사용자가 골랐다) — 0.06이면 불빛 없는 굴에서
+        // 알갱이가 바위색에 묻혔다. 0.25는 *여기 뭔가 박혀 있다*만 읽히는 정도고, 야광 광맥(0.9)과는 여전히 갈린다.
+        m.SetColor("_EmissionColor", vein.VeinColor * (vein.VeinGlow ? 0.9f : 0.25f));
         m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
 
         _oreMats[vein] = m;
         return m;
+    }
+
+    // ── 벽선을 흔든다 (2026-09-29) ──────────────────────────────────────────
+    //
+    // 사용자: *"벽들이 일렬로 너무 똑바로 서있는 거 같아 울퉁불퉁하면 좋겠어"*. 벽은 칸 경계라 위에서 보면
+    // 자로 그은 선이다. **바위와 빈칸의 경계에 있는 점만** 수평으로 민다 — 반 칸 격자(모서리 · 변 가운데)
+    // 위의 점마다 값이 하나다.
+    //
+    // **틈이 안 나는 이유는 셋이다.**
+    //   · **값은 자리의 함수다** — 같은 점을 어느 칸이, 어느 청크가 그리든 같은 만큼 움직인다(청크 이음매 포함).
+    //   · **경계가 아닌 점은 안 움직인다** — 사방이 바위인 칸의 뚜껑은 한 장인데, 그 가장자리에 옆 칸의
+    //     쪼갠 뚜껑이 점을 하나 더 두어도 그 점이 안 움직이니 한 직선 위에 있다.
+    //   · **높이를 안 탄다** — `RockCut`이 뚜껑을 *자르는 높이*로 끌어내리는데 그 높이가 줌마다 다르다.
+    //     흔들기가 높이를 타면 그 높이에서 벽의 선과 뚜껑의 선이 어긋나 구멍이 난다.
+    //
+    // **콜라이더와 길찾기는 칸 그대로다** — 모양만 굽는다. 그래서 폭은 칸의 3분의 1 아래로 둔다(바닥으로
+    // 삐져나온 만큼 폰이 벽 그림에 살짝 묻힐 수 있다). 이웃 점끼리는 매끈한 노이즈라 같이 움직여 면이 안 뒤집힌다.
+    const float WobbleAmp    = 0.30f;   // 매끈한 굴곡의 폭(m)
+    const float WobbleJitter = 0.07f;   // 점마다 얹는 잔굴곡(m)
+    const float WobbleScale  = 0.42f;   // 노이즈 주파수(1/m) — 2.4m쯤에 한 번 굽는다
+
+    float _latOx, _latOz;   // 반 칸 격자의 원점(격자 위상 포함)
+    readonly Dictionary<long, Vector2> _latCache = new();
+
+    void BeginWobble(MapManager map)
+    {
+        var c0 = map != null ? map.TileToWorld(Vector2Int.zero) : new Vector3(0.5f, 0f, 0.5f);
+        _latOx = c0.x - 0.5f; _latOz = c0.z - 0.5f;
+        _latCache.Clear();
+    }
+
+    // 사방 여덟 칸 중 하나라도 뚫렸나 — 뚜껑을 쪼갤지 가른다.
+    static bool TouchesOpen(Vector2Int t)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++)
+            if ((dx != 0 || dy != 0) && !RockMap.IsRock(new Vector2Int(t.x + dx, t.y + dy))) return true;
+        return false;
+    }
+
+    // 그 자리를 얼마나 미나(수평). 반 칸 격자 점 넷을 쌍선형으로 섞는다 — 격자 점에서는 그 점의 값이고,
+    // 벽선 위에서는 양끝 두 점 사이의 직선이라 **알갱이·조명도 굽은 벽면 위에 그대로 앉는다.**
+    Vector3 Wobble(Vector3 p)
+    {
+        float fx = (p.x - _latOx) * 2f, fz = (p.z - _latOz) * 2f;
+        int i = Mathf.FloorToInt(fx), j = Mathf.FloorToInt(fz);
+        float u = fx - i, v = fz - j;
+        if (u > 0.999f) { i++; u = 0f; }   // 격자 점 위의 부동소수점 흔들림을 접는다
+        if (v > 0.999f) { j++; v = 0f; }
+        if (u < 0.001f) u = 0f;
+        if (v < 0.001f) v = 0f;
+
+        Vector2 o = Lat(i, j) * ((1 - u) * (1 - v));
+        if (u > 0f)           o += Lat(i + 1, j)     * (u * (1 - v));
+        if (v > 0f)           o += Lat(i, j + 1)     * ((1 - u) * v);
+        if (u > 0f && v > 0f) o += Lat(i + 1, j + 1) * (u * v);
+        return new Vector3(o.x, 0f, o.y);
+    }
+
+    Vector2 Lat(int i, int j)
+    {
+        long key = ((long)i << 32) ^ (uint)j;
+        if (_latCache.TryGetValue(key, out var v)) return v;
+
+        v = OnBoundary(i, j) ? LatNoise(i, j) : Vector2.zero;
+        _latCache[key] = v;
+        return v;
+    }
+
+    // 반 칸 격자 점 (i, j)가 바위와 빈칸의 경계 위인가. 짝수 = 칸 모서리 줄, 홀수 = 칸 가운데 줄.
+    static bool OnBoundary(int i, int j)
+    {
+        bool ei = (i & 1) == 0, ej = (j & 1) == 0;
+        if (!ei && !ej) return false;                       // 칸 한가운데
+
+        int tx = i >> 1, ty = j >> 1;                       // 산술 시프트 = 음수도 내림
+        if (ei && ej)                                       // 모서리 — 둘레 네 칸이 다 같으면 경계가 아니다
+        {
+            bool a = RockMap.IsRock(new Vector2Int(tx - 1, ty - 1));
+            return a != RockMap.IsRock(new Vector2Int(tx,     ty - 1))
+                || a != RockMap.IsRock(new Vector2Int(tx - 1, ty))
+                || a != RockMap.IsRock(new Vector2Int(tx,     ty));
+        }
+        if (ej)                                             // 가로 변 가운데 — 아래 칸 ↔ 위 칸
+            return RockMap.IsRock(new Vector2Int(tx, ty - 1)) != RockMap.IsRock(new Vector2Int(tx, ty));
+
+        return RockMap.IsRock(new Vector2Int(tx - 1, ty)) != RockMap.IsRock(new Vector2Int(tx, ty));   // 세로 변 가운데
+    }
+
+    Vector2 LatNoise(int i, int j)
+    {
+        float x = _latOx + i * 0.5f, z = _latOz + j * 0.5f;
+        float nx = Mathf.PerlinNoise(x * WobbleScale + 1731.3f, z * WobbleScale + 911.7f) * 2f - 1f;
+        float nz = Mathf.PerlinNoise(x * WobbleScale + 4417.9f, z * WobbleScale + 2203.1f) * 2f - 1f;
+        var t = new Vector2Int(i, j);
+        float jx = (RockMap.Hash01(t, 0x9E3779B9u) * 2f - 1f) * WobbleJitter;
+        float jz = (RockMap.Hash01(t, 0x7F4A7C15u) * 2f - 1f) * WobbleJitter;
+        return new Vector2(Mathf.Clamp(nx * WobbleAmp * 1.6f, -WobbleAmp, WobbleAmp) + jx,
+                           Mathf.Clamp(nz * WobbleAmp * 1.6f, -WobbleAmp, WobbleAmp) + jz);
     }
 
     // 텍스처가 몇 미터에 한 번 반복하나. **칸 크기(1m)와 안 떨어지는 값**으로 둔다 —
@@ -1224,9 +1354,26 @@ public class RockRenderer : MonoBehaviour
     void Quad(List<int> list, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 n)
     {
         int i = _verts.Count;
-        _verts.Add(a); _verts.Add(b); _verts.Add(c); _verts.Add(d);
+        Uv(a, n); Uv(b, n); Uv(c, n); Uv(d, n);   // 무늬는 흔들기 전 자리에서 — 굽은 만큼 늘어나지 않게
+
+        var wa = a + Wobble(a); var wb = b + Wobble(b); var wc = c + Wobble(c); var wd = d + Wobble(d);
+
+        // **옆면은 굽은 면의 법선을 다시 잰다** — 원래 법선이면 굽은 벽이 빛을 평평하게 받아 굴곡이 안 읽힌다.
+        // 방향은 원래 법선 쪽으로 맞춘다(감김이 면마다 다르다 — `RockCutBackface`가 법선으로 등을 가른다).
+        // 흔들기는 수평뿐이라 y가 0.5를 못 넘는다 — 뚜껑으로 읽히지 않는다(`RockIsCap`).
+        if (Mathf.Abs(n.y) < 0.5f)
+        {
+            var m = Vector3.Cross(wc - wa, wd - wb);
+            if (m.sqrMagnitude > 1e-8f)
+            {
+                m.Normalize();
+                if (Vector3.Dot(m, n) < 0f) m = -m;
+                n = m;
+            }
+        }
+
+        _verts.Add(wa); _verts.Add(wb); _verts.Add(wc); _verts.Add(wd);
         _norms.Add(n); _norms.Add(n); _norms.Add(n); _norms.Add(n);
-        Uv(a, n); Uv(b, n); Uv(c, n); Uv(d, n);
         list.Add(i); list.Add(i + 1); list.Add(i + 2);
         list.Add(i); list.Add(i + 2); list.Add(i + 3);
     }

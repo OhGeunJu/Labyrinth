@@ -1298,6 +1298,9 @@ public partial class UnitBrain : MonoBehaviour
         GetComponent<CombatHandler>()?.ExitCombat();
         _mover?.StopMovement();
 
+        // 떼의 레일도 내린다 — 떼를 떠난 폰이 몸 없이 걸으면 명령받은 이동이 벽·폰을 뚫는다(`PawnMover.OnRails`).
+        if (_mover != null) _mover.OnRails = false;
+
         // ① BT — `UsesEnemyAi`가 세력을 보므로 다시 지으면 알아서 갈린다.
         _root = BuildTree();
 

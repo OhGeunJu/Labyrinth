@@ -11,8 +11,9 @@ using UnityEngine.InputSystem;
 //
 // - **카메라는 안 건드린다**(2026-09-19, 사용자: *"명령 화면 조정하는 거 그냥 없애자"*). 한때 채굴이 시점을
 //   위로 돌렸고(채굴만 그래서 통일성이 없었다), 명령 전체로 옮겼다가 통째로 뺐다.
-// - **단축키는 여기 하나다**(H 채굴 · J 채집 · K 운반 · C 취소 · V 올리기 · N 내리기 · T 평탄화 — 사용자가 정했다). 지정기마다 제 키를
-//   들면 *"이 키는 어느 도구를 여나"*가 파일 둘에 흩어진다. **같은 키를 다시 누르면 명령을 끈다.**
+// - **단축키는 여기 하나다** — `C`가 명령을 열고 닫고, 열려 있을 때 숫자가 도구를 고른다(`Order` 순서 —
+//   2026-09-28 사용자 결정. 전에는 도구마다 글자 하나였다). 지정기마다 제 키를 들면 *"이 키는 어느 도구를
+//   여나"*가 파일 둘에 흩어진다.
 // - **취소는 무엇이든 무른다** — 채굴 표시든 채집·운반 지정이든(사용자: *"다 호환되게"*). 취소 도구는
 //   채굴 지정기의 `Cancel`로 돌고, 무르는 김에 채집·운반 쪽도 같이 무른다(`HaulDesignator.UndesignateRect`).
 public class CommandMode : MonoBehaviour
@@ -74,20 +75,34 @@ public class CommandMode : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap() => SelfStanding.Create<CommandMode>("CommandMode");
 
+    // **화면 순서 = 숫자 순서**(2026-09-28, 사용자: *"명령은 N키로 바꾸고 명령 열었을 때도 1234로"*).
+    // 도구 바(`ModeToolBarUI.Command`)가 이 배열을 그대로 늘어놓는다 — 둘이 따로 적으면 `3`을
+    // 눌렀는데 세 번째 칸이 아닌 것이 켜진다.
+    public static readonly Tool[] Order =
+        { Tool.Cancel, Tool.Mine, Tool.Gather, Tool.Haul, Tool.Raise, Tool.Lower, Tool.Flatten };
+
+    // 도구 바가 이름 옆에 적는 키. `Order`의 자리 + 1.
+    public static int KeyOf(Tool t) => System.Array.IndexOf(Order, t) + 1;
+
+    // 명령을 켜고 끈다 — **`C`와 모드 바 버튼이 같은 문이다.** 켤 때는 채굴로 연다.
+    public static void ToggleMode()
+    {
+        if (IsActive) Close();
+        else          Use(Tool.Mine);
+    }
+
     void Update()
     {
         var kb = Keyboard.current;
-        if (kb != null && GameModeManager.IsField && !InputFocus.KeysBlocked())
-        {
-            if      (kb.hKey.wasPressedThisFrame) Toggle(Tool.Mine);
-            else if (kb.jKey.wasPressedThisFrame) Toggle(Tool.Gather);
-            else if (kb.kKey.wasPressedThisFrame) Toggle(Tool.Haul);
-            else if (kb.cKey.wasPressedThisFrame) Toggle(Tool.Cancel);
-            // **`V` 올리기 · `N` 내리기 · `T` 평탄화.** `G`를 안 쓰는 이유 — 원정 편성이 씬 필드로 들고 있어
-            // (`ExpeditionUI.toggleKey = Key.G`) 빼앗으면 **두 창이 같이 열린다.**
-            else if (kb.vKey.wasPressedThisFrame) Toggle(Tool.Raise);
-            else if (kb.nKey.wasPressedThisFrame) Toggle(Tool.Lower);
-            else if (kb.tKey.wasPressedThisFrame) Toggle(Tool.Flatten);
-        }
+        if (kb == null || !GameModeManager.IsField || InputFocus.KeysBlocked()) return;
+
+        // **`C`가 명령 모드를 연다**(2026-09-28 — 전에는 도구마다 글자 하나: H·J·K·C·V·N·T).
+        // 모드 바가 키보드 줄과 같은 순서다: `C` 명령 · `V` 밭 구역 · `B` 건설.
+        if (kb.cKey.wasPressedThisFrame) { ToggleMode(); return; }
+
+        // **열려 있을 때만 숫자가 도구다** — 닫혀 있으면 1~4는 능동 능력이다(`AbilityController`가 양보한다).
+        if (!IsActive) return;
+        for (int i = 0; i < Order.Length && i < 9; i++)
+            if (kb[Key.Digit1 + i].wasPressedThisFrame) { Use(Order[i]); return; }
     }
 }

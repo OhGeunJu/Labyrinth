@@ -89,10 +89,7 @@ public class ModeBarUI : MonoBehaviour
             case Mode.Haul:  HaulDesignator.Toggle();                      break;
             case Mode.FarmZone: FarmZoneDesignator.Toggle();               break;
             // 명령: 켜져 있으면 끄고, 꺼져 있으면 **채굴로** 연다(도구 바에서 채집·운반으로 바꾼다).
-            case Mode.Command:
-                if (CommandMode.IsActive) CommandMode.Close();
-                else                      CommandMode.Use(CommandMode.Tool.Mine);
-                break;
+            case Mode.Command: CommandMode.ToggleMode(); break;   // `C`와 같은 문
         }
     }
 }

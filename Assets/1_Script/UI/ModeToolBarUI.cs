@@ -103,19 +103,32 @@ public class ModeToolBarUI : MonoBehaviour
     // 무엇이 켜졌나는 `CommandMode.Current` 하나가 답한다. **취소는 도구를 안 가린다**(무엇이든 무른다) —
     // 그래서 **맨 앞**이다(2026-09-25, 사용자). 설명은 **무엇을 시키나 한 줄**이다(사용자: *"딱 뭐를
     // 시킨다 만 적어"*). 키는 이름에 붙인다.
+    // **칸 순서는 `CommandMode.Order`가 든다** — 숫자 키가 그 순서라, 여기서 따로 늘어놓으면
+    // `3`을 눌렀는데 세 번째 칸이 아닌 것이 켜진다(2026-09-28).
     void Command()
     {
         var cur = CommandMode.Current;
         int i = 0;
-        Bind(At(i++), "취소 (C)",   "찍어 둔 명령을 무른다.",                  cur == CommandMode.Tool.Cancel, () => CommandMode.Use(CommandMode.Tool.Cancel));
-        Bind(At(i++), "채굴 (H)",   "벽을 캐게 한다.",                          cur == CommandMode.Tool.Mine,   () => CommandMode.Use(CommandMode.Tool.Mine));
-        Bind(At(i++), "채집 (J)",   "버섯과 채집물을 따게 한다.",                cur == CommandMode.Tool.Gather, () => CommandMode.Use(CommandMode.Tool.Gather));
-        Bind(At(i++), "운반 (K)",   "바닥 물건을 창고로 옮기게 한다.",            cur == CommandMode.Tool.Haul,   () => CommandMode.Use(CommandMode.Tool.Haul));
-        Bind(At(i++), "올리기 (V)", "찍은 땅을 한 단 올리게 한다. 돌을 먹는다.",  cur == CommandMode.Tool.Raise,  () => CommandMode.Use(CommandMode.Tool.Raise));
-        Bind(At(i++), "내리기 (N)", "찍은 땅을 한 단 내리게 한다. 돌이 나온다.",  cur == CommandMode.Tool.Lower,  () => CommandMode.Use(CommandMode.Tool.Lower));
-        Bind(At(i++), "평탄화 (T)", "처음 누른 곳 높이로 찍은 땅을 고르게 한다.", cur == CommandMode.Tool.Flatten, () => CommandMode.Use(CommandMode.Tool.Flatten));
+        foreach (var t in CommandMode.Order)
+        {
+            var tool = t;
+            Bind(At(i++), $"{CommandMode.NameOf(tool)} ({CommandMode.KeyOf(tool)})", TipOf(tool),
+                 cur == tool, () => CommandMode.Use(tool));
+        }
         HideFrom(i);
     }
+
+    static string TipOf(CommandMode.Tool t) => t switch
+    {
+        CommandMode.Tool.Cancel  => "찍어 둔 명령을 무른다.",
+        CommandMode.Tool.Mine    => "벽을 캐게 한다.",
+        CommandMode.Tool.Gather  => "버섯과 채집물을 따게 한다.",
+        CommandMode.Tool.Haul    => "바닥 물건을 창고로 옮기게 한다.",
+        CommandMode.Tool.Raise   => "찍은 땅을 한 단 올리게 한다. 돌을 먹는다.",
+        CommandMode.Tool.Lower   => "찍은 땅을 한 단 내리게 한다. 돌이 나온다.",
+        CommandMode.Tool.Flatten => "처음 누른 곳 높이로 찍은 땅을 고르게 한다.",
+        _                        => "",
+    };
 
     BuildingItemUI At(int i) => i < tiles.Count ? tiles[i] : null;
 
@@ -133,17 +146,22 @@ public class ModeToolBarUI : MonoBehaviour
         var cur = FarmZoneDesignator.Current;
         HideFrom(3);
 
-        Bind(At(0), "새 구역", "끌어서 **새 구역**을 만든다.\n붙어 있어도 다른 구역이 된다.",
-             cur == FarmZoneDesignator.Tool.New,
-             () => FarmZoneDesignator.Use(FarmZoneDesignator.Tool.New));
+        // 칸 자리 = 숫자 키(`FarmZoneDesignator.Order`).
+        var New = FarmZoneDesignator.Tool.New;
+        var Ext = FarmZoneDesignator.Tool.Extend;
+        var Era = FarmZoneDesignator.Tool.Erase;
 
-        Bind(At(1), "확장", "**처음 누른 칸의 구역**이 커진다.\n빈 땅에서 시작하면 처음 걸린 구역이다.",
-             cur == FarmZoneDesignator.Tool.Extend,
-             () => FarmZoneDesignator.Use(FarmZoneDesignator.Tool.Extend));
+        Bind(At(FarmZoneDesignator.KeyOf(New) - 1), $"새 구역 ({FarmZoneDesignator.KeyOf(New)})",
+             "끌어서 **새 구역**을 만든다.\n붙어 있어도 다른 구역이 된다.",
+             cur == New, () => FarmZoneDesignator.Use(New));
 
-        Bind(At(2), "삭제", "끌어서 **구역에서 뺀다.**\n뺀 밭은 저 혼자가 된다.",
-             cur == FarmZoneDesignator.Tool.Erase,
-             () => FarmZoneDesignator.Use(FarmZoneDesignator.Tool.Erase));
+        Bind(At(FarmZoneDesignator.KeyOf(Ext) - 1), $"확장 ({FarmZoneDesignator.KeyOf(Ext)})",
+             "**처음 누른 칸의 구역**이 커진다.\n빈 땅에서 시작하면 처음 걸린 구역이다.",
+             cur == Ext, () => FarmZoneDesignator.Use(Ext));
+
+        Bind(At(FarmZoneDesignator.KeyOf(Era) - 1), $"삭제 ({FarmZoneDesignator.KeyOf(Era)})",
+             "끌어서 **구역에서 뺀다.**\n뺀 밭은 저 혼자가 된다.",
+             cur == Era, () => FarmZoneDesignator.Use(Era));
     }
 
     // **이름이 바뀔 때 설명도 같이 간다** — 하는 일이 달라졌는데 설명만 옛것이면

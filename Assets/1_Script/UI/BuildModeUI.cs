@@ -87,6 +87,27 @@ public class BuildModeUI : MonoBehaviour
 
         RefreshCatColors();
         RefreshItemColors();
+        CategoryKeys();
+    }
+
+    // **`1`은 이전 갈래, `3`은 다음 갈래**(2026-09-29, 사용자: *"숫자키로 배열하니깐 너무 길어지니깐 1이 이전꺼 3이 다음꺼로"*).
+    //
+    // 전에는 갈래마다 숫자 하나였다(2026-09-28 *"바닥 1 방어 2 보관 3 제작 4"*). 갈래가 열둘이 되자 키가 모자라고
+    // 몇 번이 무엇인지 외울 수가 없었다. **화면에 뜬 버튼 순서대로 돈다** — 빈 갈래는 접혀 있으니 건너뛴다.
+    // 끝에서 다음은 처음으로 돌아간다. 건설이 켜져 있는 동안 1~4는 능동 능력이 아니다(`AbilityController`가 양보).
+    void CategoryKeys()
+    {
+        var kb = UnityEngine.InputSystem.Keyboard.current;
+        if (kb == null || InputFocus.KeysBlocked() || _catBtns.Count == 0) return;
+
+        int step = kb.digit1Key.wasPressedThisFrame ? -1
+                 : kb.digit3Key.wasPressedThisFrame ? +1 : 0;
+        if (step == 0) return;
+
+        int cur = _catBtns.FindIndex(b => b.cat == _selectedCat);
+        int n   = _catBtns.Count;
+        int next = cur < 0 ? 0 : ((cur + step) % n + n) % n;
+        ShowCategory(_catBtns[next].cat);
     }
 
     // **갈래 버튼은 씬의 첫 자식을 본떠 찍는다.**
@@ -132,8 +153,40 @@ public class BuildModeUI : MonoBehaviour
             _catBtns.Add((go.GetComponent<Image>(), cat));
         }
 
+        FitCategoryGrid(_catBtns.Count);
+
         // 처음 열었을 때 **빈 칸을 보고 있지 않게** 한다.
         if (_catBtns.Count > 0 && !HasAny(_selectedCat)) _selectedCat = _catBtns[0].cat;
+    }
+
+    // **갈래 판은 두 열 그대로, 위로 길어진다**(2026-09-29, 사용자: *"3칸으로 내리지 말고 2칸으로 위로 길게 올려"*).
+    //
+    // 판은 씬에서 **두 열 × 네 줄**(256×252)로 섰고 갈래가 열둘이 되면 여섯 줄이 든다. 칸 크기·간격·여백은 씬 값
+    // 그대로 두고 **판 높이만 줄 수에 맞춘다.** 바닥은 띠의 왼쪽 아래 모서리에 걸려 있으니 **바닥을 붙든 채 위로**
+    // 늘린다(피벗을 아래로 옮기면서 그 자리를 지킨다) — 가운데 피벗으로 키우면 아래로도 삐져나와 타일 줄을 가린다.
+    // 세로로 늘어나게 앵커된 판이면(높이를 부모가 정한다) 건드리지 않는다.
+    const int CategoryColumns = 2;
+
+    void FitCategoryGrid(int count)
+    {
+        if (count <= 0 || categoryContainer == null) return;
+        var grid = categoryContainer.GetComponent<GridLayoutGroup>();
+        var rt   = categoryContainer as RectTransform;
+        if (grid == null || rt == null) return;
+
+        grid.constraint      = GridLayoutGroup.Constraint.FixedColumnCount;
+        grid.constraintCount = CategoryColumns;
+
+        if (!Mathf.Approximately(rt.anchorMin.y, rt.anchorMax.y)) return;
+
+        int rows = Mathf.CeilToInt(count / (float)CategoryColumns);
+        float h = grid.padding.top + grid.padding.bottom + rows * grid.cellSize.y + (rows - 1) * grid.spacing.y;
+
+        // 바닥을 붙든다 — 앵커 기준 바닥 y는 `위치 - 피벗 × 높이`다.
+        float bottom = rt.anchoredPosition.y - rt.pivot.y * rt.sizeDelta.y;
+        rt.pivot            = new Vector2(rt.pivot.x, 0f);
+        rt.sizeDelta        = new Vector2(rt.sizeDelta.x, h);
+        rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, bottom);
     }
 
     static bool HasAny(BuildCategory cat)

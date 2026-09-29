@@ -389,6 +389,44 @@ public class Inventory : MonoBehaviour
     public int GetTotalQuantity(ItemData data)
         => CountCore(data, false, false, default);
 
+    // ── 재료로 세고 뺀다 — `ItemData.CountsAs`를 따른다 ─────────────────────
+    //
+    // **재료를 찾는 자리만 부른다**(창고 집계 · `MaterialPool`). 위의 보통 수량은 제 물건만 센다.
+    public int CountSatisfying(ItemData want, bool skipLocked)
+    {
+        if (want == null) return 0;
+        int total = 0;
+        foreach (var inst in _items)
+        {
+            if (inst.Data == null || !inst.Data.Satisfies(want)) continue;
+            if (skipLocked && inst.Locked) continue;
+            total += inst.Quantity;
+        }
+        return total;
+    }
+
+    // **제 물건을 먼저 뺀다** — 그다음 그것으로 쳐 주는 것들. 뺀 수량을 돌려준다.
+    //
+    // `taken`을 주면 **무엇을 몇 개 뺐는지** 적는다 — 되돌릴 때(`MaterialPool.Refund`) 그것을 그대로
+    // 돌려주려고. 안 적으면 늑대 고기를 넣고 취소했는데 `생고기`가 돌아온다.
+    public int RemoveSatisfying(ItemData want, int amount, bool skipLocked,
+                                List<(ItemData item, int amount)> taken = null)
+    {
+        if (want == null || amount <= 0) return 0;
+        int got = RemoveCore(want, amount, skipLocked, false, default);
+        if (got > 0) taken?.Add((want, got));
+
+        for (int i = _items.Count - 1; i >= 0 && got < amount; i--)
+        {
+            var d = _items[i].Data;
+            if (d == null || d == want || !d.Satisfies(want)) continue;
+            int n = RemoveCore(d, amount - got, skipLocked, false, default);
+            if (n > 0) { got += n; taken?.Add((d, n)); }
+            if (i > _items.Count) i = _items.Count;   // 뭉치가 지워져 목록이 줄었다
+        }
+        return got;
+    }
+
     public int GetTotalQuantity(ItemData data, ItemQuality quality)
         => CountCore(data, false, true, quality);
 

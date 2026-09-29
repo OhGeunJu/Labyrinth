@@ -45,6 +45,7 @@ public static class BuildingCostCreator
     const string Wood  = "Res_Wood";       //  3G  거대버섯 · 이끼 낀 나무 (1층)
     const string Plank = "Res_Lumber";     //  8G  원목 3 → 2 (목공술)
     const string Bone  = "Res_Bone";       //  8G
+    const string Bronze = "Res_Bronze";    // 70G  1층 금속
 
     // 건물 에셋 이름 → 비용. **첫 재료가 그 건물의 몸이다**(`VeinResearchCreator`가 그렇게 읽는다).
     static readonly Dictionary<string, (string item, int amount)[]> Table = new()
@@ -77,7 +78,7 @@ public static class BuildingCostCreator
         ["Palisade"]              = new[] { (Wood, 4) },                   //  12G  줄로 긋는다 — 한 칸 값이다
         ["Barricade"]             = new[] { (Wood, 5) },                   //  15G
         ["Cell"]                  = new[] { (Stone, 15) },                 //  30G
-        ["PrisonCage"]            = new[] { (Stone, 10), (Wood, 8) },      //  44G
+        ["PrisonCage"]            = new[] { (Stone, 10), (Bronze, 4) },    // 300G  2×2 쇠창살 우리
 
         // ── 이미 저작돼 있던 것 — 여기 같이 적는다 ────────────────────────────
         //

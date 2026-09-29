@@ -525,7 +525,7 @@ public static class UnderworldSetup
             // **다시 만들므로**, 앞에 두면 입힌 얼굴이 그 단계에서 통째로 날아간다.
             // (`BenchArtCreator`는 작업대만 건드리고 그쪽 프리팹은 아무도 다시 안 지어서
             //  묶음에 없어도 된다 — 넣으면 등급 모델을 매번 다시 굽느라 느려지기만 한다.)
-            "DungeonColony/Building/1. Dress Buildings (모델 입히기)",      // 굴에 나는 것 · 침대 · 우물 …
+            "DungeonColony/Building/0. Dress All (모델 전부 입히기)",      // 표로 입히는 것 + 제 손으로 조립하는 것 전부(`DressAll`)
 
             "DungeonColony/World/3. Open Authoring Scene",      // **장소는 저작 씬에 놓인다**
         };

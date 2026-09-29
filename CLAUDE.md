@@ -14,9 +14,10 @@ Guidance for Claude Code in this repository.
 - **목재도 층을 탄다 · 건설 비용은 목록(`BuildingData.Costs`) · 작업대 등급(`BenchTier`)은 속도·레시피·연구를 한 값으로** — 등급은 같은 건물의 상태(`BenchUpgrade`) · 얼굴은 `[Art N]`을 켤 뿐 · 얼굴을 입히는 문은 둘(`BenchArtCreator`·`PropDresser` — 둘 다 두면 두 겹) · **연구는 목록에서 거르지 않는다**(`HandlesTier`) · 연구 배분은 순환 검사를 통과해야 한다. → `docs/build.md`
 - **전장의 안개** — 셋 상태 · 여는 것은 플레이어 폰의 눈 · 바위가 막는다 · 화면을 한 번 덮는다(셰이더마다 안 넣는다) · 찍은 표시는 안개를 안 탄다. → `docs/world.md`
 - **지하 · 층 넷 · 깊이가 곧 티어** — 층은 지도가(`WorldMapData.Floor`), 후보는 `BiomeContentData.Tier`가 답한다 · **무엇이 몇 층에 있나는 사용자가 저작한다** · 구역은 보로노이 + 도메인 워프 · 그린 층은 도구가 그대로 찍고 칠한 지도는 `HandPainted`가 지킨다 · 바이옴을 묻는 자리는 전부 `TerrainGrid.BiomeSample`을 지난다 · 머리 위 여유는 `MapManager.HasHeadroom` 하나. → `docs/design_underworld.md`
-- **사방이 바위이고 캐면서 넓힌다** — 답은 `RockMap` 하나(함수 + 캔 칸) · 세계 밖은 바위, 테두리 세 칸은 기반암 · 바위는 `RockRenderer` 청크 메시(콜라이더 있음 · 자르기는 `RockCut.hlsl`을 그리는 패스 셋 전부에) · **커서로 짚는 문은 `VisiblePick` 하나** · 광맥은 바이옴 풀 한 표를 셋이 읽는다(벽의 풀을 바닥에 쓸 때는 `IsVein`으로 거른다) · `Mining`·`Logging`은 큐에도 있다 · **벽 조명(야광석·폐광 횃불)은 `RockMap.WallLightAt`이 답하고 `RockRenderer`가 드러난 면에만 세운다**(표는 `BiomeContentData.WallLights` · 짓는 문 `World → K`). → `docs/design_underworld.md`
+- **사방이 바위이고 캐면서 넓힌다** — 답은 `RockMap` 하나(함수 + 캔 칸) · 세계 밖은 바위, 테두리 세 칸은 기반암 · 바위는 `RockRenderer` 청크 메시(콜라이더 있음 · 자르기는 `RockCut.hlsl`을 그리는 패스 셋 전부에 · **벽선은 흔든다**(`Wobble` — 경계 위 반 칸 격자 점만 · 자리의 함수 · 높이를 안 탄다 · 콜라이더·길찾기는 칸 그대로)) · **커서로 짚는 문은 `VisiblePick` 하나** · 광맥은 바이옴 풀 한 표를 셋이 읽는다(벽의 풀을 바닥에 쓸 때는 `IsVein`으로 거른다) · `Mining`·`Logging`은 큐에도 있다 · **벽 조명(야광석·폐광 횃불)은 `RockMap.WallLightAt`이 답하고 `RockRenderer`가 드러난 면에만 세운다**(표는 `BiomeContentData.WallLights` · 짓는 문 `World → K`) · **판 굴은 이틀 뒤 메워진다**(2026-09-28 — 붕괴를 걷어냈다 · 핵 영역과 버팀목 둘레는 남는다 · 판정 `RockRegrow.Keeps` · 메우는 문 `RockMap.Refill` · 무엇이 있으면 미룬다). → `docs/design_underworld.md`
 - **절벽 · 다리**(2026-09-26) — 그린 곳에만 서는 **밑이 안 보이는 낭떠러지**(`ChasmData` · 칠하기와 **자동 생성**은 `World → I` — **세계 한 변에서 맞은편까지 끊기지 않는 큰 협곡**이고 건너는 곳은 **다리 목**(다리로 건널 만큼 좁힌 자리)이다 · 다리 배치가 끊긴 곳을 채운다 · 다리는 **양 끝 높이로 비스듬히**(`Bridge.SpanOf`)) · 답은 `Chasm` 하나(통행은 `HasHeadroom`, 절벽 칸은 바위가 아니다) · **지형에 구멍을 뚫는다**(2m 덩어리 = 구멍 해상도) · 땅 고르기는 절벽을 거절하고 가장자리 정점을 못 움직이며 `MinLevelY` 아래로 못 내린다 · 다리는 종류가 무엇이든 **지을 수 있고 자연에도 선다**(`Bridge` — 윗면은 기단 목록이 아니라 `Chasm`이 들고, 등록은 `Start`·해제는 `OnDestroy`만) · 만드는 문 `World → J`. → `docs/world.md` 끝 "절벽 · 다리"
 - **세계 저작은 씬에서 하고 청크로 굽는다** — 저작 씬은 `Awake`에서 스스로 꺼진다 · 청크 에셋에 쓰는 문은 `5. Bake World` 하나(씬이 세계 전부를 담았을 때만) · **에디터 틱에서 런타임 물건을 건드리지 않는다**(`isPlaying`) · 도메인 리로드가 목록을 비우면 `Resources.FindObjectsOfTypeAll`로 거둔다 · 런타임 오브젝트 플래그는 `SelfStanding.RuntimeObject` · 장소 배치는 자동(손으로 놓은 것은 안 건드린다). → `docs/design_world_editor.md`
+- **짐승·떠도는 적은 청크가 설 때 선다**(2026-09-28, `WildSpawner`) — 소굴 무리(지도를 걷는 사건)와 다른 축 · 무엇이 사는가는 `BiomeContentData.WildSpawns`(무리 에셋 · 청크당 확률 · 다시 나는 날수, 초안 `World → L`) · **청크가 설 때마다 새로 굴린다**(서 있는 동안은 한 번 굴린 답을 든다 — 안 그러면 미룬 청크를 다시 볼 때마다 굴려 떼가 곱해진다) · 무리는 기준점 하나를 같이 쓰고 30m 안을 떼로 다닌다(기준점은 걸어서 닿는 칸만 · **떠도는 동안은 레일** — `PawnMover.OnRails`: 몸 없이 길만 따라 걷고 막힘·포기 진단을 안 찍는다, 표적이 생기면 몸으로) · 내 폰 40m 안과 핵 영역에는 안 선다 · 식구가 전부 **카메라와 내 폰 둘 다에서 250m** 넘게 떨어지면 거둔다(청크 기준은 카메라만 옮겨도 싸우던 떼가 사라졌다) · **핵 영역 밖 시체는 하루 뒤 사라진다**(`Corpse.CheckVanish` — 묻힌·업힌·내 사람 시체는 빼고) · **갇힌·업힌 폰은 무리에서 빠진다**(안 빼면 기지 청크가 내려갈 때 포로가 지워진다). → `docs/world.md` 끝
 - **에디터 메뉴 번호는 겹치면 컴파일 직후 에러다**(`MenuOrderCheck` — 2026-09-26, `World/I`가 둘이라 씬을 저장해 버리는 도구가 잘못 눌렸다) · 목록을 따로 들지 않고 유니티가 아는 메뉴를 훑는다 · **`1. Rebuild Underworld`는 메뉴를 이름으로 부르니 번호를 바꾸면 거기도** · **끝난 일회성 이행은 지운다**(남겨 두면 번호만 차지하고 잘못 눌린다).
 - **남은 미결은 둘** — 월드맵 `직접 건설`, 월드 에디터의 퀘스트. 적도 능동을 쓴다(`UseAbilityNode` — 가르는 축은 `UnitBrain.AbilityByHand`, `AcceptsOrders`가 아니다). **"구현 예정"이라고 적어 두면 다음에 읽는 사람이 이미 끝난 것을 다시 잰다.**
 
@@ -173,6 +174,7 @@ Guidance for Claude Code in this repository.
 - **재료를 먹는 일감은 `IsReady` + `CanAssignTo`** · 밖에서 취소된 일감은 폰이 놓게 한다 · **틱마다 누적하는 값은 델타를 곱한다.**
 - **바닥 물건은 체크한 것만 실려 간다**(`HaulAllowed`) · 품목 단위는 `HaulPolicy` 하나(O) · **야생은 찍고 기지는 배정한다**(`IsBuilt` — 야생도 손으로는 붙이지만 저 혼자는 안 잡는다) · 한 번 하고 없어지는 것은 `Forageable`.
 - **힘은 핵이 내고 먼저 지은 것이 먼저 받는다**(`PowerGrid`/`PowerUser` — 배선은 `World → 8`).
+- **배치 — 폰을 건물에 1~3순위로 붙박는다**(`WorkPosts` · 2026-09-29, **핵을 누르면** `WorkPostsUI` · 소환은 새 건물 **소환진**(`SummonCircle` → `DungeonCoreUI`, 하수인은 소환진 곁에 선다)) — 위에서부터 할 일이 있는 첫 칸을 한다 · 셋 다 없으면 **논다**(다른 일에 안 끌려간다) · 칸이 없는 폰은 예전 그대로 · 배치는 명령이라 on/off는 안 보고 `IsBlocked`만 · 일감의 건물은 `JobBase.Site` · 노드를 캐는 중에도 3초마다 위 순위를 다시 본다 · 자기 배낭 비우기는 늘 먼저. → `docs/jobs.md` 끝
 - 큐 순서(`QueueOrder`)가 전역 우선순위 · 폰 설정은 on/off(`WorkSettings`, P) · **밭은 붙어 있으면 한 구역**(`FarmZones` — 4-이웃, 테두리를 그린다) · 씨앗은 심는 순간 하나 쓴다 · 거둔 것은 그 자리에 떨어진다.
 
 ### 전투 · 붙잡은 사람
@@ -201,6 +203,8 @@ Guidance for Claude Code in this repository.
 - **청사진은 자재를 배치 때 안 낸다** · 철거·취소는 전액 창고로(`bp.Cancel()` 하나) · 자리에 따라 모양이 갈리면 `IPlacementPose` · 고스트에서 스크립트 떼는 순서를 지킨다.
 - **바닥은 데이터다**(`RegisterFloor` + `FloorRenderer` 청크) · 경사를 안 따르는 기단 · **폰이 오르는 턱은 `PawnMover.StepUp` 하나**(길찾기도 안다) · 지름길은 몸통 두께를 안다(`LosOpen`).
 - **레이어가 곧 누구를 통과하나**(`Player` 7 · `Npc` 8 · `Enemy` 9 — `Default`에 폰을 두지 말 것 · 세력이 바뀌면 `ApplyLayer`) · 지붕과 페이드는 한 벌(`BuildingRoof`) · 핵 영역 밖은 휴면.
+- **건물은 부서진다**(`BuildingHealth` — 핵 제외 · 최대치는 비용에서 · 둔기가 잘 부순다 · 부서지면 75%가 바닥에 · 철거는 전액) · 내 폰은 우클릭 [부순다] · 수리는 `RepairDispatcher`(핵 영역 · 맞은 지 10초 뒤 · 비용 25%) · **적은 막힌 길을 뚫는다**(`DetectNode.Breach` — 길 포기 `PawnMover.GaveUpAt` → 우리 영역 길막이 · 적만). → `docs/build.md` 끝
+- **모델 입히기는 `Building → 0. Dress All` 한 번**(표로 입히는 `PropDresser` + 제 손으로 조립하는 도구 여덟을 차례로) · **`PropDresser`는 표에서 뺀 것을 `Retired`에 적힌 것만 벗긴다**(`[Art]`는 다른 도구도 쓰는 이름이다 — *표에 없다*로 벗기다 소환진·다리 서른이 날아갔다) · 새 조립 도구는 `[Art]` 말고 제 이름을 쓸 것.
 - **폰의 관절은 `PawnRig` 규격**(짓는 문은 `Pawn/0. Rebuild Pawn Rigs And Animations`) · 치비 폰 세부는 `docs/units.md` · `PawnAnimator`는 판정을 옮길 뿐 · 공격 스타일은 무기 종류에서 파생.
 
 ### 입력 · 카메라 · 명령
@@ -209,13 +213,13 @@ Guidance for Claude Code in this repository.
 
 | 키 | 창·모드 | 키 | 창·모드 |
 |---|---|---|---|
-| `I` 인벤토리 | `InventoryUI` | `B` 건설 / `X` 철거 | `BuildModeUI` |
-| `U` 스탯 | `UnitStatsUI` | `C`/`H`/`J`/`K`/`V`/`N`/`T` 명령 | `CommandMode`(취소·채굴·채집·운반·올리기·내리기·평탄화) |
+| `I` 인벤토리 | `InventoryUI` | `B` 건설 / `X` 철거 · 열면 `1`·`3`이 이전·다음 갈래 | `BuildModeUI` |
+| `U` 스탯 | `UnitStatsUI` | `C` 명령 · `V` 밭 구역 · 열면 숫자가 도구(`CommandMode.Order` — 취소·채굴·채집·운반·올리기·내리기·평탄화) | `CommandMode` · `FarmZoneDesignator` |
 | `P` 무리 관리 | `ColonyUI` | `R` 소집 | `DraftController` |
 | `L` 세력 우호도 | `FactionPanelUI` | `F1~F5` 진형 | `FormationController` |
-| `O` 자동운반 품목 | `HaulPolicyPanel` | 모드 버튼 바 | `ModeBarUI` |
+| `O` 자동운반 품목 | `HaulPolicyPanel` | 모드 버튼 바(키 줄 순서: 명령 · 밭 · 건설) | `ModeBarUI` |
 | `G` 원정 편성 | `ExpeditionUI` | `M` 지도 | `WorldMapView` |
-| `1~4` 능동 능력 | `AbilityController` | 좌/우클릭 | `SelectionManager` / `MoveController` |
+| `1~4` 능동 능력(건설·명령·밭 구역이 켜져 있으면 양보) | `AbilityController` | 좌/우클릭 | `SelectionManager` / `MoveController` |
 
 - **새 글자 단축키는 `InputFocus.KeysBlocked()`를 묻는다** · **씬 필드가 든 키(`kb[필드]`)까지 훑고 붙일 것**(`G`가 그래서 원정 편성 것이다).
 - **땅 고르기**(`GroundLevel` · `LevelDesignator`) — 찍는 단위는 **2m 덩어리**, 일감은 **높이 정점**(땅 높이가 2m 정점으로만 있다) · 올리기·내리기는 지금 땅에서 한 단(쌓지 않는다) · 평탄화는 누른 자리 높이 · **막는 것은 기단뿐**(윗면 높이를 데이터로 든다) · 건물·청사진은 **발자국 아래 가장 높은 땅**을, 야생 노드·채집물·바닥 물건은 제 자리 땅을 따라 옮긴다(`CollectRiders`) · 선은 할 일이 남은 덩어리에만(`BlockNeedsWork`) · **폰은 제가 파는 땅 밖에 선다**(`LevelGroundJob.StandTile` — 정점 영향 ±2m 바로 바깥, 다른 표시에도 안 걸린 땅 먼저: 발밑을 같이 내려 구덩이에 갇혔다) · 거절하면 이유를 커서 옆에(`WhyNotBlock`) · 다시 굽는 자리 셋은 `GroundLevel.Refresh` 하나.
@@ -256,6 +260,7 @@ Guidance for Claude Code in this repository.
 | 지금 얼마나 보이나 | `Vision` | 교전 탐지와 도주 탐지가 따로 재면 도망만 밤에 멀쩡하다 |
 | 얼마나 질 수 있나 | `CarryCapacity` | 네 군데가 따로 계산했고 둘이 **3.3배** 달랐다 |
 | 재료가 어디 있나 | `MaterialPool` | 창고만 세어 손에 든 씨앗이 없는 것이 됐다 |
+| **무엇을 그 재료로 쳐 주나** | `ItemData.CountsAs` → `Inventory.CountSatisfying`/`RemoveSatisfying` | 종족마다 고기를 나누면 레시피마다 재료를 종족 수만큼 적게 된다 — 레시피는 묶음(`생고기`) 하나를 적고 물건이 *그것으로 쳐 준다*를 든다. 보통 수량은 안 따른다(상인이 늑대 고기를 빼 간다) |
 | 무엇을 먹나 · 누가 굶나 | `Feeding` | 먹는 길이 둘인데(제 발로 / 먹여 주는) 임계·고르기가 `EatNode` 안에 박혀 있었다 |
 | 자리가 든 일감 하나 | `SiteJobSlot` | 침대·우리·먹이기가 `Tick`/`RequestBy`/`Drop`을 **세 벌** 갖고 있었다 |
 | 무엇이 등급을 갖나 | `ItemData.HasQuality` | `CraftJob` 안에 `is WeaponData \|\| is ArmorData`로 박혀 있었다 |

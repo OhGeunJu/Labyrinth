@@ -674,6 +674,24 @@ public class MoveController : MonoBehaviour
             if (fire != null) AddCampfireOptions(fire, options);
         }
 
+        // **건물은 부술 수 있다**(2026-09-30, `BuildingHealth`) — 창이 있는 건물(위 가지)에도, 벽·바리케이드처럼
+        // 창이 없는 건물에도 붙는다. **내 건물도 된다** — 잘못 지은 벽을 뚫거나 적의 방벽을 치우는 것이 같은 동작이다
+        // (자재를 돌려받으려면 [분해한다] — 이쪽은 부서진 만큼 75%만 바닥에 떨어진다).
+        if (corpse == null && brain == null && node == null && drop == null && forage == null && core == null)
+        {
+            var hp = go.GetComponentInParent<BuildingHealth>();
+            if (hp != null)
+            {
+                if (title == "이곳")
+                {
+                    var pb = hp.Building;
+                    title = pb != null && pb.Data != null ? pb.Data.BuildingName : hp.name;
+                }
+                options.Add(($"부순다 ({Mathf.CeilToInt(hp.Current)}/{Mathf.CeilToInt(hp.Max)})",
+                             () => AttackWith(commanders, hp.gameObject)));
+            }
+        }
+
         // **청사진은 콜라이더가 없어 여기까지 걸리지 않는다.**
         //
         // 고스트는 콜라이더를 일부러 다 꺼 두었다 — 청사진은 통행을 안 막아야 하고, 켜면

@@ -19,6 +19,9 @@ using UnityEngine.UI;
 //   3. **스탯 창 키** — C는 명령의 `취소`가 가져갔다. 씬이 값을 들고 있어 여기서 U로 바꾼다.
 //   4. **하단 가운데로**(사용자: *"UI 위치가 좀 거슬리네 … 하단 가운데에 만들자"* — 켄시의 아이콘 줄) — 모드 바를
 //      화면 아래 가운데 **가로 한 줄**로, 도구 바를 그 **바로 위 가운데**로. 칸 크기는 지금 칸에서 잰다.
+//   5. **도구 줄을 모드 바에 붙인다**(2026-09-28) — 도구 칸을 모드 버튼과 같은 납작한 글자 버튼으로, 모드 바
+//      윗변에 틈 없이, 켜진 칸만큼 줄어드는 판으로(`Dock`). 모드 바 순서는 키 줄과 같게(명령 C · 밭 V · 건설 B)
+//      하고 버튼 이름에 키를 적는다(`ModeOrder` · `ModeLabels`).
 //
 // 칸 크기와 틈은 **이미 있는 칸에서 잰다** — 상수로 적으면 씬을 손본 날 어긋난다. 끝나면 씬을 저장할 것.
 public static class CommandBarSetup
@@ -35,6 +38,8 @@ public static class CommandBarSetup
         ModeBar(log);
         ToolBar(log);
         StatsKey(log);
+        ModeOrder(log);
+        ModeLabels(log);
         BottomCenter(log);
 
         EditorSceneManager.MarkAllScenesDirty();
@@ -280,6 +285,42 @@ public static class CommandBarSetup
         return added != null;
     }
 
+    // ── 3½. 모드 바 순서 — 키보드 줄과 같게 ─────────────────────────────────
+    //
+    // (2026-09-28, 사용자: *"명령C밭V로 하고 순서도 그렇게 바꿔줘"*.) 키가 `C` · `V` · `B`로 한 줄에
+    // 붙어 있어 **버튼도 그 순서로 선다** — 명령 · 밭 구역 · 건설. 목록에 없는 모드는 뒤에 원래 순서대로.
+    // **목록 순서가 곧 화면 순서다** — 바로 다음 `BottomCenter`가 목록 순서대로 가로로 늘어놓는다.
+    static readonly int[] KeyRow = { Command, 3 /* FarmZone */, 0 /* Build */ };
+
+    static void ModeOrder(List<string> log)
+    {
+        var bar = Object.FindFirstObjectByType<ModeBarUI>(FindObjectsInactive.Include);
+        if (bar == null) return;
+
+        var so    = new SerializedObject(bar);
+        var slots = so.FindProperty("slots");
+
+        int Rank(int i)
+        {
+            int m = slots.GetArrayElementAtIndex(i).FindPropertyRelative("Mode").enumValueIndex;
+            int r = System.Array.IndexOf(KeyRow, m);
+            return r >= 0 ? r : KeyRow.Length + i;
+        }
+
+        // 삽입 정렬 — `MoveArrayElement`로 한 칸씩 옮긴다(배선은 원소째 따라간다).
+        bool moved = false;
+        for (int i = 1; i < slots.arraySize; i++)
+            for (int j = i; j > 0 && Rank(j) < Rank(j - 1); j--)
+            {
+                slots.MoveArrayElement(j, j - 1);
+                moved = true;
+            }
+
+        if (!moved) return;
+        so.ApplyModifiedProperties();
+        log.Add("모드 바 순서: 명령 · 밭 구역 · 건설");
+    }
+
     // ── 4. 하단 가운데 ───────────────────────────────────────────────────────
 
     const float Margin = 12f, Pad = 6f, Gap = 8f;
@@ -300,12 +341,285 @@ public static class CommandBarSetup
         }
 
         var tool = Object.FindFirstObjectByType<ModeToolBarUI>(FindObjectsInactive.Include);
-        if (tool != null)
+        if (tool != null && mode != null && Dock(tool, mode, top, log)) log.Add("도구 바를 모드 바 위에 붙임");
+        if (mode != null && RaiseBuildBand(mode)) log.Add("건설 띠를 모드 바 위로 올림");
+    }
+
+    // ── 6. 건설 띠도 모드 바 위에 선다 (2026-09-29) ─────────────────────────
+    //
+    // 사용자: *"기니깐 밑에가 좀 가리네"*(스크린샷 — 다리 스물일곱이 두 줄을 채우자 **아랫줄 타일을 모드 바가 덮었다**).
+    // 건설 띠는 화면 바닥에 붙어 있고 모드 바도 바닥 가운데라 **처음부터 겹쳐 있었는데**, 타일이 적을 땐 가운데까지
+    // 안 닿아 안 보였다. 띠의 바닥을 **모드 바 윗변 + 칸 간격**에 맞춘다 — 갈래 판은 띠의 왼쪽 아래에 걸려 있어
+    // 같이 올라간다. **세계 좌표로 재서 옮긴다** — 둘은 부모가 달라 앵커 값끼리는 못 비교한다. 몇 번 돌려도 같다.
+    static bool RaiseBuildBand(ModeBarUI mode)
+    {
+        var build = Object.FindFirstObjectByType<BuildModeUI>(FindObjectsInactive.Include);
+        if (build == null) return false;
+        var band = (new SerializedObject(build).FindProperty("panel").objectReferenceValue as GameObject)?.transform as RectTransform;
+        if (band == null) return false;
+
+        var slots = new SerializedObject(mode).FindProperty("slots");
+        Button sample = null;
+        for (int i = 0; i < slots.arraySize && sample == null; i++)
+            sample = slots.GetArrayElementAtIndex(i).FindPropertyRelative("Button").objectReferenceValue as Button;
+        var modePanel = sample != null ? sample.transform.parent as RectTransform : null;
+        if (modePanel == null) return false;
+
+        var c = new Vector3[4];
+        modePanel.GetWorldCorners(c);
+        float modeTop = c[1].y;
+        band.GetWorldCorners(c);
+        float bandBottom = c[0].y;
+
+        modePanel.GetWorldCorners(c);
+        float modeBottom = c[0].y;
+
+        float scale = Mathf.Max(1e-4f, band.lossyScale.y);
+        float delta = (modeTop + Gap * scale - bandBottom) / scale;   // 띠의 부모 단위
+        bool moved = false;
+        if (Mathf.Abs(delta) >= 0.5f)
         {
-            var items = new List<RectTransform>();
-            foreach (var c in tool.Tiles)
-                if (c != null) items.Add((RectTransform)c.transform);
-            if (Row(items, top + Margin * 0.5f, out _)) log.Add("도구 바 그 위 가운데");
+            Undo.RecordObject(band, "건설 띠");
+            band.anchoredPosition += new Vector2(0f, delta);
+            EditorUtility.SetDirty(band);
+            moved = true;
+        }
+
+        // **갈래 판은 바닥에 남는다**(같은 날, 사용자: *"카테고리가 있는 쪽은 전처럼 밑에 붙어 있어도 될 거 같아"*).
+        // 판은 띠의 왼쪽 끝이라 모드 바(가운데)와 안 겹친다 — 띠와 같이 올라가면 아래에 빈 자리만 남는다.
+        // **모드 바와 같은 바닥선**에 맞춘다(띠의 자식이지만 레이아웃을 안 탄다 — `ignoreLayout`).
+        //
+        // **옮기는 것은 배경 판(`CategorySection`)이다** — 버튼 칸(`CategoryGrid`, `categoryContainer`)은 그 자식이다.
+        // 처음엔 버튼 칸만 옮겨서 **배경이 띠와 같이 위에 남고 버튼만 내려왔다**(사용자: *"뒤에 배경은 왜 안 옮겼어"*).
+        // 판을 바닥선에 맞춘 뒤 **버튼 칸을 판 안에 다시 앉힌다** — 아래 여백은 왼쪽 여백과 같게(판이 사방 같은 여백으로
+        // 섰다). 그러면 그 한 번의 실수로 어긋난 자리도 여기서 돌아온다.
+        var grid = new SerializedObject(build).FindProperty("categoryContainer").objectReferenceValue as RectTransform;
+        if (grid != null)
+        {
+            var section = grid.parent as RectTransform;
+            if (section == null || section == band) section = grid;
+
+            if (ShiftBottomTo(section, modeBottom, c)) moved = true;
+
+            if (section != grid)
+            {
+                section.GetWorldCorners(c);
+                float secLeft = c[0].x, secBottom = c[0].y;
+                grid.GetWorldCorners(c);
+                float inset = Mathf.Max(0f, c[0].x - secLeft);
+                if (ShiftBottomTo(grid, secBottom + inset, c)) moved = true;
+            }
+        }
+        return moved;
+    }
+
+    // 그 판의 바닥(세계 y)을 `worldY`에 맞춘다. 옮겼으면 true.
+    static bool ShiftBottomTo(RectTransform rt, float worldY, Vector3[] c)
+    {
+        rt.GetWorldCorners(c);
+        float d = (worldY - c[0].y) / Mathf.Max(1e-4f, rt.lossyScale.y);
+        if (Mathf.Abs(d) < 0.5f) return false;
+        Undo.RecordObject(rt, "갈래 판");
+        rt.anchoredPosition += new Vector2(0f, d);
+        EditorUtility.SetDirty(rt);
+        return true;
+    }
+
+    // ── 5. 도구 줄은 모드 바 위에 붙은 한 덩어리 (2026-09-28) ────────────────
+    //
+    // 사용자: *"위치가 좀 애매한데"*. 도구 칸이 건설 목록 타일을 그대로 써서 **빈 아이콘 사각형**이었고
+    // 모드 바와 틈을 두고 따로 떠 있어 한 묶음으로 안 읽혔다. 그래서:
+    //
+    //   · **칸을 모드 버튼과 같은 납작한 글자 버튼으로** — 아이콘을 끄고 이름을 칸 가득 가운데에,
+    //     크기·글자 크기·바탕색은 **모드 버튼에서 잰다**(상수로 적으면 씬을 손본 날 어긋난다).
+    //   · **모드 바 바로 위에 칸 간격만큼 띄워 얹고 바탕을 같은 색으로** — 모드를 고르면 그 위에 도구가 펼쳐진다.
+    //   · **판이 켜진 칸만큼 줄어든다**(가로 묶음 + 크기 맞춤) — 명령은 일곱, 밭은 셋이라 고정 폭이면
+    //     밭일 때 오른쪽에 빈 칸 넷이 남아 가운데가 어긋난다. 꺼진 칸은 묶음이 안 센다.
+    static bool Dock(ModeToolBarUI tool, ModeBarUI mode, float top, List<string> log)
+    {
+        var tiles = new List<BuildingItemUI>();
+        foreach (var t in tool.Tiles) if (t != null) tiles.Add(t);
+        if (tiles.Count == 0) return false;
+
+        // 모드 버튼 하나를 본으로 잰다.
+        var modeSo = new SerializedObject(mode);
+        var slots  = modeSo.FindProperty("slots");
+        Button sample = null;
+        for (int i = 0; i < slots.arraySize && sample == null; i++)
+            sample = slots.GetArrayElementAtIndex(i).FindPropertyRelative("Button").objectReferenceValue as Button;
+        if (sample == null) { log.Add("모드 버튼이 없어 도구 칸을 못 맞춤"); return false; }
+
+        var sampleRt   = (RectTransform)sample.transform;
+        var sampleText = sample.GetComponentInChildren<TMP_Text>(true);
+        var idle       = modeSo.FindProperty("idle").colorValue;
+        var modePanel  = sampleRt.parent as RectTransform;
+        var modeBg     = modePanel != null ? modePanel.GetComponent<Image>() : null;
+
+        var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/NanumGothic SDF.asset");
+
+        // ── 칸 ──
+        foreach (var tile in tiles)
+        {
+            var rt = (RectTransform)tile.transform;
+
+            // **칸이 제 크기를 스스로 정하지 못하게 한다.** 건설 목록 타일이라 아이콘과 이름을 쌓는
+            // 묶음·크기 맞춤이 칸 자신에 붙어 있을 수 있고, 그러면 아래에서 준 크기를 **다음 레이아웃
+            // 계산이 도로 덮는다**(2026-09-28 — 두 번 돌려도 칸이 그대로 컸다).
+            foreach (var c in tile.GetComponents<Component>())
+                if (c is LayoutGroup || c is ContentSizeFitter || c is AspectRatioFitter)
+                    Undo.DestroyObjectImmediate(c);
+            var le = tile.GetComponent<LayoutElement>();
+            if (le != null)
+            {
+                Undo.RecordObject(le, "도구 바");
+                le.minWidth  = le.preferredWidth  = sampleRt.rect.width;
+                le.minHeight = le.preferredHeight = sampleRt.rect.height;
+                le.flexibleWidth = le.flexibleHeight = -1f;
+            }
+
+            Undo.RecordObject(rt, "도구 바");
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot     = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = sampleRt.rect.size;
+
+            var so = new SerializedObject(tile);
+
+            if (so.FindProperty("icon").objectReferenceValue is Image icon && icon.gameObject.activeSelf)
+            { Undo.RecordObject(icon.gameObject, "도구 바"); icon.gameObject.SetActive(false); }
+
+            if (so.FindProperty("background").objectReferenceValue is Image bg)
+            { Undo.RecordObject(bg, "도구 바"); bg.color = idle; bg.enabled = true; }
+
+            if (so.FindProperty("nameLabel").objectReferenceValue is TextMeshProUGUI label)
+            {
+                var lr = label.rectTransform;
+                Undo.RecordObject(lr, "도구 바");
+                lr.anchorMin = Vector2.zero; lr.anchorMax = Vector2.one;
+                lr.offsetMin = new Vector2(4f, 0f); lr.offsetMax = new Vector2(-4f, 0f);
+
+                Undo.RecordObject(label, "도구 바");
+                label.alignment          = TextAlignmentOptions.Center;
+                label.textWrappingMode = TextWrappingModes.NoWrap;
+                label.overflowMode       = TextOverflowModes.Ellipsis;
+                if (sampleText != null) { label.fontSize = sampleText.fontSize; label.enableAutoSizing = sampleText.enableAutoSizing; }
+                if (font != null) label.font = font;
+            }
+        }
+
+        // ── 판 ── 칸들의 부모(창 규약의 `_Panel`)
+        var panel = (RectTransform)tiles[0].transform.parent;
+        Undo.RecordObject(panel, "도구 바");
+        panel.anchorMin = panel.anchorMax = new Vector2(0.5f, 0f);
+        panel.pivot     = new Vector2(0.5f, 0f);
+        panel.anchoredPosition = new Vector2(0f, top);   // 아래에서 모드 바 기준으로 다시 놓는다
+
+        var img = panel.GetComponent<Image>();
+        if (img == null) img = Undo.AddComponent<Image>(panel.gameObject);
+        Undo.RecordObject(img, "도구 바");
+        img.enabled = true;
+        img.color   = modeBg != null ? modeBg.color : new Color(0.05f, 0.05f, 0.05f, 0.85f);
+
+        // **묶음은 하나만 붙는다 — 격자(`GridLayoutGroup`)까지 걷는다.** 처음엔 가로·세로 묶음만 봤는데
+        // 도구 칸은 건설 목록처럼 **격자에 담겨 있었다**: 격자가 칸 크기를 강제로 정해 크기가 안 바뀌었고,
+        // 가로 묶음을 더하려다 실패해 판이 반쯤 고쳐진 채 남았다(2026-09-28 스크린샷).
+        foreach (var g in panel.GetComponents<LayoutGroup>())
+            if (!(g is HorizontalLayoutGroup)) Undo.DestroyObjectImmediate(g);
+        var row = panel.GetComponent<HorizontalLayoutGroup>();   // `??` 금지 — 에디터의 가짜 null
+        if (row == null) row = Undo.AddComponent<HorizontalLayoutGroup>(panel.gameObject);
+        Undo.RecordObject(row, "도구 바");
+        int pad = Mathf.RoundToInt(Pad);
+        row.padding = new RectOffset(pad, pad, pad, pad);
+        row.spacing = Gap;
+        row.childAlignment         = TextAnchor.MiddleCenter;
+        row.childControlWidth      = row.childControlHeight      = false;
+        row.childForceExpandWidth  = row.childForceExpandHeight  = false;
+
+        var fit = panel.GetComponent<ContentSizeFitter>();
+        if (fit == null) fit = Undo.AddComponent<ContentSizeFitter>(panel.gameObject);
+        Undo.RecordObject(fit, "도구 바");
+        fit.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fit.verticalFit   = ContentSizeFitter.FitMode.PreferredSize;
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(panel);
+
+        // **자리는 모드 바에서 잰다 — 뿌리의 앵커를 믿지 않는다.** 도구 바의 뿌리(`ModeToolBar_UI`)는
+        // 건설 창 안에 들어 있어(`docs/editor_creators.md`) 화면 전체가 아닐 수 있고, 그러면 `(0.5, 0)` 앵커가
+        // 화면 가운데가 아니다(두 번째 스크린샷: 판이 오른쪽으로 80px 밀렸다). 모드 바 윗변 가운데의
+        // **월드 점**에 판의 피벗을 놓으면 뿌리가 어떻게 생겼든 맞는다.
+        if (modePanel != null)
+        {
+            var c = new Vector3[4];
+            modePanel.GetWorldCorners(c);                    // 0 좌하 · 1 좌상 · 2 우상 · 3 우하
+            Undo.RecordObject(panel, "도구 바");
+            panel.position = (c[1] + c[2]) * 0.5f;
+
+            // **틈은 칸 사이와 같은 간격** — 딱 붙이니 두 줄이 한 덩이로 뭉쳐 보였다(2026-09-28, 사용자:
+            // *"너무 붙어 있는 거 같아"*). 월드에 놓은 뒤 로컬 단위로 올린다(캔버스 배율을 안 탄다).
+            panel.anchoredPosition += new Vector2(0f, Gap);
+        }
+
+        // **무엇이 어떻게 섰는지 적는다** — 씬이 바이너리라 밖에서 볼 창이 이 로그뿐이다.
+        Debug.Log("[도구 바] 고친 뒤\n" + Dump(panel) + "\n" + Dump(modePanel));
+        return true;
+    }
+
+    // 판과 자식 한 겹: 이름 · 켜짐 · 앵커 · 피벗 · 자리 · 크기 · 붙은 레이아웃 부품.
+    static string Dump(RectTransform rt)
+    {
+        if (rt == null) return "(없음)";
+
+        string Line(RectTransform r) =>
+            $"{r.name}{(r.gameObject.activeSelf ? "" : "(꺼짐)")} 앵커 {r.anchorMin}-{r.anchorMax} 피벗 {r.pivot} " +
+            $"자리 {r.anchoredPosition} 크기 {r.rect.size} [{string.Join(",", Parts(r))}]";
+
+        IEnumerable<string> Parts(RectTransform r)
+        {
+            foreach (var c in r.GetComponents<Component>())
+                if (c is LayoutGroup || c is ContentSizeFitter || c is LayoutElement || c is Image)
+                    yield return c.GetType().Name;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        var path = new List<string>();
+        for (var t = rt.parent; t != null; t = t.parent) path.Insert(0, t.name);
+        sb.AppendLine($"  {string.Join("/", path)}/");
+        sb.AppendLine("  " + Line(rt));
+        foreach (RectTransform c in rt) sb.AppendLine("    " + Line(c));
+        for (var p = rt.parent as RectTransform; p != null; p = p.parent as RectTransform)
+            sb.AppendLine("  위: " + Line(p));   // 뿌리가 화면 전체인가 — 가운데가 어긋나면 여기서 보인다
+        return sb.ToString();
+    }
+
+    // ── 모드 버튼 이름에 키를 적는다 ─────────────────────────────────────────
+    //
+    // `건설 (B)`에만 키가 있고 명령·밭 구역에는 없었다(사용자가 본 스크린샷). 키는 코드가 듣는 것 —
+    // `CommandMode`(C) · `FarmZoneDesignator`(V) · `BuildModeManager`(B).
+    static void ModeLabels(List<string> log)
+    {
+        var bar = Object.FindFirstObjectByType<ModeBarUI>(FindObjectsInactive.Include);
+        if (bar == null) return;
+
+        var slots = new SerializedObject(bar).FindProperty("slots");
+        for (int i = 0; i < slots.arraySize; i++)
+        {
+            var slot = slots.GetArrayElementAtIndex(i);
+            string name = slot.FindPropertyRelative("Mode").enumValueIndex switch
+            {
+                Command => "명령 (C)",
+                3       => "밭 구역 (V)",
+                0       => "건설 (B)",
+                _       => null,
+            };
+            if (name == null) continue;
+            if (!(slot.FindPropertyRelative("Button").objectReferenceValue is Button btn)) continue;
+
+            foreach (var t in btn.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (t.text == name) continue;
+                Undo.RecordObject(t, "모드 바");
+                t.text = name;
+                log.Add($"모드 버튼 `{name}`");
+            }
         }
     }
 

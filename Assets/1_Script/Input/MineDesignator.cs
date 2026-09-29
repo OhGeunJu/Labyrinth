@@ -70,45 +70,37 @@ public class MineDesignator : MonoBehaviour
     readonly HashSet<Vector2Int> _next    = new();   // 이번 프레임에 찍혀야 할 것
     readonly List<Vector2Int>    _undo    = new();   // 훑는 도중에 고치지 않으려고
 
-    // ── 위험을 커서 옆에 적는다 (2026-09-18) ────────────────────────────────
+    // ── 판 굴이 남나를 커서 옆에 적는다 (2026-09-28) ─────────────────────────
     //
     // **화면 구석에 적으면 눈은 커서에 가 있어 있어도 못 읽는다**(건설 모드가 값과 거절
     // 사유를 커서 옆에 두는 것과 같은 자리).
     //
-    // **색이 아니라 숫자다** — *"위험해 보인다"*로는 얼마나 무리인지 모른다. 몇 칸이
-    // 무너지는지 적으면 **한 칸 물러설지 버팀목을 세울지**를 그 자리에서 정한다.
-    //
-    // 찍는 것 자체는 안 막는다(사용자 결정) — **위험을 알고 파는 것도 선택**이다.
+    // 09-18에는 여기가 *"파면 천장 N칸이 내려앉습니다"*였다. 붕괴를 걷어내고 **판 굴이 이틀 뒤 메워지는**
+    // 규칙으로 바꾸면서(`RockRegrow`) 알릴 것도 바뀌었다: **이 자리는 남나, 메워지나.** 판정은
+    // `RockRegrow.Keeps` 하나 — 메우는 쪽과 같은 답이다.
     Vector2Int? _warnAt;
-    int         _warnCount;
+    bool        _warnRefills;
 
-    // 같은 칸을 다시 재지 않는다 — 커서가 머무는 동안 매 프레임 81칸을 훑을 이유가 없다.
+    // 같은 칸을 다시 재지 않는다.
     void UpdateWarning(Vector2Int? tile)
     {
-        if (tile == null) { _warnAt = null; _warnCount = 0; return; }
+        if (tile == null) { _warnAt = null; _warnRefills = false; return; }
         if (_warnAt == tile) return;
 
-        _warnAt    = tile;
-        _warnCount = 0;
-
-        var at = tile.Value;
-        if (!RockMap.IsRock(at) || RockMap.IsBedrock(at)) return;
-
-        _tmpCollapse.Clear();
-        _warnCount = RockSupport.CollectCollapsed(at, _tmpCollapse);
+        _warnAt      = tile;
+        var at       = tile.Value;
+        _warnRefills = RockMap.IsRock(at) && !RockMap.IsBedrock(at) && !RockRegrow.Keeps(at);
     }
-
-    static readonly List<Vector2Int> _tmpCollapse = new();
 
     void OnGUI()
     {
-        if (!IsActive || _warnAt == null || _warnCount <= 0 || Event.current == null) return;
+        if (!IsActive || _warnAt == null || !_warnRefills || Event.current == null) return;
 
         var at = Event.current.mousePosition + new Vector2(20f, 18f);
         var was = GUI.color;
-        GUI.color = new Color(1f, 0.55f, 0.25f);
+        GUI.color = new Color(1f, 0.75f, 0.35f);
         GUI.Label(new Rect(at.x, at.y, 460f, 22f),
-                  $"받치는 것이 없습니다 — 파면 천장 {_warnCount}칸이 내려앉습니다 (버팀목을 세우세요)");
+                  $"핵 영역 밖 — 판 굴은 {RockRegrow.Days:0}일 뒤 메워집니다 (버팀목을 세우면 남습니다)");
         GUI.color = was;
     }
 

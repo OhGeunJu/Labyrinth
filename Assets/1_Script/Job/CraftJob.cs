@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class CraftJob : JobBase
@@ -37,7 +38,8 @@ public class CraftJob : JobBase
     float _startTime;
     float _carriedSeconds;   // 이번에 붙기 전까지 이미 만들어 둔 몫
     bool  _timerStarted; // 유닛이 작업대에 도착해 실제 제작을 시작했는지
-    bool  _consumed;   // 재료 차감됨 + 아직 완성 전 → 취소 시 환불 대상
+    bool  _consumed;
+    readonly List<(ItemData item, int amount)> _taken = new();   // 실제로 뺀 것 — 환불은 이것을 돌려준다(늑대 고기가 생고기로 안 바뀌게)   // 재료 차감됨 + 아직 완성 전 → 취소 시 환불 대상
 
     // 실제로 만들고 있던 폰. **`Cancel()`이 `ReservedBy`를 먼저 비우므로** `OnCancelled`에서는
     // 예약을 읽을 수 없다 — 여기에 붙들어 둔다(`HaulJob._carrier`와 같은 이유).
@@ -61,6 +63,8 @@ public class CraftJob : JobBase
     float WorkedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) * BenchSpeed : 0f;
 
     public override JobCategory Category => _recipe?.Category ?? JobCategory.Crafting;
+
+    public override Component Site => _table;   // 배치 칸이 거른다(`WorkPosts`)
     public override WorkAnim    Anim     => WorkAnim.HammerTable;
 
     // ── 진행 상황 (UI 게이지용) — `ResearchJob`과 같은 모양 ────────────────
@@ -147,8 +151,9 @@ public class CraftJob : JobBase
                 return;
             }
         }
+        _taken.Clear();
         foreach (var ing in _recipe.Ingredients)
-            MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy);   // 배낭 먼저, 그다음 창고
+            MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy, _taken);   // 배낭 먼저, 그다음 창고
         _consumed = true;
 
         Debug.Log($"[CraftJob] 제작 시작 — {_recipe.RecipeName} ({_recipe.CraftTime}초)");
@@ -268,8 +273,7 @@ public class CraftJob : JobBase
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
             // 창고로 되돌린다 — 바닥에 떨구면 그것이 다시 운반 일감이 되고, 나르는 동안
             // 창고 집계에서 빠져 있어 같은 주문이 "재료 부족"으로 다시 죽는다(연구와 같은 정책).
-            foreach (var ing in _recipe.Ingredients)
-                MaterialPool.Refund(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+            MaterialPool.Refund(_taken, pos + Vector3.up * 0.3f);
         }
 
         // 주문 자체는 잃지 않는다 — 큐에 되돌려 다른 폰(또는 나중에 이 폰)이 이어받게 한다.

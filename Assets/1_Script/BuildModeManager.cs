@@ -1569,7 +1569,7 @@ public class BuildModeManager : MonoBehaviour
     // 다시 운반 일감이 되고, 나르는 동안 집계에서 빠져 다른 작업이 재료 부족으로 죽는다).
     static bool ConsumeAll(BuildingData data, Vector3 pos)
     {
-        var taken = new List<RecipeData.Ingredient>();
+        var taken = new List<(ItemData item, int amount)>();   // 실제로 뺀 것 — 되돌릴 때 그대로
 
         foreach (var c in data.Costs)
         {
@@ -1577,9 +1577,9 @@ public class BuildModeManager : MonoBehaviour
 
             // **자리에서 낸다** — 세계가 이어져 거점이 여럿이면 29km 밖 창고의 목재로
             // 여기를 짓게 된다(`Territory`).
-            if (Storage.ConsumeByItem(c.Item, c.Amount, pos)) { taken.Add(c); continue; }
+            if (Storage.ConsumeByItem(c.Item, c.Amount, pos, taken)) continue;
 
-            foreach (var back in taken) MaterialPool.Refund(back.Item, back.Amount, pos);
+            MaterialPool.Refund(taken, pos);
             Debug.Log($"[Build] 자원 부족 — {c.Item.ItemName} ×{c.Amount}");
             return false;
         }

@@ -442,6 +442,16 @@ public class MapManager : MonoBehaviour
 
     public float SampleGroundHeight(Vector3 worldPos) => SampleGroundHeight(worldPos.x, worldPos.z);
 
+    // 물리 없이 걷는 폰이 딛는 높이(`PawnMover.GhostMove`) — 바닥·다리 위면 그 윗면, 아니면 그 점의 땅.
+    // `SurfaceHeight`는 칸 한복판을 재서 비탈에서 1m마다 계단이 진다 — 걷는 걸음은 점의 땅을 딛는다.
+    public float StandHeight(Vector3 worldPos)
+    {
+        var tile = WorldToTile(worldPos);
+        if (_floored.TryGetValue(tile, out float floorY)) return floorY;
+        if (Chasm.TryDeck(tile, out float deckY)) return deckY;
+        return SampleGroundHeight(worldPos.x, worldPos.z);
+    }
+
     // 타일의 표면 높이 — 바닥이 깔려 있으면 그 윗면, 아니면 지형/평지 높이.
     // 건물은 이 높이 "위에" 얹혀야 한다(바닥 슬래브 두께만큼 파묻히지 않도록).
     public float SurfaceHeight(Vector2Int tile)
@@ -555,7 +565,7 @@ public class MapManager : MonoBehaviour
 
             // **파야 지을 수 있다.** *"못 짓는다"*가 아니라 **무엇을 하면 되는지**를 말한다 —
             // 지하에서는 자리가 없는 것이 아니라 아직 안 판 것이다.
-            if (RockMap.IsRock(pos)) return "바위다 — 먼저 파야 한다 (K)";
+            if (RockMap.IsRock(pos)) return "바위다 — 먼저 파야 한다 (C 명령의 채굴)";
             if (Chasm.IsChasm(pos))  return "절벽이다 — 다리만 놓을 수 있다";
         }
         return WhyNotFlat(footprint);

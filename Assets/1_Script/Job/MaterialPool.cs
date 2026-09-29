@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // 재료를 **어디서 세고 어디서 꺼내는가**를 한 곳에서 정한다.
@@ -48,7 +49,7 @@ public static class MaterialPool
         Vector3 near = carrier != null ? carrier.transform.position : Focus;
         int total = Storage.GetTotalByItem(item, near);
         if (carrier != null && carrier.Inventory != null)
-            total += carrier.Inventory.GetUnlockedQuantity(item);
+            total += carrier.Inventory.CountSatisfying(item, true);
         return total;
     }
 
@@ -67,7 +68,7 @@ public static class MaterialPool
             if (f == null || !f.IsPlayer) continue;
             if (!Territory.Same(f.transform.position, near)) continue;
             var inv = f.GetComponent<Inventory>();
-            if (inv != null) total += inv.GetUnlockedQuantity(item);
+            if (inv != null) total += inv.CountSatisfying(item, true);
         }
         return total;
     }
@@ -77,7 +78,10 @@ public static class MaterialPool
 
     // 배낭 먼저, 그다음 창고. **총량을 먼저 확인해** 부분 차감이 남지 않게 한다 —
     // 절반만 빠지고 실패하면 재료가 조용히 증발한다.
-    public static bool Consume(ItemData item, int amount, UnitBrain carrier)
+    // `taken`을 주면 **실제로 뺀 물건**을 적는다 — 되돌릴 일이 있는 자리(제작·연구)는 그것을 들고 있다가
+    // `Refund(taken, …)`로 돌려준다. 레시피가 적은 이름(`생고기`)으로 돌려주면 넣은 늑대 고기가 생고기로 바뀐다.
+    public static bool Consume(ItemData item, int amount, UnitBrain carrier,
+                               List<(ItemData item, int amount)> taken = null)
     {
         if (item == null || amount <= 0) return false;
         if (Available(item, carrier) < amount) return false;
@@ -86,11 +90,11 @@ public static class MaterialPool
 
         // 뺄 때도 잠금을 지나친다 — 위에서 안 센 것을 여기서 빼면 잠근 것이 사라진다.
         if (carrier != null && carrier.Inventory != null)
-            remaining -= carrier.Inventory.RemoveUnlocked(item, remaining);
+            remaining -= carrier.Inventory.RemoveSatisfying(item, remaining, true, taken);
 
         if (remaining > 0)
             return Storage.ConsumeByItem(item, remaining,
-                                         carrier != null ? carrier.transform.position : Focus);
+                                         carrier != null ? carrier.transform.position : Focus, taken);
         return true;
     }
 
@@ -101,6 +105,14 @@ public static class MaterialPool
     // 되어 조용히 죽는다. 연구가 저절로 풀리면서 폰이 운반만 하던 것이 이 고리였다(2026-08-08).
     //
     // 되돌리는 것은 **원래 있던 곳(창고)으로** 가는 게 맞다 — 취소는 사건이 아니라 무효화다.
+    // 적어 둔 것을 그대로 돌려준다(위 `Consume`의 `taken`) — 돌려준 뒤 목록은 비운다.
+    public static void Refund(List<(ItemData item, int amount)> taken, UnityEngine.Vector3 dropAt)
+    {
+        if (taken == null) return;
+        foreach (var (item, amount) in taken) Refund(item, amount, dropAt);
+        taken.Clear();
+    }
+
     public static void Refund(ItemData item, int amount, UnityEngine.Vector3 dropAt)
     {
         if (item == null || amount <= 0) return;

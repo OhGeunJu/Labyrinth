@@ -52,6 +52,8 @@ public class ButcherJob : JobBase
     UnitBrain _brain  => _target != null ? _target.GetComponent<UnitBrain>() : null;
 
     public override JobCategory Category => JobCategory.Butcher;
+
+    public override Component Site => _table;   // 배치 칸이 거른다(`WorkPosts`)
     // **도축대에서는 서서, 바닥에서는 쭈그려 가른다** — 일감이 이미 어느 쪽인지 안다.
     public override WorkAnim    Anim     => _phase != Phase.Work ? WorkAnim.None
                                           : _table != null      ? WorkAnim.Skinning

@@ -31,8 +31,14 @@ MonoBehaviour:
   ChaseRadius: 16
   merchant: {fileID: 0}
   loot:
-  - Item: {fileID: 11400000, guid: 051cc962dcb6c70499b16d2ebf7ff145, type: 2}
+  - Item: {fileID: 0}
+    ItemId: food_meat_wolf
     MinPerKill: 1
-    MaxPerKill: 3
-    Chance: 0.8
+    MaxPerKill: 2
+    Chance: 0.6
+  - Item: {fileID: 0}
+    ItemId: food_meat_bear
+    MinPerKill: 2
+    MaxPerKill: 4
+    Chance: 0.25
   PowerMultiplier: 0.85

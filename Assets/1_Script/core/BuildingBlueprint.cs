@@ -145,6 +145,12 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite, IConstructionSit
         ghost.transform.localPosition = new Vector3(0f, hover, 0f);
         ghost.transform.localRotation = Quaternion.identity;
 
+        // **자리를 잡은 뒤에 모습을 다시 고른다**(2026-09-30, 사용자: *"나무가 그냥 한 종류만 나오는 거 같은데"*).
+        // `PropVariant`는 `Awake`에서 자리 해시로 고르는데, 위 `Instantiate`는 **원점에서** 깨어나므로 청사진이
+        // 전부 원점의 모습(같은 나무)으로 섰다. 완성품은 `Instantiate(prefab, pos, rot)`라 제자리에서 깨어나
+        // 이미 갈렸다 — **청사진만 완성품과 다른 나무**였다.
+        foreach (var v in ghost.GetComponentsInChildren<PropVariant>(true)) v.Apply();
+
         // 완성 후 모습과 같은 높이로 — 부양 프리팹이 아니면 렌더러 바닥면을 표면에 맞춘다.
         if (MapManager.Instance != null && hover <= 0f)
             BuildModeManager.SnapOnSurface(

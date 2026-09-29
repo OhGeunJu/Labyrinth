@@ -31,6 +31,33 @@ public class ItemData : ScriptableObject
     // 성질이 아니므로 여기로 올렸다. 파생 클래스가 다르게 정하고 싶으면 오버라이드한다.
     public virtual int MaxStack => Mathf.Max(1, Stack);
 
+    // ── 재료로 칠 때 ──────────────────────────────────────────────────────────
+    //
+    // **늑대 고기는 생고기로 쳐 준다**(2026-09-29, 사용자: *"이름이 다 따로 늑대 고기 곰 고기 인간 고기"*).
+    // 종족마다 고기를 나누면 요리 레시피마다 재료를 종족 수만큼 적어야 하고, 하나 빠뜨리면 그 고기는
+    // 아무 데도 못 쓰는 물건이 된다(08-15에 그래서 안 나눴다). **레시피는 묶음 하나(`생고기`)를 적고,
+    // 물건이 "나는 그것으로 쳐 준다"를 든다** — 새 짐승이 늘어도 레시피는 그대로다.
+    //
+    // **재료를 세고 빼는 자리만 이걸 본다**(`Inventory.CountSatisfying`/`RemoveSatisfying` —
+    // 창고·`MaterialPool`이 부른다). 인벤토리의 보통 수량(`GetTotalQuantity`)은 그대로 제 물건만 센다 —
+    // 상인이 `생고기`를 사 가면서 늑대 고기를 빼 가면 안 된다.
+    [Header("재료로 칠 때")]
+    [Tooltip("레시피·건설이 이 아이템을 찾으면 **이것도 센다**(늑대 고기 → 생고기). 비우면 제 자신만.")]
+    public ItemData CountsAs;
+
+    // JSON이 적은 식별자 — 아이템을 다 읽은 뒤 `DataManager`가 `CountsAs`로 푼다.
+    [System.NonSerialized] public string CountsAsId;
+
+    // 이 물건이 `want`를 찾는 자리에 들어갈 수 있나.
+    public bool Satisfies(ItemData want) => want != null && (this == want || CountsAs == want);
+
+    // **다른 것이 이것으로 쳐 주나** — 그러면 레시피 줄에 *종류 무관*을 붙인다(`생고기`만 보면
+    // 시장에서 산 그 물건만 되는 줄 안다). `DataManager.ResolveCountsAs`가 켠다.
+    [System.NonSerialized] public bool HasStandIns;
+
+    // 레시피·연구 재료 줄에 쓰는 이름.
+    public string IngredientName => HasStandIns ? $"{ItemName}(종류 무관)" : ItemName;
+
     // ── 되팔 때의 감가 ────────────────────────────────────────────────────────
     //
     // **1 = 시세대로, 낮을수록 되팔 때 손해.** 상인의 매입 인심(`MerchantData.SellMultiplier`)과

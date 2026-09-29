@@ -77,6 +77,12 @@ public class WorldBandData : ScriptableObject
     {
         public ItemData Item;
 
+        [Tooltip("JSON 아이템을 가리킬 때(에셋이 없다) — `Item`이 비어 있으면 이 식별자로 찾는다.")]
+        public string ItemId;
+
+        // **`Item`을 직접 읽지 말 것** — JSON 아이템(종족별 고기 · 갑각)이 조용히 null이 된다(`LootEntry`와 같은 규약).
+        public ItemData Resolve() => Item != null ? Item : DataManager.GetItem(ItemId);
+
         [Tooltip("쓰러뜨린 **한 명당** 이만큼 나온다.")]
         [Min(0)] public int MinPerKill;
         [Min(0)] public int MaxPerKill = 2;

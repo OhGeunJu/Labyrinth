@@ -44,6 +44,11 @@ public class BuildingData : ScriptableObject
     [Tooltip("건설 비용. 비우면 무료. 여러 줄이면 **전부** 있어야 짓는다.")]
     public List<RecipeData.Ingredient> Costs = new();
 
+    // 부서질 때까지 버티는 양(`BuildingHealth`). **0이면 비용에서 뽑는다**(`40 + 3 × 값`) — 여든다섯을 손으로 적으면
+    // 비용을 바꿀 때마다 체력이 뒤처진다. 특별히 단단하거나 약해야 하는 것만 적는다.
+    [Tooltip("최대 체력. 0이면 건설 비용의 시세에서 뽑는다(40 + 3 × 값).")]
+    [Min(0f)] public float MaxHealth = 0f;
+
     // **옛 한 칸 — 저작하는 자리가 아니다.** 이름을 그대로 둬야 이미 구워진 에셋 쉰여덟의
     // 값이 들어온다(직렬화 키가 필드 이름이다). `OnEnable`이 `Costs`로 흡수하므로 **읽는
     // 쪽은 `Costs`만 본다** — 두 자리에 답이 있으면 언젠가 한쪽만 고쳐진다.

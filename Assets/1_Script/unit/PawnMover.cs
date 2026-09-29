@@ -86,6 +86,31 @@ public class PawnMover : MonoBehaviour
     UnitBrain _brain;
     bool _isMinion;
 
+    // ── 길만 따라 걷는다(레일) ──────────────────────────────────────────────
+    //
+    // **떠도는 떼는 몸으로 부딪힐 이유가 없다**(2026-09-29, 사용자: *"안보이는 폰이 굳이 막 여러방향으로
+    // 이동하고 벽 근처에서 벽이랑 부딪혀서 멈추고 그럴 필요가 뭐가 있어 그냥 길따라 이동만 하게"*).
+    // 물리로 걸으면 벽 모서리에 걸려 막힘 사다리를 타고 포기 진단을 찍는다 — 그 떼 수십이 한꺼번에.
+    //
+    // 켜 두면 **상대가 없는 동안** 경로 위를 자리를 직접 옮겨 걷는다(`GhostMove`와 같은 걸음 — 벽은
+    // `RockMap`이 막는다). 막힘을 재지 않고, 길이 안 나면 **말없이 선다**(배회가 다음 자리를 고른다).
+    // **표적이 생기거나 싸우기 시작하면 몸으로 돌아간다** — 쫓고 부딪히는 것은 물리의 일이다.
+    // 켜는 쪽은 `WildSpawner`(떼 식구) 하나다.
+    public bool OnRails { get; set; }
+
+    bool Railed
+    {
+        get
+        {
+            if (!OnRails) return false;
+            var bb = _brain != null ? _brain.Blackboard : null;
+            if (bb == null) return true;
+            return bb.Target == null && (bb.Combat == null || !bb.Combat.IsInCombat);
+        }
+    }
+
+    bool _wasRailed;
+
     // 기절 중이면 BT가 정지해 이동 명령을 안 내리지만, MoveController 우클릭 등
     // BT 밖 경로가 SetMoveTarget을 호출할 수 있어 이동 차단이 필요하다.
     bool IsKnockedOut => _brain != null && _brain.Blackboard != null && _brain.Blackboard.IsKnockedOut;
@@ -399,8 +424,15 @@ public class PawnMover : MonoBehaviour
     public CharacterController  Controller      => _cc;
 
     // 행동을 고른다 — 여기서 계속 붙들면 그 폰은 다른 일을 영영 못 한다.
+    // **마지막으로 길을 포기한 때와 가려던 곳**(2026-09-30) — 적이 막힌 길의 건물을 부수는 근거다(`DetectNode` 뚫기).
+    // 막힌 이유를 여기서 따지지 않는다 — *못 갔다*는 사실만 남기고, 무엇을 부술지는 표적을 고르는 쪽이 정한다.
+    public float   GaveUpAt   { get; private set; } = -999f;
+    public Vector3 GaveUpGoal { get; private set; }
+
     void GiveUp()
     {
+        GaveUpAt   = Time.time;
+        GaveUpGoal = _finalGoal;
         Vector3 pos = transform.position;
         MovementDiagnostics.LogGiveUp(_brain != null ? _brain.UnitName : name,
                                       pos, _finalGoal, _localPath != null, gameObject, _cc,
@@ -677,6 +709,9 @@ public class PawnMover : MonoBehaviour
         ReplanLocal();
         if (!IsStuck(pos)) return;
 
+        // **레일은 버티지 않는다** — 길이 안 나면 말없이 선다(배회가 다음 자리를 고른다).
+        if (Railed) { StopMovement(); return; }
+
         // 로컬이 막힘 — 라우트부터 다시(코스 벽 지식 반영).
         Reroute();
         if (!IsStuck(pos)) return;
@@ -776,6 +811,22 @@ public class PawnMover : MonoBehaviour
         }
 
         return Vector3.ClampMagnitude(avoid, 1f);
+    }
+
+    // 레일이 제자리면(걸음을 `RockMap`이 막았다) **말없이 선다** — 사다리도 진단도 없다(위 `OnRails`).
+    float   _railTimer;
+    Vector3 _railAnchor;
+
+    void WatchRail(Vector3 pos, float speed)
+    {
+        _railTimer += Time.deltaTime;
+        if (_railTimer < blockedCheckTime) return;
+
+        float expected = speed * _railTimer * 0.2f;
+        if (HorizDistSqr(pos, _railAnchor) < expected * expected) StopMovement();
+
+        _railAnchor = pos;
+        _railTimer  = 0f;
     }
 
     // 실제로 나아가고 있는지 감시. 밀리기만 하면 단계적으로 탈출을 시도한다.
@@ -920,6 +971,8 @@ public class PawnMover : MonoBehaviour
     {
         _progressAnchor = transform.position;
         _progressTimer  = 0f;
+        _railAnchor     = transform.position;
+        _railTimer      = 0f;
         _blockedCount   = 0;
         _sidestepTimer  = 0f;
         _reportedUnreachable = false;
@@ -1053,7 +1106,12 @@ public class PawnMover : MonoBehaviour
         // 통째로 올라오고, 스트리밍이 있는 이유가 사라진다.
         bool ghost = !TerrainStreamer.HasGroundAt(transform.position);
 
-        if (ghost)
+        // 레일에서 몸으로 돌아오는 순간 막힘 눈금을 새로 잰다 — 레일 동안 안 쟀으니 옛 기준점이 낡았다.
+        bool rails = Railed;
+        if (_wasRailed && !rails) ResetProgress();
+        _wasRailed = rails;
+
+        if (ghost || rails)
         {
             _verticalVel     = 0f;                    // 받쳐 줄 것이 없으니 중력을 안 건다
             _lastGroundedPos = transform.position;    // 돌아왔을 때 되돌아갈 자리도 여기다
@@ -1132,10 +1190,11 @@ public class PawnMover : MonoBehaviour
                     effectiveSpeed = Mathf.Min(effectiveSpeed, dist / Time.deltaTime);
 
                 Vector3 desired = to / dist;
-                Vector3 steer   = Steer(pos, desired);
+                Vector3 steer   = rails ? desired : Steer(pos, desired);   // 레일은 비켜 가지 않는다
 
                 move += steer * effectiveSpeed;
-                TrackProgress(pos, desired, effectiveSpeed);
+                if (!rails) TrackProgress(pos, desired, effectiveSpeed);
+                else        WatchRail(pos, effectiveSpeed);
 
                 // **가는 쪽을 본다 — 다만 싸우는 중이면 표적이 이긴다.** 겨누는 것과 걷는 것이
                 // 같은 프레임에 서로 다른 방향을 요구할 수 있고(사수가 비켜서며 쏜다), 그때
@@ -1157,8 +1216,8 @@ public class PawnMover : MonoBehaviour
             }
         }
 
-        if (ghost) GhostMove(move * Time.deltaTime);
-        else       StepMove(move * Time.deltaTime);
+        if (ghost || rails) GhostMove(move * Time.deltaTime);
+        else                StepMove(move * Time.deltaTime);
     }
 
     // 물리 없이 걷는다 — 위 `ghost` 설명 참고.
@@ -1181,7 +1240,7 @@ public class PawnMover : MonoBehaviour
         var p    = BlockedByRock(from, from + delta);
 
         var map = MapManager.Instance;
-        if (map != null) p.y = map.SampleGroundHeight(p);
+        if (map != null) p.y = map.StandHeight(p);
 
         transform.position = p;
     }

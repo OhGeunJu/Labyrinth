@@ -17,6 +17,7 @@ using UnityEngine;
 public class FarmHarvestJob : JobBase
 {
     public override JobCategory Category => JobCategory.Farming;
+    public override Component Site => _plot;   // 배치 칸이 거른다(`WorkPosts`)
     public override WorkAnim    Anim     => WorkAnim.Harvesting;   // 밭에서 거둔다 — 채집과 다른 자리다
 
     // 밭에서 거두기만 한다 — **손만 닿으면 된다.**

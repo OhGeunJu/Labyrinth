@@ -35,6 +35,9 @@ public class ItemSchema
     // 한 칸에 몇 개까지 쌓이는가. **자원만의 속성이 아니다** — 밀·빵·씨앗도 쌓여야 한다.
     // 안 적으면 1(무기·방어구처럼 한 칸에 하나).
     public int    maxStack = 1;
+
+    // 재료로 칠 때 이 아이템으로도 센다(`ItemData.CountsAs`) — 예: 늑대 고기 → `Food_RawMeat`.
+    public string countsAs;
 }
 
 [Serializable]

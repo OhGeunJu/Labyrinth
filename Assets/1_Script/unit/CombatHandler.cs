@@ -285,6 +285,17 @@ public class CombatHandler : MonoBehaviour
         var target = _brain.Blackboard.Target;
         if (target == null) return;
 
+        // **건물이면 곧장 깎는다**(2026-09-30, `BuildingHealth`) — 막기·회피·경험치가 없다(건물은 안 피하고,
+        // 벽을 두드려 솜씨를 올리는 것은 착취다). 피해는 폰을 칠 때와 같은 식이고 무기 종류 배율은 건물이 든다.
+        var building = target.GetComponent<BuildingHealth>();
+        if (building != null)
+        {
+            var wt = GetWeaponType();
+            var hit = BuildDamageInfo(CalcMeleeDamage(wt, _stats.GetSkillFor(Weapon), wt == WeaponType.Unarmed));
+            building.TakeDamage(hit.Amount, hit.Type, gameObject);
+            return;
+        }
+
         var targetCombat     = target.GetComponent<CombatHandler>();
         var targetBrain      = target.GetComponent<UnitBrain>();
         var targetBodySystem = target.GetComponent<BodyPartSystem>();
@@ -560,6 +571,15 @@ public class CombatHandler : MonoBehaviour
 
     void DealRangedDamage(GameObject target, bool stray)
     {
+        // 건물 — 근접과 같은 규칙(`TryAttack`). 원거리 피해 식을 그대로 쓴다.
+        var building = target.GetComponent<BuildingHealth>();
+        if (building != null)
+        {
+            var hit = BuildDamageInfo(_brain.Blackboard.AttackDamage * CalcStatusCorrection());
+            building.TakeDamage(hit.Amount, hit.Type, gameObject);
+            return;
+        }
+
         var targetCombat = target.GetComponent<CombatHandler>();
 
         // 막아도 안다 — 근접과 같은 규칙(위 `TryAttack` 주석).
@@ -703,6 +723,8 @@ public class CombatHandler : MonoBehaviour
         var weaponType = GetWeaponType();
         float extraDamage = CalcMeleeDamage(weaponType, _stats.GetSkillFor(Weapon), false) * 0.5f;
         var dmg = BuildDamageInfo(extraDamage);
+        var building = target.GetComponent<BuildingHealth>();
+        if (building != null) { building.TakeDamage(dmg.Amount, dmg.Type, gameObject); return; }
         var body = target.GetComponent<BodyPartSystem>();
         if (body != null) body.TakeDamage(dmg);
         else target.GetComponent<UnitBrain>()?.TakeDamage(dmg);

@@ -71,6 +71,28 @@ public class BiomeContentData : ScriptableObject
     [Tooltip("비어 있으면 이 바이옴 벽에는 아무것도 안 박힌다.")]
     public List<WallLightEntry> WallLights = new();
 
+    // ── 저절로 나는 무리 — 짐승 · 떠도는 적 (2026-09-28) ──────────────────────
+    //
+    // **청크가 설 때 그 자리에 선다**(`WildSpawner`). 소굴에서 나와 지도를 걷는 무리(`Lairs`)와 다른 축이다 —
+    // 저쪽은 *어디서 왔나*가 있는 사건이고, 이쪽은 **그 지역에 원래 사는 것**이다. 구성은 무리 에셋을 그대로
+    // 쓴다(늑대·곰은 `Band_Beasts`) — 여기서 폰 목록을 또 들면 무리 구성이 두 벌이 된다.
+    [System.Serializable]
+    public class WildSpawnEntry
+    {
+        [Tooltip("무엇이 몇이나 서나. 무리 에셋의 구성·세력을 그대로 쓴다.")]
+        public WorldBandData Band;
+
+        [Tooltip("청크(64m) 하나에 이 무리가 살 확률. 0.1이면 청크 열에 하나 — 둘레에 서는 청크가 스물다섯이니 두셋이 산다.")]
+        [Range(0f, 1f)] public float ChancePerChunk = 0.1f;
+
+        [Tooltip("다 쓰러뜨린 뒤 다시 나기까지(일).")]
+        [Min(0.1f)] public float RespawnDays = 3f;
+    }
+
+    [Header("저절로 나는 무리 (짐승 · 떠도는 적)")]
+    [Tooltip("비어 있으면 이 바이옴에는 아무것도 저절로 안 난다. 초안은 `World → L`이 넣는다.")]
+    public List<WildSpawnEntry> WildSpawns = new();
+
     // ── 매장 자원 (월드맵 칸) ────────────────────────────────────────────────
     // "이 바이옴 칸을 파면 무엇이 얼마나 나오는가". 실제 칸별 수량은 **칸 좌표로 결정적으로**
     // 굴린다(`WorldDeposits`) — 저작 없이도 칸마다 다르고, 다시 실행해도 같은 값이 나온다.

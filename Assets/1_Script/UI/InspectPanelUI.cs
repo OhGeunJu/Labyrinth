@@ -184,6 +184,7 @@ public class InspectPanelUI : MonoBehaviour
     {
         _forage = null;
         _rock   = null;
+        _itemFocus = null;   // 새로 고른 것은 전체부터 본다
         _items.Clear();
         if (items != null)
             foreach (var d in items) if (d != null) _items.Add(d);
@@ -434,6 +435,7 @@ public class InspectPanelUI : MonoBehaviour
                     || _blueprint != null || _building != null || _core != null || _node != null;
 
         if (FocusMode.Active != _focus) { _focus = FocusMode.Active; UiRefresh.Now(ref _beat); }
+        ItemRowClick();
         if (!showing) return;
 
         // **올린 칸의 설명** — 박과 따로 돈다(마우스는 0.15초를 기다려 주지 않는다).
@@ -489,7 +491,59 @@ public class InspectPanelUI : MonoBehaviour
     void Refresh()
     {
         RefreshCore();
+        FitHeight();
         OnShownChanged?.Invoke(ShownPawn);
+    }
+
+    // ── 창 높이는 내용만큼 (2026-09-28) ──────────────────────────────────────
+    //
+    // 사용자: *"창 안에 여백이 너무 많고"*. 판 높이가 씬에 고정이라 바닥 물건처럼 짧은 내용은 글 아래가
+    // 통째로 비고 버튼만 바닥에 붙었다. **씬의 높이는 천장으로 두고 그 안에서 줄인다** — 늘리지는 않는다
+    // (폰 정보처럼 긴 것은 지금 크기가 저작한 크기다). **아래 모서리를 붙든다** — 화면 아래에 선 창이라
+    // 줄어든 만큼 위가 내려와야 버튼 자리가 안 뛴다.
+    //
+    // 재는 것은 셋: 판 위에서 글 윗변까지(씬이 정한 여백) · 글이 실제로 차지하는 높이 · 버튼 줄 윗변에서
+    // 판 아래까지(버튼 줄이 없으면 글 위 여백과 같게). 셋 다 **지금 씬에서 잰다** — 상수로 적으면 씬을 손본 날 어긋난다.
+    float _fullHeight = -1f;
+    const float TextToActions = 10f;
+
+    void FitHeight()
+    {
+        if (panel == null || !panel.activeSelf || infoText == null) return;
+        if (!(panel.transform is RectTransform rt)) return;
+        if (!Mathf.Approximately(rt.anchorMin.y, rt.anchorMax.y)) return;   // 세로로 늘어난 판은 화면이 높이를 정한다
+
+        if (_fullHeight < 0f) _fullHeight = rt.rect.height;
+
+        float want = _fullHeight;
+        if (ShownPawn == null)
+        {
+            float top  = rt.rect.yMax - LocalIn(rt, infoText.rectTransform).yMax;
+            float text = infoText.GetPreferredValues(infoText.text, infoText.rectTransform.rect.width, 0f).y;
+
+            float bottom = top;
+            if (actionRow != null && actionRow.gameObject.activeSelf && actionRow is RectTransform ar)
+                bottom = LocalIn(rt, ar).yMax - rt.rect.yMin + TextToActions;
+
+            want = Mathf.Min(_fullHeight, top + text + bottom);
+        }
+        if (Mathf.Abs(rt.rect.height - want) < 0.5f) return;
+
+        // 아래 모서리를 붙든다 — 피벗이 어디든.
+        float bottomBefore = rt.rect.yMin * rt.lossyScale.y + rt.position.y;
+        rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, want);
+        float bottomAfter  = rt.rect.yMin * rt.lossyScale.y + rt.position.y;
+        rt.position += new Vector3(0f, bottomBefore - bottomAfter, 0f);
+    }
+
+    // `child`의 사각형을 `parent`의 로컬 좌표로.
+    static Rect LocalIn(RectTransform parent, RectTransform child)
+    {
+        var c = new Vector3[4];
+        child.GetWorldCorners(c);
+        Vector2 a = parent.InverseTransformPoint(c[0]);
+        Vector2 b = parent.InverseTransformPoint(c[2]);
+        return Rect.MinMaxRect(a.x, a.y, b.x, b.y);
     }
 
     void RefreshCore()
@@ -665,6 +719,14 @@ public class InspectPanelUI : MonoBehaviour
 
         if (data != null && data.Size.x > 0)
             sb.AppendLine($"<color=#888>크기 {Mathf.Max(1, data.Size.x)}×{Mathf.Max(1, data.Size.y)}</color>");
+
+        // **내구** — 부서지면 짓는 비용의 75%가 그 자리에 떨어진다(`BuildingHealth`). 상했으면 색을 바꾼다.
+        var hp = pb.GetComponent<BuildingHealth>();
+        if (hp != null)
+        {
+            string col = hp.Ratio >= 0.999f ? "#888" : hp.Ratio > 0.5f ? "#DDC060" : "#E06050";
+            sb.AppendLine($"<color={col}>내구 {Mathf.CeilToInt(hp.Current)} / {Mathf.CeilToInt(hp.Max)}</color>");
+        }
 
         // **침대는 전용 패널이 없다** — 하던 일(배정/해제)이 전부 우클릭으로 갔고, 남은 것은
         // "이게 어떤 침대이고 누가 누웠나"뿐이라 여기서 답한다.
@@ -881,52 +943,103 @@ public class InspectPanelUI : MonoBehaviour
     void ShowItems()
     {
         Show();
-        // **스위치를 동작 줄로 내렸다**(2026-09-06) — 오른쪽 위의 작은 버튼은 사용자가
-        // 못 찾았다(*"자동운반 토글은 어디있는지 모르겠고"*). **찾을 수 없는 스위치는 없는
-        // 스위치다.** 이제 채집물·광맥과 **같은 자리에 같은 버튼**이 선다.
+
+        // ── 무엇을 보여 주나 ────────────────────────────────────────────────
         //
-        // 여럿을 골랐으면 **품목마다 하나씩** — 같은 품목이 여럿이면 한 번만 세운다.
-        var seen = new List<ItemData>();
+        // **종류를 골라 볼 수 있다**(2026-09-28, 사용자: *"물건들의 종류도 하나 선택해서 자유자재로
+        // 전환할 수 있게"*). 여러 종류를 한꺼번에 잡으면 목록의 줄을 눌러 **그 종류만** 보고, 다른 줄을
+        // 누르면 그리로 옮겨 가고, 같은 줄을 다시 누르면 전체로 돌아온다. 고른 것 자체는 안 바꾼다 —
+        // 바꾸면 전체로 돌아갈 길이 사라진다. 대신 **땅의 표식을 그 종류에만** 켜 어디 있는지 보인다.
+        var rows = Group(_items);
+        if (_itemFocus.HasValue && rows.FindIndex(r => r.item == _itemFocus.Value.item &&
+                                                     r.quality == _itemFocus.Value.quality) < 0)
+            _itemFocus = null;   // 그 종류가 다 실려 갔다
+
+        _shownItems.Clear();
+        foreach (var d in _items)
+            if (!_itemFocus.HasValue || (d.Item == _itemFocus.Value.item && d.Quality == _itemFocus.Value.quality))
+                _shownItems.Add(d);
+        MarkFocus();
+
+        // ── 버튼 ─────────────────────────────────────────────────────────────
+        //
+        // **스위치는 동작 줄에 있다**(2026-09-06 — 오른쪽 위의 작은 버튼은 못 찾았다). **보고 있는 종류마다
+        // 하나**이고, 여럿이면 **이름을 붙인다** — 전에는 *"자동운반 꺼짐"* 둘이 나란히 서서 어느 것이
+        // 무엇의 스위치인지 알 수 없었다(2026-09-28 스크린샷).
+        var kinds = new List<ItemData>();
+        foreach (var it in _shownItems)
+            if (it?.Item != null && !kinds.Contains(it.Item)) kinds.Add(it.Item);
+
         var acts = new List<(string, Action)>();
-        foreach (var it in _items)
+        foreach (var k in kinds)
         {
-            if (it?.Item == null || seen.Contains(it.Item)) continue;
-            seen.Add(it.Item);
-            acts.Add(HaulSwitch(it.Item));
+            var (label, act) = HaulSwitch(k);
+            acts.Add((kinds.Count > 1 ? $"{k.ItemName} {label}" : label, act));
         }
         SetActions(acts.Count > 0 ? acts : null);
         if (infoText == null) return;
 
         var sb = new StringBuilder();
 
-        string head = _items.Count == 1
-                    ? OneLineName(_items[0])
-                    : $"<b>바닥의 물건</b>  <color=#888>{_items.Count}종</color>";
-
-        sb.AppendLine(head);
-
+        // ── 머리 ─────────────────────────────────────────────────────────────
         if (_items.Count == 1)
         {
             var only = _items[0];
+            sb.AppendLine(OneLineName(only));
             sb.AppendLine($"<color=#888>{only.Quality.DisplayName()} · {only.Item.TypeName}</color>");
         }
-        sb.AppendLine();
+        else if (rows.Count == 1)
+        {
+            var r = rows[0];
+            sb.AppendLine($"<b><color=#{ColorUtility.ToHtmlStringRGB(r.quality.Color())}>{r.item.ItemName}</color></b>" +
+                          $"  <color=#888>x{r.amount} · {_items.Count}더미</color>");
+        }
+        else
+        {
+            sb.AppendLine($"<b>바닥의 물건</b>  <color=#888>{rows.Count}종 · {_items.Count}더미</color>");
 
-        // ── 합계 ────────────────────────────────────────────────────────────
+            // **줄을 누르면 그 종류만** — 링크로 적는다(`ItemRowClick`). 고른 줄은 밝게, 나머지는 흐리게.
+            _rowKeys.Clear();
+            int shown = Mathf.Min(rows.Count, MaxItemRows);
+            for (int i = 0; i < shown; i++)
+            {
+                var r  = rows[i];
+                bool picked = _itemFocus.HasValue && _itemFocus.Value.item == r.item && _itemFocus.Value.quality == r.quality;
+                bool dim = _itemFocus.HasValue && !picked;
+                _rowKeys.Add((r.item, r.quality));
+
+                string name  = dim ? $"<color=#777>{r.item.ItemName}</color>"
+                                   : $"<color=#{ColorUtility.ToHtmlStringRGB(r.quality.Color())}>{r.item.ItemName}</color>";
+                if (picked) name = $"<b>{name}</b>";
+                // 등급은 장비만 갖는다(`HasQuality`) — 재료에 *"보통"*을 붙이면 줄만 길어진다.
+                string grade = r.item.HasQuality ? $" <color=#888>{r.quality.DisplayName()}</color>" : "";
+                string haul  = r.hauls ? "" : "  <color=#666>(운반 안 함)</color>";
+
+                sb.AppendLine($"<link=\"kind:{i}\">{name}{grade}  <color=#888>x{r.amount}</color>{haul}</link>");
+            }
+            if (rows.Count > shown)
+                sb.AppendLine($"<color=#888>외 {rows.Count - shown}종</color>");
+            sb.AppendLine(_itemFocus.HasValue
+                ? "<color=#666>같은 줄을 다시 누르면 전체를 봅니다.</color>"
+                : "<color=#666>줄을 누르면 그 종류만 봅니다.</color>");
+        }
+
+        // ── 합계 — 보고 있는 것만 ────────────────────────────────────────────
         int   count  = 0;
         float weight = 0f;
         int   value  = 0;
-        foreach (var d in _items)
+        foreach (var d in _shownItems)
         {
             count  += d.Amount;
             weight += d.Item.Weight    * d.Amount;
             value  += d.Item.BaseValue * d.Amount;
         }
 
-        sb.AppendLine($"수량  {count}개");
-        if (weight > 0f) sb.AppendLine($"무게  {weight:F1}kg");
-        if (value  > 0)  sb.AppendLine($"가치  {value}G");
-        sb.AppendLine();
+        // 한 줄로 — 세 줄로 세우면 창이 그만큼 길어진다(사용자: *"창 안에 여백이 너무 많고"*).
+        var total = new StringBuilder($"수량 {count}개");
+        if (weight > 0f) total.Append($"  ·  무게 {weight:F1}kg");
+        if (value  > 0)  total.Append($"  ·  가치 {value}G");
+        sb.AppendLine(total.ToString());
 
         // **왜 안 실려 가는지까지 적는다.** 찍어 놨는데 받아 줄 창고가 없으면 아무 일도
         // 안 일어나는데, 그건 찍기를 잊은 것과 화면에서 똑같이 보인다.
@@ -935,8 +1048,8 @@ public class InspectPanelUI : MonoBehaviour
         // 개별로 안 찍혀 있으므로, 옛 기준으로 세면 **자동운반이 켜진 물건을 "지정 안 됨"**
         // 이라고 적는다(스위치를 켜 놓고 창은 아니라고 말하는 꼴이다).
         int on = 0;
-        foreach (var d in _items) if (d.Hauls) on++;
-        bool allOn = on == _items.Count;
+        foreach (var d in _shownItems) if (d.Hauls) on++;
+        bool allOn = on == _shownItems.Count;
 
         if (on == 0)
         {
@@ -945,22 +1058,85 @@ public class InspectPanelUI : MonoBehaviour
         else
         {
             int stranded = 0;
-            foreach (var d in _items)
+            foreach (var d in _shownItems)
                 if (d.Hauls &&
                     Storage.FindNearest(d.transform.position, d.Item, d.Amount, d.Quality) == null)
                     stranded++;
 
-            string scope = allOn ? "" : $" ({on}/{_items.Count})";
+            string scope = allOn ? "" : $" ({on}/{_shownItems.Count})";
             if (stranded > 0)
             {
-                sb.AppendLine($"<color=#F44336>운반 지정됨{scope} — 그중 {stranded}종은 받아 줄 창고가 없습니다.</color>");
+                sb.AppendLine($"<color=#F44336>운반 지정됨{scope} — 그중 {stranded}더미는 받아 줄 창고가 없습니다.</color>");
                 sb.AppendLine("<color=#888>창고를 짓거나 비우면 저절로 실려 갑니다.</color>");
             }
             else
                 sb.AppendLine($"<color=#8BC34A>운반 지정됨{scope} — 폰이 창고로 옮깁니다.</color>");
         }
 
-        infoText.text = Josa.Fix(sb.ToString());
+        infoText.text = Josa.Fix(sb.ToString().TrimEnd());
+    }
+
+    // 고른 종류 — `null`이면 전체. 고른 것이 바뀌면 풀린다(`OnItemsInspected`).
+    (ItemData item, ItemQuality quality)? _itemFocus;
+    readonly List<DroppedItem> _shownItems = new();
+    readonly List<(ItemData item, ItemQuality quality)> _rowKeys = new();   // 링크 번호 → 종류(지난번 그린 순서)
+
+    // **땅의 표식을 보고 있는 종류에만.** 고른 것 전체는 `SelectionManager`가 들고, 여기서는 켜고 끄기만
+    // 한다 — 고른 것이 바뀌면 그쪽이 표식을 전부 끄고 새로 켠다.
+    void MarkFocus()
+    {
+        foreach (var d in _items)
+            if (d != null) d.SetSelected(!_itemFocus.HasValue || _shownItems.Contains(d));
+    }
+
+    // 목록의 줄을 눌렀나. 박을 안 기다린다(누른 것은 곧바로 바뀌어야 한다).
+    void ItemRowClick()
+    {
+        if (_items.Count < 2 || infoText == null || !infoText.gameObject.activeInHierarchy) return;
+        var mouse = UnityEngine.InputSystem.Mouse.current;
+        if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
+
+        var canvas = infoText.canvas;
+        if (canvas == null) return;
+        var cam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+
+        int idx = TMP_TextUtilities.FindIntersectingLink(infoText, mouse.position.ReadValue(), cam);
+        if (idx < 0) return;
+
+        string id = infoText.textInfo.linkInfo[idx].GetLinkID();
+        if (!id.StartsWith("kind:") || !int.TryParse(id.Substring(5), out int row)) return;
+        if (row < 0 || row >= _rowKeys.Count) return;
+
+        var key = _rowKeys[row];
+        _itemFocus = _itemFocus.HasValue && _itemFocus.Value.item == key.item && _itemFocus.Value.quality == key.quality
+                   ? null : key;
+        UiRefresh.Now(ref _beat);
+        Refresh();
+    }
+
+    // 목록이 창을 넘기지 않게 — 넘는 것은 *"외 N종"*으로 접는다.
+    const int MaxItemRows = 12;
+
+    // 품목·등급으로 합친 줄들. **많은 것부터** — 드래그로 잡은 것 중 눈에 띄어야 하는 것은 덩어리다.
+    // 하나라도 운반이 안 걸린 더미가 있으면 그 줄은 *"운반 안 함"*이다(섞여 있을 때 켜진 쪽으로 적으면
+    // 바닥에 남는 더미를 창이 숨긴다).
+    static List<(ItemData item, ItemQuality quality, int amount, bool hauls)> Group(List<DroppedItem> items)
+    {
+        var rows = new List<(ItemData item, ItemQuality quality, int amount, bool hauls)>();
+        foreach (var d in items)
+        {
+            if (d == null || d.Item == null) continue;
+            int at = rows.FindIndex(r => r.item == d.Item && r.quality == d.Quality);
+            if (at < 0) rows.Add((d.Item, d.Quality, d.Amount, d.Hauls));
+            else
+            {
+                var r = rows[at];
+                rows[at] = (r.item, r.quality, r.amount + d.Amount, r.hauls && d.Hauls);
+            }
+        }
+        rows.Sort((a, b) => b.amount != a.amount ? b.amount.CompareTo(a.amount)
+                                                 : string.CompareOrdinal(a.item.ItemName, b.item.ItemName));
+        return rows;
     }
 
     // 이름줄은 **이름만**, 아랫줄이 `등급 · 종류` — `ItemInfoUI`와 같은 규약이다
@@ -1125,7 +1301,7 @@ public class InspectPanelUI : MonoBehaviour
 
         infoText.text = Josa.Fix(sb.ToString());
 
-        // 소환·목록은 핵 제 패널(`DungeonCoreUI`)이 다룬다 — 여기는 **핵 자체**를 다루는 자리다.
+        // 소환은 소환진(`SummonCircle` → `DungeonCoreUI`), 배치는 핵을 누르면 뜨는 창(`WorkPostsUI`)이 다룬다 — 여기는 **핵 자체**를 다루는 자리다.
         SetActions(new List<(string, Action)>
         {
             ("이동한다", (Action)(() => CoreRelocator.Begin(core))),

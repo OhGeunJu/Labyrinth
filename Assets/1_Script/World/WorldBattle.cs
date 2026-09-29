@@ -453,7 +453,8 @@ public static class WorldBattle
 
         foreach (var e in band.Data.Loot)
         {
-            if (e == null || e.Item == null) continue;
+            var item = e?.Resolve();
+            if (item == null) continue;
 
             int total = 0;
             for (int k = 0; k < kills; k++)
@@ -464,11 +465,11 @@ public static class WorldBattle
             }
             if (total <= 0) continue;
 
-            int got = party.TryAdd(e.Item, total);
+            int got = party.TryAdd(item, total);
             if (got <= 0) continue;
 
-            result.Loot.TryGetValue(e.Item, out int cur);
-            result.Loot[e.Item] = cur + got;
+            result.Loot.TryGetValue(item, out int cur);
+            result.Loot[item] = cur + got;
         }
 
         // 상단은 **들고 다니던 것**도 나온다. 진열 재고가 곧 짐이므로, 털면 그만큼 준다 —

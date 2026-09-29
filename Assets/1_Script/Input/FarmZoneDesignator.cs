@@ -20,8 +20,8 @@ using UnityEngine.InputSystem;
 // **확장의 대상은 드래그를 시작한 칸의 구역이다** — 고르는 조작을 따로 두면 *"무엇이 커질지"*가
 // 화면에 안 적힌 상태에 숨는다. **누른 데가 커진다.**
 //
-// **단축키를 안 준다**(2026-09-02, 사용자 결정) — 켜는 문은 **모드 바 버튼 하나**다. 키가
-// 늘수록 *있는 줄 모르는 조작*이 늘고, 이건 자주 쓰는 것도 아니다.
+// **`V`로 켠다**(2026-09-28, 사용자: *"명령C밭V로"* — 09-02에는 단축키를 안 줬다). 모드 바가 키보드 줄과
+// 같은 순서다: `C` 명령 · `V` 밭 구역 · `B` 건설. 버튼과 키는 같은 문(`Toggle`)이다.
 //
 // **끄는 길을 같은 조작에 둔다**(채굴·운반 지정과 같은 규약) — 묶는 것만 있고 푸는 것이
 // 없으면, 한 번 잘못 묶은 밭은 헐어야만 되돌릴 수 있다.
@@ -63,6 +63,10 @@ public class FarmZoneDesignator : MonoBehaviour
     public static Tool Current { get; private set; } = Tool.New;
     public static void Use(Tool t) => Current = t;
 
+    // 화면 순서 = 숫자 순서. 도구 바(`ModeToolBarUI.Farm`)가 번호를 여기서 읽는다.
+    public static readonly Tool[] Order = { Tool.New, Tool.Extend, Tool.Erase };
+    public static int KeyOf(Tool t) => System.Array.IndexOf(Order, t) + 1;
+
     // **확장은 "처음 누른 칸의 구역"을 키운다**(2026-09-02, 사용자 결정).
     //
     // 전에는 *마지막으로 클릭해 연 밭*의 구역을 썼다(`FarmPlot.OnSelected`). 그러면 끌기 전에
@@ -97,10 +101,20 @@ public class FarmZoneDesignator : MonoBehaviour
 
     void Update()
     {
+        var kb = Keyboard.current;
+
+        if (kb != null && kb.vKey.wasPressedThisFrame && GameModeManager.IsField && !InputFocus.KeysBlocked())
+        { SetActive(!IsActive); return; }
+
         if (!IsActive) return;
 
-        var kb = Keyboard.current;
         if (kb != null && kb.escapeKey.wasPressedThisFrame) { SetActive(false); return; }
+
+        // **열려 있을 때 숫자가 도구를 고른다**(2026-09-28 — 건설 갈래·명령 도구와 같은 규칙).
+        // 번호는 `Order`의 자리이고 도구 바도 그것을 적는다.
+        if (kb != null && !InputFocus.KeysBlocked())
+            for (int i = 0; i < Order.Length; i++)
+                if (kb[Key.Digit1 + i].wasPressedThisFrame) { Use(Order[i]); break; }
 
         var mouse = Mouse.current;
         if (mouse == null) return;

@@ -5,6 +5,8 @@ public class SeedJob : JobBase
     // 심는 것은 즉시라 속도에 걸 자리가 없다 — **자라기만 한다**(거두는 쪽이 값을 낸다).
 
     public override JobCategory Category => JobCategory.Farming;
+
+    public override Component Site => _plot;   // 배치 칸이 거른다(`WorkPosts`)
     public override WorkAnim    Anim     => _phase == Phase.GoToPlot ? WorkAnim.Seeding : WorkAnim.None;
 
     enum Phase { GoToStorage, GoToPlot }

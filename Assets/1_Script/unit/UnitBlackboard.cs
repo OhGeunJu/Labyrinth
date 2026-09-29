@@ -273,6 +273,10 @@ public class UnitBlackboard
 
     public GameObject FinishTarget;
 
+    // **뚫고 있는 건물**(2026-09-30, `DetectNode.Breach` — 적만). 길을 포기한 뒤 고른 길막이를, 막아선 폰이 사거리에
+    // 들어오거나 부서질 때까지 붙든다 — 탐지의 *더 가까운 것으로 갈아타기*가 벽 너머 폰을 다시 물지 않게.
+    public GameObject BreachTarget;
+
     // 순찰
     public PatrolZone AssignedPatrolZone;
 
@@ -292,6 +296,10 @@ public class UnitBlackboard
     // 배회/복귀 기준점. NPC는 스폰 시 설정, 그 외 유닛은 처음 배회할 때 그 자리로 잡는다.
     public Vector3 HomePosition;
     public bool    HomeSet;
+
+    // **배회 반경을 밖에서 좁힌다**(2026-09-29) — 0이면 트리가 정한 반경. 무리로 다니는 짐승은 기준점을
+    // 같이 쓰고 그 둘레에서만 서성여야 떼로 보인다(`WildSpawner`가 적는다 — 반경 12m면 흩어진다).
+    public float   WanderRadius;
 
     // NPC 전용
     public Vector3 NpcDestination; // EventMerchant 목적지

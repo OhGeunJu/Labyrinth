@@ -56,7 +56,9 @@ public class JobManager : MonoBehaviour
     // 요청마다 도는 것이라 **한도가 없으면 그것이 곧 값이다.**
     const int DetourProbe = 24;
 
-    public JobBase RequestJob(UnitBrain unit)
+    // `only` — **배치 칸이 거르는 조건**(`WorkPosts`). 주면 그것에 맞는 일감만 보고, 켜고 끄기(`IsEnabled`) 대신
+    // **못 하는 일**(`IsBlocked`)만 막는다 — 배치는 명령이라 손으로 붙인 노드 배정과 같은 규칙이다.
+    public JobBase RequestJob(UnitBrain unit, System.Predicate<JobBase> only = null)
     {
         // **용병은 싸우러 온 것이지 일하러 온 것이 아니다.**
         //
@@ -113,7 +115,12 @@ public class JobManager : MonoBehaviour
             int weight = JobCategoryInfo.Weight(job.Category);
             if (weight <= 0) continue;
 
-            if (settings != null && !settings.IsEnabled(job.Category)) continue;
+            if (only != null)
+            {
+                if (!only(job)) continue;
+                if (settings != null && settings.IsBlocked(job.Category)) continue;
+            }
+            else if (settings != null && !settings.IsEnabled(job.Category)) continue;
             if (!job.CanAssignTo(unit)) continue;   // 지정 제작자 / 만들던 사람만 이어받는 장비
 
             int   score = weight * 100 + job.Priority;
@@ -139,7 +146,50 @@ public class JobManager : MonoBehaviour
         if (best != null && best.Reserve(unit))
             return best;
 
+        if (only == null) DiagnoseNoJob(unit, settings, from);
         return null;
+    }
+
+    // ── 일감이 있는데 못 받은 까닭 (2026-09-28) ─────────────────────────────
+    //
+    // 사용자: *"자동운반 껐다 켰다 하니깐 한명만 운반해"*. 셋 중 둘이 바닥 물건이 수백 개 널린 곳에서
+    // **대기**로 섰다. 배경은 운반을 막지 않았다(에셋을 훑었다). 남는 것은 작업 설정 · 적재 · 거리인데
+    // 화면으로는 가릴 수 없어, **이 폰에게 운반 일감이 있었는데 왜 못 받았나**를 까닭별로 센다.
+    // 폰마다 10초에 한 번. **이 줄이 안 뜨는 폰은 여기까지 묻지도 않은 것이다**(행동 트리가 그 앞에서 멈췄다).
+    readonly Dictionary<UnitBrain, float> _diagAt = new();
+    const float DiagEvery = 10f;
+
+    void DiagnoseNoJob(UnitBrain unit, WorkSettings settings, Vector3 from)
+    {
+        if (unit == null || settings == null) return;   // 일꾼이 아니다
+        if (_diagAt.TryGetValue(unit, out float at) && Time.unscaledTime < at) return;
+
+        int total = 0, off = 0, cannot = 0, far = 0, notReady = 0, taken = 0;
+        JobBase firstCannot = null;
+        var map = MapManager.Instance;
+
+        foreach (var job in _jobs)
+        {
+            if (job.Category != JobCategory.Hauling) continue;
+            total++;
+            if (job.Status != JobStatus.Available)          { taken++;    continue; }
+            if (!job.IsReady || !job.IsSiteUsable)           { notReady++; continue; }
+            var p = map != null ? map.TileToWorld(job.TileCoord) : from; p.y = from.y;
+            if (SimLocality.JobTooFar(from, p))              { far++;      continue; }
+            if (!settings.IsEnabled(job.Category))           { off++;      continue; }
+            if (!job.CanAssignTo(unit))                      { cannot++; firstCannot ??= job; continue; }
+        }
+        if (total == 0 || total == taken) return;           // 줄 것이 없었다 — 소식이 아니다
+
+        _diagAt[unit] = Time.unscaledTime + DiagEvery;
+
+        string carry = "";
+        if (firstCannot is GroundHaulJob || firstCannot is HaulJob)
+            carry = $" · 배낭에 {unit.Inventory?.Items.Count ?? 0}묶음 들고 있음";
+
+        Debug.Log($"[일감] {unit.name} — 운반 일감 {total}개 중 받은 것 없음: " +
+                  $"남이 잡음 {taken} · 준비 안 됨 {notReady} · 너무 멂 {far} · " +
+                  $"**작업 설정 꺼짐 {off}** · **못 짐(적재) {cannot}**{carry}");
     }
 
     // **환자가 사라진 치료 일감을 걷어낸다.** `IsReady`가 false라 배정은 안 되지만, 그대로 두면

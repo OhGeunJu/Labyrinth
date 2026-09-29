@@ -194,11 +194,43 @@ public class Corpse : MonoBehaviour
 
     void Update()
     {
+        CheckVanish();
+
         var now = Stage;
         if (now == _shown) return;
 
         _shown = now;
         Tint(now == CorpseStage.Bones ? BonesTint : RottenTint);
+    }
+
+    // ── 핵 영역 밖의 시체는 하루면 없어진다 (2026-09-29) ─────────────────────
+    //
+    // 사용자: *"핵 영역 밖의 시체는 하루만 지나도 사라지는게 맞을 거 같기는 해"*. 저절로 나는 무리(`WildSpawner`)를
+    // 굴 여기저기서 잡고 두고 가면 **시체가 판 내내 쌓였다** — 뼈는 안 사라지는 것이 규칙이라서다(위 `Bones`).
+    // 그 규칙은 **기지 안의 것**이다(매장·화장이 있어야 할 이유). 밖의 것은 짐승이 뜯어 가고 굴이 삼킨다.
+    //
+    // 하루면 **신선한 동안**이다 — 그 안에 오면 도축도 털기도 된다. 지녔던 것도 같이 없어진다(하루를 준 것이 그 값이다).
+    //
+    // **빠지는 것**: 묻힌 시체 · 업혀 가는 시체 · **내 사람**(원정에서 쓰러진 동료의 장비가 하루 만에 사라지면 되찾을 길이 없다).
+    public const float VanishOutsideDays = 1f;
+    float _vanishCheckAt;
+
+    void CheckVanish()
+    {
+        if (Time.unscaledTime < _vanishCheckAt) return;
+        _vanishCheckAt = Time.unscaledTime + 5f;   // 실시간 — 하루짜리 시계라 촘촘할 필요가 없다
+
+        if (Buried || AgeDays < VanishOutsideDays) return;
+        if (Faction != null && Faction.PlayerControlled) return;
+
+        var brain = GetComponent<UnitBrain>();
+        if (brain != null && PawnCarry.IsCarried(brain)) return;
+
+        var at = transform.position;
+        foreach (var core in DungeonCore.All)
+            if (core != null && core.IsWithinAnyRangeWorld(at)) return;
+
+        Destroy(gameObject);
     }
 
     void Tint(Color c) => Tint(gameObject, c);

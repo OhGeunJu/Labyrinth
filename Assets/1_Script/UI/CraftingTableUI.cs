@@ -463,7 +463,7 @@ public class CraftingTableUI : MonoBehaviour
             // 재료가 3/3인데 버튼은 비활성이거나, 그 반대.
             int have   = MaterialPool.AvailableHere(ing.Item);
             string col = have >= ing.Amount ? "#88FF88" : "#FF6666";
-            sb.AppendLine($"<color={col}>{ing.Item?.ItemName}  {have} / {ing.Amount}</color>");
+            sb.AppendLine($"<color={col}>{ing.Item?.IngredientName}  {have} / {ing.Amount}</color>");
         }
         ingredientsText.text = sb.ToString();
     }
