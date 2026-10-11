@@ -157,6 +157,10 @@ public class WorldContentStreamer : MonoBehaviour
         foreach (var c in new List<Vector2Int>(TerrainStreamer.LiveChunks)) Load(c);
     }
 
+    // **작업대 등급의 재료를 층과 대조한다** — 바닥에 뿌리는 것은 이 목록이 들고 있어서
+    // 씬이 선 뒤에야 잴 수 있다(`BenchTierCheck` 머리말). 한 판에 한 번.
+    void Start() => BenchTierCheck.Run(scatter);
+
     void OnDisable()
     {
         TerrainStreamer.ChunkLoaded   -= Load;
@@ -278,8 +282,9 @@ public class WorldContentStreamer : MonoBehaviour
                 // **바이옴이 다르면 안 난다** — 목재(거대버섯)를 균사림에만 두는 길이 이것이다.
                 // 저작한 지도가 답하므로(`WorldMap.BiomeAtWorld`) 청크가 로드 안 돼 있어도
                 // 계산된다 — 이 파일의 다른 판정과 같은 성질이다.
-                if (!rule.FromBiomePool &&
-                    rule.Biomes != null && rule.Biomes.Length > 0 && !InBiome(rule, wx, wz))
+                // **풀에서 고르는 규칙도 바이옴을 적으면 거른다**(2026-10-11) — 비워 두면 어디에나 난다(바닥 광맥).
+                // 수정동에만 광맥을 더 얹는 규칙이 이 길로 선다: 무엇이 날지는 여전히 풀이 답한다.
+                if (rule.Biomes != null && rule.Biomes.Length > 0 && !InBiome(rule, wx, wz))
                 { if (census) _census[r].Biome++; continue; }
 
                 // (무엇이 설지는 위에서 골랐다 — 자리 판정이 그 발자국을 알아야 한다.

@@ -31,7 +31,7 @@ public class BenchVisual : MonoBehaviour
     public static BenchVisual Ensure(Component bench)
     {
         if (bench == null) return null;
-        return bench.GetComponent<BenchVisual>() ?? bench.gameObject.AddComponent<BenchVisual>();
+        return bench.TryGetComponent(out BenchVisual visual) ? visual : bench.gameObject.AddComponent<BenchVisual>();
     }
 
     void Start() => Apply();

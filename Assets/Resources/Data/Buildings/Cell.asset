@@ -13,16 +13,17 @@ MonoBehaviour:
   m_Name: Cell
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: cell
-  BuildingName: "\uAC10\uC625"
+  BuildingName: 5x5
   Description: "5\xD75 \xB7 \uC548\uCABD 3\xD73\uCE78. \uC881\uACE0 \uB0AE\uC740
     \uBC29. \uC6B0\uB9AC\uC640 \uC8C4\uC218 \uCE68\uB300\uB97C \uB4E4\uC5EC\uB193\uB294\uB2E4
     \u2014 \uB0AE\uC740 \uCC9C\uC7A5\uC774 \uACE7 \uADF8 \uBC29\uC758 \uC131\uACA9\uC774\uB2E4."
-  Category: 7
-  SortOrder: 20
+  Category: 2
+  SortOrder: 25
   Size: {x: 5, y: 5}
   Costs:
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 15
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 0
@@ -42,3 +43,4 @@ MonoBehaviour:
   - '#...#'
   - '#...#'
   - '##.##'
+  EdgeWall: 0

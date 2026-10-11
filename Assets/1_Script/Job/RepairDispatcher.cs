@@ -52,6 +52,11 @@ public class RepairDispatcher : MonoBehaviour
         }
         foreach (var k in _gone) _jobs.Remove(k);
 
+        // **부서진·철거된 건물의 기록도 거둔다** — 맞은 시각과 마지막 체력은 `OnChanged`가 적기만 하고 지우는
+        // 곳이 없어서, 습격으로 벽이 부서지고 다시 지어질 때마다 사라진 건물이 두 표에 쌓였다.
+        Prune(_hitAt);
+        Prune(_lastHp);
+
         float now = GameTimeManager.Elapsed;
         foreach (var hp in BuildingHealth.All)
         {
@@ -65,10 +70,12 @@ public class RepairDispatcher : MonoBehaviour
         }
     }
 
-    static bool InOurTerritory(Vector3 pos)
+    static void Prune(Dictionary<BuildingHealth, float> map)
     {
-        foreach (var c in DungeonCore.All)
-            if (c != null && c.IsWithinAnyRangeWorld(pos)) return true;
-        return false;
+        _gone.Clear();
+        foreach (var k in map.Keys) if (k == null) _gone.Add(k);
+        foreach (var k in _gone) map.Remove(k);
     }
+
+    static bool InOurTerritory(Vector3 pos) => DungeonCore.AnyCovers(pos);
 }

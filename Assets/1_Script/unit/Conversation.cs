@@ -192,7 +192,7 @@ public static class Conversation
         // 고용이 통째로 사라진다(이 저장소가 "표시명을 식별자로 쓰지 말 것"이라 적어 둔 그것).
         //
         // **고용해도 세력은 그대로**라 이 판정이 계약 중에도 통한다(그것이 "싸움만 한다"의 근거다).
-        var fd = u.GetComponent<Faction>()?.Data;
+        var fd = u.TryGetComponent(out Faction faction) ? faction.Data : null;
         if (fd == null || !fd.ForHire) return;
 
         // 이미 우리 밑에 있으면 얼마나 남았는지 알려 준다 — 연장할지는 그걸 보고 정한다.

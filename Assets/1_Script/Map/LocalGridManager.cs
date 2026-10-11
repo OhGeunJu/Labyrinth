@@ -5,7 +5,7 @@ using UnityEngine;
 public class LocalGridManager
 {
     LayerMask _obstacleLayer;
-    WideGraph _graph;      // 1m 걸음 표의 주인 — 아래 `BakeGrid` 설명
+    HierarchicalPathfinder _wide;   // 1m 걸음 표의 주인(층마다 그래프 — 아래 `BakeGrid` 설명)
 
     // 벼랑 옆 칸의 이동 비용 배율.
     //
@@ -48,10 +48,10 @@ public class LocalGridManager
     bool[] _blockHasWall;
     int    _blocksPerAxis;
 
-    public void Initialize(LayerMask obstacleLayer, WideGraph graph)
+    public void Initialize(LayerMask obstacleLayer, HierarchicalPathfinder wide)
     {
         _obstacleLayer = obstacleLayer;
-        _graph         = graph;
+        _wide          = wide;
     }
 
     // 유닛 중심 윈도우 그리드를 해당 위치로 재배치·재베이크해 target까지 Theta* 경로 반환.
@@ -196,6 +196,7 @@ public class LocalGridManager
         var halfBox = new Vector3(half, 2f, half);
 
         ScanWalls(grid, size, half);
+        grid.ClearEdges();
 
         for (int x = 0; x < size; x++)
         for (int y = 0; y < size; y++)
@@ -226,13 +227,16 @@ public class LocalGridManager
 
                 grid.SetSurface(x, y, map.SurfaceHeight(here), map.ClimbLimitAt(here));
 
+                // **얇은 벽은 칸이 아니라 변을 막는다**(`EdgeWalls`) — 칸은 그대로 걸을 수 있다.
+                if (EdgeWalls.Count > 0) grid.SetEdges(x, y, EdgeWalls.MaskAt(here));
+
                 // **걸을 수 있나는 광역 그래프의 1m 표가 답한다**(2026-09-09). 그 표는
                 // `IsWorkable`(점유 아님 · 머리 위 여유 — 바위는 천장이 내려앉은 자리라 여기서
                 // 걸린다)을 **담아 둔 것**이고, 점유·바닥·채굴이 바뀔 때마다 그 자리만 다시
                 // 굽는다. 전에는 창 1,600칸마다 점유와 머리 위를 각자 다시 물었다 — 같은 1m
                 // 사실을 두 곳이 따로 뽑으면 언젠가 한쪽만 고쳐진다(`OnFloorChanged`가 광역만
                 // 알던 날이 실제로 있었다). 그래프가 없는 씬은 칸에 직접 묻는다.
-                bool walk = _graph != null ? _graph.WalkableTile(here.x, here.y) : map.IsWorkable(here);
+                bool walk = _wide != null ? _wide.TileWalkable(here, map) : map.IsWorkable(here);
                 if (!walk)
                 {
                     grid.SetWalkable(x, y, false);

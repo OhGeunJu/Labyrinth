@@ -213,4 +213,10 @@ public class UnitData : ScriptableObject
     [Tooltip("이 종족이 아예 못 하는 작업. 성장 배경의 무능력과 같은 곳으로 들어간다 " +
              "(칸에 ×로 뜨고 켤 수 없다).")]
     public List<JobCategory> DisabledJobs = new();
+
+    // **길들일 수 있는 짐승인가**(2026-10-01, 사용자: *"개미 같은 동물한테 운반할 수 있게 마차 같은거를 붙여"*).
+    // 우리에 가둔 이 종족은 조련으로 돌려세운다(`Conversion.CanTame` — 사람의 설득과 나란한 길). 넘어오면 **가축**이다:
+    // 일은 운반뿐이고, 수레를 단 동안만 명령을 받는다(`UnitBrain.IsTamedBeast` · `PawnCart`).
+    [Tooltip("길들일 수 있는 짐승 — 우리에 가두면 조련(간수와 나란한 일)으로 돌려세운다. 넘어오면 가축.")]
+    public bool Tameable = false;
 }

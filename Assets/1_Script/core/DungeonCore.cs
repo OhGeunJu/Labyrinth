@@ -13,7 +13,6 @@ public class DungeonCore : MonoBehaviour
     public DungeonCoreData Data => data;
     public bool IsSelected { get; private set; }
 
-    public static event Action<DungeonCore> OnSelected;
 
     // 영역(핵 union) 변경 시 발동 — 핵 이동/서브코어 등록·해제. 건물 휴면 재평가 트리거.
     public static event Action OnTerritoryChanged;
@@ -39,7 +38,7 @@ public class DungeonCore : MonoBehaviour
             {
                 var f = all[i];
                 if (f == null || !f.IsPlayer) continue;
-                if (f.GetComponent<UnitBrain>()?.Data is MinionData) n++;
+                if (f.TryGetComponent(out UnitBrain member) && member.Data is MinionData) n++;
             }
             return n;
         }
@@ -114,8 +113,7 @@ public class DungeonCore : MonoBehaviour
             var f = all[i];
             if (f == null || f.IsPlayer) continue;                 // 이미 우리 편이면 볼 것 없다
 
-            var brain = f.GetComponent<UnitBrain>();
-            if (brain?.Blackboard == null || !brain.Blackboard.IsPrisoner) continue;
+            if (!f.TryGetComponent(out UnitBrain brain) || brain.Blackboard == null || !brain.Blackboard.IsPrisoner) continue;
 
             Conversion.TickCore(brain, dt);
         }
@@ -229,13 +227,22 @@ public class DungeonCore : MonoBehaviour
         RaiseTerritoryChanged();
     }
 
+    // **고르는 것은 영역 원을 밝히는 일뿐이다**(2026-10-06). 예전에는 배치 창이 `OnSelected`를 듣고 열렸는데,
+    // 10-01에 핵이 포탈이 되며 창이 `H`로 옮겨 가 듣는 쪽이 하나도 안 남았다 — 이벤트는 걷어냈다.
+    // **고르면 다른 핵은 놓는다** — 핵이 둘 이상이면 푸는 쪽(`DeselectAll`)이 `Instance`만 보던 시절에
+    // 조작 중이 아닌 핵의 원이 영영 밝게 남았다.
     public void Select()
     {
+        DeselectAll();
         IsSelected = true;
-        OnSelected?.Invoke(this);
     }
 
     public void Deselect() { IsSelected = false; }
+
+    public static void DeselectAll()
+    {
+        foreach (var c in All) if (c != null) c.IsSelected = false;
+    }
 
     [System.Serializable]
     public struct MinionEntry
@@ -330,6 +337,14 @@ public class DungeonCore : MonoBehaviour
 
         Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 ({CurrentMinionCount}/{TotalMinionCap})");
         return true;
+    }
+
+    // **우리 거점 안인가 — 어느 핵의 영역이든.** 수리·추적·수레·도축대가 저마다 같은 세 줄을 들고 있었다.
+    public static bool AnyCovers(Vector3 worldPos)
+    {
+        foreach (var c in All)
+            if (c != null && c.IsWithinAnyRangeWorld(worldPos)) return true;
+        return false;
     }
 
     public bool IsWithinAnyRangeWorld(Vector3 worldPos)

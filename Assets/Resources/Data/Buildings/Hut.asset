@@ -13,17 +13,18 @@ MonoBehaviour:
   m_Name: Hut
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: hut
-  BuildingName: "\uC624\uB450\uB9C9"
+  BuildingName: 7x6
   Description: "7\xD76 \xB7 \uC548\uCABD 5\xD74\uCE78. \uCE68\uB300 \uBA87\uACFC
     \uC791\uC5C5\uB300\uAC00 \uAC19\uC774 \uB4E4\uC5B4\uAC00\uB294 \uC9D1."
   Category: 2
-  SortOrder: 22
+  SortOrder: 42
   Size: {x: 7, y: 6}
   Costs:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
     Amount: 25
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 15
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 0
@@ -44,3 +45,4 @@ MonoBehaviour:
   - '#.....#'
   - '#.....#'
   - '###.###'
+  EdgeWall: 0

@@ -67,6 +67,10 @@ Shader "DungeonColony/ChibiFace"
             float  _AccentGlow, _ShadeThreshold, _ShadeSoftness, _Cutoff;
         CBUFFER_END
 
+        // 폰의 최저 밝기 — **재질이 아니라 세계가 든다**(`UnderworldLighting`). 상수(0.35)였을 때는 굴을
+        // 아무리 어둡게 내려도 폰만 대낮처럼 떠서 밤으로 안 읽혔다(2026-10-11).
+        half _PawnFloor;
+
         // 제 기본 칸 + 옮긴 칸. 판의 UV는 이미 기본 칸 안에 있다.
         float2 CellUV(float2 uv) { return uv + _CellOffset.xy / max(_Cells, 1.0); }
 
@@ -89,6 +93,7 @@ Shader "DungeonColony/ChibiFace"
             #pragma vertex Vert
             #pragma fragment Frag
             #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
             struct A { float4 positionOS : POSITION; float3 normalOS : NORMAL; float2 uv : TEXCOORD0; };
@@ -124,14 +129,27 @@ Shader "DungeonColony/ChibiFace"
                 half3 n = normalize(i.normalWS);
                 Light mainLight = GetMainLight();
                 half lit = ToonStep(n, mainLight.direction, mainLight.distanceAttenuation);
+                // **등을 도는 문은 URP의 매크로다**(2026-10-12). PC 렌더러는 Forward+라 등이 물체가 아니라
+                // 화면 칸(cluster)에 매달려 있다 — 예전처럼 개수로 `for`를 돌면 한 개도 안 돈다.
+                //
+                // **밝기도 여기서 잰다**(`bright`). 전에는 등이 *밝은 면이냐 그늘이냐*만 골랐고 실제 밝기는
+                // 주변광 바닥값이 다 냈다 — 굴을 어둡게 내리자 횃불 곁에 서도 폰이 검었다.
+                // 법선은 안 본다: 불빛 안에 섰으면 몸 전체가 밝고, 면을 가르는 것은 계단(`lit`)이 한다.
+                half bright = 0;
+                InputData inputData = (InputData)0;
+                inputData.positionWS = i.positionWS;
+                inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(i.positionCS);
                 uint count = GetAdditionalLightsCount();
-                for (uint k = 0u; k < count; k++)
-                {
-                    Light extra = GetAdditionalLight(k, i.positionWS);
-                    lit = max(lit, ToonStep(n, extra.direction, extra.distanceAttenuation));
-                }
+                LIGHT_LOOP_BEGIN(count)
+                    Light extra = GetAdditionalLight(lightIndex, i.positionWS);
+                    half reach = extra.distanceAttenuation * extra.shadowAttenuation;
+                    lit    = max(lit, ToonStep(n, extra.direction, reach));
+                    bright = max(bright, reach * max(extra.color.r, max(extra.color.g, extra.color.b)));
+                LIGHT_LOOP_END
                 col = lerp(col * _ShadeColor.rgb, col, lit);
-                col *= max(SampleSH(n), 0.35);
+                // **불빛 안에서도 0.6까지다** — 폰의 색은 주변광 0.35~0.45 아래에서 맞춘 것이라, 1까지 올리면
+                // 횃불 곁에서 색이 날아간다.
+                col *= max(max(SampleSH(n), _PawnFloor), saturate(bright) * 0.6);
 
                 // 발광은 빛과 무관하게 더한다 — 어둠 속에서 눈만 빛나는 자리.
                 col += _AccentColor.rgb * _AccentGlow * m.b;

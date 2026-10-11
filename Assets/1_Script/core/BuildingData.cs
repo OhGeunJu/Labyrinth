@@ -200,6 +200,13 @@ public class BuildingData : ScriptableObject
              "비우면 `OccupiesTile`이 발자국 전체에 걸린다.")]
     public string[]         BlockMask;
 
+    // **얇은 벽 — 칸이 아니라 변을 막는다**(2026-10-01, `EdgeWalls` · `ThinWall`). 칸은 비어 있어 침대·작업대를
+    // 벽에 붙여 놓을 수 있고, 건너지 못하는 것은 건물 앞(+Z)이 가리키는 변 하나다. 이 값이 켜지면
+    // `OccupiesTile`은 끈다(칸을 막으면 얇은 벽이 아니라 외곽벽이다) · 다른 건물과 같은 칸에 놓인다(겹치는 것은
+    // 같은 변의 얇은 벽끼리만 막는다).
+    [Tooltip("얇은 벽 — 건물 앞(+Z)이 가리키는 칸의 변 하나를 막는다. 칸 자체는 비워 둔다(OccupiesTile 끌 것).")]
+    public bool             EdgeWall = false;
+
     // 마스크가 쓸 만한가. 한 번 재고 결과를 든다 — 배치마다 다시 재면 경고가 쏟아진다.
     bool _maskChecked;
     bool _maskValid;

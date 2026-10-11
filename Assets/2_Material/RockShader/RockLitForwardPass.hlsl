@@ -264,6 +264,20 @@ void LitPassFragment(
     // ── 고친 곳 넷째: 등을 보이는 면은 버린다 (`RockCut.hlsl`) ─────────────
     RockCutBackface(input.positionWS, input.normalWS);
 
+    // ── 고친 곳 다섯째: 옆면의 법선은 화면에서 다시 잰다 (2026-10-12) ──────
+    // 정점이 높이마다 밀렸는데(`RockBulge`) 메시의 법선은 밀기 전 것이다 — 그대로 두면 들쭉날쭉한 벽이
+    // 빛을 평평하게 받아 굴곡이 윤곽에서만 보인다. 면이 실제로 놓인 방향을 픽셀에서 잰다(면마다 각진
+    // 것이 바위답다). **자르기가 다 끝난 뒤다** — 뚜껑인가·등졌나는 메시의 법선으로 물어야 한다.
+    float3 g = cross(ddy(input.positionWS), ddx(input.positionWS));   // 미분은 갈래 밖에서 잰다
+    if (!RockIsCap(input.normalWS))
+    {
+        if (dot(g, g) > 1e-12)
+        {
+            g = normalize(g);
+            input.normalWS = dot(g, input.normalWS) < 0.0 ? -g : g;
+        }
+    }
+
 #if defined(_PARALLAXMAP)
 #if defined(REQUIRES_TANGENT_SPACE_VIEW_DIR_INTERPOLATOR)
     half3 viewDirTS = input.viewDirTS;

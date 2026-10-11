@@ -94,7 +94,7 @@ public class CommandMode : MonoBehaviour
     void Update()
     {
         var kb = Keyboard.current;
-        if (kb == null || !GameModeManager.IsField || InputFocus.KeysBlocked()) return;
+        if (kb == null || InputFocus.KeysBlocked()) return;
 
         // **`C`가 명령 모드를 연다**(2026-09-28 — 전에는 도구마다 글자 하나: H·J·K·C·V·N·T).
         // 모드 바가 키보드 줄과 같은 순서다: `C` 명령 · `V` 밭 구역 · `B` 건설.

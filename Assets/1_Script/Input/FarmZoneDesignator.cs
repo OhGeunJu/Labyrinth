@@ -28,6 +28,10 @@ using UnityEngine.InputSystem;
 //
 // **씬 배선이 없다**(`MineDesignator`·`HaulDesignator`와 같은 자리) — 아무 상태도 안 들고
 // 저작할 것도 없는 순수 입력기라 스스로 선다.
+//
+// **저장 구역도 여기서 칠한다**(2026-10-06, `StockZones`) — `V`가 *구역* 모드가 됐다(림월드의 구역 탭처럼 밭과
+// 저장을 한 자리에서). 밭 도구는 **지어 둔 밭**을 묶고, 저장 도구는 **맨 칸**을 칠한다 — 그래서 고르는 것(밭 / 칸)과
+// 미리보기(밭 테두리 / 사각형)가 도구마다 갈린다.
 public class FarmZoneDesignator : MonoBehaviour
 {
     const float DragThreshold = 8f;
@@ -58,13 +62,17 @@ public class FarmZoneDesignator : MonoBehaviour
 
     // **`새 구역`과 `확장`을 가른다**(2026-09-02, 사용자). 하나로 두고 *"고른 게 없으면
     // 새 구역"*으로 했더니, **무엇이 될지가 고른 상태에 숨어 있어** 누르기 전에는 알 수 없었다.
-    public enum Tool { New, Extend, Erase }
+    // **값은 꼬리에 붙인다.**
+    public enum Tool { New, Extend, Erase, Stock, StockErase }
+
+    // 저장 구역 도구인가 — 밭이 아니라 칸을 고른다.
+    public static bool IsStockTool(Tool t) => t == Tool.Stock || t == Tool.StockErase;
 
     public static Tool Current { get; private set; } = Tool.New;
     public static void Use(Tool t) => Current = t;
 
     // 화면 순서 = 숫자 순서. 도구 바(`ModeToolBarUI.Farm`)가 번호를 여기서 읽는다.
-    public static readonly Tool[] Order = { Tool.New, Tool.Extend, Tool.Erase };
+    public static readonly Tool[] Order = { Tool.New, Tool.Extend, Tool.Erase, Tool.Stock, Tool.StockErase };
     public static int KeyOf(Tool t) => System.Array.IndexOf(Order, t) + 1;
 
     // **확장은 "처음 누른 칸의 구역"을 키운다**(2026-09-02, 사용자 결정).
@@ -88,6 +96,20 @@ public class FarmZoneDesignator : MonoBehaviour
     public static readonly HashSet<FarmPlot> Preview = new();
     public static int PreviewVersion { get; private set; }
 
+    // **저장 구역 미리보기는 칸 사각형이다**(`StockZoneOverlay`가 그린다). 칠할 칸이 없는 땅도 사각형은 보인다 —
+    // 무엇을 덮는지가 놓기 전에 보여야 한다(밭 테두리와 같은 이유).
+    public static bool       HasStockPreview { get; private set; }
+    public static Vector2Int StockPreviewA   { get; private set; }
+    public static Vector2Int StockPreviewB   { get; private set; }
+    public static int        StockPreviewVersion { get; private set; }
+
+    static void SetStockPreview(bool on, Vector2Int a = default, Vector2Int b = default)
+    {
+        if (on == HasStockPreview && (!on || (a == StockPreviewA && b == StockPreviewB))) return;
+        HasStockPreview = on; StockPreviewA = a; StockPreviewB = b;
+        StockPreviewVersion++;
+    }
+
     static void SetPreview(List<FarmPlot> now)
     {
         bool same = now != null && now.Count == Preview.Count;
@@ -103,7 +125,7 @@ public class FarmZoneDesignator : MonoBehaviour
     {
         var kb = Keyboard.current;
 
-        if (kb != null && kb.vKey.wasPressedThisFrame && GameModeManager.IsField && !InputFocus.KeysBlocked())
+        if (kb != null && kb.vKey.wasPressedThisFrame && !InputFocus.KeysBlocked())
         { SetActive(!IsActive); return; }
 
         if (!IsActive) return;
@@ -139,9 +161,18 @@ public class FarmZoneDesignator : MonoBehaviour
         // 끌고 있는 동안 무엇이 잡히는지 그린다.
         if (_hasAnchor && (mouse.leftButton.isPressed || mouse.rightButton.isPressed))
         {
-            CollectTo(cur);
-            SetPreview(_hit);
+            if (IsStockTool(Current))
+                SetStockPreview(true, _anchorTile, TileUnder(cur, out var end) ? end : _anchorTile);
+            else
+            {
+                CollectTo(cur);
+                SetPreview(_hit);
+            }
         }
+
+        // 저장 도구는 커서 아래 칸에 못 칠하는 이유를 적는다(`OnGUI`).
+        _hint = Current == Tool.Stock && TileUnder(cur, out var under)
+              ? StockZones.WhyNot(under) : null;
 
         if (mouse.leftButton.wasReleasedThisFrame)  Apply(cur, primary: true);
         if (mouse.rightButton.wasReleasedThisFrame) Apply(cur, primary: false);
@@ -165,12 +196,25 @@ public class FarmZoneDesignator : MonoBehaviour
     // 상자(또는 클릭 한 점) 안의 밭에 지금 도구를 건다.
     void Apply(Vector2 cur, bool primary)
     {
+        bool hadAnchor = _hasAnchor;
+        var  anchor    = _anchorTile;
         CollectTo(cur);
         _dragging  = false;
         _hasAnchor = false;
         SetPreview(null);
+        SetStockPreview(false);
 
         if (!primary) return;   // 우클릭은 지금 하는 일이 없다 — 도구가 답한다
+
+        // **저장 구역 — 칸 사각형을 칠하거나 지운다.**
+        if (IsStockTool(Current))
+        {
+            if (!hadAnchor) return;
+            var end = TileUnder(cur, out var t) ? t : anchor;
+            if (Current == Tool.Stock) StockZones.Paint(anchor, end);
+            else                       StockZones.Erase(anchor, end);
+            return;
+        }
         if (_hit.Count == 0) return;
 
         if (Current == Tool.Erase)
@@ -282,13 +326,28 @@ public class FarmZoneDesignator : MonoBehaviour
     // 남이 켰으면 나는 꺼진다. **켜는 쪽은 자기만 알고, 끄는 판단은 각자 한다.**
     void OnOtherClaimed(object who) { if (!ReferenceEquals(who, this)) SetActive(false); }
 
+    // 커서 옆 한 줄 — 칠할 수 없는 칸이면 왜인지(`StockZones.WhyNot`, 땅 고르기·건설과 같은 자리).
+    string _hint;
+
+    void OnGUI()
+    {
+        if (!IsActive || _hint == null || Event.current == null) return;
+        var at  = Event.current.mousePosition + new Vector2(20f, 18f);
+        var was = GUI.color;
+        GUI.color = new Color(1f, 0.45f, 0.4f);
+        GUI.Label(new Rect(at.x, at.y, 520f, 22f), $"여기는 저장 구역으로 못 칠합니다 - {_hint}");
+        GUI.color = was;
+    }
+
     void SetActive(bool on)
     {
         if (IsActive == on) return;
         IsActive   = on;
         _dragging  = false;
         _hasAnchor = false;
+        _hint      = null;
         SetPreview(null);
+        SetStockPreview(false);
 
         if (on) ExclusiveMode.Claim(this);
     }

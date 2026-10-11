@@ -50,9 +50,15 @@ using UnityEngine;
 // ## 조합은 전부 굽고 런타임이 하나씩 켠다
 //
 // 체형마다 프리팹 하나에 제 성별의 머리형 여섯·머리카락 여섯을 **전부 굽고** `PawnLook`이 씨앗으로 한 벌만
-// 켠다(굴리지 않는다). 몸은 옆선 다섯 점을 **지나는 곡선**으로 잇고 돌려 깎는다. 팔다리는 휴머노이드
-// 뼈 열다섯 때문에 **살은 두고 렌더러만 끈다.** 머리에 얹을 것은 전부 `Head.` 꼴.
-public static class ChibiPawnCreator
+// 켠다(굴리지 않는다). 머리에 얹을 것은 전부 `Head.` 꼴.
+//
+// ## 몸은 한 덩어리다 (2026-10-09)
+//
+// 처음 몸은 **머리 · 몸통 · 손 셋**만 보이고 팔다리는 관절 자리만 주는 안 보이는 살이었다. 10-06에 사용자가 팔다리가 보이는
+// 비율을 원해 시제품(`ChibiPawnCreator.Proto`)을 따로 지었고, 10-09에 **몸통·팔·다리를 스킨 메시 하나로** 다시 지어
+// (*"너무 도형 이어붙인 느낌"* → 된 것을 보고 *"넘어가자"*) 본 몸 전부를 그것으로 옮겼다(`DressSkinned`). 체형은 이제
+// **폭만** 가른다(옆선 표 `Shape.Half` · 깊이 · 손) — 높이·다리 길이·팔 길이는 머리 높이의 배수로 모두 같다.
+public static partial class ChibiPawnCreator
 {
     const string Source   = "Assets/3_Prefab/Pawn/Wanderer_Human.prefab";
     const string OutDir   = "Assets/3_Prefab/Pawn";
@@ -82,11 +88,7 @@ public static class ChibiPawnCreator
     // 머리카락이 시작하는 높이(t — 머리 밑 0 · 정수리 1). 이마 선이다 — 기본 머리의 뚜껑 자리와 같다.
     const float HairLine = 0.62f;
 
-    const float BottomRound = 0.60f, TopRound = 0.55f;
-    // **손 높이 = 팔 밑동**(둘이 갈리면 손 공이 손 관절에서 떨어져 팔이 돌 때 지렛대가 된다).
-    // 0.53에서 올렸다(2026-09-19, 사용자: *"팔이 너무 밑에있는 거 같아 조금만 올려줘"*).
-    const float HandY = 0.61f, HandZ = 0.20f, HandGap = 0.08f;
-    const float ArmTop = 0.80f, ArmBot = HandY;
+    const float TopRound = 0.55f;   // 몸통 어깨 둥글림(× 어깨 반폭) — 한 덩어리 몸(`BodyTorsoRadius`)이 쓴다
 
     // ── 체형 ────────────────────────────────────────────────────────────────
     readonly struct Shape
@@ -105,7 +107,10 @@ public static class ChibiPawnCreator
     {
         //                                                       밑     엉덩이  허리   가슴   어깨      깊이   손
         new Shape("Male",       "남성",      "Male",   new[] { 0.21f, 0.24f, 0.26f, 0.30f, 0.31f }, 0.82f, 0.30f),
-        new Shape("Female",     "여성",      "Female", new[] { 0.23f, 0.37f, 0.21f, 0.27f, 0.22f }, 0.80f, 0.27f),
+        // 여성 엉덩이는 **남성과 같다**(2026-10-09, 사용자: *"Female은 허리가 너무 넓어"* → 1.2배로 줄였다가 *"남성 대비 크게
+        // 말고 남성이랑 똑같게"*). 다리가 보이는 몸에서는 엉덩이 폭이 바지통 두 다리의 굵기까지 정해서(`DimsOf`), 옛 값 0.37
+        // (남성의 1.54배)이면 아랫몸이 통째로 퍼졌다.
+        new Shape("Female",     "여성",      "Female", new[] { 0.23f, 0.24f, 0.21f, 0.27f, 0.22f }, 0.80f, 0.27f),
         new Shape("ThinMale",   "마른 남성", "Male",   new[] { 0.19f, 0.20f, 0.21f, 0.23f, 0.24f }, 0.78f, 0.26f),
         new Shape("ThinFemale", "마른 여성", "Female", new[] { 0.18f, 0.22f, 0.17f, 0.21f, 0.20f }, 0.76f, 0.25f),
         new Shape("Fat",        "뚱뚱",      "Male",   new[] { 0.36f, 0.46f, 0.46f, 0.39f, 0.29f }, 0.95f, 0.31f),
@@ -186,6 +191,10 @@ public static class ChibiPawnCreator
         // 외곽선이 보여야지"* · *"근데 머리랑은 외곽선이 보이면 안돼"*), 한 재질이면 얼굴과 손을 스텐실로 못 가른다.
         ("HeadSkin", new Color32(0xF2, 0xD2, 0xA8, 0xFF)),
         ("Shirt", new Color32(0xC4, 0x45, 0x3C, 0xFF)),
+        ("Pants", new Color32(0x46, 0x37, 0x32, 0xFF)),   // 다리 — 비율 시제품(`ChibiPawnCreator.Proto`)
+        ("Shoe",  new Color32(0x5A, 0x3C, 0x2D, 0xFF)),   // 신발 — 같은 곳
+        // 시제품의 손 — 색은 살과 같고 **선을 바깥에만** 받는다(본 몸의 손은 `Skin` 그대로 — 몸통 선이 제 손 위에도 서야 한다).
+        ("SkinOuter", new Color32(0xF2, 0xD2, 0xA8, 0xFF)),
         ("Hair",  new Color32(0xA8, 0x72, 0x3C, 0xFF)),
         // **코는 제 선을 끄고 바깥 선만 받는다**(2026-09-19, 사용자: *"코에 외곽선이 떠서 문제가 있고"*) — 제 재질의
         // 6cm 선은 스텐실을 안 봐서 **얼굴 위에 검은 덩어리**로 떴다. 선은 `OutlineOuterFine`이 얼굴 밖에만 긋는다.
@@ -245,15 +254,6 @@ public static class ChibiPawnCreator
         float u = (t - Stations[a]) / h, u2 = u * u, u3 = u2 * u;
         return ( 2f * u3 - 3f * u2 + 1f) * half[a] + (u3 - 2f * u2 + u) * h * Slope(a)
              + (-2f * u3 + 3f * u2)      * half[b] + (u3 - u2)          * h * Slope(b);
-    }
-
-    static float TorsoRadius(Shape s, float t)
-    {
-        float y = t * TorsoH, w = HalfAt(s.Half, t);
-        float rb = s.Half[0] * BottomRound, rt = s.Half[^1] * TopRound;
-        if (y < rb)          return w - rb + Mathf.Sqrt(Mathf.Max(0f, rb * rb - (rb - y) * (rb - y)));
-        if (y > TorsoH - rt) { float d = TorsoH - y; return w - rt + Mathf.Sqrt(Mathf.Max(0f, rt * rt - (rt - d) * (rt - d))); }
-        return w;
     }
 
     // **머리 옆선** — 그림에서 잰 반폭(최대 0.5). 크기는 `HeadShape.Size`가 곱한다.
@@ -587,33 +587,6 @@ public static class ChibiPawnCreator
 
     static readonly string[] HairFits = { PawnLook.FitRound, PawnLook.FitBox };
 
-    static List<Part> BodyParts(Shape s, Mesh torso, float torsoMaxR)
-    {
-        float handX = HalfAt(s.Half, HandY / TorsoH) + HandGap + s.HandR * 0.5f;
-        float armY  = (ArmTop + ArmBot) * 0.5f, armLen = ArmTop - ArmBot;
-
-        return new List<Part>
-        {
-            // **몸통의 선은 몸 밖에만** — 여자 체형은 가슴의 아랫단이 엉덩이 위에 걸쳐, 제 선을 그대로
-            // 두면 배 한가운데에 가로선이 선다(`ToonOutlineOuter` 머리말).
-            new Part("Torso", torso, new Vector3(0f, TorsoH * 0.5f, 0f),
-                     new Vector3(torsoMaxR * 2f, TorsoH, torsoMaxR * 2f * s.Depth), "Shirt", outerMat: "OutlineOuter"),
-
-            new Part("HandL.Ball", null, new Vector3(-handX, HandY, HandZ), Vector3.one * s.HandR, "Skin"),
-            new Part("HandR.Ball", null, new Vector3( handX, HandY, HandZ), Vector3.one * s.HandR, "Skin"),
-
-            // 안 보이는 것 — 관절을 세우는 자리.
-            // **팔은 손 바로 위에서 곧게 내려온다**(보이지 않는 살 — 관절 자리만 준다). 전에는 어깨를
-            // 몸통 안쪽(`armX`)에 두고 손 공을 옆으로 34cm 떼어 붙였는데, 팔이 조금만 벌어져도 그 34cm가
-            // 지렛대가 되어 **가만히 서 있어도 손이 턱까지 들렸다**(2026-09-18 사용자: *"아무것도 안 하고
-            // 있으면 손을 내리고 있으면 좋겠어"*). 손 공이 손 관절 바로 위에 있으면 팔이 돌아도 손만 따라온다.
-            new Part("ArmL", null, new Vector3(-handX, armY, HandZ), new Vector3(0.12f, armLen, 0.12f), "Skin",  false),
-            new Part("ArmR", null, new Vector3( handX, armY, HandZ), new Vector3(0.12f, armLen, 0.12f), "Skin",  false),
-            new Part("LegL", null, new Vector3(-0.15f, 0.23f, 0f), new Vector3(0.13f, 0.46f, 0.13f), "Shirt", false),
-            new Part("LegR", null, new Vector3( 0.15f, 0.23f, 0f), new Vector3(0.13f, 0.46f, 0.13f), "Shirt", false),
-        };
-    }
-
     // ── 굽기 ────────────────────────────────────────────────────────────────
 
     [MenuItem("DungeonColony/Pawn/3. Create Chibi Pawns (체형 · 머리형 · 머리카락 · 눈 · 입)")]
@@ -683,13 +656,9 @@ public static class ChibiPawnCreator
 
         var made   = new List<string>();
         var bodies = new List<string>();   // 방랑자가 태어날 수 있는 몸들(`BodyVariants`)
-        Mesh  goblinTorso = null;
-        float goblinMaxR  = 0f;
         foreach (var shape in Shapes)
         {
             var s = shape;
-            var torso = Lathe($"Chibi_Torso_{s.Suffix}", t => TorsoRadius(s, t), 40, 36, out float maxR);
-            if (s.Suffix == GoblinShape) { goblinTorso = torso; goblinMaxR = maxR; }
             string target = $"{OutDir}/Chibi_{s.Suffix}.prefab";
 
             // **guid를 지킨다 — 지우고 다시 만들지 않는다.** 방랑자의 몸 목록(`BodyVariants`)이 이 여섯을 guid로
@@ -706,7 +675,7 @@ public static class ChibiPawnCreator
                 AssetDatabase.ImportAsset(target);
             }
 
-            if (Dress(target, s, torso, maxR, headParts, mats, atlases, isSource: false))
+            if (Dress(target, s, headParts, mats, atlases, isSource: false))
             {
                 made.Add($"{s.Label}(Chibi_{s.Suffix})");
                 bodies.Add(target);
@@ -718,21 +687,20 @@ public static class ChibiPawnCreator
             // 그대로 두고 `Model` 자식만 갈므로 guid·루트 fileID가 지켜진다(CLAUDE.md "프리팹을 통째로 다시 짓지 않는다").
             // 체형은 남성 하나다 — 한 프리팹은 한 몸이다. 이 파일이 **치비 여섯의 원본**(`Source`)이기도 하지만 복사한 뒤
             // `Model`을 비우고 다시 굽으므로 원본이 치비여도 결과는 같다.
-            if (s.Suffix == WandererShape && Dress(Source, s, torso, maxR, headParts, mats, atlases, isSource: true))
+            if (s.Suffix == WandererShape && Dress(Source, s, headParts, mats, atlases, isSource: true))
                 made.Add($"방랑자(Wanderer_Human = {s.Label})");
         }
 
         // **고블린도 치비 몸이다 — 초록 피부로**(2026-09-29, 사용자: *"고블린도 지금 폰에 맞춰서 바꿔줘 초록색 피부로"*).
         // 방랑자와 같은 길이다 — **제자리에서 `Model`만 간다**(소굴 무리·로드아웃·씬이 guid로 가리킨다). `Model`의 크기(0.8~0.85)는
         // 그대로 남아 사람보다 작게 선다. 재질만 고블린 벌(`GoblinMaterials`)을 쓰고, 얼굴은 민머리 · 고블린 귀 · 긴 코로 못 박는다.
-        if (goblinTorso != null)
         {
             var gShape = Array.Find(Shapes, x => x.Suffix == GoblinShape);
             var gMats  = GoblinMaterials(mats);
             foreach (var gp in GoblinPrefabs)
             {
                 if (!File.Exists(gp)) { Debug.LogWarning($"[치비] 고블린 프리팹이 없다 — {gp}"); continue; }
-                if (Dress(gp, gShape, goblinTorso, goblinMaxR, headParts, gMats, atlases, isSource: false, GoblinLook))
+                if (Dress(gp, gShape, headParts, gMats, atlases, isSource: false, GoblinLook))
                     made.Add($"고블린({Path.GetFileNameWithoutExtension(gp)})");
             }
         }
@@ -743,7 +711,7 @@ public static class ChibiPawnCreator
             var root = PrefabUtility.LoadPrefabContents(Source);
             try
             {
-                var bv = root.GetComponent<BodyVariants>() ?? root.AddComponent<BodyVariants>();
+                if (!root.TryGetComponent(out BodyVariants bv)) bv = root.AddComponent<BodyVariants>();
                 bv.Variants.Clear();
                 foreach (var path in bodies)
                 {
@@ -769,7 +737,7 @@ public static class ChibiPawnCreator
         AssetDatabase.Refresh();
         Debug.Log($"[치비] 체형 {made.Count}벌 — {string.Join(" · ", made)} · 머리형 {Heads.Length}(성별마다 {Heads.Length / Genders.Length}) · 머리카락 6 · " +
                   $"눈 {atlases["Eyes"].Names.Length} · 입 {atlases["Mouths"].Names.Length}. " +
-                  "**이제 `Pawn/2. Build Pawn Rigs`를 돌려야 관절이 선다.**");
+                  "관절까지 섰다(몸은 스킨 메시 하나 — `Pawn/2`는 필요 없다).");
     }
 
     // 방랑자에게 입힐 체형(`Shapes`의 `Suffix`).
@@ -798,7 +766,7 @@ public static class ChibiPawnCreator
     static Dictionary<string, Material> GoblinMaterials(Dictionary<string, Material> baseMats)
     {
         var map = new Dictionary<string, Material>(baseMats);
-        foreach (var n in new[] { "Skin", "HeadSkin", "SkinFine" })
+        foreach (var n in new[] { "Skin", "HeadSkin", "SkinFine", "SkinOuter" })
             map[n] = Variant(baseMats[n], $"Chibi_{n}_Goblin", "_BaseColor", GoblinSkin);
         map["Shirt"] = Variant(baseMats["Shirt"], "Chibi_Shirt_Goblin", "_BaseColor", GoblinRag);
 
@@ -835,36 +803,26 @@ public static class ChibiPawnCreator
 
     // 프리팹 하나의 `Model` 자식을 치비 살로 갈아 끼우고 치비 컴포넌트를 붙인다. **루트는 안 건드린다.**
     // `finish` — 저장 직전에 한 번 더 손볼 것(고블린의 얼굴처럼).
-    static bool Dress(string path, Shape s, Mesh torso, float maxR, Dictionary<string, List<Part>> headParts,
+    //
+    // **몸은 한 덩어리다**(2026-10-09 — 시제품에서 옮겨 왔다, `ChibiPawnCreator.Proto`의 `DressSkinned`). 관절까지 여기서
+    // 세우므로 `Pawn/2`가 따로 필요 없다(그 도구는 스킨 메시 몸을 건너뛴다).
+    static bool Dress(string path, Shape s, Dictionary<string, List<Part>> headParts,
                       Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, bool isSource,
                       Action<GameObject> finish = null)
     {
         var root = PrefabUtility.LoadPrefabContents(path);
         try
         {
-            var model = root.transform.Find("Model");
-            if (model == null) { Debug.LogError($"[치비] {path}에 `Model`이 없다."); return false; }
-
-            var kids = new List<GameObject>();
-            foreach (Transform c in model) kids.Add(c.gameObject);
-            foreach (var k in kids) UnityEngine.Object.DestroyImmediate(k);
-
-            var all = new List<Part>(BodyParts(s, torso, maxR));
-            all.AddRange(headParts[s.Gender]);
-            foreach (var p in all) Build(model, p, mats, atlases, root.layer);
+            if (!DressSkinned(root, DimsOf(s), headParts[s.Gender], mats, atlases,
+                              Path.GetFileNameWithoutExtension(path), $"Chibi_Body_{s.Suffix}")) return false;
 
             if (root.GetComponent<PawnLook>() == null) root.AddComponent<PawnLook>();
             // 몸통 선이 **제 몸만** 피하게 폰마다 번호를 준다(`ToonOutlineOuter`).
             if (root.GetComponent<PawnOutlineId>() == null) root.AddComponent<PawnOutlineId>();
-            // 클립은 사람 비례라 허리를 젖히면 치비는 몸 전체가 눕는다 — 몸통 움직임만 덜어 낸다.
-            if (root.GetComponent<ChibiPoseDamp>() == null) root.AddComponent<ChibiPoseDamp>();
-            // 곡괭이질은 받은 클립 대신 손 공을 직접 옮긴다(머리 위로 들었다가 찍는다).
-            if (root.GetComponent<ChibiToolSwing>() == null) root.AddComponent<ChibiToolSwing>();
 
             // **이 몸이 무엇인가** — 성별은 몸이 답한다(`PawnBody`). 머리형도 이 성별의 것만 구웠다.
-            var pb = root.GetComponent<PawnBody>() ?? root.AddComponent<PawnBody>();
+            if (!root.TryGetComponent(out PawnBody pb)) pb = root.AddComponent<PawnBody>();
             pb.Gender     = s.Gender == "Female" ? Gender.Female : Gender.Male;
-            pb.Shape      = s.Suffix;
             pb.ShapeLabel = s.Label;
 
             // **몸 목록은 원본(방랑자)만 든다** — 복사본은 원본을 복사해 만들어 목록까지 따라오는데, 남겨 두면 체형
@@ -880,6 +838,32 @@ public static class ChibiPawnCreator
             return true;
         }
         finally { PrefabUtility.UnloadPrefabContents(root); }
+    }
+
+    // **체형 → 몸의 치수 — 남성 체형이 곧 시제품 몸이고, 다른 체형은 남성에 대한 비만 가져온다.**
+    //
+    // 처음엔 옛 옆선 표(`Shape.Half`)를 새 몸통 높이에 맞춰 줄여 그대로 썼다. 그랬더니 남성 몸이 시제품보다 **엉덩이가 20% 넘게
+    // 좁고 다리도 그만큼 가늘었다**(2026-10-09, 사용자: *"몸이 프로토에비해 너무 마른 거 아냐?"*) — 옛 몸은 다리가 없이 몸통이
+    // 땅으로 모이는 모양이라 밑·엉덩이가 좁게 적혀 있었다. 사용자가 보고 고른 것은 시제품이므로 **그것이 기준**이고, 옛 표는
+    // 체형끼리의 차이(여자 엉덩이 · 뚱뚱한 배 · 헐크 어깨)만 준다 — 자리마다 `체형 ÷ 남성`을 시제품 값에 곱한다.
+    // - 밑은 엉덩이 비를 따른다(시제품 밑은 바지통이라 엉덩이와 같이 간다 — 옛 밑은 모여 있던 자리라 비로 쓸 수 없다).
+    // - 다리 자리·굵기는 엉덩이 폭에서, 팔 굵기는 손에서 — 시제품의 비 그대로(뚱뚱한 몸은 다리도 굵다).
+    // 머리 높이는 그 성별의 기준 머리 — 한 프리팹에 머리형 여섯이 다 구워지고 `PawnLook`이 하나를 켜므로 몸은 기준에 맞춘다.
+    static BodyDims DimsOf(Shape s)
+    {
+        var male = Array.Find(Shapes, x => x.Suffix == WandererShape);
+        float hh = BasisOf(s.Gender).Size.y;
+        var half = new float[s.Half.Length];
+        for (int i = 0; i < half.Length; i++)
+        {
+            int at = i == 0 ? 1 : i;   // 밑은 엉덩이 비
+            half[i] = PTorsoHalf[i] * hh * (s.Half[at] / male.Half[at]);
+        }
+        float hand  = PHand * hh * (s.HandR / male.HandR);
+        float depth = PDepth * (s.Depth / male.Depth);
+        float hip   = half[1];
+        return new BodyDims(hh, half, depth, hand, hand * (PArmW / PHand) * 0.5f,
+                            hip * (PLegX / PTorsoHalf[1]), hip * (PLegW * 0.5f / PTorsoHalf[1]));
     }
 
     static void Build(Transform model, Part p, Dictionary<string, Material> mats,
@@ -965,6 +949,17 @@ public static class ChibiPawnCreator
                 tris.Add(a); tris.Add(c); tris.Add(b);
                 tris.Add(b); tris.Add(c); tris.Add(d);
             }
+        }
+
+        // **정수리를 닫는다**(2026-10-09, 사용자: *"어떤 것들은 정수리에 원형탈모가 생겨"*). 고리는 t = 1까지 쌓지만 그 고리의
+        // 반지름은 머리 옆선이 정한다 — 정수리가 평평한 머리형(그 모양 무리의 가장 넓은 곡면)은 t = 1에서도 0이 아니라
+        // **그만한 구멍이 뚫려** 안의 머리 살이 비쳤다. 가운데 점 하나로 부채를 덮는다(감김은 위 고리 띠와 같다 — 외곽선 껍데기가
+        // 법선을 따른다).
+        {
+            int top = rings * stride, center = verts.Count;
+            verts.Add(new Vector3(0f, ts[rings] - 0.5f, 0f));
+            uvs.Add(new Vector2(0.5f, 1f));
+            for (int k = 0; k < segs; k++) { tris.Add(top + k); tris.Add(center); tris.Add(top + k + 1); }
         }
         return Save(name, verts, uvs, tris);
     }
@@ -1264,7 +1259,9 @@ public static class ChibiPawnCreator
             mat.SetColor("_OutlineColor", OutlineColor);
             // **몸통(셔츠)은 제 선을 끈다** — 그 선은 두 번째 재질(`OutlineOuter`)이 몸 밖에만 긋는다.
             // **코(가는 선 재질)도 제 선을 끈다** — 선은 둘째 재질(`OutlineOuterFine`)이 몸 밖에만 긋는다.
-            bool outerOnly = name == "Shirt" || FineOutline(name);
+            // **다리(`Pants`)도 몸통처럼** — 팔다리는 관절마다 두 토막이라 제 선을 두면 무릎·팔꿈치마다 검은 띠가 선다(시제품, 2026-10-06).
+            // **신발·시제품 손도** — 제 선(스텐실을 안 보는 껍데기)이 발목·손목에 검은 띠를 긋고, 땅 이기기를 안 받아 발밑 선이 먹혔다(10-09).
+            bool outerOnly = name == "Shirt" || name == "Pants" || name == "Shoe" || name == "SkinOuter" || FineOutline(name);
             mat.SetFloat("_OutlineWidth", outerOnly ? 0f : OutlineWidth);
             mat.SetFloat("_OutlineMin",   outerOnly ? 0f : OutlineMin);
             // 스텐실에 제 자리를 적는 것은 **몸통과 얼굴**뿐이다 — 번호는 폰마다 `PawnOutlineId`가 준다(여기 값은 씬 뷰용 기본값).

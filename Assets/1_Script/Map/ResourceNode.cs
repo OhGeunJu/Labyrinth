@@ -488,7 +488,7 @@ public class ResourceNode : MonoBehaviour, IHaulSource, IGatherTarget
 
     void Awake()
     {
-        Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
+        Inventory = TryGetComponent(out Inventory inv) ? inv : gameObject.AddComponent<Inventory>();
         _haul     = new HaulDispatcher(this);
 
         // 빌드존 안일 때만 타일 막힘 표시 (시각화용). 실제 이동 차단은 콜라이더+NavMesh 담당.

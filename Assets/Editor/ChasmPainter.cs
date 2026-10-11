@@ -522,6 +522,7 @@ public class ChasmPainter : EditorWindow
     // **누르면 있던 절벽을 전부 갈아 끼운다**(작은 절벽을 없애 달라는 것이 요청이다 — Ctrl+Z로 되돌린다).
     void GenerateChasms()
     {
+        _gates = null;   // 층 지도의 통로 자리가 바뀌었을 수 있다
         EnsureSet();
         BuildOpen();
         if (StartBlock() == null) { Debug.LogWarning("[절벽] 시작 자리를 못 찾았다 — 씬에 `StartSpot`을 두거나 지도의 시작 칸을 확인할 것."); return; }
@@ -538,22 +539,36 @@ public class ChasmPainter : EditorWindow
         int made = 0, rejected = 0, blocks = 0, lands = 0, repairs = 0, swallowed = 0, spans = 0;
         var path = new List<(Vector2 pos, Vector2 dir, float r)>();
 
+        // **층마다 따로**(2026-10-01, `Floors`) — 협곡 하나가 **그 층의 한 변에서 맞은편 변까지** 간다. 세계 한 변으로 내면
+        // 협곡이 층 사이 기반암을 가로질러 네 층을 한 줄로 꿴다. `_rifts`는 **층마다의 수**다.
+        int fn = Floors.Size / TerrainGrid.VertexSpacing;   // 층 한 변(덩어리)
+        int total = _rifts * Floors.Count;
+        int floor = 1, madeHere = 0, triesHere = 0;
+        Vector2 fo = Vector2.zero;
+
         try
         {
-        for (int attempt = 0; made < _rifts && attempt < _rifts * 6; attempt++)
+        for (int attempt = 0; made < total && attempt < total * 6; attempt++)
         {
-            if (EditorUtility.DisplayCancelableProgressBar("절벽 자동 생성", $"협곡 {made}/{_rifts}", made / (float)_rifts)) break;
+            if (EditorUtility.DisplayCancelableProgressBar("절벽 자동 생성", $"협곡 {made}/{total}", made / (float)total)) break;
             path.Clear();
 
-            // 한 변 위의 한 점에서 맞은편 변을 향해.
+            // 이 층에 다 냈거나 너무 많이 버렸으면 다음 층으로.
+            if (madeHere >= _rifts || triesHere >= _rifts * 6) { floor++; madeHere = 0; triesHere = 0; }
+            if (floor > Floors.Count) break;
+            triesHere++;
+            var fq = Floors.Quadrant(floor);
+            fo = new Vector2(fq.x * fn, fq.y * fn);
+
+            // 한 변 위의 한 점에서 맞은편 변을 향해(층 안 덩어리 좌표로 정하고 세계로 옮긴다).
             int side = rng.Next(4);
-            float u = Mathf.Lerp(0.15f, 0.85f, (float)rng.NextDouble()) * n;
-            Vector2 pos = side switch
+            float u = Mathf.Lerp(0.15f, 0.85f, (float)rng.NextDouble()) * fn;
+            Vector2 pos = fo + side switch
             {
                 0 => new Vector2(Margin, u),
-                1 => new Vector2(n - Margin, u),
+                1 => new Vector2(fn - Margin, u),
                 2 => new Vector2(u, Margin),
-                _ => new Vector2(u, n - Margin),
+                _ => new Vector2(u, fn - Margin),
             };
             float baseAng = side switch { 0 => 0f, 1 => Mathf.PI, 2 => Mathf.PI * 0.5f, _ => -Mathf.PI * 0.5f };
             baseAng += (float)(rng.NextDouble() - 0.5) * 0.9f;   // 맞은편으로 곧게만 가지 않게
@@ -561,7 +576,8 @@ public class ChasmPainter : EditorWindow
 
             for (int i = 0; i < n * 3; i++)
             {
-                if (pos.x < Margin - 1 || pos.y < Margin - 1 || pos.x > n - Margin + 1 || pos.y > n - Margin + 1) break;
+                if (pos.x < fo.x + Margin - 1 || pos.y < fo.y + Margin - 1 ||
+                    pos.x > fo.x + fn - Margin + 1 || pos.y > fo.y + fn - Margin + 1) break;   // 층 경계에서 멈춘다
 
                 float ang = baseAng + (Mathf.PerlinNoise(nA, i * 0.012f) - 0.5f) * 1.6f;
                 var dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
@@ -575,7 +591,7 @@ public class ChasmPainter : EditorWindow
                 path.Add((pos, dir, r));
                 pos += dir;
             }
-            if (path.Count < n / 3) continue;   // 모서리를 스치고 나갔다
+            if (path.Count < fn / 3) continue;   // 모서리를 스치고 나갔다
 
             // **다리 목** — `_landGap`마다 협곡을 다리로 건널 만큼 좁힌다(끊지 않는다).
             var necks = new HashSet<int>();
@@ -625,6 +641,7 @@ public class ChasmPainter : EditorWindow
 
             label = Label();
             made++;
+            madeHere++;
             blocks += addedNow.Count;
             lands  += necksNow;
         }
@@ -724,7 +741,8 @@ public class ChasmPainter : EditorWindow
         _open  = new bool[_openN * _openN];
         for (int z = 0; z < _openN; z++)
         for (int x = 0; x < _openN; x++)
-            _open[z * _openN + x] = TerrainCeiling.ClearanceAt(x * s + 1f, z * s + 1f) >= PawnMover.BodyHeight;
+            _open[z * _openN + x] = !Floors.IsSeam(x * s + 1, z * s + 1)   // 층 사이 기반암 — 연결 판정이 옆 층으로 새지 않게
+                                 && TerrainCeiling.ClearanceAt(x * s + 1f, z * s + 1f) >= PawnMover.BodyHeight;
     }
 
     // **세계 밖은 언제나 닫혀 있다** — `_open`이 없을 때(씬에 `TerrainStreamer`가 없다) 밖까지 열려 있으면 `Reach`가 끝없이 번진다.
@@ -741,14 +759,34 @@ public class ChasmPainter : EditorWindow
         float s = TerrainGrid.VertexSpacing;
         int n = _openN > 0 ? _openN : TerrainGrid.WorldSize / TerrainGrid.VertexSpacing;
         if (b.x < 6 || b.y < 6 || b.x >= n - 6 || b.y >= n - 6) return true;
+        // **층 가장자리도 세계 가장자리다**(2026-10-01, `Floors`) — 층 사이 기반암에 절벽이 붙으면 그 둘레가 반쪽 협곡이 된다.
+        int fn = Floors.Size / TerrainGrid.VertexSpacing;
+        int lx = b.x % fn, lz = b.y % fn;
+        if (lx < 6 || lz < 6 || lx >= fn - 6 || lz >= fn - 6) return true;
         var c = new Vector2((b.x + 0.5f) * s, (b.y + 0.5f) * s);
         if (_startWorld != null && (c - _startWorld.Value).sqrMagnitude < 30f * 30f) return true;
+        // 층 통로 둘레 — 내려가자마자 절벽이면 안 된다(통로는 판이 열릴 때 둘레를 연다, `FloorPassage`).
+        foreach (var g in Gates()) if ((c - g).sqrMagnitude < 30f * 30f) return true;
         foreach (var site in WorldSites.All)
             if ((c - site.Position).sqrMagnitude < 20f * 20f) return true;
         return false;
     }
 
     Vector2? _startWorld;
+
+    // 층 통로 자리 — **한 번만 잰다**(`Forbidden`은 덩어리마다 불린다 · 자리는 씬의 층 지도에서 나온다). 생성을 시작할 때 비운다.
+    List<Vector2> _gates;
+    List<Vector2> Gates()
+    {
+        if (_gates != null) return _gates;
+        _gates = new List<Vector2>();
+        for (int f = 1; f <= Floors.Count; f++)
+        {
+            if (f < Floors.Count) { var d = FloorPassage.PointFor(f, PassageKind.Down); _gates.Add(new Vector2(d.x, d.z)); }
+            if (f > 1)            { var u = FloorPassage.PointFor(f, PassageKind.Up);   _gates.Add(new Vector2(u.x, u.z)); }
+        }
+        return _gates;
+    }
 
     // 시작 자리 — 씬의 `StartSpot`, 없으면 지도의 시작 칸 한가운데. 그 덩어리가 바위면 가장 가까운 열린 덩어리.
     Vector2Int? StartBlock()

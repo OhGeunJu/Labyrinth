@@ -61,7 +61,7 @@ public class WorldBandData : ScriptableObject
     [SerializeField] List<MemberEntry> members = new();
 
     [Header("이동")]
-    [Tooltip("월드유닛/초. 플레이어 원정대(`WorldMapView.partySpeed`, 기본 5)와 견줘서 정한다 — " +
+    [Tooltip("월드유닛/초. 옛 원정대 속도(기본 5)와 견줘서 정했다 — " +
              "**이 값이 곧 '뿌리칠 수 있는가'다.** 느린 무리는 피할 수 있고 빠른 무리는 못 피한다.")]
     [SerializeField] float speed = 4.5f;
 

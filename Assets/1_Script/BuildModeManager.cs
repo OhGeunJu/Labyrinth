@@ -841,6 +841,7 @@ public class BuildModeManager : MonoBehaviour
             for (int i = 0; i < hits.Length; i++)
             {
                 if (RockRenderer.IsRockCollider(hits[i].collider)) continue;
+                if (StandsOnGround(hits[i].collider)) continue;
                 point = hits[i].point;
                 return true;
             }
@@ -853,6 +854,20 @@ public class BuildModeManager : MonoBehaviour
             return true;
         }
         return false;
+    }
+
+    // **땅 위에 선 것도 건너뛴다**(2026-10-06, 사용자: 얇은 벽 모서리에서 *"이 상태에서는 클릭이 안되는데 반대쪽에서부터
+    // 끌어오면 지어져"*). 벽·건물·청사진·폰의 콜라이더는 키가 있어서, 비스듬히 보면 레이가 그 윗면이나 옆면에 먼저 맞고
+    // 그 자리의 x·z는 **바닥에서 카메라 쪽으로 한두 칸 밀린다**. 벽 옆 칸을 짚으면 벽 너머 칸이 찍혀, 얇은 벽은 엉뚱한
+    // 꼭짓점을 잡아 이미 선 벽과 겹쳤다. 바위를 건너뛰는 것과 같은 이유다 — 여기서 알고 싶은 것은 **바닥**이다.
+    // **바닥(기단)과 다리는 안 건너뛴다** — 그 윗면이 곧 디딜 바닥이다(다리를 건너뛰면 절벽 구멍을 지나 아래로 빠진다).
+    static bool StandsOnGround(Collider col)
+    {
+        if (col == null) return false;
+        if (col.GetComponentInParent<BuildingBlueprint>() != null) return true;
+        if (col.GetComponentInParent<UnitBrain>() != null) return true;
+        var placed = col.GetComponentInParent<PlacedBuilding>();
+        return placed != null && (placed.Data == null || (!placed.Data.IsFloor && !placed.Data.IsBridge));
     }
 
     void UpdatePreview()
@@ -932,6 +947,8 @@ public class BuildModeManager : MonoBehaviour
     {
         get
         {
+            // 얇은 벽은 줄이 아니라 **선분의 방향**이 변을 정한다(`EdgeLine`이 프레임마다 정해 둔다).
+            if (_edgeYawSet && SelectedBuilding != null && SelectedBuilding.EdgeWall) return _edgeYaw;
             if (_lineTiles.Count < 2 || RectDrag) return _gridYaw;
 
             var a = _lineTiles[0];
@@ -1246,11 +1263,85 @@ public class BuildModeManager : MonoBehaviour
     readonly List<float>      _lineY     = new();   // 칸마다의 높이 — 계단은 칸마다 다르다
     readonly List<Vector2Int> _oneTile   = new();   // 한 칸씩 물어볼 때 돌려 쓰는 그릇
 
+    // ── 얇은 벽 — 격자선을 긋는다 (2026-10-06) ────────────────────────────────
+    //
+    // 사용자: *"벽이 서로 ㄴ 자 모양으로 모서리가 있어야하는데 중복이 되서 그 쪽에 안 지어져"*. 전에는 얇은 벽도 다른
+    // 벽처럼 **칸**을 줄로 긋고, 줄 방향이 변을 정했다(가로 줄 → 칸의 북쪽 변, 세로 줄 → 동쪽 변). 그러면 두 줄이 만나는
+    // 모서리 칸이 **양쪽 줄에 다 들어가** 세로 벽이 가로 벽 너머로 한 칸 삐져나오고(ㄴ이 아니라 ㅗ·十), 어느 쪽 변에
+    // 서는지도 줄을 어느 쪽으로 긋느냐에 묶였다.
+    //
+    // **얇은 벽은 칸이 아니라 변에 서므로 긋는 것도 변이 이어진 선, 곧 격자선이다.** 기준은 커서에 가장 가까운
+    // **꼭짓점**이고, 꼭짓점에서 꼭짓점까지 한 축으로 긋는다. 그러면 두 번 그은 선이 꼭짓점 하나에서 만나 ㄴ이 저절로
+    // 맞는다. 기준을 안 잡았을 때는 커서에 가장 가까운 **변 하나**를 보여 준다.
+    //
+    // 변은 이웃한 두 칸이 나눠 갖는다. 판이 어느 칸 쪽에 붙을지는 `Q`/`E`(돌리기)가 정한다 — 180°를 돌리면 같은 변의
+    // 맞은편 칸에 선다(`EdgeFlipped`).
+    bool  _edgeYawSet;
+    float _edgeYaw;
+
+    bool EdgeFlipped => (Mathf.RoundToInt(Mathf.Repeat(_gridYaw, 360f) / 90f) & 2) != 0;
+
+    // 꼭짓점 (i, j) = 칸 (i, j)의 남서 모서리. 커서에 가장 가까운 꼭짓점은 반 칸 밀어 칸을 묻는 것과 같다.
+    static Vector2Int VertexNear(Vector3 world) =>
+        MapManager.Instance.WorldToTile(world + new Vector3(0.5f, 0f, 0.5f));
+
+    // 선분을 (칸, 방위)로 바꿔 `into`에 칸을 담고 `_edgeYaw`를 정한다. 한 번 긋는 선은 한 축이라 방위는 하나다.
+    void EdgeLine(Vector2Int? anchor, Vector2Int vertex, Vector3 cursor, List<Vector2Int> into)
+    {
+        into.Clear();
+        bool flip = EdgeFlipped;
+
+        Vector2Int a, b;
+        if (anchor.HasValue && anchor.Value != vertex) { a = anchor.Value; b = vertex; }
+        else
+        {
+            // 기준이 없거나 같은 꼭짓점 — 커서가 든 칸의 가장 가까운 변 하나.
+            var map = MapManager.Instance;
+            var tc = map.WorldToTile(cursor);
+            var c  = map.TileToWorld(tc);
+            float dx = cursor.x - c.x, dz = cursor.z - c.z;
+            if (Mathf.Abs(dx) > Mathf.Abs(dz))
+            {
+                int vx = dx > 0f ? tc.x + 1 : tc.x;
+                a = new Vector2Int(vx, tc.y); b = new Vector2Int(vx, tc.y + 1);
+            }
+            else
+            {
+                int vz = dz > 0f ? tc.y + 1 : tc.y;
+                a = new Vector2Int(tc.x, vz); b = new Vector2Int(tc.x + 1, vz);
+            }
+        }
+
+        if (Mathf.Abs(b.x - a.x) >= Mathf.Abs(b.y - a.y))
+        {
+            // 가로선(꼭짓점 줄 z = a.y) — 변은 칸 (k, z-1)의 북쪽 = 칸 (k, z)의 남쪽.
+            b.x = a.x + Mathf.Clamp(b.x - a.x, -MaxDragTiles, MaxDragTiles);
+            for (int k = Mathf.Min(a.x, b.x); k < Mathf.Max(a.x, b.x); k++)
+                into.Add(flip ? new Vector2Int(k, a.y) : new Vector2Int(k, a.y - 1));
+            _edgeYaw = flip ? 180f : 0f;
+        }
+        else
+        {
+            // 세로선(꼭짓점 열 x = a.x) — 변은 칸 (x-1, k)의 동쪽 = 칸 (x, k)의 서쪽.
+            b.y = a.y + Mathf.Clamp(b.y - a.y, -MaxDragTiles, MaxDragTiles);
+            for (int k = Mathf.Min(a.y, b.y); k < Mathf.Max(a.y, b.y); k++)
+                into.Add(flip ? new Vector2Int(a.x, k) : new Vector2Int(a.x - 1, k));
+            _edgeYaw = flip ? 270f : 90f;
+        }
+        _edgeYawSet = true;
+    }
+
     void UpdateGridPreview(Vector3 worldPoint)
     {
         var tile = MapManager.Instance.WorldToTile(worldPoint);
 
-        if (CanDragBuild) { UpdateLineBuild(tile); return; }
+        if (CanDragBuild)
+        {
+            // **얇은 벽은 칸이 아니라 격자선을 긋는다** — 기준은 커서에 가장 가까운 꼭짓점이다(`EdgeLine`).
+            if (SelectedBuilding.EdgeWall) UpdateLineBuild(tile, worldPoint);
+            else                           UpdateLineBuild(tile);
+            return;
+        }
 
         // **Q/E로 돌리면 그 자리에서 바로 다시 그린다.** 전엔 타일이 바뀔 때만 그려서,
         // 회전이 고스트 모델에는 즉시 붙는데 초록 격자는 **한 칸 옮겨야** 따라왔다
@@ -1281,11 +1372,21 @@ public class BuildModeManager : MonoBehaviour
     }
 
     // 한 칸짜리 — 두 번 클릭으로 줄(벽)이나 면(바닥)을 한 번에.
-    void UpdateLineBuild(Vector2Int tile)
+    void UpdateLineBuild(Vector2Int tile, Vector3? edgeCursor = null)
     {
-        // 기준을 안 잡았으면 평소처럼 한 칸 미리보기.
-        var from = _lineAnchor ?? tile;
-        LineOrRect(from, tile, RectDrag, _lineTiles);
+        // 얇은 벽이면 `_lineAnchor`는 칸이 아니라 **꼭짓점**이다(첫 클릭이 그것을 잡는다).
+        Vector2Int anchorKey = tile;
+        if (edgeCursor.HasValue)
+        {
+            anchorKey = VertexNear(edgeCursor.Value);
+            EdgeLine(_lineAnchor, anchorKey, edgeCursor.Value, _lineTiles);
+        }
+        else
+        {
+            // 기준을 안 잡았으면 평소처럼 한 칸 미리보기.
+            var from = _lineAnchor ?? tile;
+            LineOrRect(from, tile, RectDrag, _lineTiles);
+        }
 
         // **높이를 먼저 정한다** — 칸마다의 판정이 그 높이를 기준으로 갈리므로,
         // 검사보다 뒤에 정하면 미리보기가 아직 모르는 값을 두고 초록·빨강을 칠한다.
@@ -1340,7 +1441,7 @@ public class BuildModeManager : MonoBehaviour
         if (!_lineAnchor.HasValue)
         {
             MapManager.Instance?.ClaimGrid();
-            _lineAnchor  = tile;
+            _lineAnchor  = anchorKey;
             _levelFrozen = _levelCheck;   // 이 자리의 높이로 끝까지 간다
             return;
         }
@@ -1394,6 +1495,20 @@ public class BuildModeManager : MonoBehaviour
     {
         var map = MapManager.Instance;
         var sel = SelectedBuilding;
+
+        // **얇은 벽은 칸을 안 먹는다** — 작업대가 선 칸의 변에도 선다. 묻는 것은 자리(빌드존 · 바위 · 절벽)와
+        // 같은 변의 벽뿐이다. 평탄도 안 묻는다(벽은 제 칸 땅에 선다).
+        if (sel != null && sel.EdgeWall)
+        {
+            foreach (var pos in footprint)
+            {
+                if (!map.IsInBuildZone(pos)) return "빌드존 밖 — 핵에서 너무 멀다";
+                if (RockMap.IsRock(pos))     return "바위다 — 먼저 파야 한다 (C 명령의 채굴)";
+                if (Chasm.IsChasm(pos))      return "절벽이다 — 다리만 놓을 수 있다";
+            }
+            return WhyNotEdgeWall(footprint);
+        }
+
         // 바닥은 바닥요구를 우회(공허에 깖), 건물은 바닥 위+점유+평탄(IsBuildable로 일원화).
         // **다리는 판정이 거꾸로다** — 다른 건물은 절벽을 거절하고 다리는 절벽을 요구한다(`Bridge.WhyNot`).
         string why = sel != null && sel.IsBridge ? Bridge.WhyNot(footprint)
@@ -1406,15 +1521,63 @@ public class BuildModeManager : MonoBehaviour
         why = WhyNotLevel(footprint);
         if (why != null) return why;
 
+        // 벽이 가로지르는 자리에는 여러 칸짜리를 못 걸친다 — 작업대 한복판으로 벽이 지나간다.
+        if (footprint.Count > 1 && EdgeWalls.CrossesFootprint(footprint)) return "벽이 가로지른다";
+
+        // **남이 차지한 칸 전체와 겹치는지 본다**(`PlacedBuilding.ClaimedAt` — 전에는 남의 중심 칸 하나만 봐서 여러 칸짜리의
+        // 가장자리에 걸쳐 놓으면 통과했다). 나도 걸어 들어가는 건물이면 **막는 칸만** 내놓는다 — 집 껍데기를 이미 놓인
+        // 침대 둘레에 씌울 수 있어야 한다.
+        var mine = new HashSet<Vector2Int>(sel != null && sel.HasBlockMask
+            ? PlacedBuilding.ClaimedAt(FootprintCenter(footprint), sel, Quaternion.Euler(0, _gridYaw, 0))
+            : footprint);
+        if (mine.Count == 0) return null;
+        var any = footprint[0];
+
         foreach (var bp in BuildingBlueprint.All)
-            if (footprint.Contains(map.WorldToTile(bp.transform.position)))
+            if (bp != null && (bp.Data == null || !bp.Data.EdgeWall) && Overlaps(mine, any, bp.transform, bp.Data))
                 return "이미 청사진이 있다";
         // 완성된 건물과도 중복 금지 (점유 플래그 무관 — 창고/침대라도 겹쳐 쌓지 못하게). 바닥은 밑에 깔리므로 제외.
         if (sel == null || !sel.IsFloor)
             foreach (var pb in PlacedBuilding.All)
-                if (pb.Data != null && !pb.Data.IsFloor
-                    && footprint.Contains(map.WorldToTile(pb.transform.position)))
+                if (pb != null && pb.Data != null && !pb.Data.IsFloor && !pb.Data.EdgeWall
+                    && Overlaps(mine, any, pb.transform, pb.Data))
                     return "이미 건물이 있다";
+        return null;
+    }
+
+    // 저 건물이 차지한 칸이 내 칸과 겹치나. 멀리 있는 것은 칸을 펼치기 전에 거른다(줄로 그을 때 칸마다 불린다).
+    static bool Overlaps(HashSet<Vector2Int> mine, Vector2Int near, Transform other, BuildingData data)
+    {
+        var map = MapManager.Instance;
+        var c = map.WorldToTile(other.position);
+        // 저쪽 칸은 중심에서 제 크기 안, 내 칸은 `near`에서 내 칸 수 안에 있다 — 그 합보다 멀면 겹칠 수가 없다.
+        int reach = 2 + (data != null ? Mathf.Max(data.Size.x, data.Size.y) : 1) + mine.Count;
+        if (Mathf.Abs(c.x - near.x) > reach || Mathf.Abs(c.y - near.y) > reach) return false;
+
+        if (data == null) return mine.Contains(c);
+        foreach (var t in PlacedBuilding.ClaimedAt(other.position, data, other.rotation))
+            if (mine.Contains(t)) return true;
+        return false;
+    }
+
+    // 얇은 벽이 서는 변에 이미 벽(지어진 것 · 청사진)이 있나. 변은 칸과 방위로 잰다 — 같은 변을 이웃 칸에서
+    // 반대로 돌려 놓은 것도 같은 변이다.
+    string WhyNotEdgeWall(List<Vector2Int> footprint)
+    {
+        var map = MapManager.Instance;
+        int dir = EdgeWalls.DirFromYaw(DragYaw);
+        foreach (var t in footprint)
+        {
+            if (EdgeWalls.Has(t, dir)) return "이미 벽이 있다";
+            var other = t + EdgeWalls.Step(dir);
+            foreach (var bp in BuildingBlueprint.All)
+            {
+                if (bp.Data == null || !bp.Data.EdgeWall) continue;
+                var bt = map.WorldToTile(bp.transform.position);
+                int bd = EdgeWalls.DirFromYaw(bp.transform.eulerAngles.y);
+                if ((bt == t && bd == dir) || (bt == other && bd == (dir + 2) % 4)) return "이미 청사진이 있다";
+            }
+        }
         return null;
     }
 
@@ -1544,10 +1707,10 @@ public class BuildModeManager : MonoBehaviour
 
         // 표면 위에 얹기 — 피벗이 중앙이면 바닥면 스냅, 저작된 부양 높이(서브코어 등)가 있으면 그만큼 띄움.
         var instance = SpawnOnSurface(prefab, pos, rot);
-        instance.GetComponent<Storage>()?.Init(data);
-        instance.GetComponent<Bed>()?.Init(data);
-        instance.GetComponent<FarmPlot>()?.Init(data);
-        instance.GetComponent<WaterSource>()?.Init(data);
+        if (instance.TryGetComponent(out Storage storage)) storage.Init(data);
+        if (instance.TryGetComponent(out Bed bed)) bed.Init(data);
+        if (instance.TryGetComponent(out FarmPlot plot)) plot.Init(data);
+        if (instance.TryGetComponent(out WaterSource water)) water.Init(data);
         // 핵 영역 이탈 시 휴면/재가동 (설계: design_core_creep.md step 3)
         BuildingDormancy.Ensure(instance);
         // 철거/환불용 메타 보관

@@ -67,7 +67,7 @@ public class AbilityBarSlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExi
     {
         if (_ability == null) return;
 
-        float stat = _user != null && _user.GetComponent<UnitBrain>() is { Stats: not null } b
+        float stat = _user != null && _user.TryGetComponent(out UnitBrain b) && b.Stats != null
                    ? b.Stats.Toughness : 0f;
 
         string body = _ability.Summary(stat);

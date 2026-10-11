@@ -120,10 +120,10 @@ public static class WorkPostsUICreator
         so.FindProperty("emptyText").objectReferenceValue   = empty;
         so.ApplyModifiedPropertiesWithoutUndo();
 
-        panel.SetActive(false);   // 판은 닫힌 채로 — 핵의 [배치]가 연다
+        panel.SetActive(false);   // 판은 닫힌 채로 — `H`키가 연다
         EditorSceneManager.MarkSceneDirty(root.scene);
         EditorSceneManager.SaveOpenScenes();
-        Debug.Log("[배치 창] `WorkPosts_UI`를 지었다 — 핵을 눌러 살펴보기 창의 [배치]로 연다.");
+        Debug.Log("[배치 창] `WorkPosts_UI`를 지었다 — `H`키나 거점 바의 [지휘소]로 연다.");
     }
 
     static float SlotX(int i) => Pad + NameW + Gap + i * (SlotW + Gap);

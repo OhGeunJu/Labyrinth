@@ -29,6 +29,16 @@ public class WorldMapPanel : MonoBehaviour
     [SerializeField] RectTransform markerRoot;
     [SerializeField] GameObject markerTemplate;
 
+    // **층 탭**(2026-10-01, 사용자: *"지도에 층을 추가해서 다른 층과도 거래가 가능하게"*). 탭 하나가 한 층이다 — 지금
+    // 서 있는 층(`WorldMap.CurrentFloor`)만 그림이 있고, 아직 안 내려간 층은 *"내려가 보지 못했다"*만 말한다(층 전환이
+    // 들어오면 그 층의 지도를 굽는다). 비어 있으면 탭 없이 예전처럼 돈다.
+    [Header("층")]
+    [SerializeField] Button[] floorTabs;
+    [SerializeField] TMPro.TextMeshProUGUI floorNote;
+    [SerializeField] Color floorTabOn  = new(0.30f, 0.45f, 0.62f, 0.95f);
+    [SerializeField] Color floorTabOff = new(0.12f, 0.12f, 0.15f, 0.85f);
+    int _viewFloor;
+
     [Header("지도")]
     [Tooltip("열려 있는 동안 바뀐 곳을 몇 초마다 모아 굽나. 바뀐 것이 없으면 아무 일도 안 한다.")]
     [SerializeField, Range(0.1f, 5f)] float rebakeSeconds = 0.5f;
@@ -58,7 +68,6 @@ public class WorldMapPanel : MonoBehaviour
     [Header("저작한 장소")]
     [SerializeField] Color townColor     = new(1f, 0.95f, 0.75f);
     [SerializeField] Color lairColor     = new(0.75f, 0.10f, 0.10f);
-    [SerializeField] Color outpostColor  = new(0.60f, 0.85f, 0.45f);
 
     // **표식 크기는 창에 비례한다** — 픽셀로 박으면 창을 키웠을 때 점이 그대로라 안 보인다.
     // 값은 지도 한 변에 대한 비율(0.02 = 850px 창에서 17px).
@@ -77,22 +86,52 @@ public class WorldMapPanel : MonoBehaviour
     bool      _fullBake = true;   // 처음 · 판을 새로 열었을 때
     RectInt   _dirty;
     bool      _hasDirty;
-    Color[]   _biome;        // 바이옴 색 — 4m 눈금으로 한 번만 센다(판 도중에 안 바뀐다)
+    // **층마다 한 장**(2026-10-01, `Floors`) — 지도는 보는 층(`_viewFloor`) 하나를 그린다. 텍스처도 층 크기(2,048²)이고,
+    // 색인은 **층 안 칸**이다. 층을 바꾸면 통째로 다시 굽는다.
+    readonly Color[][] _biomes = new Color[Floors.Count + 1][];   // 층마다 바이옴 색 — 4m 눈금, 한 번만 센다
+    Color[]   _biome;
     const int BiomeStep = 4;
     float     _rebakeAt;
     readonly List<GameObject> _markers = new();
 
     public bool IsOpen => panel != null && panel.activeSelf;
 
-    void OnEnable()  => RockMap.OnChanged += OnRockChanged;
-    void OnDisable() => RockMap.OnChanged -= OnRockChanged;
+    public static WorldMapPanel Instance { get; private set; }
+
+    // ── 고르기 — 지도에서 자리 하나를 받아 간다(2026-10-01, 상단 목적지) ─────────
+    //
+    // 누르면 카메라를 보내는 대신 **그 자리를 넘겨주고 닫는다.** 고르지 않고 닫으면 받은 쪽에 `null`이 아니라
+    // **아무 일도 안 일어난 것**으로 돌려준다(`onCancel`) — 상단 창을 다시 여는 것까지가 그쪽 일이다.
+    System.Action<Vector3> _pick;
+    System.Action _pickCancel;
+
+    public bool Picking => _pick != null;
+
+    public void BeginPick(string prompt, System.Action<Vector3> onPick, System.Action onCancel = null)
+    {
+        _pick = onPick;
+        _pickCancel = onCancel;
+        if (!string.IsNullOrEmpty(prompt)) EventNotificationUI.Notify("지도", prompt);
+        if (!IsOpen) Toggle();
+    }
+
+    void OnEnable()  { RockMap.OnChanged += OnRockChanged; Floors.OnCurrentChanged += OnFloorChanged; }
+    void OnDisable() { RockMap.OnChanged -= OnRockChanged; Floors.OnCurrentChanged -= OnFloorChanged; }
+
+    // 카메라가 다른 층으로 갔다(지도를 눌러서 · 통로 · 거점 바) — 열려 있으면 그 층 지도로 넘긴다.
+    void OnFloorChanged(int floor)
+    {
+        if (IsOpen) ShowFloor(floor);
+    }
 
     // 캐거나 찍을 때 불린다 — **찍은 것은 지도에 안 나오지만** 칸 하나라 굽는 값이 없다.
     // `Clear`는 `Vector2Int.zero`로 부르므로 그때는 통째로 굽는다.
     void OnRockChanged(Vector2Int t)
     {
         if (t == Vector2Int.zero) { _fullBake = true; return; }
-        Grow(new RectInt(t.x, t.y, 1, 1));
+        if (_viewFloor == 0 || Floors.At(t) != _viewFloor) return;   // 안 보는 층 — 그 층을 볼 때 통째로 굽는다
+        var o = Floors.TileOrigin(_viewFloor);
+        Grow(new RectInt(t.x - o.x, t.y - o.y, 1, 1));
     }
 
     void Grow(RectInt r)
@@ -105,6 +144,13 @@ public class WorldMapPanel : MonoBehaviour
 
     void Awake()
     {
+        Instance = this;
+        if (floorTabs != null)
+            for (int i = 0; i < floorTabs.Length; i++)
+            {
+                int floor = i + 1;
+                if (floorTabs[i] != null) floorTabs[i].onClick.AddListener(() => ShowFloor(floor));
+            }
         if (markerTemplate != null) markerTemplate.SetActive(false);
         if (panel != null) panel.SetActive(false);
     }
@@ -117,7 +163,15 @@ public class WorldMapPanel : MonoBehaviour
         if (kb != null && kb.mKey.wasPressedThisFrame && !InputFocus.KeysBlocked()) Toggle();
 
         // **닫혀 있어도 가 본 곳은 모은다** — 안 모으면 열었을 때 그동안 넓힌 곳이 안 그려진다.
-        if (FogOfWar.TakeExploredDirty(out var explored)) Grow(explored);
+        if (_viewFloor != 0 && FogOfWar.TakeExploredDirty(_viewFloor, out var explored)) Grow(explored);
+
+        // 닫기 버튼·Esc로 닫혔는데 고르기가 남아 있으면 거둔다 — 남겨 두면 다음에 지도를 누를 때 엉뚱한 곳이 골라진다.
+        if (_pick != null && !IsOpen)
+        {
+            var cancel = _pickCancel;
+            _pick = null; _pickCancel = null;
+            cancel?.Invoke();
+        }
 
         if (!IsOpen) return;
 
@@ -130,10 +184,40 @@ public class WorldMapPanel : MonoBehaviour
     public void Toggle()
     {
         if (panel == null) return;
-        if (IsOpen) { WindowRaiser.Close(panel); return; }
+        if (IsOpen)
+        {
+            WindowRaiser.Close(panel);
+            if (_pick != null)
+            {
+                var cancel = _pickCancel;
+                _pick = null; _pickCancel = null;
+                cancel?.Invoke();
+            }
+            return;
+        }
 
         Bake();
+        ShowFloor(WorldMap.CurrentFloor);
         WindowRaiser.Open(panel);
+    }
+
+    // 그 층을 본다 — **층마다 지도가 따로 있다**(층은 한 평면에 나란히 놓인 사분면이다, `Floors`). 다른 층을 보다가
+    // 지도를 누르면 카메라가 그 층으로 간다 — 그것이 층을 바꾸는 길 하나다.
+    void ShowFloor(int floor)
+    {
+        int f = Mathf.Clamp(floor, 1, WorldMap.MaxFloor);
+        if (f != _viewFloor) { _viewFloor = f; _fullBake = true; _hasDirty = false; Bake(); }
+        bool here = _viewFloor == WorldMap.CurrentFloor;
+
+        if (mapImage != null) mapImage.color = Color.white;
+        if (markerRoot != null) markerRoot.gameObject.SetActive(true);
+        if (floorNote != null)
+            floorNote.text = here ? $"{_viewFloor}층 - 지금 보는 곳" : $"{_viewFloor}층 - 누르면 그리로 간다";
+
+        if (floorTabs != null)
+            for (int i = 0; i < floorTabs.Length; i++)
+                if (floorTabs[i] != null && floorTabs[i].targetGraphic is Image img)
+                    img.color = i + 1 == _viewFloor ? floorTabOn : floorTabOff;
     }
 
     // ── 굽기 ────────────────────────────────────────────────────────────────
@@ -143,7 +227,9 @@ public class WorldMapPanel : MonoBehaviour
         if (mapImage == null) return;
         _rebakeAt = rebakeSeconds;
 
-        int n = TerrainGrid.WorldSize;
+        int n = Floors.Size;
+        if (_viewFloor == 0) _viewFloor = WorldMap.CurrentFloor;
+        var fo = Floors.TileOrigin(_viewFloor);
         if (_tex == null)
         {
             _tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
@@ -168,17 +254,18 @@ public class WorldMapPanel : MonoBehaviour
         // **색은 바이옴이 든다**(`TerrainHeight.MapColor`) — 픽셀마다 물으면 백만 번이라 4m
         // 눈금으로 한 번만 센다. 경계가 4m 계단이 되지만 1,024m 지도에서 한 픽셀 남짓이다.
         int bn = n / BiomeStep;
+        _biome = _biomes[_viewFloor];
         if (_biome == null)
         {
-            _biome = new Color[bn * bn];
+            _biome = _biomes[_viewFloor] = new Color[bn * bn];
             for (int y = 0; y < bn; y++)
             for (int x = 0; x < bn; x++)
-                _biome[y * bn + x] = TerrainHeight.MapColor((x + 0.5f) * BiomeStep, (y + 0.5f) * BiomeStep);
+                _biome[y * bn + x] = TerrainHeight.MapColor(fo.x + (x + 0.5f) * BiomeStep, fo.y + (y + 0.5f) * BiomeStep);
         }
 
         Color32 dark = unexploredColor;
         bool rockWorld = RockMap.Enabled;
-        var explored = FogOfWar.ExploredRaw;          // null = 안개 없음(전부 가 봤다)
+        var explored = FogOfWar.ExploredRaw(_viewFloor);   // null = 안개 없음(전부 가 봤다) · 층 안 칸
         var px = _tex.GetPixelData<Color32>(0);        // 텍스처 메모리에 바로 쓴다 — 4MB 사본을 안 만든다
 
         for (int y = area.yMin; y < area.yMax; y++)
@@ -191,7 +278,7 @@ public class WorldMapPanel : MonoBehaviour
                 if (seenB == 0) { px[row + x] = dark; continue; }
 
                 Color b = _biome[brow + Mathf.Min(bn - 1, x / BiomeStep)];
-                bool rock = rockWorld && RockMap.IsRock(new Vector2Int(x, y));
+                bool rock = rockWorld && RockMap.IsRock(new Vector2Int(fo.x + x, fo.y + y));
 
                 Color c = rock ? b * rockShade : Color.Lerp(b, Color.white, openLift);
                 c.a = 1f;
@@ -244,16 +331,6 @@ public class WorldMapPanel : MonoBehaviour
             used = Mark(used, new Vector3(site.Position.x, 0f, site.Position.y), col, span * siteSize);
         }
 
-        // ── 런타임에 생긴 것 — 레지스트리가 답한다 ──────────────────────────
-        //
-        // **저작 격자를 안 훑는다**(2026-08-27). 채집기지·정착지는 **플레이 중에 생기는 것**이라
-        // 저작물에 있을 이유가 없었는데, `OutpostManager.Build`가 실제로 격자를 고치고 있었다.
-        // 내 거점은 아래에서 `DungeonCore.All`로 이미 그리므로 여기서는 채집기지만 본다.
-        var outposts = OutpostManager.Instance;
-        if (outposts != null)
-            foreach (var o in outposts.All)
-                used = Mark(used, new Vector3(o.Position.x, 0f, o.Position.y), outpostColor, span * siteSize);
-
         // **지금 보는 곳이 맨 먼저다** — 표식이 겹치면 나중에 그린 것이 위로 오는데,
         // 그중 하나만 늘 보여야 한다면 그건 *내가 어디 있나*다. …라서 오히려 **맨 뒤에** 그린다.
         foreach (var c in DungeonCore.All)
@@ -287,6 +364,9 @@ public class WorldMapPanel : MonoBehaviour
 
     int Mark(int index, Vector3 world, Color color, float size)
     {
+        // **보는 층의 것만** — 다른 층의 표식을 이 층 그림 위에 찍으면 같은 자리의 다른 세계가 겹쳐 보인다.
+        if (_viewFloor != 0 && Floors.At(world) != _viewFloor) return index;
+
         while (_markers.Count <= index)
         {
             var m = Instantiate(markerTemplate, markerRoot);
@@ -312,8 +392,9 @@ public class WorldMapPanel : MonoBehaviour
     Vector2 ToMap(Vector3 world)
     {
         var size = markerRoot.rect.size;
-        float u = Mathf.Clamp01(world.x / TerrainGrid.WorldSize);
-        float v = Mathf.Clamp01(world.z / TerrainGrid.WorldSize);
+        var o = Floors.Origin(_viewFloor == 0 ? WorldMap.CurrentFloor : _viewFloor);
+        float u = Mathf.Clamp01((world.x - o.x) / Floors.Size);
+        float v = Mathf.Clamp01((world.z - o.y) / Floors.Size);
         return new Vector2((u - 0.5f) * size.x, (v - 0.5f) * size.y);
     }
 
@@ -328,8 +409,20 @@ public class WorldMapPanel : MonoBehaviour
         var cam = CameraController.Active;
         if (cam == null) return;
 
-        float x = normalized.x * TerrainGrid.WorldSize;
-        float z = normalized.y * TerrainGrid.WorldSize;
+        // **보는 층의 자리다** — 다른 층을 보다가 누르면 카메라가 그 층으로 간다(층을 바꾸는 길 하나).
+        var o = Floors.Origin(_viewFloor == 0 ? WorldMap.CurrentFloor : _viewFloor);
+        float x = o.x + normalized.x * Floors.Size;
+        float z = o.y + normalized.y * Floors.Size;
+
+        if (_pick != null)
+        {
+            var pick = _pick;
+            _pick = null; _pickCancel = null;
+            if (panel != null) WindowRaiser.Close(panel);
+            pick(new Vector3(x, TerrainHeight.At(x, z), z));
+            return;
+        }
+
         cam.FocusOn(new Vector3(x, TerrainHeight.At(x, z), z));
 
         if (panel != null) WindowRaiser.Close(panel);
@@ -342,8 +435,9 @@ public class WorldMapPanel : MonoBehaviour
     // 이름과 색의 단일 출처는 `Biome`의 확장 메서드다(`DisplayName`·`Color`).
     public void Describe(Vector2 normalized)
     {
-        float x = normalized.x * TerrainGrid.WorldSize;
-        float z = normalized.y * TerrainGrid.WorldSize;
+        var o = Floors.Origin(_viewFloor == 0 ? WorldMap.CurrentFloor : _viewFloor);
+        float x = o.x + normalized.x * Floors.Size;
+        float z = o.y + normalized.y * Floors.Size;
 
         // **안 가 본 곳은 이름도 안 알려 준다** — 검게 칠해 놓고 툴팁이 *"수정동"*이라고 말하면 새어 나간다.
         if (FogOfWar.ExploredAt(new Vector3(x, 0f, z)) < 0.5f)
@@ -359,7 +453,7 @@ public class WorldMapPanel : MonoBehaviour
 
         HoverTooltipUI.Show(
             $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{biome.DisplayName()}</color>",
-            $"지역 ({region.x}, {region.y}) · 월드 ({x:F0}, {z:F0})\n" +
+            $"{Floors.At(x, z)}층 · 지역 ({region.x}, {region.y}) · 월드 ({x:F0}, {z:F0})\n" +
             $"티어 {tier} — {BiomeTier.Label(tier)}");
     }
 

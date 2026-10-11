@@ -218,6 +218,29 @@ public static class PawnRigBuilder
         Debug.Log($"[PawnRig] 관절 세움 {done} · 건너뜀 {skipped}");
     }
 
+    // **관절을 제 손으로 세운 두발의 마무리** — 아바타 · 컨트롤러 · 폰 애니메이터(2026-10-09).
+    // 스킨 메시 몸(`ChibiPawnCreator.Proto`)은 관절 자리와 가중치를 몸을 지으면서 낸다 — 살을 관절에 하나씩 붙이는
+    // 이 도구의 셈(`RigBiped`)을 안 탄다. 대신 **아바타·컨트롤러는 여기 한 벌을 쓴다**(갈라 적으면 팔 한계·컨트롤러가 갈린다).
+    // 부르기 전에 `PawnRig`의 두발 관절이 다 차 있고 **T자**여야 한다.
+    public static bool FinishBiped(GameObject root, Transform model, string prefabName)
+    {
+        var humanoid = AssetDatabase.LoadAssetAtPath<AnimatorController>(HumanoidClipSet.ControllerPath);
+        if (humanoid == null) { Debug.LogError("[PawnRig] 컨트롤러가 없다 — `1. Bake Pawn Animations`를 먼저 돌릴 것."); return false; }
+        EnsureDir(AvatarDir);
+
+        if (!model.TryGetComponent(out Animator anim)) anim = model.gameObject.AddComponent<Animator>();
+        anim.applyRootMotion = false;
+        anim.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+        var avatar = BuildAvatar(model, prefabName);
+        if (avatar == null) return false;
+        anim.avatar = avatar;
+        anim.runtimeAnimatorController = humanoid;
+
+        if (!root.TryGetComponent(out PawnAnimator _)) root.AddComponent<PawnAnimator>();
+        if (!root.TryGetComponent(out PawnProps _))    root.AddComponent<PawnProps>();
+        return true;
+    }
+
     // 돌려주는 것은 *왜 못 세웠나*(null이면 세웠다).
     static string Rig(GameObject root, string prefabName, AnimatorController humanoid, AnimatorController quad)
     {
@@ -226,7 +249,7 @@ public static class PawnRigBuilder
         if (model == null) return "`Model`이 없다";
 
         Undress(root, model);
-        if (model.GetComponentInChildren<SkinnedMeshRenderer>(true) != null) return "스킨 메시(골렘) — 제 뼈가 있다";
+        if (model.GetComponentInChildren<SkinnedMeshRenderer>(true) != null) return "스킨 메시(골렘 · 치비 시제품) — 제 뼈가 있다";
 
         Flatten(model);
 

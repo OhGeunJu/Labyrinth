@@ -4,7 +4,7 @@ using UnityEngine;
 // 지도 위의 적 소굴 하나.
 //
 // **소굴은 칸이지 씬 오브젝트가 아니다** — 마을(`TownMarket`)과 같다. 그래서 병력과 출격
-// 시각을 이 객체가 들고, 지도에 서는 것은 `WorldMapGrid`가 그리는 표식뿐이다.
+// 시각을 이 객체가 들고, 지도에 서는 것은 지도 창(`WorldMapPanel`)이 그리는 표식뿐이다.
 public class WorldLair
 {
     // **신원은 저작한 장소의 `Id`다**(2026-08-27). 전에는 칸 좌표가 주소였는데, 그러면
@@ -14,7 +14,7 @@ public class WorldLair
     public Vector2 Position;     // 월드 XZ
 
     // **칸은 자리에서 나온다 — 따로 들지 않는다.** 둘을 각자 들면 소굴을 옮겼을 때 한쪽만
-    // 따라온다. 옛 화면(`WorldMapView`)이 아직 칸으로 물어서 남겨 둔다.
+    // 따라온다. 무리를 내보낼 때 칸으로 굴린다(`WorldBand.Roll`).
     public Vector2Int Node => TerrainGrid.RegionAt(Position.x, Position.y);
     public BiomeContentData.LairEntry Entry;
 
@@ -32,11 +32,6 @@ public class WorldLair
     public string Name =>
         Entry != null && !string.IsNullOrEmpty(Entry.LairName) ? Entry.LairName
         : (Band != null ? $"{Band.BandName} 소굴" : "소굴");
-
-    // **소굴에 갇힌 포로.** 끌고 다니던 무리가 돌아오면 여기로 넘어온다 — 그때부터는
-    // 지도에서 쫓아가 되찾을 수가 없고, **소굴을 쳐야** 풀려난다.
-    // 소굴을 치는 이유가 하나 더 생기는 자리다.
-    public readonly List<UnitBrain> Captives = new();
 
     public bool IsCleared => Strength <= 0;
 
@@ -90,10 +85,6 @@ public static class WorldLairs
         return lair;
     }
 
-    // **옛 화면용 다리** — `WorldMapView`가 아직 칸으로 묻는다. 그 지역의 소굴을 찾는다.
-    public static WorldLair At(Vector2Int node) =>
-        At(WorldSites.InRegion(WorldNodeContent.EnemyLair, node).Id);
-
     static int Seed() => WorldMap.Instance != null ? WorldMap.Instance.DepositSeed : 0;
 
     // 씬을 다시 시작해도 static은 살아남는다(도메인 리로드를 끈 경우).
@@ -114,22 +105,6 @@ public static class WorldLairs
     public static void Clear(WorldLair lair)
     {
         if (lair == null) return;
-
-        // **갇혀 있던 사람들을 풀어 준다 — 여기서 한다.** 소굴이 없어지는 길이 여럿이라
-        // (병력 고갈 · 습격으로 함락) 호출하는 쪽마다 챙기게 두면 반드시 하나를 빠뜨리고,
-        // 그러면 사람이 조용히 증발한다.
-        if (lair.Captives.Count > 0)
-        {
-            var freed = new List<UnitBrain>(lair.Captives);
-            lair.Captives.Clear();
-
-            var view = WorldMapView.Instance;
-            var at   = view != null && view.Grid != null
-                     ? view.Grid.SurfacePoint(lair.Node)
-                     : Vector3.zero;
-            view?.RestoreParty(freed, at, "석방",
-                $"{lair.Name}이(가) 무너지며 갇혀 있던 {freed.Count}명이 풀려났습니다.");
-        }
 
         _byId.Remove(lair.Id);
         _gone.Add(lair.Id);   // 저작물은 그대로 두고 **신원만 기억한다**

@@ -106,7 +106,7 @@ public class MoveController : MonoBehaviour
 
         // **UI 위에서 누른 우클릭은 월드로 새지 않는다.** 창을 열어 둔 채 그 위를 우클릭하면
         // 뒤의 땅으로 이동 명령이 나가거나 뒤에 선 것을 겨눴다 — 배낭·상점을 다루는 내내
-        // 발밑을 조심해야 했다. 월드맵(`WorldMapView`)은 이미 `OverUI()`로 막고 있었다.
+        // 발밑을 조심해야 했다.
         //
         // 좌클릭(`SelectionManager._pressOverUI`)처럼 누름/놓음을 짝지어 붙들 필요는 없다.
         // 우클릭은 **누르는 그 프레임에 전부 끝나므로**(드래그가 없다) 누른 곳만 보면 된다.
@@ -315,7 +315,7 @@ public class MoveController : MonoBehaviour
             // 않는 선까지만 다가간다(안 기억하면 첫 접촉에서 대형이 녹는다).
             bb.FormationSpot = positions[i];
 
-            commanders[i].GetComponent<CombatHandler>()?.ExitCombat();
+            if (commanders[i].TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
             commanders[i].SetMoveTarget(positions[i]);
         }
     }
@@ -341,7 +341,7 @@ public class MoveController : MonoBehaviour
     {
         foreach (var pawn in commanders)
         {
-            var bb = pawn.GetComponent<UnitBrain>()?.Blackboard;
+            var bb = pawn.TryGetComponent(out UnitBrain pawnBrain) ? pawnBrain.Blackboard : null;
             if (bb == null) continue;
             if (bb.HasFreshAttacker) return true;
             if (bb.Target != null && BTTargetUtil.IsAttackable(bb.Target, bb)) return true;
@@ -359,7 +359,7 @@ public class MoveController : MonoBehaviour
     // 쓰러져 누운 폰인가. 여기서만 [공격한다]가 [마무리한다]로 바뀐다.
     static bool IsDown(GameObject go)
     {
-        var bb = go.GetComponent<UnitBrain>()?.Blackboard;
+        var bb = go.TryGetComponent(out UnitBrain goBrain) ? goBrain.Blackboard : null;
         return bb != null && bb.IsKnockedOut;
     }
 
@@ -397,7 +397,7 @@ public class MoveController : MonoBehaviour
 
     // 선택지 구성은 **여기서** 정한다(`PawnContextMenuUI`는 받은 것만 그린다).
     // 대상 종류를 창 안에서 따지기 시작하면 판단이 두 곳으로 갈라진다
-    // (월드맵 도착 메뉴를 `WorldMapView.OpenMenu`가 짜는 것과 같은 규칙).
+    //
     // `hasHit`/`hit`은 `PickTarget`이 이미 고른 것 — **여기서 다시 쏘지 않는다.**
     // 따로 쏘면 "명령 받는 폰은 건너뛴다"는 규칙이 한쪽에만 걸려, 즉시 공격과 창이 서로 다른
     // 것을 겨누게 된다.
@@ -504,6 +504,9 @@ public class MoveController : MonoBehaviour
             // 되므로, 짐을 진 당사자에게 묻는다. 고른 폰이 아니어도 뜬다 — 내려놓는 것은
             // 그 폰이 하는 일이라 "누구에게 시키나"가 애매할 여지가 없다.
             AddSelfCarryOptions(brain, commanders, options);
+
+            // **가축의 수레**(2026-10-01, `PawnCart`) — 달면 사람이 끌고, 떼면 저 알아서 다닌다.
+            AddCartOptions(brain, options);
 
             // **업기.** 적이면 붙잡아 오는 것이고 아군이면 옮기는 것인데 동작은 같다.
             // 우리 편은 멀쩡해도 업고, 남은 기절해야 업는다(`PawnCarry.CanCarry`).
@@ -627,10 +630,36 @@ public class MoveController : MonoBehaviour
                 ? ("여기 둔다",     () => drop.SetHaulAllowed(false))
                 : ("창고로 옮긴다", () => drop.SetHaulAllowed(true)));
         }
+        else if (go.GetComponentInParent<FloorPassage>() is { } passage)
+        {
+            // **층 통로**(`FloorPassage`) — 걸어서 닿으면 짝 통로 옆에 선다(포탈과 같은 문).
+            title = passage.Label;
+            string label = $"{passage.TargetFloor}층으로 {passage.Verb}";
+            var goers = PortalGoers(commanders, passage.transform, out string why);
+            options.Add(goers.Count > 0 && passage.Target != null
+                ? (label, (System.Action)(() => PortalTravel.Send(goers, passage)))
+                : PawnMenuOption.Blocked(label, why));
+        }
         else if (core != null)
         {
             title = "던전 핵";
-            options.Add(("연다", core.Select));
+            // **[연다]는 없다** — 핵에 열 창이 없다(배치 창은 `H` · 소환은 소환진). 눌러도 아무 일이 없는 줄은
+            // *"먹혔나?"*만 남긴다. 무엇인지는 좌클릭이 답한다.
+
+            // **핵은 포탈이다**(2026-10-01, `PortalTravel`) — 걸어서 이 핵에 닿으면 저 핵 옆에 선다.
+            var cores = DungeonCore.All;
+            if (cores.Count > 1)
+            {
+                var goers = PortalGoers(commanders, core.transform, out string why);
+                for (int i = 0; i < cores.Count; i++)
+                {
+                    var to = cores[i];
+                    if (to == null || to == core) continue;
+                    options.Add(goers.Count > 0
+                        ? ($"포탈 - {i + 1} 거점으로", (System.Action)(() => PortalTravel.Send(goers, core, to)))
+                        : PawnMenuOption.Blocked($"포탈 - {i + 1} 거점으로", why));
+                }
+            }
         }
         else if (clickable != null)
         {
@@ -827,8 +856,8 @@ public class MoveController : MonoBehaviour
     {
         foreach (var pawn in commanders)
         {
-            var brain = pawn != null ? pawn.GetComponent<UnitBrain>() : null;
-            if (brain?.Blackboard == null || brain.Blackboard.IsKnockedOut) continue;
+            if (pawn == null || !pawn.TryGetComponent(out UnitBrain brain)) continue;
+            if (brain.Blackboard == null || brain.Blackboard.IsKnockedOut) continue;
 
             // **갇힌 사람은 안 일으킨다.** 침대에서 놓아 주기만 하면 `IsPrisoner`가 남아
             // 자리 없이 갇힌 폰이 된다 — 죄수 침대에 [배정]을 누를 수 있던 것과 같은 누수다.
@@ -858,6 +887,23 @@ public class MoveController : MonoBehaviour
     // 일감을 걸지 않고 즉시 처리한다**(BT를 거치면 다음 틱까지 아무 일도 안 일어난 것처럼 보인다).
     // **시체 하나로 할 수 있는 일.** 바닥에 있든 어깨 위에 있든 **같은 목록**이다 —
     // 그래서 함수가 하나다. 갈라 두면 업고 있는 동안에는 뒤지지도 못하게 된다.
+    static void AddCartOptions(UnitBrain beast, List<PawnMenuOption> options)
+    {
+        if (beast == null || !beast.IsTamedBeast) return;
+
+        var cart = beast.GetComponent<PawnCart>();
+        if (cart != null && cart.Data != null)
+        {
+            options.Add(($"{cart.Data.ItemName}을(를) 뗀다", (System.Action)cart.Detach));
+            return;
+        }
+
+        string why = PawnCart.WhyNot(beast);
+        options.Add(why == null
+            ? ("수레를 단다", (System.Action)(() => PawnCart.Attach(beast)))
+            : PawnMenuOption.Blocked("수레를 단다", why));
+    }
+
     static void AddCorpseOptions(Corpse corpse, GameObject go, UnitBrain brain,
                                  List<PawnMover> commanders, List<PawnMenuOption> options)
     {
@@ -1002,7 +1048,7 @@ public class MoveController : MonoBehaviour
         if (Conversion.CanDominateNow(prisoner))
         {
             int pct = Mathf.RoundToInt(Conversion.DominateChance() * 100f);
-            options.Add(($"지배를 시도한다 ({pct}% — 실패하면 죽는다)",
+            options.Add(($"지배를 시도한다 ({pct}%, 실패하면 죽는다)",
                          () => Conversion.TryDominate(prisoner)));
         }
 
@@ -1021,7 +1067,7 @@ public class MoveController : MonoBehaviour
             float wait = Conversion.PersuadeCooldownLeft(prisoner);
 
             options.Add(wait > 0f
-                ? ($"설득한다 ({pct}% — {Mathf.CeilToInt(wait)}초 뒤)", (System.Action)null)
+                ? ($"설득한다 ({pct}% - {Mathf.CeilToInt(wait)}초 뒤)", (System.Action)null)
                 : ($"설득한다 ({pct}%)", (System.Action)(() =>
                 {
                     var cage = PrisonCage.HolderOf(prisoner);
@@ -1034,6 +1080,29 @@ public class MoveController : MonoBehaviour
 
                     speaker.AbandonWork();   // 하던 일을 놓아야 이 일감을 집는다
                     cage.RequestPersuadeBy(speaker);
+                })));
+        }
+
+        // **짐승은 조련이다**(2026-10-01) — 설득과 같은 모양(우리에 맡긴다 · 쉬는 중이면 흐리게).
+        if (Conversion.CanTame(prisoner))
+        {
+            int pct = Mathf.RoundToInt(prisoner.Blackboard.ConvertProgress * 100f);
+            float wait = Conversion.PersuadeCooldownLeft(prisoner);
+
+            options.Add(wait > 0f
+                ? ($"길들인다 ({pct}% - {Mathf.CeilToInt(wait)}초 뒤)", (System.Action)null)
+                : ($"길들인다 ({pct}%)", (System.Action)(() =>
+                {
+                    var cage = PrisonCage.HolderOf(prisoner);
+                    if (cage == null) return;
+
+                    var tamer = Nearest(commanders, prisoner.transform.position,
+                                        b => b != prisoner && !b.IsTamedBeast
+                                          && (b.Blackboard == null || !b.Blackboard.IsKnockedOut));
+                    if (tamer == null) return;
+
+                    tamer.AbandonWork();
+                    cage.RequestTameBy(tamer);
                 })));
         }
 
@@ -1067,7 +1136,7 @@ public class MoveController : MonoBehaviour
                              () => WorldRansom.Sell(prisoner, haggler)));
             else
             {
-                var fd  = prisoner.GetComponent<Faction>()?.Data;
+                var fd  = prisoner.TryGetComponent(out Faction prisonerFaction) ? prisonerFaction.Data : null;
                 string who = fd != null ? fd.FactionName : "이쪽";
                 options.Add(PawnMenuOption.Blocked("몸값을 받고 넘긴다",
                     $"{who}과는 말이 통하지 않는다.\n돈을 주고 데려가지 않으므로 회유하거나, " +
@@ -1178,7 +1247,7 @@ public class MoveController : MonoBehaviour
         // 몇 kg인지 적는다 — 업을지 말지는 그 폰이 얼마나 느려지느냐가 정한다.
         float w   = PawnCarry.WeightOf(target);
         float cap = CarryCapacity.For(carrier);
-        string tail = cap > 0f && w > cap ? $" ({w:F0}kg — 버겁다)" : $" ({w:F0}kg)";
+        string tail = cap > 0f && w > cap ? $" ({w:F0}kg, 버겁다)" : $" ({w:F0}kg)";
 
         // **갇힌 사람도 업는다** — 다른 우리로 옮기거나, 회유하려고 침대로 데려가거나,
         // 그냥 끌어내거나. 가둔 것을 되돌리는 길이 [풀어 준다] 하나뿐이면 자리를 못 바꾼다.
@@ -1332,7 +1401,18 @@ public class MoveController : MonoBehaviour
             // 옛 일감이 그대로 돌아 새 예약이 영영 안 걸린다.
             carrier.AbandonWork();
 
-            if (existing != null) { existing.ReleaseReservation(); existing.Reserve(carrier); return; }
+            // **놓은 뒤에 다시 찾는다** — 그 옛 일감이 바로 지금 놓은 것이면 `CancelJob`이 큐에서 지웠다.
+            // 앞에서 잡아 둔 참조에 예약을 걸면 아무도 못 찾는 일감(그것도 A행)을 쥐여 주는 셈이라 화면에는
+            // *"눌렀는데 아무도 안 온다"*로만 보인다(시체 우클릭 쪽이 09-11에 겪고 고친 그 자리).
+            // 남아 있더라도 **다른 도축대로 가는 일감**이면 넘기지 않는다 — 시킨 것은 *여기서*다.
+            existing = mgr.FindButcherJobFor(body.gameObject);
+            if (existing != null && existing.Table == table)
+            {
+                existing.ReleaseReservation();
+                existing.Reserve(carrier);
+                return;
+            }
+            if (existing != null) mgr.CancelJob(existing);
 
             mgr.ReserveFor(new ButcherJob(body.gameObject, table), carrier);
         }));
@@ -1441,6 +1521,23 @@ public class MoveController : MonoBehaviour
     // 세 벌로 적혀 있었고, 조건만 조금씩 달랐다(들 수 있나 / 업고 있나 / 무조건).
     //
     // `can`이 null이면 아무나. 못 고르면 null — 부르는 쪽이 그때 선택지를 안 내놓으면 된다.
+    // 포탈·층 통로로 보낼 폰 — **그 문과 같은 층에 선 폰만**(`PortalTravel.CanReach`). 아무도 없으면 왜인지를
+    // 돌려준다: 안 고른 것과 고른 폰이 다른 층에 있는 것은 고칠 길이 다르다.
+    static List<UnitBrain> PortalGoers(List<PawnMover> commanders, Transform door, out string why)
+    {
+        var goers = new List<UnitBrain>();
+        bool any = false;
+        foreach (var m in commanders)
+        {
+            var b = m != null ? m.GetComponent<UnitBrain>() : null;
+            if (b == null) continue;
+            any = true;
+            if (PortalTravel.CanReach(b, door)) goers.Add(b);
+        }
+        why = any ? "고른 폰이 이 층에 없다" : "보낼 폰을 먼저 고를 것";
+        return goers;
+    }
+
     static UnitBrain Nearest(List<PawnMover> commanders, Vector3 point, System.Func<UnitBrain, bool> can)
     {
         UnitBrain best = null;

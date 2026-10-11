@@ -43,8 +43,34 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 사라진 것: 표본 문턱(`WideMinOpen`·`WideSamples`) · 경계 간선(`PathGrid`의 링크와
     // `IgnoreLinks`) · 셀 단위 차단(`_wideBlocked`). 전부 **셀 하나에 노드 하나**라는
     // 모양을 다이얼로 떠받치던 장치였고, 덩어리가 노드가 되면서 물음 자체가 없어졌다.
-    WideGraph        _graph;
+    // **층마다 하나**(2026-10-01, `Floors`) — 층 사이는 기반암이라 그래프가 안 이어진다. **처음 쓸 때 짓는다**
+    // (`GraphFor`) — 판이 열릴 때는 시작 층 하나만 굽고, 통로로 처음 내려간 층은 그때 한 번 굽는다(층 하나 = 칸
+    // 사백만 · 한 번 멈칫한다). 세계 전체를 한 번에 굽던 시절의 값을 그대로 넷 곱하면 판을 열 때마다 기다린다.
+    readonly WideGraph[] _graphs = new WideGraph[Floors.Count + 1];
     LocalGridManager _local;
+
+    // 그 자리의 층 그래프. `create`면 없을 때 짓는다(묻는 쪽이 *지금 그 층에서 길을 찾는* 경우).
+    WideGraph GraphFor(Vector3 world, bool create = true) => GraphForFloor(Floors.At(world), create);
+    WideGraph GraphForTile(Vector2Int tile, bool create = true) => GraphForFloor(Floors.At(tile), create);
+
+    WideGraph GraphForFloor(int floor, bool create)
+    {
+        floor = Mathf.Clamp(floor, 1, Floors.Count);
+        var g = _graphs[floor];
+        if (g != null || !create) return g;
+
+        var map = MapManager.Instance;
+        if (map == null) return null;
+
+        var o = Floors.TileOrigin(floor);
+        g = new WideGraph(o.x, o.y, Floors.Size, _cellTiles);
+        g.Build(map);
+        _graphs[floor] = g;
+        return g;
+    }
+
+    // 지금 보는 층의 그래프 — 진단 로그용.
+    WideGraph _graph => GraphForFloor(Floors.Current, false);
 
     void Awake()
     {
@@ -71,7 +97,7 @@ public class HierarchicalPathfinder : MonoBehaviour
 
         // 로컬 윈도우 패스파인더
         _local = new LocalGridManager();
-        _local.Initialize(obstacleLayer, _graph);
+        _local.Initialize(obstacleLayer, this);
 
         string wide = _graph != null
             ? $"그래프 {_graph.Cells}×{_graph.Cells}셀(칸 {_graph.CellSize:0}m)"
@@ -99,10 +125,11 @@ public class HierarchicalPathfinder : MonoBehaviour
     // **셀 안을 전부 훑지 않는다** — 8m 셀이면 64칸이고, 칸마다 여유를 다시 뽑아야 한다.
     // 3×3로 성기게 찍는다: *"하나라도 지날 수 있으면 열어 둔다 — 정밀 차단은 로컬 몫"*이고,
     // 놓친 좁은 굴은 로컬이 찾아 준다.
-    const int   WideMaxCells = 160;   // 한 변의 셀 수 천장
+    const int   WideMaxCells = 300;   // 한 변의 셀 수 천장(층 하나)
     const float WideMinCell  = 4f;    // 셀이 이보다 잘면 굽는 값만 늘고 얻는 것이 없다
 
     float _wideCell;
+    int   _cellTiles = 7;
 
     void BuildWide()
     {
@@ -119,13 +146,19 @@ public class HierarchicalPathfinder : MonoBehaviour
 
         // **셀은 칸의 정수배다**(2026-09-05). 그래프가 셀 안을 1m로 훑으므로, 셀 한 변이
         // 6.4m 같은 소수면 **셀마다 칸 수가 6이었다 7이었다** 해서 색인이 어긋난다.
-        float world = TerrainGrid.WorldSize;
-        int cellTiles = Mathf.Max(Mathf.CeilToInt(WideMinCell),
-                                  Mathf.CeilToInt(world / WideMaxCells));
-        _wideCell = cellTiles;
+        //
+        // **셀은 층 한 변에서 낸다**(2026-10-01) — 세계는 층 넷이라 세계 한 변으로 내면 셀이 26m가 되어 *"얇은 벽도 갈 수
+        // 있다고 착각"*하던 옛 굵은 격자로 돌아간다. 1,024m 세계에서 검증한 7m를 지키도록 천장을 300셀로 올렸다.
+        float world = Floors.Size;
+        _cellTiles = Mathf.Max(Mathf.CeilToInt(WideMinCell),
+                               Mathf.CeilToInt(world / WideMaxCells));
+        _wideCell = _cellTiles;
 
-        _graph = new WideGraph(Mathf.RoundToInt(world), cellTiles);
-        _graph.Build(map);
+        // 시작 층만 지금 굽는다 — 나머지는 처음 쓸 때(`GraphFor`).
+        var start = DungeonCore.Instance != null ? DungeonCore.Instance.transform.position
+                  : CameraController.Active != null ? CameraController.Active.transform.position
+                  : Floors.Center(1);
+        GraphFor(start);
     }
 
     // ── 광역이 거짓말을 했을 때 ─────────────────────────────────────────────
@@ -149,11 +182,23 @@ public class HierarchicalPathfinder : MonoBehaviour
 
     // **덩어리 하나만 닫는다** — 셀을 통째로 닫으면 그 셀의 멀쩡한 다른 덩어리까지 같이
     // 닫힌다(옛 격자에는 그 구별이 없어서 그렇게 할 수밖에 없었다).
-    public void ReportUnreachable(Vector3 world) => _graph?.BlockAt(world, WideBlockDuration);
+    public void ReportUnreachable(Vector3 world) => GraphFor(world, false)?.BlockAt(world, WideBlockDuration);
 
     // **광역이 그 칸을 걸을 수 있다고 보나** — 진단이 쓴다(`RockMap.VerifyOpened`). 그래프가
     // 없으면 참으로 답한다(없는 것을 막힌 것으로 치면 없는 사고를 쫓게 된다).
-    public bool WideWalkable(Vector2Int tile) => _graph == null || _graph.WalkableTile(tile.x, tile.y);
+    public bool WideWalkable(Vector2Int tile)
+    {
+        var g = GraphForTile(tile, false);
+        return g == null || g.WalkableTile(tile.x, tile.y);
+    }
+
+    // **로컬 창이 묻는 1m 걸음**(`LocalGridManager.BakeGrid`) — 그 층 그래프가 담아 둔 답, 그래프가 아직 없으면 칸에
+    // 직접 묻는다(층을 처음 밟는 순간이라 굽기 전이다 — 짓게 하면 창 하나 굽는 데 층 하나를 굽는다).
+    public bool TileWalkable(Vector2Int tile, MapManager map)
+    {
+        var g = GraphForTile(tile, false);
+        return g != null ? g.WalkableTile(tile.x, tile.y) : map.IsWorkable(tile);
+    }
 
     // ── 공개 길찾기 API ────────────────────────────────────────────────
 
@@ -169,9 +214,17 @@ public class HierarchicalPathfinder : MonoBehaviour
         // **간선 무시 재시도도 없다.** 그건 *셀 열림*과 *경계 이음*이 따로 구워져 서로
         // 거짓말을 하던 시절의 장치인데, 이제 **열림과 연결이 같은 1m 사실에서 나온다.**
         // 부분 경로는 `WideGraph`가 스스로 낸다(*갈 수 있는 데까지*).
-        if (_graph != null)
+        // **층이 다르면 길이 없다** — 사이는 기반암이고, 건너는 것은 통로(`FloorPassage`)·포탈의 일이다.
+        // 그래프를 건너 묻지 않는다(목적지 하나짜리 라우트로 떨어져 폰이 기반암을 민다 — 그건 부르는 쪽이 막을 일이다).
+        var graph = GraphFor(from);
+        if (graph != null && !Floors.Same(from, to))
         {
-            var route = _graph.FindRoute(from, to);
+            WarnNoWideRoute(from, to);
+            return new List<Vector3> { from };
+        }
+        if (graph != null)
+        {
+            var route = graph.FindRoute(from, to);
             if (route != null && route.Count > 0)
             {
                 var last = route[route.Count - 1];
@@ -287,26 +340,46 @@ public class HierarchicalPathfinder : MonoBehaviour
     bool Clear(Vector3 a, Vector3 b)
     {
         var map = MapManager.Instance;
-        if (map == null || _graph == null) return false;
+        if (map == null || GraphFor(a, false) == null) return false;
 
         float d = FlatDist(a, b);
         if (d < 1e-3f) return true;
         var dir  = new Vector3((b.x - a.x) / d, 0f, (b.z - a.z) / d);
         var side = new Vector3(-dir.z, 0f, dir.x) * StraightenBody;
 
+        // **얇은 벽도 본다**(`EdgeWalls`) — 벽 양쪽 칸은 둘 다 걸을 수 있어서 칸만 보면 벽을 가로지르는
+        // 직선으로 편다. 그러면 광역이 문간으로 돌린 길을 여기서 도로 곧게 펴, 폰이 벽 앞에서 왕복한다.
+        // 줄마다 지난 칸을 들고 칸이 바뀔 때 그 걸음이 트였는지 묻는다(로컬·광역과 같은 `StepOpen`).
+        Vector2Int pc = map.WorldToTile(a), pl = map.WorldToTile(a + side), pr = map.WorldToTile(a - side);
         for (float t = 0f; t <= d; t += StraightenStep)
         {
             var p = a + dir * t;
             if (!Walk(map, p) || !Walk(map, p + side) || !Walk(map, p - side)) return false;
+            if (EdgeWalls.Count > 0
+                && (!Crosses(map, ref pc, p) || !Crosses(map, ref pl, p + side) || !Crosses(map, ref pr, p - side)))
+                return false;
         }
+        if (EdgeWalls.Count > 0 && !Crosses(map, ref pc, b)) return false;
         return Walk(map, b);
+    }
+
+    // 지난 칸에서 이 자리의 칸으로 넘어가는 걸음이 막힌 변을 건너지 않나. 걸음이 0.25m라 한 번에 한 칸씩
+    // 넘어가지만, 줄이 모서리를 비스듬히 지나면 대각선으로 뛸 수 있다 — `StepOpen`이 그것도 안다.
+    static bool Crosses(MapManager map, ref Vector2Int prev, Vector3 p)
+    {
+        var cur = map.WorldToTile(p);
+        if (cur == prev) return true;
+        bool open = EdgeWalls.StepOpen(prev.x, prev.y, cur.x, cur.y);
+        prev = cur;
+        return open;
     }
 
     bool Walk(MapManager map, Vector3 p)
     {
         var t = map.WorldToTile(p);
         // 막힘으로 배운 곳은 곧게 펴서 가로지르지 않는다 — 라우트가 일부러 돌아간 자리다.
-        return _graph.WalkableTile(t.x, t.y) && !_graph.TileLearnedBlocked(t.x, t.y);
+        var g = GraphForTile(t, false);
+        return g != null && g.WalkableTile(t.x, t.y) && !g.TileLearnedBlocked(t.x, t.y);
     }
 
     static List<Vector3> Densify(List<Vector3> route, Vector3 from)
@@ -395,10 +468,11 @@ public class HierarchicalPathfinder : MonoBehaviour
         count = Mathf.Max(1, count);
 
         var map = MapManager.Instance;
-        if (_graph == null || map == null) return 0;
+        var graph = GraphFor(from);
+        if (graph == null || map == null) return 0;
 
         var origin = map.WorldToTile(from);
-        if (!_graph.WalkableTile(origin.x, origin.y)) return 0;
+        if (!graph.WalkableTile(origin.x, origin.y)) return 0;
 
         // 창은 `from` 둘레 (2R+1)² 칸이고 창 좌표로 색인한다 — 세계 전체 크기의 표를 매번
         // 지우지 않기 위해서다.
@@ -447,7 +521,7 @@ public class HierarchicalPathfinder : MonoBehaviour
                 int nx = cx + (k == 0 ? 1 : k == 1 ? -1 : 0);
                 int ny = cy + (k == 2 ? 1 : k == 3 ? -1 : 0);
                 if (nx < 0 || ny < 0 || nx >= w || ny >= w) continue;
-                if (!_graph.WalkableTile(origin.x + nx - r, origin.y + ny - r)) continue;
+                if (!graph.WalkableTile(origin.x + nx - r, origin.y + ny - r)) continue;
 
                 int ni = ny * w + nx;
                 if (_bfsSeen[ni]) continue;
@@ -529,7 +603,8 @@ public class HierarchicalPathfinder : MonoBehaviour
     // 건물 배치·타일 변경·한 칸 채굴 — **그 칸이 든 셀의 덩어리를 다시 나누고 닿은 경계를
     // 다시 잇는다.** 한 칸을 파는 것이 덩어리 둘을 하나로 합칠 수 있으므로 이웃까지 같이
     // 본다. 안 고치면 **판 길이 먼 경로에는 영영 안 보인다.**
-    public void RebakeObstacleAt(Vector3 worldPos) => _graph?.RebakeArea(worldPos, 1f);
+    // **지어진 층만 고친다** — 아직 안 지은 층은 지을 때 지금 상태를 그대로 읽는다.
+    public void RebakeObstacleAt(Vector3 worldPos) => GraphFor(worldPos, false)?.RebakeArea(worldPos, 1f);
 
     // **넓은 자리를 한 번에 다시 굽는다**(2026-08-31).
     //
@@ -547,7 +622,7 @@ public class HierarchicalPathfinder : MonoBehaviour
     // `RockMap`이 든다).
     public void RebakeArea(Vector3 center, float radius)
     {
-        if (radius > 0f) _graph?.RebakeArea(center, radius);
+        if (radius > 0f) GraphFor(center, false)?.RebakeArea(center, radius);
     }
 
     // ── 동적 업데이트 ───────────────────────────────────────────────────
@@ -556,12 +631,14 @@ public class HierarchicalPathfinder : MonoBehaviour
     {
         MapManager.OnTileChanged  += OnTileChanged;
         MapManager.OnFloorChanged += OnFloorChanged;
+        EdgeWalls.OnChanged       += OnTileChanged;   // 얇은 벽 — 변 하나가 막히거나 풀렸다(두 칸 모두 반경 1 안)
     }
 
     void UnsubscribeEvents()
     {
         MapManager.OnTileChanged  -= OnTileChanged;
         MapManager.OnFloorChanged -= OnFloorChanged;
+        EdgeWalls.OnChanged       -= OnTileChanged;
     }
 
     // 바닥 설치/철거. `WideGraph._walk`는 `IsWorkable`을 **담아 둔 것**인데 바닥은 그 답을

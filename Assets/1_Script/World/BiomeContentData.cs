@@ -54,6 +54,17 @@ public class BiomeContentData : ScriptableObject
     [Header("이 바이옴에서 등장하는 자원 노드 풀")]
     public List<ResourceNodeData> ResourceNodes = new();
 
+    // ── 광맥이 얼마나 촘촘한가 (2026-10-11) ────────────────────────────────
+    //
+    // 풀은 *무엇이* 나오나만 답하고 *얼마나*는 세계가 한 값으로 들었다(`RockMap.VeinDensity`). 그래서
+    // 수정동을 *보석이 가득한 굴*로 만들 손잡이가 없었다 — 풀에 보석을 아무리 적어도 덩어리 수는 그대로다.
+    // 벽 속 광맥(`RockMap.VeinAt`)이 덩어리 문턱에 이 값을 곱한다.
+    public const float MaxVeinRichness = 3f;
+
+    [Header("광맥이 얼마나 촘촘한가")]
+    [Tooltip("1 = 보통. 2면 벽 속 광맥 덩어리가 두 배쯤 넓다. 0이면 이 바이옴 벽에는 광맥이 없다.")]
+    [Range(0f, MaxVeinRichness)] public float VeinRichness = 1f;
+
     // ── 벽에 박힌 조명 (2026-09-28) ─────────────────────────────────────────
     //
     // **바위 칸 하나가 이것을 품을 확률**이다 — 드러난 벽면에서만 보인다(`RockMap.WallLightAt`).
@@ -90,7 +101,7 @@ public class BiomeContentData : ScriptableObject
     }
 
     [Header("저절로 나는 무리 (짐승 · 떠도는 적)")]
-    [Tooltip("비어 있으면 이 바이옴에는 아무것도 저절로 안 난다. 초안은 `World → L`이 넣는다.")]
+    [Tooltip("비어 있으면 이 바이옴에는 아무것도 저절로 안 난다. 인스펙터에서 저작한다.")]
     public List<WildSpawnEntry> WildSpawns = new();
 
     // ── 매장 자원 (월드맵 칸) ────────────────────────────────────────────────
@@ -164,6 +175,8 @@ public class BiomeContentData : ScriptableObject
 
     [Header("이 바이옴 마을에서 구할 수 있는 사람")]
     [Tooltip("비어 있으면 그 바이옴의 마을엔 구할 사람이 없다.")]
+    // **지금 읽는 곳이 없다**(2026-10-09) — 고용은 옛 3D 월드맵의 마을 메뉴에서만 열렸고 그 화면과 함께 걷어냈다
+    // (`TownRecruits`). 저작한 표라 지우지 않는다 — 마을 고용을 다시 열 때 이것을 읽는다.
     public List<RecruitEntry> TownRecruits = new();
 
     // ── 적 소굴 (월드맵 EnemyLair 칸) ────────────────────────────────────────

@@ -72,7 +72,30 @@ public static class FactionRelations
 
 
     // 지도를 새로 짓거나 판을 다시 시작할 때. static은 도메인 리로드를 꺼 두면 살아남는다.
-    public static void Clear() => _favor.Clear();
+    public static void Clear() { _favor.Clear(); _known.Clear(); }
+
+    // ── 만났나 ────────────────────────────────────────────────────────────────
+    //
+    // **안 만난 세력은 세력 창에 안 뜬다**(2026-10-01, 사용자: *"팩션UI가 발견하지 않은 팩션은
+    // 안 보이게"*). 08-14에는 반대로 *전부 띄웠다* — 판을 열자마자 창이 비어 있었기 때문이다.
+    // 이제 세상이 누구로 차 있는지는 **찾아내는 것**이다: 첫 마을·첫 습격이 창을 채운다.
+    //
+    // **만남의 문은 여기 하나다** — 안개가 걷혀 그 세력의 폰이 보였을 때(`FogOfWar`) · 관계가
+    // 움직였을 때(죽였다면 만난 것이다) · 마을을 찾았을 때. 부르는 자리가 각자 집합을 들면
+    // 창과 첫 대면 대화가 서로 다른 *만났다*를 본다.
+    static readonly HashSet<FactionData> _known = new();
+
+    public static event Action<FactionData> OnMet;
+
+    public static bool IsKnown(FactionData f) => f != null && (f.PlayerControlled || _known.Contains(f));
+
+    public static void Meet(FactionData f)
+    {
+        if (f == null || f.PlayerControlled || !_known.Add(f)) return;
+
+        EventNotificationUI.Notify("새 세력", $"{f.FactionName}을(를) 처음 만났습니다.");
+        OnMet?.Invoke(f);
+    }
 
     // ── 움직인다 ──────────────────────────────────────────────────────────────
 
@@ -87,6 +110,7 @@ public static class FactionRelations
         if (Mathf.Approximately(before, after)) return;
 
         _favor[f] = after;
+        Meet(f);
 
         // **문턱을 넘을 때만 알린다.** 숫자가 1 움직일 때마다 띄우면 전투 중에 알림이 도배되고,
         // 그러면 정작 "돌아섰다"는 소식이 묻힌다.

@@ -225,7 +225,46 @@ public static class Conversion
     // 자리가 아니다 — 그쪽에 있으면 먼저 우리로 옮겨야 한다(위 `InCage` 주석).
     public static bool CanPersuade(UnitBrain brain) =>
         brain != null && brain.Blackboard != null && brain.Blackboard.IsPrisoner
-        && !(brain.Data is MinionData) && InCage(brain);
+        && !(brain.Data is MinionData) && !IsBeast(brain) && InCage(brain);
+
+    // ── 조련 (짐승) ──────────────────────────────────────────────────────
+    //
+    // **짐승은 말이 안 통한다 — 다룬다**(2026-10-01). 설득과 같은 그릇이다(우리 · 회차 일감 · 같은 게이지 ·
+    // 같은 쉬는 시간) — 다른 것은 **누가 잘하나**(사교가 아니라 조련)와 **무엇이 버티나**(인지가 아니라 근력 —
+    // 사나운 것은 몸이 크다)뿐이다. 다 차면 그대로 넘어온다(가축 — `UnitBrain.IsTamedBeast`).
+    public static bool IsBeast(UnitBrain brain) =>
+        brain != null && brain.Data != null && brain.Data.Tameable && !(brain.Data is MinionData);
+
+    public static bool CanTame(UnitBrain brain) =>
+        brain != null && brain.Blackboard != null && brain.Blackboard.IsPrisoner
+        && IsBeast(brain) && InCage(brain);
+
+    static float TamingSkill(UnitBrain tamer)
+        => tamer != null && tamer.Stats != null ? tamer.Stats.Taming : 0f;
+
+    // 한 회차의 시간 · 성공률 — 설득과 같은 눈금에 조련을 넣는다(갈라 두면 둘 중 하나만 손볼 때 어긋난다).
+    public static float TameSeconds(UnitBrain tamer) => 8f / (0.5f + TamingSkill(tamer) / 100f);
+    public static float TameChance(UnitBrain tamer)  => Mathf.Clamp01(0.35f + TamingSkill(tamer) / 130f * 0.55f);
+
+    public static float TameGain(UnitBrain target)
+    {
+        float wild = target != null && target.Stats != null ? target.Stats.Strength : 0f;
+        return BaseGain / (1f + wild / 130f);
+    }
+
+    public static void TameRound(UnitBrain tamer, UnitBrain target)
+    {
+        if (target?.Blackboard == null) return;
+
+        target.Blackboard.NextPersuadeTime = Time.time + PersuadeCooldown;   // 쉬는 시간은 한 벌(누가 다루든 같다)
+
+        bool ok = Random.value <= TameChance(tamer);
+        GradeUpNotificationUI.Popup(target.transform,
+                                    ok ? "길들이기 성공" : "길들이기 실패",
+                                    ok ? new Color(0.45f, 0.9f, 0.5f) : new Color(0.9f, 0.45f, 0.4f));
+
+        if (ok) Add(target, TameGain(target));
+    }
 
     // ── 공통 ─────────────────────────────────────────────────────────────
 
@@ -259,8 +298,9 @@ public static class Conversion
         brain.ChangeFaction(player.Data);
 
         bool minion = brain.Data is MinionData;
-        EventNotificationUI.Notify("회유",
-            $"{brain.UnitName}이(가) 우리 편이 되었습니다 ({(minion ? "하수인" : "방랑자")}).",
+        string what = minion ? "하수인" : IsBeast(brain) ? "가축" : "방랑자";
+        EventNotificationUI.Notify(IsBeast(brain) ? "길들이기" : "회유",
+            $"{brain.UnitName}이(가) 우리 편이 되었습니다 ({what}).",
             holdWhenHidden: true);
     }
 }

@@ -536,7 +536,7 @@ public class EventManager : MonoBehaviour
         if (prefab == null) return;
 
         var go       = SpawnPawn(prefab, edge);
-        var merchant = go.GetComponent<Merchant>();
+        go.TryGetComponent(out Merchant merchant);
 
         // **저작한 상인은 건드리지 않는다.** 프리팹에 손으로 상품을 물려 뒀다면 그건
         // "이 사람은 늘 이것만 판다"는 뜻이다 — 이벤트가 덮으면 고정 상인을 세울 길이 없어진다.
@@ -549,7 +549,7 @@ public class EventManager : MonoBehaviour
         // **상품은 그 종족이 취급하는 것 중에서 뽑는다.** 그냥 곱하면 인간이 고블린제 물건을
         // 들고 오는 조합이 나온다(`MerchantData.Races`). 뽑을 것이 없으면 — 이 종족을 받아
         // 주는 상품이 목록에 없으면 — 프리팹이 들고 온 것(역할 기본값)을 그대로 판다.
-        var race    = go.GetComponent<UnitBrain>()?.Data;
+        var race    = go.TryGetComponent(out UnitBrain goBrain) ? goBrain.Data : null;
         var variant = PickVariantFor(data, race);
         if (variant == null) { _lastMerchant = merchant?.Data; return; }
 
@@ -800,8 +800,7 @@ public class EventManager : MonoBehaviour
 
         // **가장자리 위가 아니라 그 안쪽에 세운다.** 마지막 칸은 낭떠러지 바로 위다 —
         // 거기에 넷을 흩어 놓으면 서로 비켜서다 한둘이 공허로 밀려난다.
-        // (`ExpeditionFormation.approachInset`이 집결 원에서 배운 것과 같다:
-        //  판정선 위에 세우면 경계에서 아슬아슬해진다.)
+        // (판정선 위에 세우면 경계에서 아슬아슬해진다.)
         // 그래서 걸어 나가며 **최근 몇 칸을 기억**했다가 그중 가장 안쪽 것을 쓴다.
         int inset = Mathf.Max(0, insetOverride >= 0 ? insetOverride : spawnEdgeInset);
         var recent = new List<(Vector2Int tile, float dist)>();

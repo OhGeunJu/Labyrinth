@@ -19,7 +19,8 @@ using UnityEngine;
 // 짓는 도구는 `DungeonColony/Pawn/2. Build Pawn Rigs`(에디터). 손으로 만들지 말 것 — 서른 프리팹이
 // 같은 규격이어야 하고, 관절 자리는 살의 크기에서 나온다(어깨 = 팔의 꼭대기).
 //
-// 골렘은 여기 안 온다 — 스킨 메시(FBX 휴머노이드)라 제 뼈가 있다.
+// 골렘은 여기 안 온다 — 스킨 메시(FBX 휴머노이드)라 제 뼈가 있다. **치비 몸도 스킨 메시다**(2026-10-09) — 관절은 같은
+// 규격이지만 `Pawn/3`(`ChibiPawnCreator.DressSkinned`)이 몸을 지으면서 세운다(`Pawn/2`는 건너뛴다).
 public class PawnRig : MonoBehaviour
 {
     public enum BodyKind { Biped, Quadruped }

@@ -22,11 +22,14 @@ using UnityEngine.UI;
 //   5. **도구 줄을 모드 바에 붙인다**(2026-09-28) — 도구 칸을 모드 버튼과 같은 납작한 글자 버튼으로, 모드 바
 //      윗변에 틈 없이, 켜진 칸만큼 줄어드는 판으로(`Dock`). 모드 바 순서는 키 줄과 같게(명령 C · 밭 V · 건설 B)
 //      하고 버튼 이름에 키를 적는다(`ModeOrder` · `ModeLabels`).
+//   6. **지휘소·상단을 모드 바 끝에**(2026-10-09, 사용자: *"지휘소랑 상단은 왜 왼쪽 상단에 있는거야? 차라리 가운데 하단에
+//      버튼들이랑 같이"*) — 마지막 모드 칸을 복제해 `Posts`·`Caravan` 칸을 세우고, 거점 바에 있던 두 버튼은 지운다(`WindowButtons`).
+//      같은 날 무리 관리 · 세력 · 지도도(*"PLM 정도?"*).
 //
 // 칸 크기와 틈은 **이미 있는 칸에서 잰다** — 상수로 적으면 씬을 손본 날 어긋난다. 끝나면 씬을 저장할 것.
 public static class CommandBarSetup
 {
-    const int Mine = 1, Haul = 2, Command = 4;   // `ModeBarUI.Mode` — 정수로 직렬화된다
+    const int Mine = 1, Haul = 2, Command = 4, Posts = 5, Caravan = 6, Colony = 7, Factions = 8, Map = 9;   // `ModeBarUI.Mode` — 정수로 직렬화된다
 
     [MenuItem("DungeonColony/UI/Setup Command Bar (명령 버튼 · 취소 칸 · 스탯 U키 · 하단 가운데)")]
     static void Run()
@@ -36,6 +39,7 @@ public static class CommandBarSetup
         Wake<ModeToolBarUI>("도구 바", log);
         HoistOffPanel(log);
         ModeBar(log);
+        WindowButtons(log);
         ToolBar(log);
         StatsKey(log);
         ModeOrder(log);
@@ -290,7 +294,7 @@ public static class CommandBarSetup
     // (2026-09-28, 사용자: *"명령C밭V로 하고 순서도 그렇게 바꿔줘"*.) 키가 `C` · `V` · `B`로 한 줄에
     // 붙어 있어 **버튼도 그 순서로 선다** — 명령 · 밭 구역 · 건설. 목록에 없는 모드는 뒤에 원래 순서대로.
     // **목록 순서가 곧 화면 순서다** — 바로 다음 `BottomCenter`가 목록 순서대로 가로로 늘어놓는다.
-    static readonly int[] KeyRow = { Command, 3 /* FarmZone */, 0 /* Build */ };
+    static readonly int[] KeyRow = { Command, 3 /* FarmZone */, 0 /* Build */, Posts, Caravan, Colony, Factions, Map };
 
     static void ModeOrder(List<string> log)
     {
@@ -318,7 +322,66 @@ public static class CommandBarSetup
 
         if (!moved) return;
         so.ApplyModifiedProperties();
-        log.Add("모드 바 순서: 명령 · 밭 구역 · 건설");
+        log.Add("모드 바 순서: 명령 · 구역 · 건설 · 지휘소 · 상단 · 무리 · 세력 · 지도");
+    }
+
+    // ── 6. 지휘소 · 상단 ─────────────────────────────────────────────────────
+    //
+    // 둘은 모드가 아니라 창이지만 **모드 바 끝에 같은 모양으로** 선다 — 칸은 이미 있는 모드 칸을 복제한다(크기·색·글꼴이
+    // 그대로 따라온다). 이름과 글자는 `ModeLabels`가, 자리는 `BottomCenter`가 이어서 맞춘다. 거점 바에 붙어 있던 옛 두
+    // 버튼(`CommandButton`·`CaravanButton`)은 지운다 — `OutpostBarUI`에서 그 필드가 빠졌다.
+    static void WindowButtons(List<string> log)
+    {
+        var bar = Object.FindFirstObjectByType<ModeBarUI>(FindObjectsInactive.Include);
+        if (bar == null) return;
+
+        var so    = new SerializedObject(bar);
+        var slots = so.FindProperty("slots");
+        var have = new HashSet<int>();
+        Button sample = null;
+        for (int i = 0; i < slots.arraySize; i++)
+        {
+            var s = slots.GetArrayElementAtIndex(i);
+            have.Add(s.FindPropertyRelative("Mode").enumValueIndex);
+            if (s.FindPropertyRelative("Button").objectReferenceValue is Button b) sample = b;
+        }
+
+        void Add(int mode, string goName)
+        {
+            if (sample == null) return;
+            var go = Object.Instantiate(sample.gameObject, sample.transform.parent);
+            go.name = goName;
+            Undo.RegisterCreatedObjectUndo(go, "모드 바");
+            var btn = go.GetComponent<Button>();
+            btn.onClick.RemoveAllListeners();
+            int at = slots.arraySize;
+            slots.InsertArrayElementAtIndex(at);
+            var el = slots.GetArrayElementAtIndex(at);
+            el.FindPropertyRelative("Mode").enumValueIndex = mode;
+            el.FindPropertyRelative("Button").objectReferenceValue = btn;
+        }
+        foreach (var (mode, goName, label) in new[] { (Posts, "Btn_Posts", "지휘소"), (Caravan, "Btn_Caravan", "상단"),
+                                                     (Colony, "Btn_Colony", "무리"), (Factions, "Btn_Factions", "세력"), (Map, "Btn_Map", "지도") })
+            if (!have.Contains(mode)) { Add(mode, goName); log.Add($"모드 바에 `{label}` 칸"); }
+        so.ApplyModifiedProperties();
+
+        // 거점 바의 옛 두 버튼.
+        var outpost = Object.FindFirstObjectByType<OutpostBarUI>(FindObjectsInactive.Include);
+        if (outpost != null)
+            foreach (var n in new[] { "CommandButton", "CaravanButton" })
+            {
+                var old = FindDeep(outpost.transform, n);
+                if (old == null) continue;
+                Undo.DestroyObjectImmediate(old.gameObject);
+                log.Add($"거점 바 `{n}` 지움");
+            }
+    }
+
+    static Transform FindDeep(Transform t, string name)
+    {
+        if (t.name == name) return t;
+        foreach (Transform c in t) { var f = FindDeep(c, name); if (f != null) return f; }
+        return null;
     }
 
     // ── 4. 하단 가운데 ───────────────────────────────────────────────────────
@@ -606,8 +669,13 @@ public static class CommandBarSetup
             string name = slot.FindPropertyRelative("Mode").enumValueIndex switch
             {
                 Command => "명령 (C)",
-                3       => "밭 구역 (V)",
+                3       => "구역 (V)",   // 밭 + 저장(2026-10-06)
                 0       => "건설 (B)",
+                Posts   => "지휘소 (H)",
+                Caravan => "상단 (T)",
+                Colony   => "무리 (P)",
+                Factions => "세력 (L)",
+                Map      => "지도 (M)",
                 _       => null,
             };
             if (name == null) continue;

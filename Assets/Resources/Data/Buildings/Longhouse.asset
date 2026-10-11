@@ -13,17 +13,18 @@ MonoBehaviour:
   m_Name: Longhouse
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: longhouse
-  BuildingName: "\uAE34 \uC9D1"
+  BuildingName: 6x12
   Description: "6\xD712 \xB7 \uC548\uCABD 4\xD710\uCE78. \uC881\uACE0 \uAE34 \uC9D1.
     \uCE68\uB300\uB97C \uC904\uC9C0\uC5B4 \uB193\uAE30 \uC88B\uB2E4."
   Category: 2
-  SortOrder: 23
+  SortOrder: 72
   Size: {x: 6, y: 12}
   Costs:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
     Amount: 60
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 40
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 0
@@ -50,3 +51,4 @@ MonoBehaviour:
   - '#....#'
   - '#....#'
   - '##.###'
+  EdgeWall: 0

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -199,6 +200,7 @@ public static class MushroomCreator
         DropStaleCapNode();
         WireScatter(capPrefab, cavePrefab, giantPrefab, pebblePrefab, hardPrefab,
                     mossPatch, mouldPatch, treePrefab);
+        CreateThemed(hardItem, stoneItem);
 
         // **다시 입힌다**(2026-09-28, 사용자: *"버섯들이 그냥 예전버섯으로 돌아간 거 같은데"* · *"돌도 바뀐 거 같아"*).
         // 위에서 프리팹을 **도형부터 다시 지어 덮어썼으므로** `Building → 1`이 입혀 둔 모델(`[Art]`)이 날아갔다.
@@ -270,7 +272,7 @@ public static class MushroomCreator
 
     // ── 노드 데이터 ─────────────────────────────────────────────────────────
 
-    static ResourceNodeData Node(string name, ItemData drop, GameObject prefab,
+    internal static ResourceNodeData Node(string name, ItemData drop, GameObject prefab,
                                  float gauge, int min, int max, int workers,
                                  int totalYields = 0,
                                  string displayName = null, string description = null)
@@ -599,6 +601,530 @@ public static class MushroomCreator
         return Save(root, "Node_Pebbles");
     }
 
+    // ── 사용자가 더한 바이옴의 얼굴 (2026-10-11) ───────────────────────────
+    //
+    // 사용자: *"방사능 지형 같은 걸 만들고 싶고 … 시체에서 자라는 버섯 같은 느낌으로 감염되서 기생당하는
+    // 그런 느낌의 버섯테마 … 그리고 정글지대"* · *"심연은 약간 크툴루 느낌"*.
+    //
+    // 바닥·벽 색만으로는 바이옴이 안 읽힌다(굴이 어두우면 무슨 색이든 검게 눌린다 — 균사림에서 배운 것).
+    // **그 지대에만 서는 것 하나씩**을 준다:
+    //
+    //   · 지저밀림 — **밀림 고목**(벌목, 단단한 나무). 잎이 있는 유일한 나무다. 빽빽하게 선다
+    //   · 기생림   — **숙주 유해**(채집, 기생버섯). 쓰러진 몸에서 붉은 갓이 돋았다
+    //   · 방사굴   — **빛나는 돌무더기**(채집, 돌). 연두로 빛난다 — 이 지대의 등이다
+    //   · 심연     — **벽에 뜬 눈**(벽 조명). 야광석 곁에서 보랏빛으로 본다
+    static readonly Biome[] JungleOnly     = { Biome.Jungle };
+    static readonly Biome[] BlightOnly     = { Biome.Blight };
+    static readonly Biome[] IrradiatedOnly = { Biome.Irradiated };
+
+    static readonly Color BlightCap   = new(0.86f, 0.28f, 0.16f);
+    static readonly Color RadGreen    = new(0.55f, 0.95f, 0.20f);
+    static readonly Color AbyssViolet = new(0.70f, 0.30f, 1.00f);
+
+    static void CreateThemed(ItemData hardwood, ItemData stone)
+    {
+        // 밀림 고목 — **단단한 나무를 낸다**(2층의 목재). 물먹은 둥치보다 흔하되 한 그루가 덜 낸다:
+        // 밀림은 빽빽해야 밀림이고, 그 수에 둥치만큼 내면 2층 목재가 넘친다.
+        var jungle = Node("JungleTree", hardwood, prefab: null,
+                          gauge: 300f, min: 2, max: 4, workers: 2, totalYields: 3,
+                          displayName: "밀림 고목",
+                          description: "덥고 젖은 굴에서 빛 없이 자란 나무. 잎이 넓고 덩굴이 늘어졌다. " +
+                                       "**세 번 베면 없어진다.**");
+        var junglePrefab = BuildJungleTree(jungle);
+        jungle.Prefab = junglePrefab;
+        EditorUtility.SetDirty(jungle);
+
+        var hostFood = Food("Food_ParasiteCap", "기생버섯", 5, 12f,
+                            "죽은 몸에서 돋은 붉은 버섯. 먹을 수는 있다. 무엇을 먹고 자랐는지는 생각하지 않는 편이 낫다.");
+        var hostPrefab = BuildHost(hostFood);
+
+        GameObject slagPrefab = stone != null ? BuildGlowSlag(stone) : null;
+
+        WireAbyssEye(BuildWallEye());
+
+        if (!ScatterWiring.Open("초목", out var so, out var rules)) return;
+
+        ScatterWiring.Set(rules, "밀림 고목", junglePrefab, perChunk: 9f, spacing: 7f,
+             regrowDays: TreeRegrowDays, biomes: JungleOnly, cluster: (1, 1), spread: 0);
+
+        // 유해는 하나둘씩 흩어져 있다 — 무더기로 쌓이면 버섯밭이 아니라 무덤(납골굴)으로 읽힌다.
+        ScatterWiring.Set(rules, "숙주 유해", hostPrefab, perChunk: 6f, spacing: 10f,
+             regrowDays: TreeRegrowDays, biomes: BlightOnly, cluster: (1, 2), spread: 1);
+
+        // **다시 안 난다**(0) — 바닥 돌과 같다. 자라는 것이 아니라 떨어져 있던 것이다.
+        if (slagPrefab != null)
+            ScatterWiring.Set(rules, "빛나는 돌무더기", slagPrefab, perChunk: 6f, spacing: 10f,
+                 regrowDays: 0f, biomes: IrradiatedOnly, cluster: (1, 3), spread: 1);
+
+        // **어디에나, 드물게**(바이옴을 안 가린다) — 굴 전체를 어둡게 내린 값이 이것이다. 간격이 넓어야
+        // 웅덩이 하나하나가 길잡이가 된다(촘촘하면 그냥 밝은 굴이다).
+        //
+        // **하나하나 다르다**(사용자: *"크게 나져 있는 곳도 있고 작게 나져 있는 곳도 있고 여러개 나져 있는 곳도"*) —
+        // 홑구멍은 바닥 웅덩이 반지름으로 1.2m ~ 7m. 무리는 큰 것 하나에 작은 것 셋(`BuildSkylightCluster`).
+        // 똑같은 것이 같은 간격으로 서면 뚫린 것이 아니라 달아 놓은 것이다.
+        ScatterWiring.Set(rules, "채광 구멍", BuildSkylight(), perChunk: 1.5f, spacing: 28f,
+             regrowDays: 0f, biomes: null, cluster: (1, 1), spread: 0, scale: (0.35f, 2.0f));
+        ScatterWiring.Set(rules, "채광 구멍 무리", BuildSkylightCluster(), perChunk: 0.6f, spacing: 40f,
+             regrowDays: 0f, biomes: null, cluster: (1, 1), spread: 0, scale: (0.7f, 1.6f));
+
+        ScatterWiring.Commit(so);
+    }
+
+    // ── 채광 구멍 (2026-10-11) ────────────────────────────────────────────
+    //
+    // 근거는 `Skylight` 머리에 적었다. **천장은 그리지 않는다**(바위 윗면은 잘려 있다) — 구멍을 읽게 하는
+    // 것은 바닥의 밝은 웅덩이 · 옅은 빛기둥 · 떨어진 돌이다.
+    //
+    // **콜라이더가 없다** — 캐는 것도 막는 것도 아니다. 그 아래에 지어도 된다.
+    static GameObject BuildSkylight() => Save(SkylightHole("Prop_Skylight"), "Prop_Skylight");
+
+    // **여럿이 같이 뚫린 자리** — 큰 것 하나 곁에 작은 것 셋. 뿌리기의 무리(`ClusterMin/Max`)는 *맞닿은 칸*에
+    // 세우는 장치라(1m 간격) 구멍에는 못 쓴다: 넷이 한 점에 포개진다. 그래서 자리를 프리팹이 든다.
+    // 뿌리기가 통째로 돌리고 크기를 곱하므로 같은 묶음도 자리마다 달리 보인다.
+    //
+    // 곁가지가 바위 속에 떨어지면 그것만 꺼진다(`Skylight.Start`) — 벽에 붙은 자리에서는 둘셋만 남는다.
+    static GameObject BuildSkylightCluster()
+    {
+        const string name = "Prop_SkylightCluster";
+        (Vector2 at, float size)[] holes =
+        {
+            (new Vector2( 0.0f,  0.0f), 1.00f),
+            (new Vector2( 5.5f,  2.5f), 0.45f),
+            (new Vector2(-3.0f,  6.5f), 0.60f),
+            (new Vector2(-6.5f, -3.5f), 0.32f),
+        };
+
+        var root = new GameObject(name);
+        for (int i = 0; i < holes.Length; i++)
+        {
+            var h = SkylightHole("Hole" + i);
+            h.transform.SetParent(root.transform, false);
+            h.transform.localPosition = new Vector3(holes[i].at.x, 0f, holes[i].at.y);
+            h.transform.localScale    = Vector3.one * holes[i].size;   // 너비로만 받는다(`Skylight.Start`)
+        }
+        return Save(root, name);
+    }
+
+    static GameObject SkylightHole(string name)
+    {
+        const float  height = 9f;      // 등이 뜬 높이
+        const float  pool   = 3.5f;    // 바닥에 떨어지는 웅덩이의 반지름
+        const float  hole   = 1.0f;    // 천장 구멍의 반지름
+        const float  shaftTop = 16f;   // 빛기둥이 시작하는 높이
+
+        var root = new GameObject(name);
+        var rng  = new System.Random(NameSeed(name));
+
+        var beamGo = new GameObject("Beam");
+        beamGo.transform.SetParent(root.transform, false);
+        beamGo.transform.localPosition = new Vector3(0f, height, 0f);
+        beamGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        // **세기가 큰 것은 거리 때문이다** — 점·원뿔 조명은 거리 제곱으로 준다(9m 아래면 81분의 1).
+        var beam = beamGo.AddComponent<Light>();
+        beam.type           = LightType.Spot;
+        beam.spotAngle      = 2f * Mathf.Atan(pool / height) * Mathf.Rad2Deg;
+        beam.innerSpotAngle = beam.spotAngle * 0.6f;
+        beam.range          = height + 4f;
+        beam.intensity      = 110f;
+        beam.color          = new Color(1f, 0.95f, 0.82f);
+        beam.shadows        = LightShadows.Soft;   // 몇 개만 던진다(`ShadowBudget`)
+
+        // ── 쏟아지는 볕 ──
+        //
+        // **구멍은 좁고 바닥은 넓다** — 위에서 퍼져 내려와야 *쏟아진다.* 곧은 기둥은 서 있는 것으로 읽힌다.
+        // 등보다 훨씬 높은 데서 시작한다: 화면 위쪽 밖에서 내려오는 것처럼 보여야 천장이 있는 것이 된다.
+        var shaft = new GameObject("Shaft");
+        shaft.transform.SetParent(root.transform, false);
+        shaft.AddComponent<MeshFilter>().sharedMesh = ShaftMesh(shaftTop, hole, pool * 1.05f);
+        var shaftRen = shaft.AddComponent<MeshRenderer>();
+        shaftRen.sharedMaterial    = SkyMaterial("Mdl_SkyShaft", "DungeonColony/LightShaft",
+                                                 new Color(1f, 0.95f, 0.80f, 0.03f));
+        shaftRen.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        shaftRen.receiveShadows    = false;
+
+        var motesRen = BuildMotes(root.transform, shaftTop, hole, pool);
+
+        // 천장에서 떨어진 돌 — 빛만 있으면 *등을 달아 둔 자리*로 읽힌다.
+        for (int i = 0; i < 4; i++)
+        {
+            float a  = (float)(rng.NextDouble() * Mathf.PI * 2.0);
+            float r  = 0.6f + (float)rng.NextDouble() * 1.6f;
+            float sc = 0.22f + (float)rng.NextDouble() * 0.30f;
+
+            var c = Prim(PrimitiveType.Cube, "Rubble" + i, root.transform,
+                         new Vector3(sc, sc * 0.6f, sc * 0.8f),
+                         new Vector3(Mathf.Cos(a) * r, sc * 0.2f, Mathf.Sin(a) * r));
+            c.transform.localRotation = Quaternion.Euler(
+                (float)rng.NextDouble() * 24f - 12f,
+                (float)rng.NextDouble() * 360f,
+                (float)rng.NextDouble() * 24f - 12f);
+            Paint(c, "Mdl_SkyRubble", new Color(0.42f, 0.41f, 0.38f));
+        }
+
+        // **등이 없는 자식에 단다** — `LightSource`가 제 등을 찾으면 밤에 볕을 세게 만든다.
+        var sightGo = new GameObject("Sight");
+        sightGo.transform.SetParent(root.transform, false);
+        var sight = sightGo.AddComponent<LightSource>();
+        SerializedWrite.Set(sight, so =>
+        {
+            so.FindProperty("radius").floatValue   = pool + 0.5f;
+            so.FindProperty("strength").floatValue = 1f;
+            so.FindProperty("flicker").floatValue  = 0f;
+        });
+
+        root.AddComponent<Skylight>().Configure(beam, shaftRen, motesRen, sight);
+        return root;
+    }
+
+    // 빛기둥의 메시 — 위가 좁은 원뿔 껍데기 둘(겉 · 속). 속이 있어야 가운데가 더 밝다.
+    //
+    // **세로로 어떻게 밝은가는 정점 알파가 든다**(셰이더는 곱하기만 한다): 맨 위는 0(끊긴 자리가 고리로
+    // 안 보이게) · 그 아래가 가장 밝고 · 바닥에 닿기 전에 풀린다(바닥을 밝히는 것은 등이 한다).
+    const string SkyDir = "Assets/2_Material/SkyShader";
+
+    static Mesh ShaftMesh(float top, float rTop, float rBottom)
+    {
+        const int seg = 40;
+        (float v, float a)[] rings  = { (0f, 0f), (0.22f, 0.30f), (0.80f, 1f), (1f, 0f) };
+        (float r, float a)[] shells = { (1f, 1f), (0.5f, 0.8f) };
+
+        var verts = new List<Vector3>();
+        var norms = new List<Vector3>();
+        var uvs   = new List<Vector2>();
+        var cols  = new List<Color>();
+        var tris  = new List<int>();
+
+        foreach (var sh in shells)
+        {
+            int start = verts.Count;
+            for (int y = 0; y < rings.Length; y++)
+                for (int x = 0; x <= seg; x++)
+                {
+                    float u = x / (float)seg, ang = u * Mathf.PI * 2f;
+                    float r = Mathf.Lerp(rBottom, rTop, rings[y].v) * sh.r;
+                    var dir = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
+
+                    verts.Add(dir * r + Vector3.up * (top * rings[y].v));
+                    norms.Add(dir);
+                    uvs.Add(new Vector2(u, rings[y].v));
+                    cols.Add(new Color(1f, 1f, 1f, rings[y].a * sh.a));
+                }
+
+            int row = seg + 1;
+            for (int y = 0; y < rings.Length - 1; y++)
+                for (int x = 0; x < seg; x++)
+                {
+                    int a = start + y * row + x, b = a + 1, c = a + row, d = c + 1;
+                    tris.Add(a); tris.Add(c); tris.Add(b);
+                    tris.Add(b); tris.Add(c); tris.Add(d);
+                }
+        }
+
+        string path = SkyDir + "/Mesh_SkyShaft.asset";
+        var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        bool fresh = mesh == null;
+        if (fresh) mesh = new Mesh { name = "Mesh_SkyShaft" };
+
+        mesh.Clear();
+        mesh.SetVertices(verts);
+        mesh.SetNormals(norms);
+        mesh.SetUVs(0, uvs);
+        mesh.SetColors(cols);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+
+        if (fresh) AssetDatabase.CreateAsset(mesh, path);
+        else       EditorUtility.SetDirty(mesh);
+        return mesh;
+    }
+
+    // 볕 속에 뜬 먼지 — 빛기둥 안에서만 나고 천천히 가라앉는다. **이것이 있어야 빛에 부피가 생긴다**:
+    // 기둥만 있으면 색을 칠한 원뿔이고, 그 안에서 무언가 떠다녀야 공기가 있는 자리가 된다.
+    static Renderer BuildMotes(Transform parent, float top, float rTop, float rBottom)
+    {
+        var go = new GameObject("Motes");
+        go.transform.SetParent(parent, false);
+
+        var ps   = go.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.loop            = true;
+        main.prewarm         = true;
+        main.startLifetime   = new ParticleSystem.MinMaxCurve(7f, 12f);
+        main.startSpeed      = 0f;
+        main.startSize       = new ParticleSystem.MinMaxCurve(0.04f, 0.11f);
+        main.startColor      = new Color(1f, 1f, 1f, 0.9f);
+        main.maxParticles    = 90;
+        main.gravityModifier = 0f;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.scalingMode     = ParticleSystemScalingMode.Hierarchy;   // 구멍 크기를 따라간다(`Skylight.Start`)
+
+        var emission = ps.emission;
+        emission.rateOverTime = 8f;
+
+        // 원뿔을 뒤집어 건다 — 좁은 쪽이 천장, 넓은 쪽이 바닥.
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.ConeVolume;
+        shape.radius    = rTop;
+        shape.angle     = Mathf.Atan((rBottom - rTop) / top) * Mathf.Rad2Deg;
+        shape.length    = top * 0.8f;
+        shape.position  = new Vector3(0f, top * 0.8f, 0f);
+        shape.rotation  = new Vector3(90f, 0f, 0f);
+
+        var vel = ps.velocityOverLifetime;
+        vel.enabled = true;
+        vel.space   = ParticleSystemSimulationSpace.Local;
+        vel.x = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
+        vel.y = new ParticleSystem.MinMaxCurve(-0.22f, -0.08f);
+        vel.z = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
+
+        var noise = ps.noise;
+        noise.enabled   = true;
+        noise.strength  = 0.12f;
+        noise.frequency = 0.35f;
+
+        // 톡 나타났다 톡 사라지지 않게.
+        var fade = new Gradient();
+        fade.SetKeys(
+            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+            new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.2f),
+                    new GradientAlphaKey(1f, 0.75f), new GradientAlphaKey(0f, 1f) });
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        col.color   = fade;
+
+        var ren = go.GetComponent<ParticleSystemRenderer>();
+        ren.renderMode        = ParticleSystemRenderMode.Billboard;
+        ren.sharedMaterial    = SkyMaterial("Mdl_SkyMote", "DungeonColony/LightMote",
+                                            new Color(1f, 0.95f, 0.80f, 0.5f));
+        ren.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        ren.receiveShadows    = false;
+        return ren;
+    }
+
+    // **있는 재질도 셰이더를 다시 맞춘다** — 첫 판은 다른 셰이더로 만들었고, 있다고 그냥 돌려주면
+    // 도구를 다시 돌려도 옛 모양이 남는다. 색은 새로 만들 때만 적는다(손본 값을 안 덮는다).
+    static Material SkyMaterial(string matName, string shaderName, Color color)
+    {
+        var sh = Shader.Find(shaderName);
+        if (sh == null)
+        {
+            Debug.LogWarning($"[초목] 셰이더 `{shaderName}`를 못 찾았습니다 — 채광 구멍의 빛이 안 보입니다.");
+            return null;
+        }
+
+        string path = MatDir + "/" + matName + ".mat";
+        var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (m == null)
+        {
+            m = new Material(sh);
+            m.SetColor("_BaseColor", color);
+            AssetDatabase.CreateAsset(m, path);
+        }
+        else if (m.shader != sh)
+        {
+            m.shader = sh;
+            m.SetColor("_BaseColor", color);
+            EditorUtility.SetDirty(m);
+        }
+        return m;
+    }
+
+    // 밀림 고목 — **잎이 있다.** 1·2층의 다른 나무 셋(갓 · 맨가지 · 부러진 둥치)과 갈리는 표시가 그것이다.
+    // 키가 크고 갓이 넓어 여럿이 서면 위에서 볼 때 바닥이 잎에 덮인다.
+    static GameObject BuildJungleTree(ResourceNodeData data)
+    {
+        var root = new GameObject("Node_JungleTree");
+        var rng  = new System.Random(NameSeed("Node_JungleTree"));
+        var bark = new Color(0.22f, 0.16f, 0.10f);
+        var leaf = new Color(0.10f, 0.42f, 0.14f);
+
+        var flare = Prim(PrimitiveType.Cylinder, "Flare", root.transform,
+                         new Vector3(0.90f, 0.25f, 0.90f), new Vector3(0f, 0.25f, 0f));
+        Paint(flare, "Mdl_JungleBark", bark);
+
+        var trunk = Prim(PrimitiveType.Cylinder, "Trunk", root.transform,
+                         new Vector3(0.50f, 1.90f, 0.50f), new Vector3(0f, 1.90f, 0f));
+        Paint(trunk, "Mdl_JungleBark", bark);
+
+        // 갓 — 납작한 덩이 넷을 어긋나게 겹친다. 하나면 거대버섯의 갓으로 읽힌다.
+        for (int i = 0; i < 4; i++)
+        {
+            float a  = (float)(i * System.Math.PI / 2.0 + rng.NextDouble() * 0.8);
+            float r  = i == 0 ? 0f : 0.75f;
+            float sc = 1.5f + (float)rng.NextDouble() * 0.7f;
+
+            var c = Prim(PrimitiveType.Sphere, "Leaf" + i, root.transform,
+                         new Vector3(sc, sc * 0.42f, sc),
+                         new Vector3(Mathf.Cos(a) * r, 3.75f + (i == 0 ? 0.35f : 0f), Mathf.Sin(a) * r));
+            Paint(c, "Mdl_JungleLeaf", leaf);
+        }
+
+        // 늘어진 덩굴 셋 — 갓 가장자리에서 아래로.
+        for (int i = 0; i < 3; i++)
+        {
+            float a   = (float)(i * 2.0 * System.Math.PI / 3.0 + rng.NextDouble());
+            float len = 0.5f + (float)rng.NextDouble() * 0.5f;
+
+            var v = Prim(PrimitiveType.Cylinder, "Vine" + i, root.transform,
+                         new Vector3(0.05f, len, 0.05f),
+                         new Vector3(Mathf.Cos(a) * 1.05f, 3.55f - len, Mathf.Sin(a) * 1.05f));
+            Paint(v, "Mdl_JungleLeaf", leaf);
+        }
+
+        // **트리거가 아니다** — 나무라 몸으로 막는다(다른 나무와 같은 규칙).
+        var col = root.AddComponent<CapsuleCollider>();
+        col.height = 4.2f;
+        col.radius = 0.5f;
+        col.center = new Vector3(0f, 2.1f, 0f);
+
+        var node = root.AddComponent<ResourceNode>();
+        SerializedWrite.Set(node, so => so.FindProperty("data").objectReferenceValue = data);
+
+        return Save(root, "Node_JungleTree");
+    }
+
+    // 숙주 유해 — 모로 쓰러진 몸 하나에 붉은 갓 넷. **갓버섯과 같은 물건이다**(`Forageable`) — 한 번 따면 없어진다.
+    static GameObject BuildHost(ItemData drop)
+    {
+        const string name = "Node_HostRemains";
+        var root = new GameObject(name);
+        var rng  = new System.Random(NameSeed(name));
+        var husk = new Color(0.50f, 0.44f, 0.40f);
+
+        var body = Prim(PrimitiveType.Capsule, "Host", root.transform,
+                        new Vector3(0.36f, 0.42f, 0.30f), new Vector3(0f, 0.15f, 0f));
+        body.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);   // 누웠다
+        Paint(body, "Mdl_Host", husk);
+
+        var head = Prim(PrimitiveType.Sphere, "Head", root.transform,
+                        new Vector3(0.26f, 0.24f, 0.26f), new Vector3(0.52f, 0.13f, 0.04f));
+        Paint(head, "Mdl_Host", husk);
+
+        // 갓은 **몸 위에서** 돋는다 — 바닥에서 돋으면 그냥 버섯 옆에 시체가 누운 것이다.
+        for (int i = 0; i < 4; i++)
+        {
+            float x = -0.32f + i * 0.24f + (float)rng.NextDouble() * 0.06f;
+            float z = (float)rng.NextDouble() * 0.16f - 0.08f;
+            float s = 0.8f + (float)rng.NextDouble() * 0.9f;
+            Cap(root.transform, new Vector3(x, 0.26f, z), s, name, BlightCap, glow: true);
+        }
+
+        var col = root.AddComponent<SphereCollider>();   // 트리거 — 칸을 안 막는다(갓버섯과 같은 규칙)
+        col.isTrigger = true;
+        col.radius    = 0.55f;
+        col.center    = new Vector3(0f, 0.25f, 0f);
+
+        Glow(root, radius: 3f, strength: 0.25f, intensity: 0.28f, range: 3.5f, height: 0.5f,
+             light: new Color(1f, 0.38f, 0.22f));
+
+        root.AddComponent<Forageable>().Configure(drop, 1, 3);
+        return Save(root, name);
+    }
+
+    // 빛나는 돌무더기 — 바닥 돌과 같은 모양에 **연두 발광**. 방사굴에서는 이것이 등이다.
+    static GameObject BuildGlowSlag(ItemData drop)
+    {
+        const string name = "Node_GlowSlag";
+        var root = new GameObject(name);
+        var rng  = new System.Random(NameSeed(name));
+
+        for (int i = 0; i < 4; i++)
+        {
+            float a  = (float)(rng.NextDouble() * Mathf.PI * 2.0);
+            float r  = (float)rng.NextDouble() * 0.30f;
+            float sc = 0.26f + (float)rng.NextDouble() * 0.26f;
+
+            var c = Prim(PrimitiveType.Cube, "Rock" + i, root.transform,
+                         new Vector3(sc, sc * (0.6f + (float)rng.NextDouble() * 0.7f), sc * 0.8f),
+                         new Vector3(Mathf.Cos(a) * r, sc * 0.32f, Mathf.Sin(a) * r));
+            c.transform.localRotation = Quaternion.Euler(
+                (float)rng.NextDouble() * 30f - 15f,
+                (float)rng.NextDouble() * 360f,
+                (float)rng.NextDouble() * 30f - 15f);
+
+            // 넷 중 둘만 빛난다 — 전부 빛나면 돌이 아니라 전구 무더기다.
+            if (i < 2) Paint(c, "Mdl_GlowSlag", RadGreen, emissive: true);
+            else       Paint(c, "Mdl_SlagDull", new Color(0.30f, 0.34f, 0.24f));
+        }
+
+        var col = root.AddComponent<SphereCollider>();
+        col.isTrigger = true;
+        col.radius    = 0.55f;
+        col.center    = new Vector3(0f, 0.22f, 0f);
+
+        Glow(root, radius: 5f, strength: 0.35f, intensity: 0.5f, range: 6f, height: 0.4f,
+             light: new Color(0.62f, 1f, 0.28f));
+
+        root.AddComponent<Forageable>().Configure(drop, 1, 2);
+        return Save(root, name);
+    }
+
+    // ── 벽에 뜬 눈 — 심연 (2026-10-11) ─────────────────────────────────────
+    //
+    // 야광석과 **같은 길로 선다**(`WallLightData` → `RockMap.WallLightAt`): 피벗은 벽면, 앞(+Z)이 벽 바깥.
+    // 모양은 `[Art]` 아래에 둔다 — 무리의 곁가지가 그것만 떠 간다(`WallLightData.AddMembers`).
+    const string EyePrefabPath = "Assets/3_Prefab/Prop/WallLight_AbyssEye.prefab";
+    const string EyeDataPath   = "Assets/5_Data/World/WallLight_AbyssEye.asset";
+
+    static GameObject BuildWallEye()
+    {
+        var root = new GameObject("WallLight_AbyssEye");
+        var art  = new GameObject("[Art]");
+        art.transform.SetParent(root.transform, false);
+
+        var ball = Prim(PrimitiveType.Sphere, "Ball", art.transform,
+                        new Vector3(0.34f, 0.34f, 0.20f), new Vector3(0f, 0f, 0.03f));
+        Paint(ball, "Mdl_AbyssEye", new Color(0.86f, 0.80f, 0.55f), emissive: true);
+
+        var iris = Prim(PrimitiveType.Sphere, "Iris", art.transform,
+                        new Vector3(0.17f, 0.17f, 0.08f), new Vector3(0f, 0f, 0.11f));
+        Paint(iris, "Mdl_AbyssIris", new Color(0.55f, 0.10f, 0.62f), emissive: true);
+
+        // 동공은 **세로로 찢어졌다** — 둥글면 사람 눈이다.
+        var pupil = Prim(PrimitiveType.Sphere, "Pupil", art.transform,
+                         new Vector3(0.05f, 0.13f, 0.04f), new Vector3(0f, 0f, 0.145f));
+        Paint(pupil, "Mdl_AbyssPupil", new Color(0.02f, 0.01f, 0.03f));
+
+        Glow(root, radius: 3f, strength: 0.20f, intensity: 0.30f, range: 3.5f, height: 0f, light: AbyssViolet);
+        root.transform.Find("Glow").localPosition = new Vector3(0f, 0f, 0.3f);   // 벽 속이 아니라 벽 앞에서 비춘다
+
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(EyePrefabPath));
+        var saved = PrefabUtility.SaveAsPrefabAsset(root, EyePrefabPath);
+        Object.DestroyImmediate(root);
+        return saved;
+    }
+
+    // **만들 때만 값을 적는다** — 밀도·높이는 사용자가 고치는 값이라(`WallLightData` 머리) 있는 것은 안 건드린다.
+    static void WireAbyssEye(GameObject prefab)
+    {
+        var data = AssetDatabase.LoadAssetAtPath<WallLightData>(EyeDataPath);
+        if (data == null)
+        {
+            data = ScriptableObject.CreateInstance<WallLightData>();
+            data.DisplayName   = "벽에 뜬 눈";
+            data.HeightMin     = 1.0f;
+            data.HeightMax     = 2.4f;
+            data.Jitter        = 0.3f;
+            data.ScaleRange    = new Vector2(0.7f, 1.6f);
+            data.Roll          = 25f;
+            data.Tilt          = 10f;
+            data.ClusterMin    = 1;
+            data.ClusterMax    = 3;
+            data.ClusterSpread = 0.3f;
+            AssetDatabase.CreateAsset(data, EyeDataPath);
+        }
+        data.Prefab = prefab;
+        EditorUtility.SetDirty(data);
+
+        var abyss = AssetDatabase.LoadAssetAtPath<BiomeContentData>(BiomeDir + "/Biome_Abyss.asset");
+        if (abyss == null) { Debug.LogWarning("[초목] 심연 바이옴 에셋이 없어 벽에 뜬 눈을 못 걸었습니다."); return; }
+        if (abyss.WallLights.Exists(e => e != null && e.Light == data)) return;
+
+        abyss.WallLights.Add(new BiomeContentData.WallLightEntry { Light = data, Chance = 0.025f });
+        EditorUtility.SetDirty(abyss);
+    }
+
     // **`LightSource`로 단다 — 그냥 `Light`가 아니다.** `Vision`이 그 레지스트리를 읽으므로,
     // 발광 지대에 들어서면 **화면이 밝아지는 만큼 폰도 실제로 더 본다.** 순수 장식 조명으로
     // 두면 *"밝아 보이는데 안 보인다"*가 생긴다 — 화면과 판정은 같은 수를 봐야 한다.
@@ -610,7 +1136,7 @@ public static class MushroomCreator
     static readonly Color GlowLight = new(0.32f, 0.40f, 1f);
 
     static void Glow(GameObject root, float radius, float strength,
-                     float intensity, float range, float height = 0.35f)
+                     float intensity, float range, float height = 0.35f, Color? light = null)
     {
         var lampGo = new GameObject("Glow");
         lampGo.transform.SetParent(root.transform, false);
@@ -618,7 +1144,7 @@ public static class MushroomCreator
 
         var lamp = lampGo.AddComponent<Light>();
         lamp.type      = LightType.Point;
-        lamp.color     = GlowLight;
+        lamp.color     = light ?? GlowLight;
         lamp.intensity = intensity;
         lamp.range     = range;
         lamp.shadows   = LightShadows.None;   // 수백 개가 그림자를 던지면 프레임이 죽는다
@@ -653,7 +1179,7 @@ public static class MushroomCreator
 
     // 프리미티브는 콜라이더를 달고 나온다 — **루트가 든 하나만 남긴다.** 자식마다 달려 있으면
     // 커서 레이캐스트가 갓 하나를 짚고, 그러면 노드가 아니라 그 조각이 잡힌다.
-    static GameObject Prim(PrimitiveType type, string name, Transform parent,
+    internal static GameObject Prim(PrimitiveType type, string name, Transform parent,
                            Vector3 scale, Vector3 pos)
     {
         var go = GameObject.CreatePrimitive(type);
@@ -668,7 +1194,7 @@ public static class MushroomCreator
     // **갓은 스스로 빛난다**(2026-09-06, 사용자가 든 예: 테라리아의 발광 버섯 지대).
     // 어두운 굴에서 *"여기는 버섯 지형이구나"*를 만드는 것은 바닥 색이 아니라 **빛**이다 —
     // 바닥은 조명이 어두우면 무슨 색이든 검게 눌린다.
-    static void Paint(GameObject go, string matName, Color fallback, bool emissive = false)
+    internal static void Paint(GameObject go, string matName, Color fallback, bool emissive = false)
     {
         string path = MatDir + "/" + matName + ".mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -712,7 +1238,7 @@ public static class MushroomCreator
         go.GetComponent<MeshRenderer>().sharedMaterial = m;
     }
 
-    static GameObject Save(GameObject root, string name)
+    internal static GameObject Save(GameObject root, string name)
     {
         var saved = PrefabUtility.SaveAsPrefabAsset(root, PrefabDir + "/" + name + ".prefab");
         Object.DestroyImmediate(root);
@@ -757,7 +1283,7 @@ public static class MushroomCreator
     // 기지에 잠깐 들렀다 떠나는 게임이라, 다녀오는 사이에 둘레가 돌아와 있어야 한다. 먹을 것·약초는 2일,
     // 나무·곰팡이는 3일(크거나 귀한 것이 조금 늦다).
     const float FoodRegrowDays = 2f;
-    const float TreeRegrowDays = 3f;
+    internal const float TreeRegrowDays = 3f;
 
     static void WireScatter(GameObject capPrefab, GameObject cavePrefab, GameObject giantPrefab,
                             GameObject pebblePrefab, GameObject trunkPrefab,

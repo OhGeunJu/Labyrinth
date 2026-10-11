@@ -583,7 +583,7 @@ public class CombatHandler : MonoBehaviour
         var targetCombat = target.GetComponent<CombatHandler>();
 
         // 막아도 안다 — 근접과 같은 규칙(위 `TryAttack` 주석).
-        target.GetComponent<UnitBrain>()?.Blackboard?.RecordAttacker(gameObject);
+        if (target.TryGetComponent(out UnitBrain victim)) victim.Blackboard?.RecordAttacker(gameObject);
 
         WeaponType weaponType  = GetWeaponType();
         float weaponSkill      = _stats.GetSkillFor(Weapon);
@@ -709,11 +709,8 @@ public class CombatHandler : MonoBehaviour
     // 추스르는 것. 여기는 그 둘째다.
     void ApplyHolyEffect(WeaponData weapon, GameObject target)
     {
-        var mySfx  = GetComponent<StatusEffectSystem>();
-        var myBody = GetComponent<BodyPartSystem>();
-
-        myBody?.Heal(bloodAmount: 30f, partsAmount: 10f);
-        mySfx?.ClearDebuffs();
+        if (TryGetComponent(out BodyPartSystem myBody))   myBody.Heal(bloodAmount: 30f, partsAmount: 10f);
+        if (TryGetComponent(out StatusEffectSystem mySfx)) mySfx.ClearDebuffs();
         Debug.Log($"[Holy] {gameObject.name} 신성: 회복 + 디버프 제거");
     }
 
@@ -727,7 +724,7 @@ public class CombatHandler : MonoBehaviour
         if (building != null) { building.TakeDamage(dmg.Amount, dmg.Type, gameObject); return; }
         var body = target.GetComponent<BodyPartSystem>();
         if (body != null) body.TakeDamage(dmg);
-        else target.GetComponent<UnitBrain>()?.TakeDamage(dmg);
+        else if (target.TryGetComponent(out UnitBrain hitBrain)) hitBrain.TakeDamage(dmg);
     }
 
     void HolyAoEHeal(float bloodAmount, float partsAmount)
@@ -741,7 +738,7 @@ public class CombatHandler : MonoBehaviour
             // 아군만 치유 — 중립은 대상 아님(관계 3단계로 바뀌며 명시화).
             var faction = col.GetComponent<Faction>();
             if (myFaction != null && faction != null && !myFaction.IsAllyOf(faction)) continue;
-            col.GetComponent<BodyPartSystem>()?.Heal(bloodAmount, partsAmount);
+            if (col.TryGetComponent(out BodyPartSystem hitBody)) hitBody.Heal(bloodAmount, partsAmount);
         }
     }
 

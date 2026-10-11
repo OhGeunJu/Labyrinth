@@ -30,6 +30,13 @@ public class ColonyUI : MonoBehaviour
     // **박자는 세계에 하나다**(`UiRefresh`) — 세 박(0.45초)마다.
     int _beat = -1;
 
+    // 모드 바의 `무리 (P)` 버튼이 부른다(2026-10-09) — 키와 **같은 문**을 두드려야 버튼 색이 키로 연 것도 따라간다.
+    public static ColonyUI Instance { get; private set; }
+    public bool IsOpen => panel != null && panel.activeSelf;
+    public void Toggle() { if (panel != null) panel.SetActive(!panel.activeSelf); }
+
+    void Awake() => Instance = this;
+
     void OnEnable()
     {
         UnitBrain.OnUnitSpawned          += OnSpawned;
@@ -72,7 +79,7 @@ public class ColonyUI : MonoBehaviour
     void Update()
     {
         if (Keyboard.current != null && Keyboard.current.pKey.wasPressedThisFrame && panel != null && !InputFocus.KeysBlocked())
-            panel.SetActive(!panel.activeSelf);
+            Toggle();
 
         if (panel == null || !panel.activeSelf) return;
 

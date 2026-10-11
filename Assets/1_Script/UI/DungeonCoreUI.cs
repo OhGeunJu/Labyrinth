@@ -134,7 +134,7 @@ public class DungeonCoreUI : MonoBehaviour
     {
         if (minionContainer == null) return;
         foreach (Transform child in minionContainer)
-            child.GetComponent<MinionEntryUI>()?.Refresh();
+            if (child.TryGetComponent(out MinionEntryUI entry)) entry.Refresh();
     }
 
 }

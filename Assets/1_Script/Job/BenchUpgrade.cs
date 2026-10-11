@@ -89,8 +89,8 @@ public class BenchUpgrade : MonoBehaviour, IConstructionSite
     // ── 다음 등급이 무엇이고 무엇이 드나 ────────────────────────────────────
 
     public int NextTier => _bench == null ? 0
-                         : _bench.Tier >= BenchTier.Max ? 0
-                         : _bench.Tier + 1;
+                         : BenchTier.CanRaiseTo(_bench.Tier + 1) ? _bench.Tier + 1
+                         : 0;
 
     // **비용 표는 `BenchTier.CostTo` 하나가 든다** — 여기서 또 적으면 작업대와 연구대가
     // 다른 값을 요구하게 되고, 그건 화면에 안 적힌다.
@@ -132,10 +132,11 @@ public class BenchUpgrade : MonoBehaviour, IConstructionSite
             _delivered.Add(0);
         }
 
-        _target = next;
+        // **재료를 하나도 못 찾았으면 올리지 않는다** — 곧바로 올리면 표의 오타가 *공짜 등급*이
+        // 된다. 못 찾은 줄은 `CostFor`가 이미 경고했다.
+        if (_costs.Count == 0) return false;
 
-        // 값이 없으면 곧바로 오른다 — 표를 비워 두고 돌려 볼 때의 길이다.
-        if (_costs.Count == 0) { Apply(); return true; }
+        _target = next;
 
         Storage.OnChanged += OnStorageChanged;
         TryRegisterJob();

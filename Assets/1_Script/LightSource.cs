@@ -44,6 +44,12 @@ public class LightSource : MonoBehaviour
     [Tooltip("같이 켜고 끌 불꽃 모형. 등만 켜면 빛은 도는데 불이 안 보인다.")]
     [SerializeField] GameObject flames;
 
+    // **어두울수록 불이 세진다**(2026-10-01, 사용자: *"저녁에는 더 어두워서 횃불이나 불빛이 더
+    // 잘보였으면"*). 주변이 내려앉는데 등이 그대로면 둘레의 *대비*만 커지고 불빛 자리는 오히려
+    // 칙칙해진다 — 사람 눈이 어둠에 적응하는 것을 등 쪽에서 흉내 낸다. **세기만 올리고 닿는 거리는
+    // 안 늘린다** — 화면에 밝은 원이 `radius`(시야가 걷히는 자리)보다 넓어지면 *"밝아 보이는데 안 보인다"*가 된다.
+    public const float NightBoost = 1.8f;
+
     [Tooltip("불꽃이 흔들리는 폭(등 세기 대비). 0이면 가만히 탄다.")]
     [Range(0f, 0.5f)] [SerializeField] float flicker = 0.15f;
 
@@ -65,13 +71,26 @@ public class LightSource : MonoBehaviour
 
     public bool  AlwaysLit { get => alwaysLit; set => alwaysLit = value; }
 
-    public float Radius   => radius;
+    // 쓰는 쪽은 크기가 칸마다 다른 것뿐이다(`Skylight` — 구멍이 크면 볕도 넓다).
+    public float Radius { get => radius; set => radius = value; }
     public float Strength => strength;
     public bool  Lit      => _lit;
+
+    // **불빛이 화면에서 퍼지는 거리의 배율**(2026-10-12, 사용자: *"빛이 퍼지는 범위를 두배정도 늘려도 될 거
+    // 같고"*). 굴의 주변광을 거의 0으로 내린 뒤로는 등이 닿는 데까지만 보인다 — 프리팹에 적힌 범위는 주변광이
+    // 받쳐 주던 때의 값이라 웅덩이가 너무 좁다.
+    //
+    // **세기는 그대로다** — 빛은 거리 제곱으로 줄므로 범위만 늘리면 가장자리가 어둑하게 멀리 번진다.
+    // **`radius`(시야가 걷히는 거리)는 안 늘린다** — 그건 판정이고, 사용자가 바꾸라고 한 것은 화면이다.
+    public const float Reach = 2f;
 
     void Awake()
     {
         if (lamp == null) lamp = GetComponentInChildren<Light>(includeInactive: true);
+
+        // 횃불은 등이 여럿이다 — 전부 같이 늘린다.
+        foreach (var l in GetComponentsInChildren<Light>(includeInactive: true))
+            l.range *= Reach;
         if (lamp   != null) _baseIntensity = lamp.intensity;
         if (flames != null) _flameScale    = flames.transform.localScale;
 
@@ -118,13 +137,17 @@ public class LightSource : MonoBehaviour
     // 불꽃이 아니라 숨쉬기다.
     void Update()
     {
-        if (!_lit || flicker <= 0f) return;
+        if (!_lit) return;
+
+        float boost = Mathf.Lerp(1f, NightBoost, UnderworldLighting.Darkness);
 
         if (lamp != null)
         {
-            float n = Mathf.PerlinNoise(_noiseSeed, Time.time * 3.5f) - 0.5f;
-            lamp.intensity = _baseIntensity * (1f + flicker * 2f * n);
+            float n = flicker > 0f ? Mathf.PerlinNoise(_noiseSeed, Time.time * 3.5f) - 0.5f : 0f;
+            lamp.intensity = _baseIntensity * boost * (1f + flicker * 2f * n);
         }
+
+        if (flicker <= 0f) return;
 
         if (flames != null && _flameScale != Vector3.zero)
         {

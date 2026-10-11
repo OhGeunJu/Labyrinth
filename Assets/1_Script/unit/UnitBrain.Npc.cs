@@ -103,7 +103,7 @@ public partial class UnitBrain
     // 스폰하는 쪽이 정해 주는 경우(`EventManager.SpawnMerchant`)는 이 뒤에 덮어쓴다.
     void EnsureMerchant(NpcData npc)
     {
-        var merchant = GetComponent<Merchant>() ?? gameObject.AddComponent<Merchant>();
+        if (!TryGetComponent(out Merchant merchant)) merchant = gameObject.AddComponent<Merchant>();
         if (merchant.Data == null && npc.MerchantData != null)
             merchant.Data = npc.MerchantData;
 

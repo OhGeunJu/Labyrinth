@@ -122,7 +122,7 @@ public partial class UnitBrain : MonoBehaviour
             else if (unitData != null && !string.IsNullOrWhiteSpace(unitData.RaceName))
                 tags.Add(unitData.RaceName);
 
-            var fd = GetComponent<Faction>()?.Data;
+            var fd = TryGetComponent(out Faction ownFaction) ? ownFaction.Data : null;
             if (fd != null && !fd.PlayerControlled && !string.IsNullOrWhiteSpace(fd.FactionName)
                 && !tags.Contains(fd.FactionName))
                 tags.Add(fd.FactionName);
@@ -422,8 +422,8 @@ public partial class UnitBrain : MonoBehaviour
 
         _mover    = GetComponent<PawnMover>();
         _body     = GetComponent<BodyPartSystem>();
-        Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
-        Equipment = GetComponent<Equipment>() ?? gameObject.AddComponent<Equipment>();
+        Inventory = TryGetComponent(out Inventory inv) ? inv : gameObject.AddComponent<Inventory>();
+        Equipment = TryGetComponent(out Equipment equip) ? equip : gameObject.AddComponent<Equipment>();
         gameObject.AddComponent<StatusEffectSystem>();
 
         // **능동은 장비가 주므로 그릇은 누구에게나 붙인다.** 세력으로 가르면(플레이어만)
@@ -473,6 +473,8 @@ public partial class UnitBrain : MonoBehaviour
             Work = gameObject.AddComponent<WorkSettings>();
             if (unitData is MinionData minionData)
                 Work.InitFromAllowed(minionData.AllowedJobs);
+            else if (IsTamedBeast)
+                Work.InitFromAllowed(BeastJobs);
 
             // **여기서 다시 새긴다**(2026-08-28). `SetBackstories`는 `Awake`의 앞쪽
             // (`ApplySpec`)에서 도는데 `Work`는 여기서 생긴다 — 그래서 `ApplyJobBlocks`가
@@ -533,7 +535,7 @@ public partial class UnitBrain : MonoBehaviour
             if (unitData != null && (IsSummoned || unitData.UsesBackstory))
             {
                 var group = IsSummoned ? PawnSpec.SummonedStoryGroup
-                                       : GetComponent<Faction>()?.Data?.BackstoryGroup;
+                                       : TryGetComponent(out Faction myFaction) ? myFaction.Data?.BackstoryGroup : null;
                 RememberBackstories(BackstoryPool.Roll(BackstorySlot.Childhood, rng, group),
                                     BackstoryPool.Roll(BackstorySlot.Adulthood, rng, group));
                 SetBackstories(_rolledChildhood, _rolledAdulthood);
@@ -982,7 +984,6 @@ public partial class UnitBrain : MonoBehaviour
         _bb.LeavingMap   = false;
         _bb.Routed       = false;
         _bb.IsPrisoner   = false;
-        _bb.HoldPosition = false;
         // 일어난 것은 아무것도 필요하지 않다(적 세력은 어차피 이 축이 안 돈다)
         for (int i = 0; i < Needs.Count; i++) _bb.SetNeed((NeedKind)i, Needs.Full);
         ClearStanceOverride();
@@ -1155,7 +1156,10 @@ public partial class UnitBrain : MonoBehaviour
     // **둘은 다른 물음이다**: 하수인은 *원래* 명령을 안 받고(그것이 그 종족의 뜻이다), 갇히거나
     // 업힌 폰은 *지금* 못 받을 뿐이다. 부르는 쪽이 그 둘을 갈라 써야 "이 폰은 빠졌습니다"를
     // 알릴지 조용히 건너뛸지 정할 수 있다.
-    public bool AcceptsOrders => unitData is not MinionData;
+    //
+    // **가축은 수레를 단 동안만 받는다**(2026-10-01, 사용자: *"마차에 착용되면 직접조종"*) — 맨몸의 짐승은 저 알아서
+    // 짐을 나르고 따라다닌다(`BuildBeastTree`). 수레를 달면 짐마차가 되어 사람이 끈다.
+    public bool AcceptsOrders => unitData is not MinionData && (!IsTamedBeast || PawnCart.Has(this));
 
     // **내가 불러낸 것인가**(2026-09-08). 이 물음이 **세 곳에 복사돼 있었다**
     // (`Stats.IsLocked`를 세우는 자리 셋) — 이름을 주고 한 벌로 모은다.
@@ -1295,7 +1299,7 @@ public partial class UnitBrain : MonoBehaviour
         _bb.LeavingMap   = false;
         _bb.Routed       = false;
         ClearStanceOverride();
-        GetComponent<CombatHandler>()?.ExitCombat();
+        if (TryGetComponent(out CombatHandler myCombat)) myCombat.ExitCombat();
         _mover?.StopMovement();
 
         // 떼의 레일도 내린다 — 떼를 떠난 폰이 몸 없이 걸으면 명령받은 이동이 벽·폰을 뚫는다(`PawnMover.OnRails`).
@@ -1317,6 +1321,7 @@ public partial class UnitBrain : MonoBehaviour
         {
             Work = gameObject.AddComponent<WorkSettings>();
             if (unitData is MinionData minionData) Work.InitFromAllowed(minionData.AllowedJobs);
+            else if (IsTamedBeast) Work.InitFromAllowed(BeastJobs);
             HookUnloadSignals();
 
             // **넘어온 사람도 제 배경을 갖는다.** 방랑자가 되는 순간이므로 여기서 얹는다 —
@@ -1325,7 +1330,7 @@ public partial class UnitBrain : MonoBehaviour
         }
 
         Debug.Log($"[세력] {UnitName} → {to.FactionName} " +
-                  $"({(unitData is MinionData ? "하수인" : "방랑자")}, 성장잠금 {Stats.IsLocked})");
+                  $"({(unitData is MinionData ? "하수인" : IsTamedBeast ? "가축" : "방랑자")}, 성장잠금 {Stats.IsLocked})");
 
         // **알린다.** 명부·원정 편성은 `OnUnitSpawned`만 듣고 있었는데 그건 `Start`에서 한 번
         // 뜨고 마는 것이라, **이 문으로 들어온 식구는 화면에 영영 안 나타났다.**
@@ -1369,6 +1374,8 @@ public partial class UnitBrain : MonoBehaviour
             return BuildEnemyTree();
         if (npcData != null)
             return BuildNpcTree(npcData);
+        if (IsTamedBeast)
+            return BuildBeastTree();
         if (unitData is MinionData)
             return BuildMinionTree();
         return BuildWandererTree();

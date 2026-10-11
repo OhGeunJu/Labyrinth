@@ -244,13 +244,18 @@ public class TerrainStreamer : MonoBehaviour
 
         var center = TerrainGrid.ChunkAt(viewer);
 
+        // **보는 층의 청크만 세운다**(2026-10-01, `Floors`) — 층은 한 평면에 나란히 놓인 사분면이라, 층 경계 가까이 서면
+        // 기반암 몇 칸 너머로 **옆 층의 굴이 그대로 보인다.** 바위·뿌린 것·장소는 여기가 세운 청크를 따라 서므로 이
+        // 한 줄이 층을 *딴 세계*로 만든다. 층 한 변이 청크로 나눠떨어져 한 청크가 두 층에 걸치지 않는다.
+        int floor = Floors.At(viewer);
+
         // ① 있어야 할 것 모으기
         _wanted.Clear();
         for (int dz = -radius; dz <= radius; dz++)
         for (int dx = -radius; dx <= radius; dx++)
         {
             var c = new Vector2Int(center.x + dx, center.y + dz);
-            if (TerrainGrid.InWorld(c)) _wanted.Add(c);
+            if (TerrainGrid.InWorld(c) && ChunkFloor(c) == floor) _wanted.Add(c);
         }
 
 #if UNITY_EDITOR
@@ -291,6 +296,9 @@ public class TerrainStreamer : MonoBehaviour
     }
 
     static int Sqr(Vector2Int v) => v.x * v.x + v.y * v.y;
+
+    static int ChunkFloor(Vector2Int c) =>
+        Floors.At((c.x + 0.5f) * TerrainGrid.ChunkSize, (c.y + 0.5f) * TerrainGrid.ChunkSize);
 
 #if UNITY_EDITOR
     // ── 판 중에 씬 뷰로 둘러볼 때 (2026-09-28) ──────────────────────────────

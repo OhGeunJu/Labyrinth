@@ -279,17 +279,28 @@ public class CameraController : MonoBehaviour
     // **끝에서 조금 안쪽에 묶는다**(2026-09-15) — 세계 끝에 월드보더 막(`WorldBorderVeil`)이
     // 서는데, 카메라가 그 평면 위에 서면 막을 **옆에서 보게 되어 선 하나**로 사라진다.
     // **밀어서 걸렸으면 막에 알린다** — 그것이 *"나가려 했다"*이고, 막이 그때 짙어진다.
+    //
+    // **층 안에 묶는다**(2026-10-01, `Floors`) — 층은 한 평면에 나란히 놓인 사분면이라 세계 끝까지 풀어 두면 그냥 걸어서
+    // 옆 층으로 넘어간다. 묶는 테두리는 **지금 카메라가 있는 층**의 것이다. **층을 옮기는 트윈 중에는 안 묶는다**
+    // (`FocusOn` — 거점 바 · 지도 · 통로가 다른 층으로 보낼 때) — 묶으면 옛 층 경계에 걸려 못 넘어간다.
+    // 막 알림(`WorldBorderVeil.Push`)은 **세계 바깥 테두리에서만** — 층 사이는 기반암 벽이 보이므로 막이 필요 없다.
     void ClampToWorld()
     {
+        if (DOTween.IsTweening(transform)) { Floors.Poll(); return; }
+
         var   p = transform.position;
         float m = WorldBorderVeil.CameraMargin;
         float w = TerrainGrid.WorldSize;
+        var   o = Floors.Origin(Floors.At(p));
+        float s = Floors.Size;
 
-        if (p.x < m)     { p.x = m;     WorldBorderVeil.Push(0); }
-        if (p.x > w - m) { p.x = w - m; WorldBorderVeil.Push(1); }
-        if (p.z < m)     { p.z = m;     WorldBorderVeil.Push(2); }
-        if (p.z > w - m) { p.z = w - m; WorldBorderVeil.Push(3); }
+        if (p.x < o.x + m)     { p.x = o.x + m;     if (o.x <= 0f)         WorldBorderVeil.Push(0); }
+        if (p.x > o.x + s - m) { p.x = o.x + s - m; if (o.x + s >= w)      WorldBorderVeil.Push(1); }
+        if (p.z < o.y + m)     { p.z = o.y + m;     if (o.y <= 0f)         WorldBorderVeil.Push(2); }
+        if (p.z > o.y + s - m) { p.z = o.y + s - m; if (o.y + s >= w)      WorldBorderVeil.Push(3); }
         transform.position = p;
+
+        Floors.Poll();
     }
 
     void HandleRotate()

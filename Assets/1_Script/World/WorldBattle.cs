@@ -139,27 +139,6 @@ public static class WorldBattle
         return won;
     }
 
-    // 원정대 ↔ 무리. **결과를 계산만 하지 않고 그 자리에서 적용한다** — 피해·손실·약탈이
-    // 따로 놀면 호출자마다 빠뜨리는 것이 생긴다(조우에서 한 것과 소굴 습격에서 한 것이 달라진다).
-    public static WorldBattleResult Resolve(ExpeditionParty party, WorldBand band)
-    {
-        var result = new WorldBattleResult();
-        if (party == null || band == null) { result.Summary = "싸울 상대가 없다."; return result; }
-
-        result.PlayerWon = Roll(PowerOf(party.Members), band.Power,
-                                out float myLoss, out float theirLoss);
-
-        ApplyToBand(band, theirLoss, result);
-        ApplyToPawns(party.Members, myLoss, result);
-
-        // 진 쪽이 턴다. 이겼으면 쓰러뜨린 수만큼 노획하고, 졌으면 등짐을 빼앗긴다.
-        if (result.PlayerWon) LootFromBand(party, band, result);
-        else                  LootFromParty(party, result);
-
-        result.Summary = BuildSummary(band, result);
-        return result;
-    }
-
     // ── 거점 습격 — 아무도 안 보고 있을 때 ────────────────────────────────────
     //
     // **안 보는 곳의 습격은 추상으로 푼다**(2026-08-31, 사용자 결정).
@@ -403,143 +382,17 @@ public static class WorldBattle
         }
     }
 
-    // **항복.** 싸우지 않고 등짐을 통째로 내주고 풀려난다.
-    //
-    // 싸움의 패배와 다른 점이 요점이다: 패배는 **등짐의 절반쯤**을 잃고 사람이 크게 다치지만,
-    // 항복은 **등짐 전부**를 잃는 대신 **아무도 안 다친다.** 그래서 "무엇을 지키느냐"가 갈린다 —
-    // 짐이 가벼우면 항복이 싸고, 한몫 챙겨 돌아가는 길이면 차라리 싸운다.
-    //
-    // **빈손이면 항복이 공짜다**(가져갈 것이 없어 그냥 놓아준다). 그건 예외가 아니라 결과다 —
-    // 아무것도 안 지고 다니는 원정은 애초에 아무것도 못 가져오므로, 그 자체가 이미 대가다.
-    public static WorldBattleResult Surrender(ExpeditionParty party, WorldBand band)
+    // **상단이 길에서 당한 습격**(2026-10-01, `Caravan.Ambush`). 상대는 무리 토큰이 아니라 **힘 하나**다 — 포탈 너머
+    // 길은 그림이 없으니 덮친 쪽도 실체가 없다. 굴림과 몸에 남는 상처는 원정·습격과 **같은 것**을 쓴다(`Roll` ·
+    // `ApplyToPawns` — 갈라 두면 *"같은 일행인데 상단으로 가면 덜 다친다"*가 생긴다). 짐을 얼마나 잃나는 상단이 정한다.
+    public static WorldBattleResult ResolveAmbush(IList<UnitBrain> members, float threat)
     {
-        var result = new WorldBattleResult { PlayerWon = false };
-        if (party == null || band == null) { result.Summary = "항복할 상대가 없다."; return result; }
+        var result = new WorldBattleResult();
+        if (members == null || members.Count == 0) { result.Summary = "싸울 사람이 없다."; return result; }
 
-        foreach (var kv in party.Cargo)
-            if (kv.Key != null && kv.Value > 0) result.Loot[kv.Key] = kv.Value;
-        party.ClearCargo();
-
-        var sb = new System.Text.StringBuilder();
-        if (result.Loot.Count == 0)
-        {
-            sb.Append($"{band.Name}에게 항복했다. 가져갈 것이 없어 그냥 놓아주었다.");
-        }
-        else
-        {
-            sb.Append($"{band.Name}에게 항복하고 짐을 내주었다. 다친 사람은 없다.\n빼앗긴 것 — ");
-            bool first = true;
-            foreach (var kv in result.Loot)
-            {
-                if (!first) sb.Append(" · ");
-                sb.Append($"{kv.Key.ItemName} {kv.Value}");
-                first = false;
-            }
-        }
-
-        result.Summary = sb.ToString();
+        result.PlayerWon = Roll(PowerOf(members), threat, out float myLoss, out _);
+        ApplyToPawns(members, myLoss, result);
+        result.Summary = result.PlayerWon ? "습격을 물리쳤다." : "습격에 밀렸다.";
         return result;
-    }
-
-    // 이긴 쪽이 노획한다 — **쓰러뜨린 수에 비례**한다. 무리 전체를 잡든 절반만 잡고 놓치든
-    // 같은 양이 나오면, 끝까지 싸울 이유가 없어진다.
-    //
-    // **등짐 한도를 그대로 지킨다**(`ExpeditionParty.TryAdd`). 못 실은 것은 조용히 사라진다 —
-    // 지도 위에는 떨어뜨려 둘 바닥이 없고, 무게를 넘겨 받아 주면 적재 한도가 뜻을 잃는다.
-    static void LootFromBand(ExpeditionParty party, WorldBand band, WorldBattleResult result)
-    {
-        int kills = result.BandLosses;
-        if (kills <= 0 || band.Data == null) return;
-
-        foreach (var e in band.Data.Loot)
-        {
-            var item = e?.Resolve();
-            if (item == null) continue;
-
-            int total = 0;
-            for (int k = 0; k < kills; k++)
-            {
-                if (Random.value > e.Chance) continue;
-                total += Random.Range(Mathf.Min(e.MinPerKill, e.MaxPerKill),
-                                      Mathf.Max(e.MinPerKill, e.MaxPerKill) + 1);
-            }
-            if (total <= 0) continue;
-
-            int got = party.TryAdd(item, total);
-            if (got <= 0) continue;
-
-            result.Loot.TryGetValue(item, out int cur);
-            result.Loot[item] = cur + got;
-        }
-
-        // 상단은 **들고 다니던 것**도 나온다. 진열 재고가 곧 짐이므로, 털면 그만큼 준다 —
-        // 다음에 만났을 때 멀쩡한 진열대를 보면 턴 것이 아무 일도 아니게 된다.
-        if (band.Shop == null) return;
-
-        foreach (var entry in band.Shop.Stock)
-        {
-            if (entry == null || entry.Item == null || entry.Stock <= 0) continue;
-
-            int take = Mathf.Max(1, Mathf.RoundToInt(entry.Stock * Random.Range(0.4f, 0.8f)));
-            take = Mathf.Min(take, entry.Stock);
-
-            int got = party.TryAdd(entry.Item, take);
-            if (got <= 0) continue;
-
-            entry.Stock -= got;
-            result.Loot.TryGetValue(entry.Item, out int cur);
-            result.Loot[entry.Item] = cur + got;
-        }
-    }
-
-    // 진 원정대는 **등짐을 통째로** 빼앗긴다. 붙잡히는 마당에 짐만 지키고 있을 수는 없다.
-    //
-    // 그래서 항복과의 차이가 짐이 아니라 **사람**에서 난다: 항복은 같은 짐을 내주고 아무도
-    // 안 다치고 풀려나지만, 싸워서 지면 크게 다치고 **포로가 되어 끌려간다.**
-    // 전에는 절반쯤만 가져갔는데, 그러면 항복이 늘 손해라서 고를 이유가 없었다.
-    static void LootFromParty(ExpeditionParty party, WorldBattleResult result)
-    {
-        foreach (var kv in party.Cargo)
-            if (kv.Key != null && kv.Value > 0) result.Loot[kv.Key] = kv.Value;
-        party.ClearCargo();
-    }
-
-    static string BuildSummary(WorldBand band, WorldBattleResult r)
-    {
-        var sb = new System.Text.StringBuilder();
-
-        sb.Append(r.PlayerWon
-            ? $"{band.Name}을(를) 물리쳤다."
-            : $"{band.Name}에게 밀렸다.");
-
-        if (r.BandLosses > 0) sb.Append($" 적 {r.BandLosses}명이 쓰러졌다.");
-        if (band.IsAlive)     sb.Append($" 남은 적 {band.Count}명.");
-
-        if (!r.PlayerWon)
-            sb.Append("\n<color=#FF8080>살아남은 이들은 붙잡혀 끌려갔다.</color>");
-
-        if (r.Down.Count > 0)
-        {
-            sb.Append($"\n우리 쪽 {r.Down.Count}명이 크게 다쳤다 — ");
-            for (int i = 0; i < r.Down.Count; i++)
-            {
-                if (i > 0) sb.Append(" · ");
-                sb.Append(r.Down[i].UnitName);
-            }
-        }
-
-        if (r.Loot.Count > 0)
-        {
-            sb.Append(r.PlayerWon ? "\n노획 — " : "\n빼앗긴 것 — ");
-            bool first = true;
-            foreach (var kv in r.Loot)
-            {
-                if (!first) sb.Append(" · ");
-                sb.Append($"{kv.Key.ItemName} {kv.Value}");
-                first = false;
-            }
-        }
-
-        return sb.ToString();
     }
 }

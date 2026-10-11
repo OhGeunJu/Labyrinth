@@ -33,7 +33,7 @@ public class WindowRaiser : MonoBehaviour
 
     // ── 창을 앞으로 ──────────────────────────────────────────────────────────
     //
-    // **"창"은 캔버스의 직속 자식이다.** 이 저장소가 이미 그 눈금을 쓴다 — `GameModeManager`가
+    // **"창"은 캔버스의 직속 자식이다.** 이 저장소가 이미 그 눈금을 쓴다 — 옛 모드 전환(`GameModeManager`, 10-09에 걷어냄)이
     // 필드/월드를 갈아 끼울 때 캔버스가 아니라 **그 직속 자식들**을 켜고 끈다. 그리는 순서도
     // 형제 순서라, 창 하나를 통째로 올리는 단위가 정확히 그것이다.
     public static void ToFront(Transform inside)
@@ -73,7 +73,7 @@ public class WindowRaiser : MonoBehaviour
 
     // **창을 닫는 문.** 여는 쪽과 짝이다 — 흐려진 뒤 꺼진다.
     //
-    // **`SetActive(false)`를 전부 이걸로 바꾸지는 않는다.** 모드 전환(`GameModeManager`)처럼
+    // **`SetActive(false)`를 전부 이걸로 바꾸지는 않는다.** 옛 모드 전환처럼
     // *상태를 갈아 끼우는* 자리는 즉시 꺼져야 한다 — 거기서 0.1초를 끌면 필드 UI가 월드맵
     // 위에 잠깐 겹쳐 보인다. **사람이 닫는 것만** 이 문으로 온다.
     public static void Close(GameObject panel) => UiTween.FadeOut(panel);

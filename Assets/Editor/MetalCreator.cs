@@ -108,6 +108,12 @@ public static class MetalCreator
         var mithrilOre = Ore("Res_MithrilOre", "미스릴 광석", 90,
             "은빛이 도는 무른 광석. 손에 얹으면 무게가 손을 속인다. 가장 깊은 곳에서만 나온다.");
 
+        // **우라늄 — 방사굴에서만 난다**(2026-10-11, 사용자: *"방사능에서는 우라늄 이런게 나와야지"*).
+        // 사다리의 금속이 아니다(층 하나에 금속 하나는 그대로다) — 그 바이옴에 가야만 얻는 광석이다.
+        // 값은 티타늄(45)과 미스릴(90) 사이. **무엇이 먹는지는 아직 안 정했다** — 지금은 광석과 광맥뿐이다.
+        var uraniumOre = Ore("Res_UraniumOre", "우라늄 광석", 60,
+            "연두빛이 스민 무거운 광석. 어둠 속에서 저 혼자 희미하게 빛난다. 오래 쥐고 있을 물건은 아니다.");
+
         Ingot("Res_Titanium", "티타늄 주괴", 250, 1.6f,
             "티타늄 주괴. 강철보다 가볍고 단단한데, 무엇보다 물에도 습기에도 상하지 않는다.");
         var mithril = Ingot("Res_Mithril", "미스릴 주괴", 470, 1.0f,
@@ -149,12 +155,18 @@ public static class MetalCreator
         // **모양을 여기서 안 짓는다 — `VeinArt`가 답한다.** 갈라 두면 새 광맥만 다르게
         // 생기고, 그 차이가 *일부러 그런 것*인지 *빠뜨린 것*인지 화면에서 구별이 안 된다.
         // 색·모양은 `VeinArt.All` 표가 든다(둘 다 금속이라 둥근 바위에 알갱이).
+        var uraniumVein = Vein("Node_UraniumVein", uraniumOre, gauge: 300f, skill: 20f,
+            displayName: "우라늄 광맥",
+            description: "방사굴의 벽에서만 연두빛으로 스며 나온다. 무겁고 단단해 캐는 데 오래 걸린다.");
+        uraniumVein.Prefab = VeinArt.BuildOne("Node_UraniumVein", uraniumVein);
+        EditorUtility.SetDirty(uraniumVein);
+
         titaniumVein.Prefab = VeinArt.BuildOne("Node_TitaniumVein", titaniumVein);
         mithrilVein.Prefab  = VeinArt.BuildOne("Node_MithrilVein",  mithrilVein);
         EditorUtility.SetDirty(mithrilVein);
         EditorUtility.SetDirty(titaniumVein);
 
-        WireBiomes(titaniumVein, mithrilVein);
+        WireBiomes(titaniumVein, mithrilVein, uraniumVein);
         WireFloorVeins();
 
         AssetDatabase.SaveAssets();
@@ -178,6 +190,8 @@ public static class MetalCreator
     //
     // **바이옴마다 규칙을 만들지 않는다** — 여덟 층 × 광맥이면 저작이 두 벌이 되고, 금속
     // 사다리를 고치는 날 한쪽이 반드시 뒤처진다.
+    static readonly Biome[] CrystalOnly = { Biome.Crystal };
+
     static void WireFloorVeins()
     {
         if (!ScatterWiring.Open("금속", out var so, out var rules)) return;
@@ -209,6 +223,11 @@ public static class MetalCreator
         // `WorldContentStreamer.BuiltOn`이 모든 규칙에 대해 답한다(여기 적을 것이 없다).
         ScatterWiring.Set(rules, "바닥 광맥", null, perChunk: 6f, spacing: 14f, regrowDays: 3f,
                           biomes: null, cluster: (1, 1), spread: 0, fromBiomePool: true);
+
+        // **수정동은 바닥에도 결정이 빽빽하다**(2026-10-11) — 위 규칙에 얹힌다. 찍는 것이 스물이면 서는 것은
+        // 예닐곱이라 다른 굴의 세 배쯤이다. 간격을 좁혀야 그 수가 서로 안 걸린다.
+        ScatterWiring.Set(rules, "수정동 결정밭", null, perChunk: 14f, spacing: 7f, regrowDays: 3f,
+                          biomes: CrystalOnly, cluster: (1, 1), spread: 0, fromBiomePool: true);
 
         ScatterWiring.Commit(so);
     }
@@ -252,7 +271,7 @@ public static class MetalCreator
 
     // **풀을 통째로 다시 쓴다 — 더하지 않는다.** 더하면 지상 시절의 배선(은 광맥 등)이
     // 남아 다시 돌릴 때마다 목록이 길어지고, 무엇이 의도이고 무엇이 잔재인지 못 가린다.
-    static void WireBiomes(ResourceNodeData titanium, ResourceNodeData mithril)
+    static void WireBiomes(ResourceNodeData titanium, ResourceNodeData mithril, ResourceNodeData uranium)
     {
         var stone  = Node("Stone");
         var coal   = Node("Node_CoalSeam");
@@ -300,12 +319,22 @@ public static class MetalCreator
         Pool(Biome.Ossuary,    iron, coal, stone, gold, copper);
         // 지저늪 — **여기는 단단한 나무의 자리다.** 광맥은 얇다(균사림과 같은 규칙).
         Pool(Biome.Swamp,      iron, coal, stone);
+        // 지저밀림 — 늪과 같다. **여기는 나무의 자리다**(광맥은 얇다).
+        Pool(Biome.Jungle,     iron, coal, stone);
+        // 기생림 — 벽은 돌뿐. 균사림과 같은 규칙이다(여기는 균류의 자리다).
+        Pool(Biome.Blight,     stone);
 
         // ── 3층 — 은 · 티타늄 · 마법 광물. 셋이 다 여기서 처음 난다. ────────
         Pool(Biome.Glacier,    titanium, iron, coal, stone, silver, sapph, emer);
-        Pool(Biome.Crystal,    titanium, titanium, silver, magic, ruby, sapph, topaz, emer, gold);
+        // 수정동 — **보석의 굴이다**(2026-10-11, 사용자: *"완전 보석 많은 수정 동굴 느낌"*). 풀의 열에 여덟이
+        // 보석·마법 결정이고, 덩어리 자체도 다른 바이옴의 두 배 반으로 촘촘하다(`VeinRichness`).
+        // 티타늄·은은 한 번씩만 남긴다 — 3층 금속이 여기서 끊기면 안 되지만 주인공은 아니다.
+        Pool(Biome.Crystal,    titanium, silver, magic, magic, ruby, ruby, sapph, sapph, topaz, topaz, emer, emer);
+        Rich(Biome.Crystal,    2.5f);
         // 용암층 — 3층의 마른 쪽. **연료와 마법 광물이 몰린다.**
         Pool(Biome.Lava,       coal, coal, ether, magic, ruby, gold, iron, titanium);
+        // 방사굴 — 3층의 병든 쪽. **우라늄이 세계에서 여기서만 난다.** 에테르가 곁들여 난다(빛나는 것들).
+        Pool(Biome.Irradiated, uranium, uranium, uranium, titanium, silver, coal, stone, ether);
 
         // ── 4층 — 미스릴. 아래 것도 나야 **내려와서도 계속 만들 수 있다.** ──
         Pool(Biome.Abyss,      mithril, mithril, voidc, ether, titanium, silver, coal);
@@ -339,6 +368,15 @@ public static class MetalCreator
         }
 
         data.ResourceNodes = list;
+        EditorUtility.SetDirty(data);
+    }
+
+    // 벽 속 광맥이 얼마나 촘촘한가. **풀과 같은 표에 적는다** — 갈라 두면 풀을 고친 날 이쪽이 뒤처진다.
+    static void Rich(Biome b, float richness)
+    {
+        var data = AssetDatabase.LoadAssetAtPath<BiomeContentData>(BiomeDir + "/Biome_" + b + ".asset");
+        if (data == null) return;   // 못 찾은 것은 바로 위 `Pool`이 이미 말했다
+        data.VeinRichness = richness;
         EditorUtility.SetDirty(data);
     }
 

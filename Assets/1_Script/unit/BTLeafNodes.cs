@@ -16,7 +16,7 @@ public static class BTTargetUtil
         if (go == null || !go.activeInHierarchy) return false;
         if (go.GetComponent<Corpse>() != null) return false;   // 죽었으면 더 때릴 것이 없다
 
-        var board = go.GetComponent<UnitBrain>()?.Blackboard;
+        var board = go.TryGetComponent(out UnitBrain goBrain) ? goBrain.Blackboard : null;
 
         // **업힌 사람은 지목해도 못 친다.** 어깨 위에 있어 사거리가 업은 폰과 같아서,
         // 노린 것이 짐인지 사람인지 구별이 안 된다.
@@ -265,12 +265,7 @@ public class DetectNode : BTNode
         return best;
     }
 
-    static bool InPlayerTerritory(Vector3 pos)
-    {
-        foreach (var c in DungeonCore.All)
-            if (c != null && c.IsWithinAnyRangeWorld(pos)) return true;
-        return false;
-    }
+    static bool InPlayerTerritory(Vector3 pos) => DungeonCore.AnyCovers(pos);
 
     const float SwitchMargin = 1.5f;   // 새 후보가 기존 타겟보다 이 배수만큼 가까워야 갈아탄다
 
@@ -295,14 +290,9 @@ public class ManualOrderNode : BTNode
         // 시킨 곳으로 저 혼자 걸어간다**(명령이 살아 있던 것과 같다).
         if (bb.Brain != null && bb.Brain.IsHeldByTaunt)
         {
-            bb.ManualMove   = false;
-            bb.HoldPosition = false;
+            bb.ManualMove = false;
             return BTStatus.Failure;
         }
-
-        // 제자리 대기 명령(원정 집결 등)은 목적지가 없어도 계속 붙든다.
-        // 아래 자동 해제만 있으면 "도착했지만 계속 대기"를 표현할 수 없다 — 도착하는 순간 일하러 간다.
-        if (bb.HoldPosition) return BTStatus.Running;
 
         if (!bb.ManualMove) return BTStatus.Failure;
 
@@ -653,8 +643,7 @@ public class WorkNode : BTNode
     // **다른 폰도 못 가져간다** — 한 명이 멈추는 게 아니라 그 일감이 통째로 죽는다.
     //
     // 길이 막히는 이유는 여러 가지다(노드가 사방으로 둘러싸임, 바닥 밖, 철거로 지형 변화…).
-    // 원인을 다 막기보다 **진행이 없으면 놓는다**로 처리한다 —
-    // `ExpeditionFormation.NudgeStragglers`가 집결에서 쓰는 것과 같은 모양.
+    // 원인을 다 막기보다 **진행이 없으면 놓는다**로 처리한다.
     const float StuckSeconds  = 6f;     // 이만큼 **경로가 안 줄면** 포기
     const float ProgressEpsilon = 0.5f; // 이만큼 줄어야 "가고 있다"고 본다
 

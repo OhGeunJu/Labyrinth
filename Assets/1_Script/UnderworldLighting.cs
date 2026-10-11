@@ -35,10 +35,17 @@ public class UnderworldLighting : MonoBehaviour
     // 때마다의 어둠. **1이 없는 것이 요점이다** — 어느 때에도 지하는 지상의 낮이 아니다.
     //
     // 지상 값(낮 1.0 · 저녁 0.7 · 새벽 0.5 · 밤 0.4)과 견주면 **한 칸씩 아래**다.
+    //
+    // **2026-10-01에 저녁·밤을 더 내렸다**(사용자: *"저녁에는 더 어두워서 횃불이나 불빛이 더
+    // 잘보였으면"*) — 0.48/0.38/0.30 → 0.40/0.32/0.22. 시야도 같은 수를 읽으므로(`Vision`)
+    // 불 없는 밤은 정말로 덜 보이고, **불빛 안은 그대로 낮처럼 본다** — 그 차이가 불을 세우는 이유다.
+    //
+    // **2026-10-11에 화면만 더 내렸다**(사용자: *"폰의 시야를 줄일필요는 없고 전체 기본 밝기를 내리라는 말이야"*) —
+    // 이 값들은 그대로고 `gloom`가 주변광을 한 번 더 누른다. 길을 읽는 것은 불빛과 채광 구멍(`Skylight`)이다.
     public const float LowTide  = 0.62f;   // 낮·아침 — 가장 밝을 때
-    public const float Slack    = 0.48f;   // 저녁
-    public const float Rising   = 0.38f;   // 새벽
-    public const float HighTide = 0.30f;   // 밤 — 밀물이 가장 깊다
+    public const float Slack    = 0.40f;   // 저녁
+    public const float Rising   = 0.32f;   // 새벽
+    public const float HighTide = 0.22f;   // 밤 — 밀물이 가장 깊다
 
     // 지금의 어둠. **`Vision`이 이 값을 쓴다** — 시야와 화면이 같은 수를 봐야
     // *"어두워 보이는데 잘 보인다"*가 안 생긴다.
@@ -50,13 +57,31 @@ public class UnderworldLighting : MonoBehaviour
         _                 => LowTide,
     };
 
+    // 폰의 최저 밝기(주변광이 씬 값 그대로일 때). 셰이더의 `_PawnFloor`가 읽는다.
+    public const float PawnFloor = 0.35f;
+    static readonly int PawnFloorId = Shader.PropertyToID("_PawnFloor");
+
+    // **이 컴포넌트가 없는 자리(편집 중 · 지상)에서는 옛 값이다** — 전역 값은 아무도 안 적으면 0이다.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetPawnFloor() => Shader.SetGlobalFloat(PawnFloorId, PawnFloor);
+
     // 켜져 있나 — `Vision`이 묻는다. **컴포넌트가 아니라 세계가 지하인지로 답한다**(`RockMap`).
     // 씬에 이 컴포넌트를 안 붙였다고 시야만 지상 규칙으로 돌면 그게 가장 나쁘다.
     public static bool Active => RockMap.Enabled;
 
     [Header("주변광 — 밀물이 가장 깊을 때")]
+    // **이름을 `darkest`에서 바꿨다**(2026-10-01) — 씬이 든 옛 값(0.45)이 코드 기본값을 이겨서,
+    // 기본값만 내리면 아무 일도 안 일어난다. 이름이 바뀌면 씬 값이 버려지고 아래 값으로 선다.
     [Tooltip("배율 1(썰물)일 때의 색에 이 배율이 곱해진다. 0에 가까울수록 밤이 깊다.")]
-    [SerializeField, Range(0.1f, 1f)] float darkest = 0.45f;
+    [SerializeField, Range(0.05f, 1f)] float deepest = 0.2f;
+
+    // 씬이 든 주변광(`WorldStreamingSetup`)은 *"무엇이 어디 있는지 보인다"*에 맞춘 값이다. 그 위에 한 번 더
+    // 곱한다 — 씬 값을 고치면 지하를 다시 세울 때마다 되돌아간다.
+    [Header("주변광 — 썰물일 때")]
+    // **이름을 `brightest`에서 바꿨다**(같은 날) — 처음 값 0.6이 씬에 저장돼 있으면 기본값을 내려도 안 바뀐다.
+    // 사용자: *"빛이 안비추는 곳은 엄청 새카맣게 어두웠으면 … 진짜 잘봐야지 실루엣이 보일정도"*.
+    [Tooltip("가장 밝을 때의 주변광에 곱하는 배율. 1이면 씬에 적힌 색 그대로, 0에 가까울수록 불빛 밖이 새카맣다.")]
+    [SerializeField, Range(0.01f, 1f)] float gloom = 0.06f;
 
     [Tooltip("색이 옮겨 가는 속도. 때가 바뀌는 순간 뚝 끊기면 화면이 튄다.")]
     [SerializeField] float lerpSpeed = 0.6f;
@@ -65,6 +90,11 @@ public class UnderworldLighting : MonoBehaviour
     Color _sky, _equator, _ground;
     float _fog;
     float _cur = 1f;
+
+    // 지금 화면이 얼마나 어두운가(0 = 썰물 · 1 = 밀물이 가장 깊을 때). **옮겨 가는 중의 값이다** —
+    // 불빛(`LightSource`)이 이것으로 세기를 올린다. 때(`Tide`)를 바로 읽으면 화면은 아직 저녁인데
+    // 불만 한밤의 세기로 뛴다.
+    public static float Darkness { get; private set; }
 
     void OnEnable()
     {
@@ -80,6 +110,8 @@ public class UnderworldLighting : MonoBehaviour
     // 다음에 씬을 열면 조금씩 더 어두워진다(에디터에서 특히 나쁘다).
     void OnDisable()
     {
+        Darkness = 0f;
+        Shader.SetGlobalFloat(PawnFloorId, PawnFloor);
         RenderSettings.ambientSkyColor     = _sky;
         RenderSettings.ambientEquatorColor = _equator;
         RenderSettings.ambientGroundColor  = _ground;
@@ -99,7 +131,13 @@ public class UnderworldLighting : MonoBehaviour
 
     void Apply(float t)
     {
-        float k = Mathf.Lerp(darkest, 1f, t);
+        Darkness = 1f - t;
+        float k = Mathf.Lerp(deepest, 1f, t) * gloom;
+
+        // **폰도 같이 어두워진다** — 폰 셰이더(`ToonOutline`·`ChibiFace`)는 최저 밝기를 따로 든다. 그것이
+        // 상수였을 때는 굴만 검어지고 폰은 그대로 떠서, 어두운 것이 아니라 *바닥만 검게 칠한 낮*으로 보였다.
+        // **제곱근으로 따라간다** — 굴과 똑같이 내리면 불빛 밖의 폰이 아예 안 보여 집을 수가 없다.
+        Shader.SetGlobalFloat(PawnFloorId, PawnFloor * Mathf.Sqrt(k));
         RenderSettings.ambientSkyColor     = _sky     * k;
         RenderSettings.ambientEquatorColor = _equator * k;
         RenderSettings.ambientGroundColor  = _ground  * k;

@@ -71,7 +71,7 @@
 - `resourceGroup`: `Stone`, `Ore`, `Gem`, `Ingot`, `Wood`, `Currency` (옛 `resourceType`도 받아 묶음으로 옮기고 경고)
 - `requiredSkillType`: `Labor`, `WeaponCrafting`, `ArmorCrafting`, `Cooking`, `Alchemy`, `Research`, `Smelting`, `Stonecutting`, `Woodworking`, `Gemcutting`
 
-**미구현 JSON 타입** (향후 추가 예정): UnitData/MinionData, SubCoreData (프리팹 참조 문제), ResearchData
+**JSON으로 못 넣는 것**: UnitData/MinionData · SubCoreData(프리팹 참조) · ResearchData — 지금 JSON은 아이템·레시피뿐이다.
 
 ## 모드가 그림·모델을 들고 온다 (`ModAssets`, 2026-08-01)
 
@@ -253,7 +253,7 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 
 이제 `Assets/Resources/Data/Buildings/`에 에셋을 두기만 하면 목록에 오른다. 메뉴 순서는 **`Category` → `BuildingData.SortOrder` → 이름** — `Resources.LoadAll`이 순서를 보장하지 않으므로 `SortOrder`가 순서의 유일한 근거다.
 
-**`availableResearch`는 큐레이션용 오버라이드다** — 채우면 그게 이기고, 비우면 전체를 쓴다. "데이터가 없으면 기본 동작"이라는 이 프로젝트의 관례(`BiomeContentData` · `WorldTileVisualData`와 같은 규칙)를 따른다.
+**`availableResearch`는 큐레이션용 오버라이드다** — 채우면 그게 이기고, 비우면 전체를 쓴다. "데이터가 없으면 기본 동작"이라는 이 프로젝트의 관례(`BiomeContentData`와 같은 규칙)를 따른다.
 
 > 2026-07-31 이전에는 `ResearchTable`이 **인스턴스 목록만** 봤다. 씬에 놓인 연구대에만 데이터가 들어가고 나중에 건설하는 연구대는 빈다는 지적으로 고쳤다. 새 작업대/테이블을 만들 때도 같은 규칙을 따를 것 — **인스턴스에는 "무엇을 다루는 테이블인가"만 두고, 목록은 레지스트리에서 끌어온다.**
 

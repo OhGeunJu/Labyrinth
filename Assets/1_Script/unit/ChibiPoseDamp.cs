@@ -22,18 +22,29 @@ public class ChibiPoseDamp : MonoBehaviour
     Transform  _hips, _spine, _head;
     Vector3    _hipsPos;
     Quaternion _hipsRot, _spineRot, _headRot;
+    bool       _ready;
 
-    void Awake()
+    void Awake() => Capture();
+
+    // **기준 자세를 잡는다 — 애니메이터가 돌기 전에 한 번**(돈 뒤에 잡으면 클립의 자세가 기준이 된다).
+    // 판에서는 `Awake`가 부르고, 플레이 밖에서 자세를 찍는 도구(`PawnPoseSheet`)는 세운 직후 직접 부른다.
+    public void Capture()
     {
+        if (_ready) return;
         var rig = GetComponentInChildren<PawnRig>(true);
         if (rig == null || rig.Hips == null || rig.Spine == null) { enabled = false; return; }
         _hips  = rig.Hips;  _hipsPos  = _hips.localPosition; _hipsRot = _hips.localRotation;
         _spine = rig.Spine; _spineRot = _spine.localRotation;
         _head  = rig.Head;  if (_head != null) _headRot = _head.localRotation;
+        _ready = true;
     }
 
-    void LateUpdate()
+    void LateUpdate() => Apply();
+
+    // 애니메이터가 뼈를 움직인 **뒤에** 부른다 — 판에서는 `LateUpdate`, 자세 찍기 도구는 `Animator.Update` 다음.
+    public void Apply()
     {
+        if (!_ready) return;
         var p = _hips.localPosition;
         _hips.localPosition = new Vector3(_hipsPos.x, p.y, _hipsPos.z);   // 높이(쭈그리기)는 남긴다
         _hips.localRotation  = Quaternion.Slerp(_hipsRot,  _hips.localRotation,  BodyFollow);

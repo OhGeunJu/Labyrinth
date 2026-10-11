@@ -37,17 +37,12 @@ public class WorldBand
     // 지도 위 위치(월드 좌표). 격자에 매이지 않는다 — 플레이어 원정대와 같은 규칙이다.
     public Vector3    Position;
 
-    // **칸은 자리에서 나온다 — 따로 들지 않는다.** 옛 화면(`WorldMapView`)이 칸으로 묻는다.
+    // **칸은 자리에서 나온다 — 따로 들지 않는다.**
     public Vector2Int Node => TerrainGrid.RegionAt(Position.x, Position.z);
 
     // 쫓는 중이면 그 지점. 목적지(`Goal`)와 별개다 — 추격을 접으면 원래 가던 곳으로 돌아간다.
     public Vector3 ChaseAt;
     public bool    Chasing;
-
-    // **다가오는 원정대를 기다리는 중.** 적대가 아닌 무리는 도망칠 이유가 없으므로 멈춰 선다.
-    // 없으면 상단·순찰대는 원정대와 속도가 비슷해 **영영 따라잡을 수 없고**, 그러면 지도 위의
-    // 중립 무리는 말을 걸 수 없는 그림이 된다.
-    public bool Waiting;
 
     // **떠돌이 무리는 언제까지 밖에 있나**(게임 초). 지나면 근거지로 돌아가고, 닿으면 병력이
     // 소굴로 복귀한다. 무한정 떠돌게 두면 지도가 무리로 차서 새 무리가 못 나오고
@@ -55,19 +50,9 @@ public class WorldBand
     public float ExpiresAt;
     public bool  Returning;
 
-    // **끌고 다니는 포로.** 싸움에 진 원정대가 여기 실린다 — 진 것이 끝이 아니라 붙잡혀
-    // 어딘가로 끌려가는 것이고, 되찾을 길이 남는다(탈출 · 그 무리를 이겨 구출 · 소굴을 침).
-    //
-    // 폰은 꺼진 채로 산다(원정 나간 멤버와 같은 상태) — 필드맵에 서 있으면 안 되고,
-    // 그렇다고 지워 버리면 이름·스탯·특성이 통째로 사라진다.
-    public readonly List<UnitBrain> Captives = new();
-
     // 상단이 지고 다니는 것. **무리마다 따로 돈다** — 같은 `MerchantData`를 쓰는 상단이
     // 둘이어도 한쪽에서 산 물건이 다른 쪽에서 사라지면 안 된다(`Shop`의 규약 그대로).
     public Shop Shop;
-
-    // 조우 메뉴를 이미 한 번 띄운 상대. 도망친 뒤 같은 프레임에 또 뜨는 것을 막는다.
-    public float NoContactUntil;
 
     public bool IsAlive => Members.Count > 0;
     public int  Count   => Members.Count;
@@ -106,7 +91,7 @@ public class WorldBand
     // 명세에서 무리 하나를 뽑는다. **시드 하나에서 전부 나온다** — 같은 시드면 같은 무리다
     // (마을 후보·매장 자원과 같은 규칙). 무리는 지도에 오래 남지 않으므로 결정성이 화면에
     // 드러날 일은 적지만, 이 저장소의 굴림은 전부 시드에서 나온다는 규약을 깨지 않는다.
-    // **옛 화면용 다리** — `WorldMapView`가 아직 칸으로 부른다. 지역 가운데를 쓴다.
+    // 칸(지역)으로 굴린다 — 소굴이 무리를 내보낼 때(`WorldBandManager`). 지역 가운데를 쓴다.
     public static WorldBand Roll(WorldBandData data, Vector2Int home, int seed)
     {
         var c = TerrainGrid.RegionCenter(home);

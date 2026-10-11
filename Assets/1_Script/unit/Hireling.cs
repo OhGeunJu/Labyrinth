@@ -42,7 +42,7 @@ public class Hireling : MonoBehaviour
     {
         if (unit == null || days <= 0) return;
 
-        var h = unit.GetComponent<Hireling>() ?? unit.gameObject.AddComponent<Hireling>();
+        if (!unit.TryGetComponent(out Hireling h)) h = unit.gameObject.AddComponent<Hireling>();
         float span = days * GameTimeManager.DayDuration;
 
         h.ExpiresAt   = Mathf.Max(h.ExpiresAt, GameTimeManager.Elapsed) + span;

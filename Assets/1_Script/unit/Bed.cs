@@ -422,7 +422,7 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
         // 포로용으로 따로 붙들면 답이 두 벌이 된다. 실제로 그랬다: `Imprisonment.Hold`가
         // 자세를 다시 세우게 만들어 놨었는데, 우리 폰은 `RestNode`가 다시 눕히고 포로는
         // `Hold`가 다시 눕히는 꼴이라 같은 일을 두 곳이 했다.
-        brain.GetComponent<PawnMover>()?.SetSleeping(true, SleepPosition, SleepRotation);
+        if (brain.TryGetComponent(out PawnMover mover)) mover.SetSleeping(true, SleepPosition, SleepRotation);
     }
 
     // ── `ICarrySite` — 업은 것을 받는 자리 ──────────────────────────────────
@@ -503,7 +503,7 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
             // 그때 자세를 풀면 시체가 침대에서 벌떡 일어선 채로 굳는다(`BecomeCorpse`는
             // 죽은 그 순간의 자세로 멈춘다). 비우는 것과 일으키는 것은 다른 일이다.
             if (bed._occupant == unit && !unit.IsDead)
-                unit.GetComponent<PawnMover>()?.SetSleeping(false);
+                if (unit.TryGetComponent(out PawnMover unitMover)) unitMover.SetSleeping(false);
 
             if (bed.AssignedUnit == unit) bed.AssignedUnit = null;
             bed.Vacate(unit);
@@ -551,6 +551,10 @@ public class Bed : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
     public static Bed ClaimFreeFor(UnitBrain unit)
     {
         if (unit == null) return null;
+
+        // **가축은 사람 침대를 저 혼자 안 잡는다**(2026-10-01) — 지쳐 쓰러지는 자리(`CollapseIfExhausted`)가 짐승의 잠자리다.
+        // 손으로 붙이면 눕는다(다친 늑대를 눕히는 길은 남긴다).
+        if (unit.IsTamedBeast) return null;
 
         var  from = unit.transform.position;
         Bed  best = null;

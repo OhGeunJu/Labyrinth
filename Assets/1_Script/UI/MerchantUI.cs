@@ -5,7 +5,7 @@ using UnityEngine.UI;
 using TMPro;
 
 // 상점 창. **어느 상점을 여느냐와 누가 값을 치르느냐는 밖에서 정해 준다** —
-// 필드맵 상인은 `Merchant.OnSelected`로, 월드맵 마을은 `WorldMapView`가 `OpenFor`로 연다.
+// 필드맵 상인은 `Merchant.OnSelected`로 연다.
 // 그래서 이 창은 "창고 상점"과 "원정대 상점"을 구분하지 않는다(`TradeAccount`가 가른다).
 public class MerchantUI : MonoBehaviour
 {
@@ -188,7 +188,6 @@ public class MerchantUI : MonoBehaviour
         if (tidyButton)    tidyButton.onClick.AddListener(TidyStall);
         Merchant.OnSelected              += OpenForMerchant;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
-        GameModeManager.OnModeChanged    += OnGameModeChanged;
 
         // **지갑이 밖에서도 바뀐다.** 사고파는 것 말고도 — 옆에 열린 배낭 창에서 동전 뭉치를
         // 더블클릭하면 잔고가 는다(`InventoryUI.TryClaimCoins`). 구독하지 않으면 `골드: N G`가
@@ -206,10 +205,6 @@ public class MerchantUI : MonoBehaviour
 
     void OnBuildModeChanged(bool active) { if (active) Close(); }
 
-    // 필드에서 상점을 연 채로 M을 누르면 창이 지도 위에 남는다 — 거래 상대가 화면에서
-    // 사라졌는데 창만 살아 있으면 창고 돈으로 지도에서 물건을 사게 된다.
-    void OnGameModeChanged(GameMode mode) => Close();
-
     void Start()
     {
         _selection = Object.FindFirstObjectByType<SelectionManager>();
@@ -221,7 +216,6 @@ public class MerchantUI : MonoBehaviour
         _instance = null;
         Merchant.OnSelected              -= OpenForMerchant;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
-        GameModeManager.OnModeChanged    -= OnGameModeChanged;
         Wallet.OnChanged                 -= OnWalletChanged;
     }
 

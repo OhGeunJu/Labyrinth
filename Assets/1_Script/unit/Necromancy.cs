@@ -54,7 +54,7 @@ public static class Necromancy
         foreach (var go in arrivals)
         {
             if (go == null) continue;
-            var data = go.GetComponent<Faction>()?.Data;
+            var data = go.TryGetComponent(out Faction faction) ? faction.Data : null;
             if (data != null && data.RaisesDead) return data;
         }
         return null;
@@ -100,7 +100,7 @@ public static class Necromancy
             // 적 트리는 탐지·배회(12m)뿐이라, 멀리서 일어난 것은 명령이 없으면 그 자리에서
             // 서성이다 끝난다 — 쳐들어온 무리에게 핵으로 걷게 하는 것과 같은 규칙이다.
             if (core != null)
-                go.GetComponent<PawnMover>()?.SetMoveTarget(core.transform.position);
+                if (go.TryGetComponent(out PawnMover mover)) mover.SetMoveTarget(core.transform.position);
         }
 
         if (risen > 0)
@@ -147,7 +147,7 @@ public static class Necromancy
 
         // **일으킨 세력의 것이 된다.** 해골 프리팹은 망자 소속으로 저작돼 있지만, 교단이
         // 일으켰으면 교단의 것이다 — *누가 일으켰는지가 무리 구성에 보인다*.
-        go.GetComponent<UnitBrain>()?.ChangeFaction(raiser);
+        if (go.TryGetComponent(out UnitBrain goBrain)) goBrain.ChangeFaction(raiser);
 
         Object.Destroy(corpse.gameObject);
         return go;

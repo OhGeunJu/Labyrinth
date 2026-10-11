@@ -11,10 +11,6 @@ using UnityEngine;
 // 값이 두 벌이면 "고용은 싼데 되찾는 건 비싸다"가 설명이 아니라 사고가 된다.
 public static class WorldRansom
 {
-    // 되사는 값은 새로 구하는 값보다 비싸다. 급한 쪽이 우리고, 저쪽은 팔지 않아도 그만이다.
-    // 이 배수가 곧 "차라리 쳐들어간다"의 문턱이다.
-    const float RansomFactor = 1.4f;
-
     // **넘길 때 받는 값은 되찾을 때 내는 값보다 훨씬 적다.**
     //
     // 흥정에서는 **아쉬운 쪽이 손해 본다.** 내가 되찾을 때는 내가 아쉽다(그 사람이 우리
@@ -26,7 +22,7 @@ public static class WorldRansom
     //
     // **숫자로 재 보면 이렇다**(두 종족 모두 기본 등급 D → `BaseWorth` ≈ 4,500):
     //   - 넘기고 받는 값  4,500 × 0.3 ≈ **1,350 G**
-    //   - 되찾는 값       4,500 × 1.4 ≈ **6,300 G**
+    //   - 되찾는 값       4,500 × 1.4 ≈ **6,300 G**(옛 3D 월드맵에서 잡혀간 사람을 되사던 값 — 그 길은 10-09에 걷어냈다)
     //   - 사람 고용가     ≈ **4,500 G**(`PawnSpec.Price`)
     //
     // 즉 **셋을 팔아야 하나를 고용한다.** 이 비율이 두 가지를 지킨다:
@@ -49,20 +45,6 @@ public static class WorldRansom
     static float BaseWorth(UnitBrain u) =>
         PawnSpec.PriceBase + PawnSpec.GradeAverageOf(u) * PawnSpec.PricePerGrade + GearValue(u);
 
-    // 한 사람의 몸값. **흔들림이 없다** — 고용가는 부르는 값이라 사람마다 달라도 되지만,
-    // 몸값은 창을 여닫을 때마다 바뀌면 값이 나올 때까지 여닫게 된다.
-    //
-    // **`negotiator`는 흥정하는 우리 쪽 사람이다**(`Trading.Haggle`) — 몸값은 글자 그대로
-    // 흥정이라 사교가 값을 흔든다. 인자에 기본값을 안 두는 것은 일부러다: 안 넘기면 조용히
-    // 맹탕 값이 나오는 대신 부르는 쪽이 매번 적게 해서, **값을 띄우는 곳과 치르는 곳이 같은
-    // 사람을 넘기도록** 강제한다(둘이 갈리면 "보이는 값과 빠지는 값이 다르다"가 된다).
-    public static int PriceFor(UnitBrain u, UnitBrain negotiator)
-    {
-        if (u == null) return 0;
-        int list = Mathf.Max(1, Mathf.RoundToInt(BaseWorth(u) * RansomFactor));
-        return Trading.Haggle(list, negotiator, buying: true);
-    }
-
     // 붙잡은 사람을 그 세력에 넘기고 받는 값. **방향이 반대다** — 내가 받는 값이라 잘 흥정할수록
     // 올라간다.
     public static int PayoutFor(UnitBrain u, UnitBrain negotiator)
@@ -70,15 +52,6 @@ public static class WorldRansom
         if (u == null) return 0;
         int list = Mathf.Max(1, Mathf.RoundToInt(BaseWorth(u) * PayoutFactor));
         return Trading.Haggle(list, negotiator, buying: false);
-    }
-
-    // **한 사람씩 흥정해서 더한다** — 통째로 더한 뒤 한 번 곱하는 것과 반올림이 달라지므로,
-    // 목록에 적은 낱값의 합이 총액과 어긋나면 안 된다.
-    public static int PriceFor(IEnumerable<UnitBrain> members, UnitBrain negotiator)
-    {
-        int sum = 0;
-        if (members != null) foreach (var m in members) sum += PriceFor(m, negotiator);
-        return sum;
     }
 
     // 걸치고 있는 것의 시세. **등급 배율을 곱한다** — 희귀 철검을 일반 철검 값에 되찾을 수는 없다.
@@ -98,17 +71,6 @@ public static class WorldRansom
         }
         return v;
     }
-
-    // ── 지불 ──────────────────────────────────────────────────────────────────
-    //
-    // **돈은 하나다**(`Wallet`) — 창고에 있는지 배낭에 있는지 묻지 않는다.
-    // 전에는 "배낭 먼저, 그다음 창고"를 여기서 따로 짰는데, 돈을 묻는 곳이 늘 때마다
-    // 그 순서를 다시 짜야 했고 실제로 한 번 어긋났다(`TakeGold`가 전액 아니면 0이라
-    // 부족한 액수를 그대로 넣으면 한 푼도 안 나왔다).
-
-    public static int Available() => Wallet.Balance;
-
-    public static bool TryPay(int amount) => Wallet.TrySpend(amount);
 
     // ── 필드에서 넘긴다 ───────────────────────────────────────────────────────
     //
@@ -148,7 +110,7 @@ public static class WorldRansom
         // **거래는 거래다** — 사람을 돌려보냈으니 그쪽 우호도가 조금 오른다. 죽이는 것과
         // 반대 방향의 길이 있어야 우호도가 **벌칙이 아니라 선택**이 된다(붙잡은 자를 어떻게
         // 처리하느냐가 곧 그 세력과의 관계다).
-        var fd = u.GetComponent<Faction>()?.Data;
+        var fd = u.TryGetComponent(out Faction unitFaction) ? unitFaction.Data : null;
         if (fd != null)
             FactionRelations.Add(fd, FactionRelations.RansomBonus,
                                  $"{u.UnitName}을(를) 몸값을 받고 돌려보냈다");

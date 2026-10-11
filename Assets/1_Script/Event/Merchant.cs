@@ -39,7 +39,7 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
             // (`EventManager.SpawnMerchant`) `UnitBrain.Awake`의 굴림은 그걸 모른다.
             // 저작한 상인(프리팹에 물린 것)도 같은 setter를 지나므로 한 자리로 족하다.
             if (_data != null)
-                GetComponent<UnitBrain>()?.RerollAdulthood(_data.MerchantType.StoryGroup());
+                if (TryGetComponent(out UnitBrain myUnitBrain)) myUnitBrain.RerollAdulthood(_data.MerchantType.StoryGroup());
         }
     }
 
@@ -60,7 +60,7 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
 
     // **파는 사람의 세력** — 우호도가 값에 얹히는 통로다(`Shop.Faction`).
     // 상인은 폰에 붙는 컴포넌트라 소속은 같은 오브젝트의 `Faction`이 이미 알고 있다.
-    FactionData MyFaction => GetComponent<Faction>()?.Data;
+    FactionData MyFaction => TryGetComponent(out Faction faction) ? faction.Data : null;
 
     // 프리팹/씬에서 **손으로 물려 둔** 상품인가 — 역할 기본값이나 스폰 주입으로 채워진 것과
     // 구별한다. 저작한 것은 밖에서 덮으면 안 된다: "이 사람은 늘 이것만 판다"가 성립해야

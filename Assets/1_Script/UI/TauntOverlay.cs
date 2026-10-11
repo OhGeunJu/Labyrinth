@@ -100,8 +100,7 @@ public class TauntOverlay : MonoBehaviour
     // 한 프레임 뒤처져서 뛰는 폰의 선이 등 뒤에 매달린다.
     void LateUpdate()
     {
-        // 지도를 보는 중에는 안 그린다 — 필드의 표시가 월드맵 위에 뜬다.
-        bool draw = GameModeManager.IsField;
+        bool draw = true;
 
         _verts.Clear(); _cols.Clear(); _idx.Clear(); _dead.Clear();
 

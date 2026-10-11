@@ -56,6 +56,42 @@ public class PathGrid
     // 칸을 따라 돌면 되고, 칸 중심은 벽 면에서 이미 반 칸 떨어져 있다.
     bool[] _tight;   // 이 칸이나 맞닿은 칸이 막혔나 — 지름길이 지나가면 안 되는 자리
 
+    // **변이 막힌 칸**(`EdgeWalls` — 얇은 벽, 2026-10-01). 비트 1 북 · 2 동 · 4 남 · 8 서(+y가 북).
+    // 칸 자체는 걸을 수 있고 그 변을 건너는 걸음만 막힌다. **격자는 재사용되므로 굽는 쪽이 칸마다 반드시
+    // 다시 쓴다**(`SetEdges` — 안 쓰면 지난 자리의 벽이 남는다).
+    readonly byte[] _edge;
+    bool _anyEdge;
+
+    public void SetEdges(int x, int y, int mask)
+    {
+        if (!InBounds(x, y)) return;
+        _edge[y * Width + x] = (byte)mask;
+        if (mask != 0) _anyEdge = true;
+    }
+
+    public void ClearEdges()
+    {
+        if (!_anyEdge) return;
+        System.Array.Clear(_edge, 0, _edge.Length);
+        _anyEdge = false;
+    }
+
+    // 한 걸음이 막힌 변을 건너나 — 대각선은 모퉁이를 도는 두 길이 다 트였을 때만(`EdgeWalls.StepOpen`과 같은 규칙).
+    bool EdgeOpen(int from, int to)
+    {
+        if (!_anyEdge) return true;
+        int fx = from % Width, fy = from / Width, tx = to % Width, ty = to / Width;
+        int dx = tx - fx, dy = ty - fy;
+        int h = dx > 0 ? 2 : dx < 0 ? 8 : 0;
+        int v = dy > 0 ? 1 : dy < 0 ? 4 : 0;
+        int m = _edge[from];
+        if (dx == 0 || dy == 0) return (m & (h | v)) == 0;
+
+        int s1 = fy * Width + tx;   // 옆으로 먼저 간 칸
+        int s2 = ty * Width + fx;   // 위아래로 먼저 간 칸
+        return (m & (h | v)) == 0 && (_edge[s1] & v) == 0 && (_edge[s2] & h) == 0;
+    }
+
     // 굽기가 끝난 뒤 한 번 부른다.
     public void BuildClearance()
     {
@@ -64,7 +100,7 @@ public class PathGrid
         for (int y = 0; y < Height; y++)
         for (int x = 0; x < Width;  x++)
             _tight[y * Width + x] =
-                !_walkable[y * Width + x] ||
+                !_walkable[y * Width + x] || _edge[y * Width + x] != 0 ||
                 !IsWalkable(x + 1, y) || !IsWalkable(x - 1, y) ||
                 !IsWalkable(x, y + 1) || !IsWalkable(x, y - 1);
     }
@@ -122,7 +158,7 @@ public class PathGrid
         {
             int i = y * Width + x;
             if (!_walkable[i]) continue;
-            if (Open(x + 1, y) && Open(x - 1, y) && Open(x, y + 1) && Open(x, y - 1)) continue;
+            if (_edge[i] == 0 && Open(x + 1, y) && Open(x - 1, y) && Open(x, y + 1) && Open(x, y - 1)) continue;
 
             // **곱한다** — 벼랑 값을 덮어쓰면 벼랑이면서 벽인 칸이 둘 중 하나만 반영된다.
             _cost[i] *= mult;
@@ -162,6 +198,7 @@ public class PathGrid
     bool Enterable(int from, int to)
     {
         if (!_walkable[to]) return false;
+        if (!EdgeOpen(from, to)) return false;
         if (!UsesHeight) return true;
 
         // 올라갈 때는 **가는 칸**의 한도, 내려갈 때는 **떠나는 칸**의 한도(되돌아 올라올
@@ -196,6 +233,7 @@ public class PathGrid
         _walkable = new bool[n];
         _height  = new float[n];
         _climb   = new float[n];
+        _edge    = new byte[n];
         _g       = new float[n];
         _f       = new float[n];
         _parent  = new int[n];

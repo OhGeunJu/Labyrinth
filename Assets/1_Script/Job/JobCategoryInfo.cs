@@ -22,6 +22,8 @@ public static class JobCategoryInfo
         // 시간이 정한다) — 자리에 넣는 일이 늦으면 붙잡은 것 자체가 없던 일이 된다.
         // 설득 회차도 여기 있다: 게이지가 도중에 줄지는 않지만, 우리 한 칸이 그동안 묶여 있다.
         JobCategory.Warden,
+        // **조련은 간수 바로 뒤다**(2026-10-01) — 같은 우리 앞에서 하는 일이고, 짐승도 깨어나면 탈출을 노린다.
+        JobCategory.Taming,
         // **채굴이 건설보다 먼저다**(2026-08-29, 지하로 엎으면서). 지하에서는 **팔 때까지
         // 지을 자리 자체가 없다** — 청사진을 놓아도 그 칸이 바위면 폰이 갈 수가 없다.
         // 파는 일이 밀리면 그 뒤의 모든 일이 같이 밀린다.
@@ -107,6 +109,7 @@ public static class JobCategoryInfo
         JobCategory.Butcher      => "도축",
         JobCategory.Foraging     => "채집",
         JobCategory.Leveling     => "땅고르기",
+        JobCategory.Taming       => "조련",
         _                        => "-",
     };
 }

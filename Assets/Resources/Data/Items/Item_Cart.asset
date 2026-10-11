@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b296146526b745ee8dfd620eefaf5369, type: 3}
+  m_Name: Item_Cart
+  m_EditorClassIdentifier: Assembly-CSharp::CartData
+  Id: 
+  ItemName: "수레"
+  Description: "가축에게 다는 짐칸. 단 짐승은 120kg을 더 지고 조금 느려지며, 사람이 직접 끌 수 있다. 짐승을 우클릭해 단다(핵 영역 안)."
+  Icon: {fileID: 0}
+  WorldModel: {fileID: 0}
+  Weight: 30
+  Width: 2
+  Height: 2
+  BaseValue: 400
+  CarryBonus: 120
+  SpeedMult: 0.85
+  Model: {fileID: 6589600944301411816, guid: eef1357fe1627e9478543b1ac2e1ffc5, type: 3}
+  ModelLength: 1.6
+  Material: {fileID: 2100000, guid: 042140e3ba98c8b4885cf62a85ac0ea5, type: 2}

@@ -52,6 +52,13 @@ public enum Biome
     Ossuary,    // 납골굴 — 2층. 지하에 묻힌 옛 무덤. 뼈와 돌관
     Sulfur,     // 유황굴 — 4층. 노란 유황과 독한 공기. 용암층 곁의 마른 쪽
     Rift,       // 균열대 — 5층. 세계가 갈라진 자리. 공허결정이 여기서 난다
+
+    // ── 사용자가 더한 셋 (2026-10-11) ───────────────────────────────────
+    //
+    // 층은 사용자가 정했다 — 기생림·지저밀림은 2층, 방사굴은 3층. 2층이 다섯, 3층이 넷이 된다.
+    Blight,     // 기생림 — 2층. 시체에서 버섯이 자란다. 균사림의 병든 쪽
+    Jungle,     // 지저밀림 — 2층. 덥고 젖은 굴에 나무가 빽빽하다
+    Irradiated, // 방사굴 — 3층. 바위가 스스로 빛난다. 병든 연두빛
 }
 
 public static class BiomeExt
@@ -79,6 +86,10 @@ public static class BiomeExt
         Biome.Ossuary    => "납골굴",
         Biome.Sulfur     => "유황굴",
         Biome.Rift       => "균열대",
+
+        Biome.Blight     => "기생림",
+        Biome.Jungle     => "지저밀림",
+        Biome.Irradiated => "방사굴",
 
         _             => b.ToString(),
     };
@@ -108,7 +119,8 @@ public static class BiomeExt
         Biome.Glacier   => new Color(0.55f, 0.80f, 0.95f),   // 3층 — 얼음 하늘빛
         Biome.Crystal   => new Color(0.55f, 0.42f, 0.70f),
         Biome.Mine      => new Color(0.46f, 0.36f, 0.26f),
-        Biome.Abyss     => new Color(0.14f, 0.13f, 0.18f),
+        // **심연은 병든 보라다**(2026-10-11, 사용자: *"심연은 약간 크툴루 느낌"*) — 검정에 가깝되 보랏빛이 돈다.
+        Biome.Abyss     => new Color(0.20f, 0.10f, 0.24f),
 
         // **같은 층끼리 특히 벌린다** — 지도에서 나란히 놓이는 것이 그 셋이라,
         // 층을 넘는 색끼리 비슷한 것보다 **한 층 안에서 헷갈리는 것**이 나쁘다.
@@ -117,6 +129,11 @@ public static class BiomeExt
         Biome.Ossuary    => new Color(0.52f, 0.34f, 0.30f),   // 3층 — 마른 핏빛
         Biome.Sulfur     => new Color(0.85f, 0.75f, 0.20f),   // 4층 — 유황 노랑
         Biome.Rift       => new Color(0.30f, 0.10f, 0.40f),   // 5층 — 짙은 보라
+
+        // 2층의 이웃(늪 진흙 초록 · 납골 핏빛 · 모래)과 벌린다 — 밀림은 **맑은** 초록, 기생림은 살빛 자주.
+        Biome.Blight     => new Color(0.74f, 0.32f, 0.56f),   // 2층 — 살빛 자주
+        Biome.Jungle     => new Color(0.08f, 0.70f, 0.28f),   // 2층 — 맑은 초록
+        Biome.Irradiated => new Color(0.66f, 0.92f, 0.18f),   // 3층 — 병든 연두
 
         _            => new Color(0.28f, 0.28f, 0.30f),
     };
@@ -153,7 +170,7 @@ public static class BiomeExt
         Biome.Glacier   => new Color(0.70f, 0.88f, 1.00f),   // 빙하굴 — 얼음 푸른빛
         Biome.Crystal   => new Color(0.74f, 0.58f, 1.00f),   // 수정동 — 보랏빛
         Biome.Lava      => new Color(0.90f, 0.38f, 0.26f),   // 용암층 — 붉게 그을렸다
-        Biome.Abyss     => new Color(0.24f, 0.22f, 0.30f),   // 심연 — 여기만 어둡다
+        Biome.Abyss     => new Color(0.34f, 0.20f, 0.40f),   // 심연 — 여기만 어둡다. 멍든 살빛 보라(크툴루)
         Biome.Desert    => new Color(0.95f, 0.82f, 0.55f),   // 모래굴 — 마른 모래빛
         Biome.Swamp     => new Color(0.55f, 0.68f, 0.45f),   // 지저늪 — 이끼 낀 진흙
 
@@ -162,6 +179,10 @@ public static class BiomeExt
         Biome.Ossuary    => new Color(0.85f, 0.75f, 0.62f),   // 납골굴 — 마른 뼈빛
         Biome.Sulfur     => new Color(0.95f, 0.85f, 0.30f),   // 유황굴 — 노랗게 절었다
         Biome.Rift       => new Color(0.55f, 0.35f, 0.85f),   // 균열대 — 수정동보다 짙다
+
+        Biome.Blight     => new Color(0.90f, 0.55f, 0.66f),   // 기생림 — 균사가 덮은 살빛
+        Biome.Jungle     => new Color(0.48f, 0.86f, 0.42f),   // 지저밀림 — 덩굴이 덮은 벽
+        Biome.Irradiated => new Color(0.78f, 1.00f, 0.38f),   // 방사굴 — 연두로 절었다
 
         _               => new Color(0.70f, 0.73f, 0.80f),
     };

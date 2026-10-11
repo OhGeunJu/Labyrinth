@@ -139,10 +139,13 @@ public static class RockMap
 
     public static bool IsBedrock(Vector2Int tile) => Enabled && InBorder(tile);
 
+    // **층 사이도 기반암이다**(2026-10-01, `Floors.IsSeam`) — 층은 한 평면에 나란히 놓인 사분면이라 막지 않으면 캐서
+    // 옆 층으로 넘어간다. 세계 테두리와 같은 두께 · 같은 문(캐는 문 셋이 전부 여기를 본다).
     static bool InBorder(Vector2Int t)
     {
         int w = TerrainGrid.WorldSize;
-        return t.x < BorderTiles || t.y < BorderTiles || t.x >= w - BorderTiles || t.y >= w - BorderTiles;
+        return t.x < BorderTiles || t.y < BorderTiles || t.x >= w - BorderTiles || t.y >= w - BorderTiles
+            || Floors.IsSeam(t.x, t.y);
     }
 
     public static bool IsBedrock(Vector3 world)
@@ -263,6 +266,11 @@ public static class RockMap
         if (!Enabled) return true;                  // 지상이면 어디든 열려 있다
         if (!IsRock(world)) return true;
 
+        // **층을 안 넘는다**(2026-10-06). 층 사이 기반암 이음매는 6m라, 경계 근처의 바위에서 고리를 넓히다
+        // **옆 층의 굴을 먼저 만날 수 있다** — 그러면 무리가 안 보이는 층에 서고(안개가 가린다) 포탈로 넘은
+        // 폰이 다른 층에 떨어진다. 밖에서 온 것이 설 자리를 묻는 문이 여기 하나라 여기서 막는다.
+        int floor = Floors.At(world);
+
         for (float r = OpenProbeStep; r <= maxRadius; r += OpenProbeStep)
         {
             // 고리 하나를 도는 데 필요한 만큼만 굴린다 — 반경이 커도 눈금이 일정하다.
@@ -276,6 +284,7 @@ public static class RockMap
                 if (p.x < 1f || p.z < 1f || p.x > TerrainGrid.WorldSize - 1f || p.z > TerrainGrid.WorldSize - 1f)
                     continue;
 
+                if (Floors.At(p) != floor) continue;
                 if (IsRock(p)) continue;
                 found = p;
                 return true;
@@ -582,7 +591,8 @@ public static class RockMap
         // ① 덩어리 안인가
         float n = Mathf.PerlinNoise((tile.x + 0.5f) / VeinPeriod + 91.7f,
                                     (tile.y + 0.5f) / VeinPeriod + 43.1f);
-        if (n < 1f - VeinDensity) return null;
+        // **가장 촘촘한 바이옴으로도 덩어리 밖이면 바이옴을 안 묻는다** — 칸 대부분이 여기서 끝난다.
+        if (n < 1f - VeinDensity * BiomeContentData.MaxVeinRichness) return null;
 
         // ② 이 바이옴의 풀에서 하나 — **`string.GetHashCode`를 안 쓴다**(실행마다 달라진다).
         var map = MapManager.Instance;
@@ -592,6 +602,9 @@ public static class RockMap
         var content = BiomeContent.Get(WorldMap.BiomeAtWorld(new Vector2(w.x, w.z)));
         var pool    = content != null ? content.ResourceNodes : null;
         if (pool == null || pool.Count == 0) return null;
+
+        // 덩어리 문턱은 바이옴이 민다(`BiomeContentData.VeinRichness` — 수정동은 촘촘하다).
+        if (n < 1f - VeinDensity * content.VeinRichness) return null;
 
         int h = tile.x * 73856093 ^ tile.y * 19349663;
         return pool[Mathf.Abs(h) % pool.Count];

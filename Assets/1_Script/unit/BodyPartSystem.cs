@@ -408,7 +408,7 @@ public class BodyPartSystem : MonoBehaviour
         _koTimer = 0f;
 
         // BT가 정지하므로 전투/이동은 여기서 직접 꺼야 함 (기절 중 공격 지속 방지)
-        GetComponent<CombatHandler>()?.ExitCombat();
+        if (TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
         _mover?.StopMovement();
 
         // 눕는 포즈 — CharacterController 캡슐은 회전을 안 따라가므로 충돌은 그대로

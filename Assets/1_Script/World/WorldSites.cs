@@ -90,16 +90,6 @@ public static class WorldSites
         foreach (var s in _all) if (s.Kind == kind) yield return s;
     }
 
-    // **옛 화면용 다리 — 여기 하나다.** `WorldMapView`·`TownMarket`·`TownRecruits`가 아직 칸으로
-    // 묻는다. 세 곳이 각자 칸→장소를 풀면 답이 세 벌이 된다.
-    public static Site InRegion(WorldNodeContent kind, Vector2Int region)
-    {
-        Ensure();
-        foreach (var s in _all)
-            if (s.Kind == kind && TerrainGrid.RegionAt(s.Position.x, s.Position.y) == region) return s;
-        return default;
-    }
-
     public static Site ById(string id)
     {
         Ensure();

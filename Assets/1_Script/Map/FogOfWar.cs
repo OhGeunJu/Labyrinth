@@ -77,15 +77,59 @@ public class FogOfWar : MonoBehaviour
     const int Window = 512;      // 텍스처 창 한 변(칸 = m)
     const int WindowSnap = 32;   // 창이 이만큼씩만 움직인다 — 매 프레임 따라가면 창 전체를 매번 다시 옮긴다
 
-    int _world;
-    byte[] _target;              // 이번에 잰 보임(0~255)
-    byte[] _current;             // 흐려지며 따라가는 보임
-    byte[] _explored;            // 가 본 곳 — **줄지 않는다**(_current의 최댓값)
-    bool[] _active;              // _current나 _target이 0이 아닌 칸
-    readonly List<int> _activeList = new();
-    readonly List<int> _litNow = new();
+    // **층마다 한 묶음**(2026-10-01, `Floors`). 세계가 4,096m가 되면서 칸마다 네 배열을 세계 전체로 잡으면 67MB였다 —
+    // 층 사이는 기반암이라 시야가 안 넘어간다. 그래서 묶음은 **층 안 칸**으로 색인하고, **가 본 곳**은 그 층을 처음
+    // 물을 때(지도가 볼 때도) · **시야 배열**은 그 층에 내 폰이 처음 설 때 잡는다. 아무도 안 간 층은 가 본 곳 한 장(4MB)뿐이다.
+    class Layer
+    {
+        public int OX, OZ;               // 층의 남서 모서리(세계 칸)
+        public byte[] Target;            // 이번에 잰 보임(0~255) — 시야가 처음 닿을 때 잡는다
+        public byte[] Current;           // 흐려지며 따라가는 보임
+        public bool[] Active;            // Current나 Target이 0이 아닌 칸
+        public byte[] Explored;          // 가 본 곳 — **줄지 않는다**(Current의 최댓값)
+        public readonly List<int> ActiveList = new();
+        public readonly List<int> LitNow = new();
+        public RectInt Dirty;            // 가 본 곳이 늘어난 범위(층 안 칸)
+        public bool HasDirty;
+    }
+
+    int _world;                          // 층 한 변(칸)
+    readonly Layer[] _layers = new Layer[Floors.Count + 1];
+
+    Layer LayerOf(int floor, bool create)
+    {
+        floor = Mathf.Clamp(floor, 1, Floors.Count);
+        var l = _layers[floor];
+        if (l != null || !create) return l;
+        var o = Floors.TileOrigin(floor);
+        l = new Layer { OX = o.x, OZ = o.y, Explored = new byte[_world * _world] };
+        _layers[floor] = l;
+        return l;
+    }
+
+    static void EnsureSight(Layer l, int n)
+    {
+        if (l.Target != null) return;
+        l.Target  = new byte[n];
+        l.Current = new byte[n];
+        l.Active  = new bool[n];
+    }
+
+    // 세계 칸 → (층, 층 안 색인). 세계 밖이면 거짓.
+    bool Index(int x, int z, bool create, out Layer layer, out int i)
+    {
+        layer = null; i = 0;
+        if ((uint)x >= TerrainGrid.WorldSize || (uint)z >= TerrainGrid.WorldSize) return false;
+        layer = LayerOf(Floors.At(new Vector2Int(x, z)), create);
+        if (layer == null) return false;
+        int lx = x - layer.OX, lz = z - layer.OZ;
+        if ((uint)lx >= _world || (uint)lz >= _world) return false;
+        i = lz * _world + lx;
+        return true;
+    }
 
     Texture2D _tex;
+    Layer _lastUploaded;
     Vector2Int _origin = new(int.MinValue, int.MinValue);
     bool _texDirty = true;
 
@@ -110,8 +154,8 @@ public class FogOfWar : MonoBehaviour
         if (f == null || !f.isActiveAndEnabled) return 1f;
 
         int x = Mathf.FloorToInt(world.x), z = Mathf.FloorToInt(world.z);
-        if ((uint)x >= f._world || (uint)z >= f._world) return 0f;
-        return f._current[z * f._world + x] / 255f;
+        if (!f.Index(x, z, false, out var l, out int i) || l.Current == null) return 0f;
+        return l.Current[i] / 255f;
     }
 
     // **가 본 적이 있나**(0~1, 줄지 않는다). 지도 창이 쓴다 — 화면은 검은데 지도에 길이
@@ -120,8 +164,8 @@ public class FogOfWar : MonoBehaviour
     {
         var f = Instance;
         if (f == null || !f.isActiveAndEnabled) return 1f;
-        if ((uint)x >= f._world || (uint)z >= f._world) return 0f;
-        return f._explored[z * f._world + x] / 255f;
+        if (!f.Index(x, z, false, out var l, out int i)) return 0f;
+        return l.Explored[i] / 255f;
     }
 
     public static float ExploredAt(Vector3 world) =>
@@ -129,32 +173,38 @@ public class FogOfWar : MonoBehaviour
 
     // **가 본 곳이 늘어난 범위** — 지도가 가져가며 비운다. 지도가 1초마다 세계 전체(백만 칸)를
     // 다시 굽던 것을 **바뀐 사각형만** 굽게 하는 장치다(2026-09-15, 코드 리뷰).
-    RectInt _exploredDirty;
-    bool    _hasExploredDirty;
-
-    void GrowExploredDirty(int i)
+    // **층마다 따로 모은다**(층 안 칸) — 지도는 보는 층의 것만 가져간다.
+    void GrowExploredDirty(Layer l, int i)
     {
         int x = i % _world, z = i / _world;
-        if (!_hasExploredDirty) { _exploredDirty = new RectInt(x, z, 1, 1); _hasExploredDirty = true; return; }
-        int xMin = Mathf.Min(_exploredDirty.xMin, x), zMin = Mathf.Min(_exploredDirty.yMin, z);
-        int xMax = Mathf.Max(_exploredDirty.xMax, x + 1), zMax = Mathf.Max(_exploredDirty.yMax, z + 1);
-        _exploredDirty = new RectInt(xMin, zMin, xMax - xMin, zMax - zMin);
+        if (!l.HasDirty) { l.Dirty = new RectInt(x, z, 1, 1); l.HasDirty = true; return; }
+        int xMin = Mathf.Min(l.Dirty.xMin, x), zMin = Mathf.Min(l.Dirty.yMin, z);
+        int xMax = Mathf.Max(l.Dirty.xMax, x + 1), zMax = Mathf.Max(l.Dirty.yMax, z + 1);
+        l.Dirty = new RectInt(xMin, zMin, xMax - xMin, zMax - zMin);
     }
 
-    public static bool TakeExploredDirty(out RectInt rect)
+    // 그 층의 가 본 곳이 늘어난 범위(**층 안 칸**)를 가져가며 비운다.
+    public static bool TakeExploredDirty(int floor, out RectInt rect)
     {
         var f = Instance;
         rect = default;
-        if (f == null || !f._hasExploredDirty) return false;
-        rect = f._exploredDirty;
-        f._hasExploredDirty = false;
+        var l = f != null ? f.LayerOf(floor, false) : null;
+        if (l == null || !l.HasDirty) return false;
+        rect = l.Dirty;
+        l.HasDirty = false;
         return true;
     }
 
     // **가 본 곳 배열을 그대로 준다** — 지도가 칸마다 `ExploredAt`을 부르면 백만 번의 속성 확인이다.
     // 안개가 없으면 `null`(= 전부 가 봤다). **읽기만 할 것.**
-    public static byte[] ExploredRaw =>
-        Instance != null && Instance.isActiveAndEnabled ? Instance._explored : null;
+    // **층마다**(층 안 칸 · 한 변 `Floors.Size`) — 안개가 있으면 그 층을 처음 물어도 빈 배열을 잡아 준다(*"안 가 본
+    // 층"*은 검게 그려져야 한다).
+    public static byte[] ExploredRaw(int floor)
+    {
+        var f = Instance;
+        if (f == null || !f.isActiveAndEnabled) return null;
+        return f.LayerOf(floor, true).Explored;
+    }
 
     // 남의 것이 지금 보이는 자리인가 — 폰을 가리는 문턱과 같은 값을 쓴다(지도와 화면이 갈리지 않게).
     public static bool IsVisible(Vector3 world) => VisibilityAt(world) >= HideBelow;
@@ -178,11 +228,8 @@ public class FogOfWar : MonoBehaviour
         }
 
         Instance = this;
-        _world   = TerrainGrid.WorldSize;
-        _target  = new byte[_world * _world];
-        _current = new byte[_world * _world];
-        _active  = new bool[_world * _world];
-        _explored = new byte[_world * _world];
+        _world   = Floors.Size;
+        System.Array.Clear(_layers, 0, _layers.Length);
 
         // **두 채널이다** — R = 가 봤나 · G = 지금 보나. 밝기 둘을 셰이더가 섞으므로
         // 인스펙터에서 바꾸면 바로 반영된다(CPU가 섞어 구우면 다시 구울 때까지 안 바뀐다).
@@ -206,7 +253,7 @@ public class FogOfWar : MonoBehaviour
         if (_tex != null) Destroy(_tex);
         if (_mat != null) Destroy(_mat);
         _tex = null; _mat = null; _pass = null;
-        _activeList.Clear(); _litNow.Clear();
+        System.Array.Clear(_layers, 0, _layers.Length);
         if (Instance == this) Instance = null;
     }
 
@@ -238,8 +285,12 @@ public class FogOfWar : MonoBehaviour
     // 지난번에 켠 칸의 목표를 끄고, 내 폰마다 다시 켠다.
     void MeasureSight()
     {
-        foreach (int i in _litNow) _target[i] = 0;
-        _litNow.Clear();
+        foreach (var l in _layers)
+        {
+            if (l == null || l.Target == null) continue;
+            foreach (int i in l.LitNow) l.Target[i] = 0;
+            l.LitNow.Clear();
+        }
 
         var map = MapManager.Instance;
         var all = UnitBrain.All;
@@ -313,42 +364,50 @@ public class FogOfWar : MonoBehaviour
 
     void Light(int x, int y, float dist)
     {
-        if ((uint)x >= _world || (uint)y >= _world) return;
-
         float soft = Mathf.Max(0.01f, edgeSoftness);
         float v = Mathf.Clamp01((sightRadius - dist) / soft);
         byte b = (byte)(v * 255f);
         if (b == 0) return;
 
-        int i = y * _world + x;
-        if (_target[i] == 0) _litNow.Add(i);
-        if (b > _target[i]) _target[i] = b;
+        if (!Index(x, y, true, out var l, out int i)) return;
+        EnsureSight(l, _world * _world);
 
-        if (!_active[i]) { _active[i] = true; _activeList.Add(i); }
+        if (l.Target[i] == 0) l.LitNow.Add(i);
+        if (b > l.Target[i]) l.Target[i] = b;
+
+        if (!l.Active[i]) { l.Active[i] = true; l.ActiveList.Add(i); }
     }
 
     // 켜진 칸들이 목표를 따라간다. 둘 다 0이 된 칸은 목록에서 뺀다.
     void Fade(float dt)
     {
         int step = Mathf.Max(1, Mathf.RoundToInt(255f * dt / Mathf.Max(0.01f, fadeSeconds)));
+        int viewing = Floors.Current;
 
-        for (int k = _activeList.Count - 1; k >= 0; k--)
+        for (int f = 1; f < _layers.Length; f++)
         {
-            int i = _activeList[k];
-            int cur = _current[i], tgt = _target[i];
+            var l = _layers[f];
+            if (l == null || l.Target == null) continue;
+            var list = l.ActiveList;
 
-            if (cur < tgt)      cur = Mathf.Min(tgt, cur + step);
-            else if (cur > tgt) cur = Mathf.Max(tgt, cur - step);
-
-            if (cur != _current[i]) { _current[i] = (byte)cur; _texDirty = true; }
-            if (cur > _explored[i]) { _explored[i] = (byte)cur; GrowExploredDirty(i); }
-
-            if (cur == 0 && tgt == 0)
+            for (int k = list.Count - 1; k >= 0; k--)
             {
-                _active[i] = false;
-                int last = _activeList.Count - 1;
-                _activeList[k] = _activeList[last];
-                _activeList.RemoveAt(last);
+                int i = list[k];
+                int cur = l.Current[i], tgt = l.Target[i];
+
+                if (cur < tgt)      cur = Mathf.Min(tgt, cur + step);
+                else if (cur > tgt) cur = Mathf.Max(tgt, cur - step);
+
+                if (cur != l.Current[i]) { l.Current[i] = (byte)cur; if (f == viewing) _texDirty = true; }
+                if (cur > l.Explored[i]) { l.Explored[i] = (byte)cur; GrowExploredDirty(l, i); }
+
+                if (cur == 0 && tgt == 0)
+                {
+                    l.Active[i] = false;
+                    int last = list.Count - 1;
+                    list[k] = list[last];
+                    list.RemoveAt(last);
+                }
             }
         }
     }
@@ -364,6 +423,10 @@ public class FogOfWar : MonoBehaviour
             Mathf.FloorToInt((cp.x - Window * 0.5f) / WindowSnap) * WindowSnap,
             Mathf.FloorToInt((cp.z - Window * 0.5f) / WindowSnap) * WindowSnap);
 
+        // **보는 층의 것만 올린다** — 창이 층 경계를 넘으면 그 너머는 기반암이고 검게 둔다.
+        var layer = LayerOf(Floors.Current, true);
+        if (layer != _lastUploaded) { _lastUploaded = layer; _texDirty = true; }
+
         if (origin != _origin) { _origin = origin; _texDirty = true; }
         if (!_texDirty) return;
         _texDirty = false;
@@ -371,20 +434,20 @@ public class FogOfWar : MonoBehaviour
         var data = _tex.GetPixelData<byte>(0);   // RG16 = 칸마다 두 바이트(R, G)
         for (int ty = 0; ty < Window; ty++)
         {
-            int wy = _origin.y + ty;
+            int ly = _origin.y + ty - layer.OZ;
             int row = ty * Window * 2;
-            if ((uint)wy >= _world)
+            if ((uint)ly >= _world)
             {
                 for (int tx = 0; tx < Window * 2; tx++) data[row + tx] = 0;
                 continue;
             }
-            int src = wy * _world;
+            int src = ly * _world;
             for (int tx = 0; tx < Window; tx++)
             {
-                int wx = _origin.x + tx;
-                bool inWorld = (uint)wx < _world;
-                data[row + tx * 2]     = inWorld ? _explored[src + wx] : (byte)0;
-                data[row + tx * 2 + 1] = inWorld ? _current[src + wx]  : (byte)0;
+                int lx = _origin.x + tx - layer.OX;
+                bool inFloor = (uint)lx < _world;
+                data[row + tx * 2]     = inFloor ? layer.Explored[src + lx] : (byte)0;
+                data[row + tx * 2 + 1] = inFloor && layer.Current != null ? layer.Current[src + lx] : (byte)0;
             }
         }
         _tex.Apply(false, false);
@@ -397,6 +460,7 @@ public class FogOfWar : MonoBehaviour
 
     void ApplyPawnHiding()
     {
+        int viewing = Floors.Current;
         var all = UnitBrain.All;
         for (int k = 0; k < all.Count; k++)
         {
@@ -406,16 +470,28 @@ public class FogOfWar : MonoBehaviour
             bool mine = bb != null && bb.Faction != null && bb.Faction.IsPlayer;
 
             // **업힌 몸은 업은 사람을 따른다** — 내 폰이 업고 오는 적이 어깨 위에서 사라지면 안 된다.
-            bool hide = !mine && VisibilityAt(brain.transform.position) < HideBelow
-                        && (bb == null || bb.CarriedBy == null);
+            // **보는 층 밖은 누구든 가린다**(2026-10-01, `Floors`) — 그 층의 땅은 안 서 있으므로(스트리밍이 보는 층만 세운다)
+            // 층 경계 가까이서 옆 층의 폰이 허공에 떠 보인다. 내 폰도 — 다른 층에 둔 거점의 일꾼이다.
+            bool otherFloor = Floors.At(brain.transform.position) != viewing;
+            bool hide = otherFloor
+                     || (!mine && VisibilityAt(brain.transform.position) < HideBelow
+                         && (bb == null || bb.CarriedBy == null));
 
             if (hide)
             {
                 _hidden.Add(brain);
                 SetShown(brain, false);   // 매번 다시 건다 — 그사이 손에 든 도구가 생겼을 수 있다
             }
-            else if (_hidden.Remove(brain))
-                SetShown(brain, true);
+            else
+            {
+                if (_hidden.Remove(brain)) SetShown(brain, true);
+
+                // **보였으면 만난 것이다**(`FactionRelations.Meet` — 세력 창이 이것으로 찬다).
+                // 업혀 온 몸은 안 센다 — 그건 내가 찾아간 것이 아니라 들고 온 것이다.
+                if (!mine && bb != null && bb.CarriedBy == null && bb.Faction != null
+                    && VisibilityAt(brain.transform.position) >= HideBelow)
+                    FactionRelations.Meet(bb.Faction.Data);
+            }
         }
 
         // 목록에서 빠진 폰(시체·파괴·원정)은 풀어 준다.

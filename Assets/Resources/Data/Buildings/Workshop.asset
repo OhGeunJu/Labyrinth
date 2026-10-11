@@ -13,18 +13,19 @@ MonoBehaviour:
   m_Name: Workshop
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: workshop
-  BuildingName: "\uC791\uC5C5\uC7A5"
+  BuildingName: 11x8
   Description: "11\xD78 \xB7 \uC548\uCABD 9\xD76\uCE78. \uC791\uC5C5\uB300\uB97C
     \uC5EC\uB7FF \uB4E4\uC5EC\uB193\uB294 \uB113\uC740 \uC9D1. \uC55E \uD55C\uBCF5\uD310\uC774
     \uD1B5\uC9F8\uB85C \uBB38\uC774\uB2E4."
   Category: 2
-  SortOrder: 25
+  SortOrder: 88
   Size: {x: 11, y: 8}
   Costs:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
     Amount: 25
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 20
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 0
@@ -47,3 +48,4 @@ MonoBehaviour:
   - '#.........#'
   - '#.........#'
   - '####...####'
+  EdgeWall: 0

@@ -29,16 +29,29 @@ public static class BiomeMapGenerator
     static bool Underground(Biome b) => b is Biome.Fungal or Biome.Mossgrotto
                                           or Biome.Cavern or Biome.Mine
                                           or Biome.Swamp or Biome.Ossuary or Biome.Desert
+                                          or Biome.Jungle or Biome.Blight
                                           or Biome.Glacier or Biome.Crystal or Biome.Lava
+                                          or Biome.Irradiated
                                           or Biome.Abyss;
 
+    // **층 넷을 다 깐다**(2026-10-01, `Floors`) — 층 지도마다 한 번씩. 그린 층(1층)은 그림 그대로, 칠한 층은 안
+    // 건드리고, 나머지는 그 층의 티어 바이옴으로 굴린다. 층 지도가 없으면 `World → 0d. Create Floor Maps`를 먼저.
     [MenuItem("DungeonColony/Terrain/8. Generate Biome Map")]
     static void Generate()
     {
-        var view = Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include);
-        var so   = view != null ? new SerializedObject(view) : null;
-        var data = so?.FindProperty("mapData")?.objectReferenceValue as WorldMapData;
+        bool any = false;
+        for (int f = 1; f <= Floors.Count; f++)
+        {
+            var d = WorldMap.FloorData(f);
+            if (d == null) { Debug.LogWarning($"[바이옴] {f}층 지도가 없다 — `World → 0d. Create Floor Maps`를 돌릴 것."); continue; }
+            GenerateFloor(d);
+            any = true;
+        }
+        if (!any) Debug.LogWarning("[바이옴] 씬의 WorldMap에 층 지도가 하나도 안 물려 있다.");
+    }
 
+    static void GenerateFloor(WorldMapData data)
+    {
         if (data == null) { Debug.LogWarning("[바이옴] 씬의 WorldMap에 mapData가 안 물려 있다."); return; }
         if (!data.IsSized) { Debug.LogWarning("[바이옴] mapData의 배열이 Width x Height와 어긋난다."); return; }
 
@@ -259,6 +272,9 @@ public static class BiomeMapGenerator
         ['Y'] = Biome.Crystal,     // 수정동
         ['L'] = Biome.Lava,        // 용암층
         ['A'] = Biome.Abyss,       // 심연
+        ['J'] = Biome.Jungle,      // 지저밀림
+        ['B'] = Biome.Blight,      // 기생림
+        ['R'] = Biome.Irradiated,  // 방사굴
     };
 
     // 1층 — 사용자가 그린 그림. 북서 균사림 · 북동 이끼굴 · 남서 동굴 · **한복판과 남동 폐광**.
@@ -309,13 +325,16 @@ public static class BiomeMapGenerator
     {
         Biome.Fungal,     // 1층 — 균사가 자란다, 지하의 숲. **1층의 한복판**
         Biome.Swamp,      // 2층 — 고인 물과 진흙. **2층의 한복판**
+        Biome.Jungle,     // 2층 — 덥고 젖었다. 늪 곁이다
         Biome.Mossgrotto, // 1층 — 물이 스며 이끼가 덮였다
         Biome.Glacier,    // 3층 — 얼어붙은 물. **3층의 한복판**
         Biome.Cavern,     // 1층 — 그 밖의 평범한 굴
+        Biome.Blight,     // 2층 — 시체에서 버섯이 자란다. **밀림과 납골굴 사이**(둘레에서 이웃이 된다)
         Biome.Ossuary,    // 2층 — 마른 무덤, 물길에서 비켜 있다
         Biome.Crystal,    // 3층 — 차고 마른 곳
         Biome.Mine,       // 1층 — 사람이 팠던 자리
         Biome.Desert,     // 2층 — 물이 말랐다
+        Biome.Irradiated, // 3층 — 마르고 병들었다
         Biome.Lava,       // 3층 — 마르고 뜨겁다
         Biome.Abyss,      // 4층 — 가장 깊은 곳. 지도 전체가 여기다
     };

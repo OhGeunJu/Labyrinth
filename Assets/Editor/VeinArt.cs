@@ -117,6 +117,8 @@ public static class VeinArt
         new Vein { Name = "Node_TitaniumVein", Shape = Shape.Ore, Ore = C(0x8FB2CC), Metal = 0.95f, Gloss = 0.74f },
         // 미스릴만 금속인데 빛난다 — 5층의 물건이라 눈에 띄어야 한다.
         new Vein { Name = "Node_MithrilVein",  Shape = Shape.Ore, Ore = C(0xB8ECFF), Metal = 0.90f, Gloss = 0.88f, Glow = true },
+        // 우라늄도 빛난다 — 방사굴의 광석이라 연두로 스스로 빛나야 그것으로 읽힌다.
+        new Vein { Name = "Node_UraniumVein",  Shape = Shape.Ore, Ore = C(0x9BEA2E), Metal = 0.85f, Gloss = 0.70f, Glow = true },
 
         // ── 보석·마법 결정 — 뾰족한 기둥 다발. **금속이 아니다**(유전체)
         new Vein { Name = "Node_RubyVein",     Shape = Shape.Crystal, Ore = C(0xE0263F), Gloss = 0.85f },
@@ -307,7 +309,7 @@ public static class VeinArt
         if (v.Shape != Shape.Pebbles)
         {
             // **있으면 그대로 쓴다** — 다시 달면 인스펙터에서 맞춰 둔 값이 날아간다.
-            var node = root.GetComponent<ResourceNode>() ?? root.AddComponent<ResourceNode>();
+            if (!root.TryGetComponent(out ResourceNode node)) node = root.AddComponent<ResourceNode>();
             if (data != null)
                 SerializedWrite.Set(node, so => so.FindProperty("data").objectReferenceValue = data);
         }

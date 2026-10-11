@@ -175,7 +175,7 @@ public class BuildingRoof : MonoBehaviour
         if (BuildModeManager.IsActive) return true;
 
         var map = MapManager.Instance;
-        var data = GetComponent<PlacedBuilding>()?.Data;
+        var data = TryGetComponent(out PlacedBuilding placed) ? placed.Data : null;
         if (map == null || data == null) return false;
 
         // 안쪽 = 발자국에서 **막는 칸을 뺀 것**. 벽 칸에 선 폰은 안에 있는 것이 아니다.

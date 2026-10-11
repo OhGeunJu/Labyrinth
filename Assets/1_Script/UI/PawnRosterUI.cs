@@ -127,7 +127,7 @@ public class PawnRosterUI : MonoBehaviour
         List<UnitBrain> gone = null;
         foreach (var kv in _rows)
         {
-            // **원정 나간 폰은 명부에서 뺀다.** 나간 폰은 GameObject가 꺼져 있어(`ExpeditionFormation`)
+            // **밖에 나간 폰은 명부에서 뺀다**(상단이 포탈 너머에 있는 동안). 나간 폰은 GameObject가 꺼져 있어
             // 클릭해도 선택·명령이 안 된다 — 남겨두면 죽은 줄이 되고, 상태 표시도 떠날 때 그대로 멈춘다.
             // 돌아오면 아래 재탐색이 다시 붙인다.
             if (kv.Key == null || kv.Value == null || !kv.Key.gameObject.activeInHierarchy)

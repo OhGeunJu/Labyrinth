@@ -13,17 +13,18 @@ MonoBehaviour:
   m_Name: Granary
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: granary
-  BuildingName: "\uACF3\uAC04"
+  BuildingName: 9x9
   Description: "9\xD79 \xB7 \uC548\uCABD 7\xD77\uCE78. \uB124\uBAA8\uBC18\uB4EF\uD55C
     \uC800\uC7A5\uACE0. \uADA4\uC9DD\uC744 \uBCBD\uB9C8\uB2E4 \uBD99\uC5EC \uB193\uB294\uB2E4."
-  Category: 5
-  SortOrder: 24
+  Category: 2
+  SortOrder: 81
   Size: {x: 9, y: 9}
   Costs:
   - Item: {fileID: 11400000, guid: d5110da4aaf3118469617092dbad6ce1, type: 2}
     Amount: 12
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 6
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 0
@@ -47,3 +48,4 @@ MonoBehaviour:
   - '#.......#'
   - '#.......#'
   - '###...###'
+  EdgeWall: 0

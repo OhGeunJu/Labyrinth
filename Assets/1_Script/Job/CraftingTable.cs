@@ -186,9 +186,12 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource, IUpgra
     void Awake()
     {
         // 프리팹이 이미 Inventory를 들고 있으면 그 크기를 존중한다 — 우리가 만든 것만 크기를 잡는다.
-        var existing = GetComponent<Inventory>();
-        Inventory = existing ?? gameObject.AddComponent<Inventory>();
-        if (existing == null) Inventory.Resize(outputSize.x, outputSize.y);
+        if (TryGetComponent(out Inventory existing)) Inventory = existing;
+        else
+        {
+            Inventory = gameObject.AddComponent<Inventory>();
+            Inventory.Resize(outputSize.x, outputSize.y);
+        }
 
         Inventory.OnChanged += () => OnChanged?.Invoke(this);
         _haul = new HaulDispatcher(this);

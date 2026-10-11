@@ -138,7 +138,7 @@ public static class WorldAuthoringScene
                     // **이름은 `gameObject.name`이 답한다** — 표식에 또 적지 않는다.
                     if (!string.IsNullOrEmpty(o.Name)) go.name = o.Name;
 
-                    var tag = go.GetComponent<WorldObjectTag>() ?? go.AddComponent<WorldObjectTag>();
+                    if (!go.TryGetComponent(out WorldObjectTag tag)) tag = go.AddComponent<WorldObjectTag>();
                     tag.Id         = string.IsNullOrEmpty(o.Id) ? WorldContentAssets.NewId() : o.Id;
                     tag.Kind       = o.Kind;
                     tag.Persistent = o.Persistent;

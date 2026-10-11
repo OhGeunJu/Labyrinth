@@ -89,6 +89,23 @@ public class WorldMapEditorWindow : EditorWindow
                 AssignToScene();
             GUI.enabled = true;
         }
+
+        // **층 지도 넷**(2026-10-01, `Floors`) — 층마다 한 장이고 세계는 그 넷을 2×2로 짜 맞춘 것이다. 씬의 `WorldMap`이
+        // 든 층 지도를 바로 연다(없으면 `World → 0d. Create Floor Maps`).
+        using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+        {
+            GUILayout.Label("층", GUILayout.Width(18f));
+            for (int f = 1; f <= Floors.Count; f++)
+            {
+                var d = WorldMap.FloorData(f);
+                GUI.enabled = d != null;
+                bool on = d != null && d == _data;
+                if (GUILayout.Toggle(on, $"{f}층", EditorStyles.toolbarButton, GUILayout.Width(44f)) && !on && d != null)
+                    _data = d;
+            }
+            GUI.enabled = true;
+            if (_data != null) GUILayout.Label($"  지금: {_data.Floor}층 ({_data.name})", EditorStyles.miniLabel);
+        }
     }
 
     void CreateAsset()

@@ -31,7 +31,7 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
     [Header("규칙")]
     [SerializeField] ButcherBill bill = new();
 
-    [Tooltip("시체를 이 거리 안에서만 찾는다. 0이면 맵 전체.")]
+    [Tooltip("핵 영역 안에서 이 거리 안의 시체만 찾는다. 0이면 영역 전체.")]
     [SerializeField] float searchRadius = 0f;
 
     // **손질하는 동안에만 고기가 걸린다.** 늘 걸어 두면 그건 장식이고, 안 걸면 도축대가
@@ -109,18 +109,27 @@ public class ButcherTable : MonoBehaviour, IWorldClickable, IHaulSource
         {
             if (corpse == null || !bill.Matches(corpse)) continue;
 
+            // **우리 거점 안의 몸만 가른다**(2026-10-06, 사용자: *"핵 범위 안이면 손질하고"*). 전에는 맵 전체를
+            // 훑어서, 사냥터 끝에서 쓰러진 짐승을 업으러 폰이 세계 끝까지 걸어갔다 — 규칙을 걸어 둔 사람이 기대한
+            // 것은 *기지에 들어온 시체를 치우는 것*이지 원정이 아니다. 멀리 있는 것은 업어 오면(손으로) 걸린다.
+            if (!DungeonCore.AnyCovers(corpse.transform.position)) continue;
+
             // 나올 것이 없으면 나를 값이 없다 — 폰을 왕복시키고 빈손으로 돌아온다.
-            var race = corpse.GetComponent<UnitBrain>()?.Data;
+            var race = corpse.TryGetComponent(out UnitBrain brain) ? brain.Data : null;
             if (!Butchering.HasYield(race, corpse.Stage)) continue;
 
             // 남이 업고 가는 중이면 건드리지 않는다.
-            var bb = corpse.GetComponent<UnitBrain>()?.Blackboard;
+            var bb = corpse.TryGetComponent(out UnitBrain corpseBrain) ? corpseBrain.Blackboard : null;
             if (bb != null && bb.CarriedBy != null) continue;
 
             // **이미 일감이 걸린 몸도 뺀다.** 손으로 시킨 도축(우클릭)은 이 자리를 안 거치므로
             // 규칙이 같은 시체를 한 번 더 고를 수 있고, 그러면 **두 폰이 같은 시체로 걸어간다.**
             if (JobManager.Instance != null && JobManager.Instance.HasButcherJobFor(corpse.gameObject))
                 continue;
+
+            // **저장 구역으로 업혀 가는 중인 몸도 뺀다**(`CorpseHauling`) — 업으러 간 폰과 도축하러 간 폰이 한 몸을
+            // 두고 서로 빼앗는다. 구역에 내려놓이면 그다음 판에 여기서 고른다.
+            if (CorpseHauling.IsHauling(corpse.gameObject)) continue;
 
             float sq = (corpse.transform.position - here).sqrMagnitude;
             if (sq > radiusSq || sq >= bestSq) continue;

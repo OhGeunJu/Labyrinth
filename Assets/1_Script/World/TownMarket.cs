@@ -52,10 +52,6 @@ public static class TownMarket
         return shops;
     }
 
-    // **옛 화면용 다리** — `WorldMapView`가 아직 칸으로 묻는다.
-    public static IReadOnlyList<Shop> ShopsAt(Vector2Int node) =>
-        ShopsAt(WorldSites.InRegion(WorldNodeContent.Town, node).Id);
-
     // 씬을 다시 시작해도 static은 살아남는다(도메인 리로드를 끈 경우). 남은 마을이
     // 옛 월드맵 좌표를 물고 있으면 엉뚱한 상인이 서므로, 월드맵을 새로 지을 때 비운다.
     public static void Clear()

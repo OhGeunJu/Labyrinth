@@ -68,6 +68,7 @@ public class ButcherJob : JobBase
 
     // 도축대 앞에 닿아 **가르고 있는 중인가** — 업으러 가는 동안은 거짓이다.
     // 도축대가 걸린 고기를 켜고 끄는 기준이 이것 하나다.
+    public ButcherTable Table => _table;   // 어느 도축대로 가는가(없으면 그 자리에서 가른다)
     public bool AtTable => _table != null && _phase == Phase.Work;
 
     // 대상이 그새 없어졌으면(파괴됐거나) 할 일이 없다.

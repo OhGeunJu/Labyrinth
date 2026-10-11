@@ -31,7 +31,7 @@ public class Storage : MonoBehaviour, IWorldClickable
 
     void Awake()
     {
-        Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
+        Inventory = TryGetComponent(out Inventory inv) ? inv : gameObject.AddComponent<Inventory>();
         Inventory.OnChanged += () => OnChanged?.Invoke();
     }
 

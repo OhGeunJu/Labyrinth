@@ -101,6 +101,7 @@ GameObject:
   - component: {fileID: 5174249323338762922}
   - component: {fileID: 3649010990604068538}
   - component: {fileID: 721791034228309255}
+  - component: {fileID: 4417702253091190011}
   m_Layer: 6
   m_Name: Wall
   m_TagString: Untagged
@@ -159,3 +160,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlacedBuilding
   data: {fileID: 11400000, guid: 7781df6dc5aea04448cee522d2256fb7, type: 2}
   refundRatio: 1
+--- !u!114 &4417702253091190011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2940669017382202053}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 17f953963d7f4abfa093bf1903836bc9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FortWall
+  body: {fileID: 5786676894679639900}

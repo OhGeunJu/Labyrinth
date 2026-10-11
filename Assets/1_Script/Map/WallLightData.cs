@@ -20,7 +20,7 @@ using UnityEngine;
 //
 // ## 어느 바이옴에 얼마나 — 바이옴이 든다
 //
-// `BiomeContentData.WallLights`가 그 표다(**사용자가 정하는 값** — 배선은 `World → K`).
+// `BiomeContentData.WallLights`가 그 표다(**사용자가 정하는 값** — 처음 배선한 초안 도구 `World → K`는 다 쓰고 2026-09-30에 지웠다).
 [CreateAssetMenu(menuName = "DungeonColony/WallLightData")]
 public class WallLightData : ScriptableObject
 {

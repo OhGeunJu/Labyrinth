@@ -4,7 +4,7 @@ using UnityEngine;
 
 // **모드 안의 도구 둘 — 바 하나가 셋을 다 든다**(2026-09-02).
 //
-//   밭 구역 : `새 구역`(또는 `확장`) / `삭제`
+//   구역    : `새 구역` / `확장` / `삭제`(밭) · `저장 구역` / `저장 지우기`(2026-10-06 — `StockZones`)
 //   명령    : `취소` / `채굴` / `채집` / `운반` / `올리기` / `내리기` / `평탄화`(2026-09-19 — `CommandMode` ·
 //             09-25에 취소를 맨 앞으로, 땅고르기를 올리기/내리기/평탄화 셋으로)
 //
@@ -144,7 +144,7 @@ public class ModeToolBarUI : MonoBehaviour
     void Farm()
     {
         var cur = FarmZoneDesignator.Current;
-        HideFrom(3);
+        HideFrom(FarmZoneDesignator.Order.Length);
 
         // 칸 자리 = 숫자 키(`FarmZoneDesignator.Order`).
         var New = FarmZoneDesignator.Tool.New;
@@ -162,6 +162,18 @@ public class ModeToolBarUI : MonoBehaviour
         Bind(At(FarmZoneDesignator.KeyOf(Era) - 1), $"삭제 ({FarmZoneDesignator.KeyOf(Era)})",
              "끌어서 **구역에서 뺀다.**\n뺀 밭은 저 혼자가 된다.",
              cur == Era, () => FarmZoneDesignator.Use(Era));
+
+        // **저장 구역**(2026-10-06) — 밭이 아니라 맨 칸을 칠한다. 지금은 시체가 모인다(`StockZones`).
+        var Stk = FarmZoneDesignator.Tool.Stock;
+        var StE = FarmZoneDesignator.Tool.StockErase;
+
+        Bind(At(FarmZoneDesignator.KeyOf(Stk) - 1), $"저장 구역 ({FarmZoneDesignator.KeyOf(Stk)})",
+             "끌어서 **저장 구역**을 칠한다. 핵 영역 안에만.\n기지 안의 시체를 폰이 여기로 옮긴다.",
+             cur == Stk, () => FarmZoneDesignator.Use(Stk));
+
+        Bind(At(FarmZoneDesignator.KeyOf(StE) - 1), $"저장 지우기 ({FarmZoneDesignator.KeyOf(StE)})",
+             "끌어서 **저장 구역을 지운다.**",
+             cur == StE, () => FarmZoneDesignator.Use(StE));
     }
 
     // **이름이 바뀔 때 설명도 같이 간다** — 하는 일이 달라졌는데 설명만 옛것이면

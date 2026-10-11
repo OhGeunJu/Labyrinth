@@ -55,11 +55,12 @@ public static class ScatterWiring
 
     // 규칙 하나를 쓴다(없으면 만들고, 있으면 값만 맞춘다).
     //
-    // `fromBiomePool`을 켜면 `prefab`·`biomes`를 안 본다 — 그 자리 바이옴의 자원 노드 풀이
-    // 둘 다 답한다(`ScatterRule.FromBiomePool`).
+    // `fromBiomePool`을 켜면 `prefab`을 안 본다 — 그 자리 바이옴의 자원 노드 풀이 답한다
+    // (`ScatterRule.FromBiomePool`). `biomes`는 그때도 거른다(비우면 어디에나).
     public static void Set(SerializedProperty rules, string name, GameObject prefab,
                            float perChunk, float spacing, float regrowDays, Biome[] biomes,
-                           (int min, int max) cluster, int spread, bool fromBiomePool = false)
+                           (int min, int max) cluster, int spread, bool fromBiomePool = false,
+                           (float min, float max)? scale = null)
     {
         SerializedProperty e = null;
         for (int i = 0; i < rules.arraySize; i++)
@@ -87,7 +88,8 @@ public static class ScatterWiring
         e.FindPropertyRelative("MaxSlope").floatValue      = 35f;
         e.FindPropertyRelative("MinHeight").floatValue     = -1000f;
         e.FindPropertyRelative("MaxHeight").floatValue     =  1000f;
-        e.FindPropertyRelative("ScaleRange").vector2Value  = new Vector2(0.85f, 1.25f);
+        e.FindPropertyRelative("ScaleRange").vector2Value  =
+            scale.HasValue ? new Vector2(scale.Value.min, scale.Value.max) : new Vector2(0.85f, 1.25f);
 
         e.FindPropertyRelative("ClusterMin").intValue      = cluster.min;
         e.FindPropertyRelative("ClusterMax").intValue      = cluster.max;

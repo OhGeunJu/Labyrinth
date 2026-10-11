@@ -81,7 +81,12 @@ public static class TerrainGrid
     // 값**(통로 폭·간격)이 아니다 — 후자는 폰의 눈금이라 세계가 넓어져도 그대로다.
     //
     // 키울 때는 이 상수 하나만 올리고 `1. Rebuild Underworld`.
-    public const int ChunksPerAxis = 16;    // 세계 한 변의 청크 수
+    //
+    // **2026-10-01에 64로 키웠다 — 층 넷을 한 평면에 나란히**(사용자 결정: *"층 하나 2km로 2×2"*, `Floors`). 세계 한
+    // 변 4,096m · 층 하나 2,048m(32청크). 층 지도는 16×16 그대로라 **지역이 128m**(2청크)다 — 저작한 1층 그림이
+    // 두 배로 펴진다. `ChunksPerAxis`가 지역 수(32)의 배수라는 규칙은 지킨다. **세계 전체를 덮는 무거운 표**(광역
+    // 길찾기 · 안개 · 지도 텍스처)는 이 값과 같이 네 제곱으로 크므로 **층 단위로 갈라 든다**(각 파일 참고).
+    public const int ChunksPerAxis = 64;    // 세계 한 변의 청크 수
 
     // **129 = 128 + 1.** 마지막 정점은 이웃 청크의 첫 정점과 **같은 자리**다 — 가장자리를
     // 공유하지 않으면 부동소수 오차로 **틈이 벌어져 하늘이 보인다.** 공유하는 대신 그 줄을
@@ -106,14 +111,20 @@ public static class TerrainGrid
     // `WorldMapData`를 읽으므로 **저작 도구로 지도를 키우면 세계가 따라온다.**
     static int _regions;
 
+    // **층 지도 넷을 2×2로 짜 맞춘 격자다**(2026-10-01, `Floors`) — 층 지도 한 장의 폭 × 층 한 줄 수. 바이옴을 묻는
+    // 자리는 전부 이 **세계 격자**로 묻고, 어느 층 지도를 읽을지는 `WorldMap.AuthoredBiome`이 가른다 — 그래서 부르는
+    // 쪽은 층을 몰라도 된다.
     public static int RegionsPerAxis
     {
         get
         {
-            if (_regions <= 0) _regions = Mathf.Max(1, WorldMap.AuthoredWidth);
+            if (_regions <= 0) _regions = Mathf.Max(1, WorldMap.AuthoredWidth) * Floors.PerAxis;
             return _regions;
         }
     }
+
+    // 층 지도 한 장의 폭(지역 수).
+    public static int RegionsPerFloor => Mathf.Max(1, RegionsPerAxis / Floors.PerAxis);
 
     // 지도를 다시 키운 뒤 부른다. 안 비우면 옛 해상도로 계속 잰다.
     public static void ForgetRegions() => _regions = 0;

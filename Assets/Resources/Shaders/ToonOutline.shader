@@ -66,6 +66,10 @@ Shader "DungeonColony/ToonOutline"
             float  _OutlineWidth;
             float  _OutlineMin;
         CBUFFER_END
+
+        // 폰의 최저 밝기 — **재질이 아니라 세계가 든다**(`UnderworldLighting`). 상수(0.35)였을 때는 굴을
+        // 아무리 어둡게 내려도 폰만 대낮처럼 떠서 밤으로 안 읽혔다(2026-10-11).
+        half _PawnFloor;
         ENDHLSL
 
         // ── 1. 외곽선 — 뒤집힌 껍데기 ───────────────────────────────────────
@@ -109,6 +113,7 @@ Shader "DungeonColony/ToonOutline"
             #pragma fragment LitFrag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fragment _ _SHADOWS_SOFT
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
@@ -148,20 +153,31 @@ Shader "DungeonColony/ToonOutline"
                 half lit = ToonStep(n, mainLight.direction,
                                     mainLight.shadowAttenuation * mainLight.distanceAttenuation);
 
-                // **횃불을 돈다** — 지하에는 해가 없다.
+                // **등을 도는 문은 URP의 매크로다**(2026-10-12). PC 렌더러는 Forward+라 등이 물체가 아니라
+                // 화면 칸(cluster)에 매달려 있다 — 예전처럼 개수로 `for`를 돌면 한 개도 안 돈다.
+                //
+                // **밝기도 여기서 잰다**(`bright`). 전에는 등이 *밝은 면이냐 그늘이냐*만 골랐고 실제 밝기는
+                // 주변광 바닥값이 다 냈다 — 굴을 어둡게 내리자 횃불 곁에 서도 폰이 검었다.
+                // 법선은 안 본다: 불빛 안에 섰으면 몸 전체가 밝고, 면을 가르는 것은 계단(`lit`)이 한다.
+                half bright = 0;
+                InputData inputData = (InputData)0;
+                inputData.positionWS = i.positionWS;
+                inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(i.positionCS);
                 uint count = GetAdditionalLightsCount();
-                for (uint k = 0u; k < count; k++)
-                {
-                    Light extra = GetAdditionalLight(k, i.positionWS);
-                    lit = max(lit, ToonStep(n, extra.direction,
-                                            extra.distanceAttenuation * extra.shadowAttenuation));
-                }
+                LIGHT_LOOP_BEGIN(count)
+                    Light extra = GetAdditionalLight(lightIndex, i.positionWS);
+                    half reach = extra.distanceAttenuation * extra.shadowAttenuation;
+                    lit    = max(lit, ToonStep(n, extra.direction, reach));
+                    bright = max(bright, reach * max(extra.color.r, max(extra.color.g, extra.color.b)));
+                LIGHT_LOOP_END
 
                 half3 shade = _BaseColor.rgb * _ShadeColor.rgb;
                 half3 col   = lerp(shade, _BaseColor.rgb, lit);
 
                 // 주변광이 **바닥을 든다** — 굴의 주변광이 폰의 최저 밝기다.
-                col *= max(SampleSH(n), 0.35);
+                // **불빛 안에서도 0.6까지다** — 폰의 색은 주변광 0.35~0.45 아래에서 맞춘 것이라, 1까지 올리면
+                // 횃불 곁에서 색이 날아간다.
+                col *= max(max(SampleSH(n), _PawnFloor), saturate(bright) * 0.6);
                 return half4(col, 1);
             }
             ENDHLSL

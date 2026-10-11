@@ -152,10 +152,7 @@ public class InventoryUI : MonoBehaviour
         // 수량 칸에 숫자를 치는 중이면 I(토글)가 먹으면 안 된다 — 창이 닫혀 버린다.
         if (sellQuantity != null && sellQuantity.isFocused) return;
 
-        // 월드맵에서 I를 누르면 **아무도 안 고른 빈 배낭**이 뜬다 — 거기선 선택이 팀 단위라
-        // 고른 폰이라는 게 없다. 거래로 폰이 지정돼 있을 때만 연다.
-        if (Keyboard.current[toggleKey].wasPressedThisFrame && !InputFocus.KeysBlocked() &&
-            (GameModeManager.IsField || _boundPawn != null))
+        if (Keyboard.current[toggleKey].wasPressedThisFrame && !InputFocus.KeysBlocked())
             Toggle();
 
         // 상점이 어떤 길로 닫히든 [판매] 표시가 따라 사라지게 한다.
@@ -604,7 +601,7 @@ public class InventoryUI : MonoBehaviour
         if (!Feeding.Simulates(eater))
             return Refuse(icon, $"{eater.UnitName}은(는) 지금 먹을 수 없다");
 
-        // **원정 나간 폰은 못 먹는다.** 그 폰들은 GameObject가 꺼져 있어(`ExpeditionParty`)
+        // **밖에 나간 폰은 못 먹는다**(상단이 포탈 너머에 있는 동안). 그 폰들은 GameObject가 꺼져 있어
         // **허기가 아예 안 돈다** — 채워 봐야 줄지 않으니 밥만 사라진다. 띄울 자리도 없다
         // (팝업은 폰 머리 위를 따라가는데 그 폰은 지도 밖의 옛 자리에 서 있다).
         if (!eater.gameObject.activeInHierarchy)
@@ -715,7 +712,7 @@ public class InventoryUI : MonoBehaviour
     void QuickEquip(ItemInstance inst, InventoryGridUI sourceGrid)
     {
         var src   = sourceGrid.Inventory;
-        var equip = src.GetComponent<UnitBrain>()?.Equipment;
+        var equip = src.TryGetComponent(out UnitBrain srcBrain) ? srcBrain.Equipment : null;
         if (equip == null) return;
 
         // 어느 칸에 차는 물건인가 — 벗을 때도 채울 때도 같은 칸이다.

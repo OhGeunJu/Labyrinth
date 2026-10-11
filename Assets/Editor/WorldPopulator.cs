@@ -80,13 +80,14 @@ public class WorldPopulator : EditorWindow
 
     void Defaults()
     {
-        if (_towns     < 0) _towns     = ByArea(TownsPer100);
-        if (_lairs     < 0) _lairs     = ByArea(LairsPer100);
+        // **층마다 적어도 마을 하나 · 소굴 둘**(2026-10-01, `Floors`) — 넓이로만 내면 4층 합쳐 마을 셋이라 어느 층은 빈다.
+        if (_towns     < 0) _towns     = Mathf.Max(Floors.Count, ByArea(TownsPer100));
+        if (_lairs     < 0) _lairs     = Mathf.Max(Floors.Count * 2, ByArea(LairsPer100));
 
         if (_townSpacing < 0f) _townSpacing = Spread(_towns, 0.55f);
         if (_lairSpacing < 0f) _lairSpacing = Spread(_lairs, 0.55f);
         if (_nearTown    < 0f) _nearTown    = _townSpacing * 0.25f;
-        if (_safeRadius  < 0f) _safeRadius  = TerrainGrid.WorldSize * 0.18f;
+        if (_safeRadius  < 0f) _safeRadius  = Floors.Size * 0.18f;   // 층 한 변으로 — 세계로 내면 층 하나의 3분의 1이 빈다
     }
 
     // **한 번에 다시 세우기가 부르는 문**(2026-08-30). 메뉴 항목은 *창을 여는 것*이라
@@ -244,11 +245,20 @@ public class WorldPopulator : EditorWindow
 
         if (prefab == null || target <= 0) return 0;
 
-        float world = TerrainGrid.WorldSize;
         float foot  = Footprint(kind);
         float mine  = kind == WorldNodeContent.Town ? _townSpacing : _lairSpacing;
 
         Vector2 start = StartPoint();
+
+        // **층마다 고르게**(2026-10-01, `Floors`) — 세계 전체에 던지면 어느 층은 마을이 하나도 없다. 이번에 던질 층은
+        // **지금까지 가장 적게 놓인 층**이고, 그 층 사분면 안(기반암 둘레를 비우고)에 던진다.
+        var byFloor = new int[Floors.Count + 1];
+        var arrivals = new List<Vector2>();   // 통로 자리 — 소굴은 그 둘레도 비운다(내려가자마자 소굴이면 벌칙이다)
+        for (int f = 1; f <= Floors.Count; f++)
+        {
+            if (f < Floors.Count) { var d = FloorPassage.PointFor(f, PassageKind.Down); arrivals.Add(new Vector2(d.x, d.z)); }
+            if (f > 1)            { var u = FloorPassage.PointFor(f, PassageKind.Up);   arrivals.Add(new Vector2(u.x, u.z)); }
+        }
 
         // **던지는 횟수에 천장을 둔다** — 평평한 땅이 모자라면 영원히 못 채운다.
         int attempts = Mathf.Max(target * 60, 2000);
@@ -260,10 +270,20 @@ public class WorldPopulator : EditorWindow
                 EditorUtility.DisplayProgressBar("세계를 채운다",
                     $"{kind.DisplayName()} {made}/{target}", made / (float)target);
 
-            var p = new Vector2((float)rng.NextDouble() * world, (float)rng.NextDouble() * world);
+            int floor = 1;
+            for (int f = 2; f <= Floors.Count; f++) if (byFloor[f] < byFloor[floor]) floor = f;
+            var fo = Floors.Origin(floor);
+            float edge = Floors.Seam + 24f, span = Floors.Size - edge * 2f;
+            var p = new Vector2(fo.x + edge + (float)rng.NextDouble() * span, fo.y + edge + (float)rng.NextDouble() * span);
 
             // 시작 둘레는 비워 둔다.
             if (safeRadius > 0f && (p - start).sqrMagnitude < safeRadius * safeRadius) continue;
+            if (safeRadius > 0f)
+            {
+                bool nearGate = false;
+                foreach (var a in arrivals) if ((p - a).sqrMagnitude < safeRadius * safeRadius * 0.25f) { nearGate = true; break; }
+                if (nearGate) continue;
+            }
 
             var biome = WorldMap.BiomeAtWorld(p);
             if (!Allowed(kind, biome)) continue;
@@ -294,7 +314,9 @@ public class WorldPopulator : EditorWindow
             if (!Reachable(p)) continue;
 
             if (TooClose(placed, p, kind, mine)) continue;
+            if (Floors.At(p.x, p.y) != floor || Floors.IsSeam(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y))) continue;   // 굴 위로 옮기다 층을 넘었다
 
+            byFloor[floor]++;
             Create(root, prefab, kind, p, made, rng);
             placed.Add((p, kind));
             rooms.Add(Room(kind, p, made));
@@ -455,7 +477,18 @@ public class WorldPopulator : EditorWindow
     {
         _reach = null;
         if (!TerrainCeiling.Enabled) return;
-        if (!NearestNaturalCave(StartPoint(), StartSearch, out var seed)) return;
+
+        // **씨는 층마다 들어오는 자리**(2026-10-01, `Floors`) — 1층은 시작 자리, 나머지 층은 통로 자리(1층의 내려가는 길도).
+        // 층 사이는 기반암이라 한 씨로는 그 층 밖을 못 훑는다 — 그러면 2~4층엔 *"갈 수 있는 굴"*이 하나도 없어 아무것도
+        // 안 선다.
+        var seeds = new List<Vector2>();
+        if (NearestNaturalCave(StartPoint(), StartSearch, out var s0)) seeds.Add(s0);
+        for (int f = 1; f <= Floors.Count; f++)
+        {
+            if (f < Floors.Count) { var d = FloorPassage.PointFor(f, PassageKind.Down); if (NearestNaturalCave(new Vector2(d.x, d.z), 160f, out var sd)) seeds.Add(sd); }
+            if (f > 1)            { var u = FloorPassage.PointFor(f, PassageKind.Up);   if (NearestNaturalCave(new Vector2(u.x, u.z), 160f, out var su)) seeds.Add(su); }
+        }
+        if (seeds.Count == 0) return;
 
         float step = TerrainGrid.VertexSpacing;
         int n = Mathf.FloorToInt(TerrainGrid.WorldSize / step) + 1;
@@ -478,16 +511,21 @@ public class WorldPopulator : EditorWindow
             int k = gz * n + gx;
             if (known[k]) return open[k];
             float wx = gx * step, wz = gz * step;
+            if (Floors.IsSeam(Mathf.FloorToInt(wx), Mathf.FloorToInt(wz))) { known[k] = true; return open[k] = false; }   // 층 사이 기반암
             float c = TerrainCeiling.NaturalClearance(wx, wz);
             for (int f = 0; f < kept.Count; f++) c += kept[f].Contribution(wx, wz);
             known[k] = true;
             return open[k] = c >= PawnMover.BodyHeight;
         }
 
-        int sx = Mathf.Clamp(Mathf.RoundToInt(seed.x / step), 0, n - 1);
-        int sz = Mathf.Clamp(Mathf.RoundToInt(seed.y / step), 0, n - 1);
-        reach[sz * n + sx] = true;
-        queue.Enqueue(sz * n + sx);
+        foreach (var seed in seeds)
+        {
+            int sx = Mathf.Clamp(Mathf.RoundToInt(seed.x / step), 0, n - 1);
+            int sz = Mathf.Clamp(Mathf.RoundToInt(seed.y / step), 0, n - 1);
+            if (reach[sz * n + sx]) continue;
+            reach[sz * n + sx] = true;
+            queue.Enqueue(sz * n + sx);
+        }
 
         while (queue.Count > 0)
         {
@@ -696,7 +734,7 @@ public class WorldPopulator : EditorWindow
 
         go.name = $"{kind.DisplayName()} {index}";
 
-        var tag = go.GetComponent<WorldObjectTag>() ?? go.AddComponent<WorldObjectTag>();
+        if (!go.TryGetComponent(out WorldObjectTag tag)) tag = go.AddComponent<WorldObjectTag>();
 
         // **신원은 시드와 순번에서 결정적으로 짓는다** — 같은 시드로 다시 채우면 같은 소굴이
         // 같은 신원을 유지하므로, `Persistent` 추적과 상점 재고가 안 어긋난다.

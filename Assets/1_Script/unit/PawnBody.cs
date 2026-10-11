@@ -24,9 +24,6 @@ public class PawnBody : MonoBehaviour
     [Tooltip("이 몸의 성별 — 머리형 여섯도 이 성별의 것만 구워져 있다(`ChibiPawnCreator`).")]
     public Gender Gender;
 
-    [Tooltip("체형 식별자(`Male`·`ThinFemale`…) — 저장·비교용.")]
-    public string Shape;
-
     [Tooltip("화면에 띄울 체형 이름(`마른 여성`…).")]
     public string ShapeLabel;
 }

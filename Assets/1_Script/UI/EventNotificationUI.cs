@@ -8,7 +8,7 @@ using UnityEngine.UI;
 // **코루틴을 쓰지 않는다.** 구독은 `Awake`에서 하는 static 이벤트라 이 GameObject가 꺼져 있어도
 // `Show`가 불리는데, 꺼진 오브젝트에서는 `StartCoroutine`이 예외를 던진다
 // ("Coroutine couldn't be started because the game object is inactive").
-// 월드맵을 보는 동안 필드 UI가 통째로 꺼지고(`GameModeManager.ApplyFieldUi`)
+// (옛 3D 월드맵 시절) 지도를 보는 동안 필드 UI가 통째로 꺼지고
 // 이벤트는 그때도 계속 돌기 때문에 정상적으로 벌어지는 상황이다.
 public class EventNotificationUI : MonoBehaviour
 {

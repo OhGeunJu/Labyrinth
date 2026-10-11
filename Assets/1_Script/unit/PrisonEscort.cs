@@ -162,8 +162,7 @@ public static class PrisonEscort
         if (target.Blackboard.CarriedBy == null)
             foreach (var pawn in commanders)
             {
-                var b = pawn != null ? pawn.GetComponent<UnitBrain>() : null;
-                if (b?.Blackboard == null) continue;
+                if (pawn == null || !pawn.TryGetComponent(out UnitBrain b) || b.Blackboard == null) continue;
                 b.Blackboard.CarryTarget = b == carrier ? target : null;
             }
 

@@ -28,7 +28,7 @@ public class AbilityController : MonoBehaviour
         if (kb == null) return;
 
         // 글자를 치는 중이거나 지도를 보는 중이면 명령이 아니다 — `DraftController`와 같은 규칙.
-        if (InputFocus.KeysBlocked() || !GameModeManager.IsField) return;
+        if (InputFocus.KeysBlocked()) return;
 
         // **건설·명령·밭 구역이 켜져 있으면 숫자는 그쪽 것이다**(2026-09-28) — 갈래(`BuildModeUI`)와
         // 도구(`CommandMode`)를 고른다. 안 비키면 갈래를 바꾸는 순간 고른 폰이 방패를 든다.

@@ -102,6 +102,78 @@ void RockCutBackface(float3 ws, float3 normalWS)
     clip(dot(normalWS, _WorldSpaceCameraPos.xyz - ws));
 }
 
+// ── 벽이 높이마다 들쭉날쭉하다 (2026-10-12) ─────────────────────────────────
+//
+// 사용자: *"테두리만 좀 울퉁불퉁하게 되어있지 실제벽은 일자로 쭉 올라가잖아"*. 벽선은 메시가 이미
+// 흔든다(`RockRenderer.Wobble`) — 그런데 그 값이 **높이를 안 탄다**: 위에서 본 선은 굽었어도 그 선이
+// 그대로 24m를 곧게 올라간다. 높이를 못 태운 이유는 뚜껑이었다. 뚜껑은 *자르는 높이*로 끌려 내려오고 그
+// 높이는 줌마다 다르므로, 메시가 높이별로 다르게 밀어 두면 뚜껑 가장자리와 벽이 어긋나 구멍이 난다.
+//
+// **그래서 여기서 민다.** 뚜껑을 내린 *다음에*, 그 자리의 높이로 민다 — 뚜껑 가장자리와 그 높이의 벽이
+// **같은 함수에 같은 자리를 넣으므로** 같은 만큼 움직인다. 패스 셋이 다 이 파일을 지나니 깊이도 같이 간다.
+//
+// **자리만의 함수다** — 어느 정점이 벽이고 어느 것이 속인지 가리지 않는다. 속의 정점(바위 한가운데의
+// 뚜껑)도 밀리지만 평평한 검은 판이 제 안에서 조금 미끄러질 뿐이고, 이웃한 면끼리는 같은 자리가 같은
+// 만큼 가므로 틈이 안 난다. 벽에 박힌 알갱이도 그래서 벽을 따라간다.
+//
+// **세로로는 줄(row) 사이를 곧게 잇는다** — 벽의 메시가 같은 줄에서 꺾이므로(`RockRenderer.BulgeRow`)
+// 줄 사이의 벽면은 직선이고, 뚜껑 가장자리가 그 사이 어느 높이에 걸리든 벽면 위에 놓인다. 매끈한 함수로
+// 두면 그 사이에서 벽(직선)과 뚜껑(곡선)이 갈린다. **이 값을 바꾸면 메시 쪽도 같이.**
+static const float kRockBulgeRow = 0.75;
+
+// 자른 벽이 이보다 높게 남으면 안 민다(끝의 `kRockBulgeFade` 구간에서 줄어든다). 메시가 잘게 나눈 것이
+// 바닥에서 10m까지라, 그 위에서는 벽면이 줄을 못 따라간다 — 그만큼 물러난 화면에서는 어차피 안 보인다.
+static const float kRockBulgeUntil = 7.5;
+static const float kRockBulgeFade  = 1.5;
+
+float RockHash(float3 p)
+{
+    p  = frac(p * 0.1031);
+    p += dot(p, p.yzx + 33.33);
+    return frac((p.x + p.y) * p.z);
+}
+
+// 값 노이즈(0~1) — 격자 점의 해시를 매끈하게 잇는다.
+float RockValue(float3 p)
+{
+    float3 i = floor(p), f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return lerp(lerp(lerp(RockHash(i),                   RockHash(i + float3(1, 0, 0)), f.x),
+                     lerp(RockHash(i + float3(0, 1, 0)), RockHash(i + float3(1, 1, 0)), f.x), f.y),
+                lerp(lerp(RockHash(i + float3(0, 0, 1)), RockHash(i + float3(1, 0, 1)), f.x),
+                     lerp(RockHash(i + float3(0, 1, 1)), RockHash(i + float3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+// 줄 하나에서 그 자리를 얼마나 미나(수평, m). 둘을 더한다:
+//   · **덩어리** — 위아래 줄이 이어지는 굴곡(2m쯤). 벽이 불룩 나오고 움푹 들어간다
+//   · **켜**     — 줄마다 따로 노는 값. 이것이 선반과 턱을 만든다(없으면 매끈한 물결이다)
+float2 RockBulgeRow(float2 xz, float row)
+{
+    float3 p = float3(xz.x, row * kRockBulgeRow, xz.y) * float3(0.55, 0.45, 0.55);
+    float2 lump = float2(RockValue(p + 17.3), RockValue(p + 91.7)) * 2.0 - 1.0;
+
+    float3 q = float3(xz.x * 0.16, row * 7.31, xz.y * 0.16);
+    float2 bed = float2(RockValue(q + 3.1), RockValue(q + 55.5)) * 2.0 - 1.0;
+
+    return lump * 0.20 + bed * 0.11;
+}
+
+float3 RockBulge(float3 ws)
+{
+    // 자르기가 꺼진 자리(씬 뷰)에서는 벽이 24m 그대로 서 있다 — 줄을 못 따라가는 높이다.
+    if (_RockCutOn < 0.5)
+        return ws;
+
+    float amp = saturate((kRockBulgeUntil - (RockCutPlaneY() - _RockCutFloorY)) / kRockBulgeFade);
+    if (amp <= 0.0)
+        return ws;
+
+    float r   = ws.y / kRockBulgeRow;
+    float row = floor(r);
+    ws.xz += lerp(RockBulgeRow(ws.xz, row), RockBulgeRow(ws.xz, row + 1.0), r - row) * amp;
+    return ws;
+}
+
 // **윗면은 내리고 옆면은 잘라 낸다.**
 //
 // 한때 *"모든 면을 내린다"*를 손잡이로 같이 뒀는데 **걷어냈다**(2026-09-07). 그쪽은
@@ -116,11 +188,12 @@ void RockCutBackface(float3 ws, float3 normalWS)
 // 한 줄도 안 바뀐다.
 float3 RockCutWS(float3 ws, float3 normalWS, float lift)
 {
-    if (_RockCutOn < 0.5 || !RockIsCap(normalWS))
-        return ws;   // 옆면은 프래그먼트가 자른다
+    // 옆면은 프래그먼트가 자른다 — 여기서 내리는 것은 뚜껑뿐이다.
+    if (_RockCutOn >= 0.5 && RockIsCap(normalWS))
+        ws.y = min(ws.y - lift, RockCutPlaneY()) + lift;
 
-    ws.y = min(ws.y - lift, RockCutPlaneY()) + lift;
-    return ws;
+    // **내린 다음에 민다** — 뚜껑의 가장자리는 *자르는 높이에서의 벽*과 같은 만큼 밀려야 맞물린다.
+    return RockBulge(ws);
 }
 
 // 정점 하나를 물체 공간에서 받아 **자리를 잡기 전에** 내린다 — `GetVertexPositionInputs`

@@ -26,7 +26,11 @@ public class ModeBarUI : MonoBehaviour
     // **값은 꼬리에 붙인다** — 씬이 정수로 들고 있어, 중간에 끼우면 저작해 둔 버튼이 밀린다.
     // `Command`(2026-09-19) — 채굴·채집·운반을 한 버튼으로. 켜면 도구 바에 셋이 같이 뜬다(`ModeToolBarUI`).
     // `Mine`·`Haul`은 **지우지 않는다** — 정수로 저작돼 있어 지우면 뒤의 값이 밀린다(씬은 도구가 옮긴다).
-    public enum Mode { Build, Mine, Haul, FarmZone, Command }
+    // `Posts`·`Caravan`(2026-10-09) — 모드가 아니라 **창**이지만 같은 줄에 선다(사용자: *"지휘소랑 상단은 왜 왼쪽 상단에 있는거야?
+    // 차라리 가운데 하단에 버튼들이랑 같이"*). 켜졌는지는 창이 열렸는지로 보인다 — 키(`H`·`T`)로 열어도 버튼 색이 따라온다.
+    // `Colony`·`Factions`·`Map`(같은 날, 사용자: *"PLM 정도?"*) — 무리 관리 · 세력 · 지도. 인벤토리는 폰을 골라야 뜻이 있는
+    // 창이라 안 넣었다(사용자).
+    public enum Mode { Build, Mine, Haul, FarmZone, Command, Posts, Caravan, Colony, Factions, Map }
 
     [SerializeField] List<Slot> slots = new();
 
@@ -75,6 +79,11 @@ public class ModeBarUI : MonoBehaviour
         Mode.Haul  => HaulDesignator.IsActive,
         Mode.FarmZone => FarmZoneDesignator.IsActive,
         Mode.Command  => CommandMode.IsActive,
+        Mode.Posts    => WorkPostsUI.IsOpen,
+        Mode.Caravan  => CaravanUI.Instance != null && CaravanUI.Instance.IsOpen,
+        Mode.Colony   => ColonyUI.Instance != null && ColonyUI.Instance.IsOpen,
+        Mode.Factions => FactionPanelUI.Instance != null && FactionPanelUI.Instance.IsOpen,
+        Mode.Map      => WorldMapPanel.Instance != null && WorldMapPanel.Instance.IsOpen,
         _          => false,
     };
 
@@ -90,6 +99,11 @@ public class ModeBarUI : MonoBehaviour
             case Mode.FarmZone: FarmZoneDesignator.Toggle();               break;
             // 명령: 켜져 있으면 끄고, 꺼져 있으면 **채굴로** 연다(도구 바에서 채집·운반으로 바꾼다).
             case Mode.Command: CommandMode.ToggleMode(); break;   // `C`와 같은 문
+            case Mode.Posts:   WorkPostsUI.Toggle();     break;   // `H`와 같은 문
+            case Mode.Caravan: CaravanUI.Instance?.Toggle(); break;   // `T`와 같은 문
+            case Mode.Colony:   if (ColonyUI.Instance != null) ColonyUI.Instance.Toggle(); break;             // `P`
+            case Mode.Factions: if (FactionPanelUI.Instance != null) FactionPanelUI.Instance.Toggle(); break; // `L`
+            case Mode.Map:      if (WorldMapPanel.Instance != null) WorldMapPanel.Instance.Toggle(); break;   // `M`
         }
     }
 }

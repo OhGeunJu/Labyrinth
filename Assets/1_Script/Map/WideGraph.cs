@@ -70,15 +70,28 @@ public class WideGraph
 
     const byte None = 255;
 
-    readonly int _tiles;      // 세계 한 변의 칸 수
+    // **층 하나를 덮는다**(2026-10-01, `Floors`). 세계가 층 넷을 나란히 둔 4,096m가 되면서 세계 전체를 한 그래프로
+    // 들면 칸 표만 33MB에 덩어리 자리가 100MB를 넘었다 — 층 사이는 기반암이라 **그래프가 어차피 안 이어진다.** 그래서
+    // 층마다 하나를 두고(`HierarchicalPathfinder`가 처음 쓸 때 짓는다), 밖에서 들어오는 칸 좌표는 세계 칸이라
+    // **들어오는 문에서 원점을 빼고 나가는 문에서 더한다**(`_ox`·`_oz`). 안쪽은 전부 층 안 칸이다.
+    readonly int _ox, _oz;    // 층의 남서 모서리(세계 칸)
+
+    readonly int _tiles;      // 한 변의 칸 수(층 하나)
     readonly int _cellTiles;  // 셀 한 변의 칸 수
     readonly int _cells;      // 한 변의 셀 수
 
     readonly byte[] _walk;    // 칸 → 걸을 수 있나(1/0)
     readonly byte[] _comp;    // 칸 → 제 셀 안의 덩어리 번호(None = 없음)
 
-    readonly float[] _nodeX, _nodeZ;   // 덩어리 대표점(무게중심)
+    // **덩어리 자리는 셀마다 `Inline`개만 미리 잡고 넘치면 사전에 든다**(2026-10-01). 셀이 가질 수 있는 최댓값
+    // (`_maxComp` — 7×7이면 25)을 셀마다 통째로 잡았더니 **거의 다 비어 있는 자리**가 그래프의 대부분이었다(굴의
+    // 셀은 덩어리가 한둘이다). 번호 체계(`NodeId`)는 그대로라 넘친 덩어리도 버려지지 않는다 — 09-18의 *"채굴로
+    // 구멍이 스물 몇 개"*인 셀도 여전히 다 든다.
+    const int Inline = 6;
+    readonly float[] _nodeX, _nodeZ;   // 덩어리 대표점(무게중심) — 셀마다 `Inline`칸
     readonly int[]   _nodeTiles;       // 덩어리가 든 칸 수(0이면 그 노드는 없다)
+    struct NodeRec { public float X, Z; public int Tiles; }
+    readonly Dictionary<int, NodeRec> _over = new();   // `Inline` 넘는 덩어리
 
     readonly byte[]  _linkA, _linkB;   // 경계의 k번째 연결 — 양쪽 덩어리 번호
     readonly float[] _linkX, _linkZ;   // 그 통과점(entrance)
@@ -93,9 +106,10 @@ public class WideGraph
     public float CellSize => _cellTiles;
     public int   Cells    => _cells;
 
-    public WideGraph(int worldTiles, int cellTiles)
+    public WideGraph(int originX, int originZ, int tiles, int cellTiles)
     {
-        _tiles     = Mathf.Max(1, worldTiles);
+        _ox = originX; _oz = originZ;
+        _tiles     = Mathf.Max(1, tiles);
         _cellTiles = Mathf.Clamp(cellTiles, 2, 64);
         _cells     = Mathf.Max(1, Mathf.CeilToInt(_tiles / (float)_cellTiles));
 
@@ -106,7 +120,7 @@ public class WideGraph
         _walk = new byte[_tiles * _tiles];
         _comp = new byte[_tiles * _tiles];
 
-        int nodes = _cells * _cells * _maxComp;
+        int nodes = _cells * _cells * Inline;
         _nodeX     = new float[nodes];
         _nodeZ     = new float[nodes];
         _nodeTiles = new int[nodes];
@@ -130,15 +144,45 @@ public class WideGraph
 
     bool Walk(int tx, int tz) => InTiles(tx, tz) && _walk[TileIdx(tx, tz)] != 0;
 
+    // 층 안 칸 → 세계 칸(나가는 문).
+    Vector2Int W(int tx, int tz) => new(tx + _ox, tz + _oz);
+
+    // ── 덩어리 자리 ─────────────────────────────────────────────────────
+
+    int Slot(int node, out bool inline)
+    {
+        int k = node % _maxComp;
+        inline = k < Inline;
+        return inline ? (node / _maxComp) * Inline + k : -1;
+    }
+
+    int NodeTiles(int node)
+    {
+        int i = Slot(node, out bool inl);
+        if (inl) return _nodeTiles[i];
+        return _over.TryGetValue(node, out var r) ? r.Tiles : 0;
+    }
+
+    float NodeX(int node) { int i = Slot(node, out bool inl); return inl ? _nodeX[i] : (_over.TryGetValue(node, out var r) ? r.X : 0f); }
+    float NodeZ(int node) { int i = Slot(node, out bool inl); return inl ? _nodeZ[i] : (_over.TryGetValue(node, out var r) ? r.Z : 0f); }
+
+    void SetNode(int node, float x, float z, int tiles)
+    {
+        int i = Slot(node, out bool inl);
+        if (inl) { _nodeX[i] = x; _nodeZ[i] = z; _nodeTiles[i] = tiles; return; }
+        if (tiles > 0) _over[node] = new NodeRec { X = x, Z = z, Tiles = tiles };
+        else _over.Remove(node);
+    }
+
     // **1m 걸음 표를 밖에서 읽는 문** — 가장자리 스폰 자리를 뽑는 BFS(`HierarchicalPathfinder.
     // PickReachableSpread`)가 쓴다. `IsWorkable`을 담아 둔 것이라 같은 답을 다시 뽑을 이유가 없다.
-    public bool WalkableTile(int tx, int tz) => Walk(tx, tz);
+    public bool WalkableTile(int tx, int tz) => Walk(tx - _ox, tz - _oz);   // 세계 칸으로 묻는다
 
     // **막힘으로 배운 덩어리 위의 칸인가**(`ReportUnreachable`, 20초). 라우트를 곧게 펴는 쪽
     // (`HierarchicalPathfinder.Straighten`)이 묻는다 — 안 물으면 **배워서 돌아가게 한 길을 다시 그 벽으로
     // 곧게 펴** 폰이 같은 자리에서 되풀이해 막힌다. 배운 것이 없으면 바로 거짓이다(대개 그렇다).
     public bool TileLearnedBlocked(int tx, int tz)
-        => _blocked.Count > 0 && TryNodeAtTile(tx, tz, out int node) && IsBlocked(node);
+        => _blocked.Count > 0 && TryNodeAtTile(tx - _ox, tz - _oz, out int node) && IsBlocked(node);
 
     // ── 굽기 ─────────────────────────────────────────────────────────────
 
@@ -156,7 +200,7 @@ public class WideGraph
         // 그때마다 `IsWorkable`을 부르면 같은 칸을 여덟 번 다시 잰다(칸 백만 개면 팔백만 번).
         for (int tz = 0; tz < _tiles; tz++)
         for (int tx = 0; tx < _tiles; tx++)
-            _walk[TileIdx(tx, tz)] = (byte)(map.IsWorkable(new Vector2Int(tx, tz)) ? 1 : 0);
+            _walk[TileIdx(tx, tz)] = (byte)(map.IsWorkable(W(tx, tz)) ? 1 : 0);
 
         for (int cz = 0; cz < _cells; cz++)
         for (int cx = 0; cx < _cells; cx++) BuildComponents(cx, cz);
@@ -168,9 +212,10 @@ public class WideGraph
 
         int nodes = 0, links = 0;
         for (int i = 0; i < _nodeTiles.Length; i++) if (_nodeTiles[i] > 0) nodes++;
+        nodes += _over.Count;
         for (int i = 0; i < _linkA.Length; i++)     if (_linkA[i] != None) links++;
 
-        Debug.Log($"[길찾기] 광역 그래프 — {_cells}×{_cells}셀(한 변 {_cellTiles}칸) · "
+        Debug.Log($"[길찾기] 광역 그래프 {Floors.At(new Vector2Int(_ox, _oz))}층 — {_cells}×{_cells}셀(한 변 {_cellTiles}칸) · "
                 + $"덩어리 {nodes}개 · 간선 {links}개 · {clock.ElapsedMilliseconds}ms");
 
         if (nodes == 0)
@@ -186,7 +231,7 @@ public class WideGraph
     {
         if (_map == null) return;
 
-        var c = _map.WorldToTile(center);
+        var c = _map.WorldToTile(center) - new Vector2Int(_ox, _oz);
         int r = Mathf.Max(1, Mathf.CeilToInt(radius));
 
         int cx0 = CellOf(c.x - r), cx1 = CellOf(c.x + r);
@@ -220,7 +265,7 @@ public class WideGraph
 
         for (int tz = z0; tz < z1; tz++)
         for (int tx = x0; tx < x1; tx++)
-            _walk[TileIdx(tx, tz)] = (byte)(_map.IsWorkable(new Vector2Int(tx, tz)) ? 1 : 0);
+            _walk[TileIdx(tx, tz)] = (byte)(_map.IsWorkable(W(tx, tz)) ? 1 : 0);
     }
 
     // ── 셀 안의 연결 덩어리 ──────────────────────────────────────────────
@@ -242,11 +287,7 @@ public class WideGraph
         for (int tx = x0; tx < x1; tx++)
             _comp[TileIdx(tx, tz)] = None;
 
-        for (int k = 0; k < _maxComp; k++)
-        {
-            int n = NodeId(cx, cz, k);
-            _nodeTiles[n] = 0;
-        }
+        for (int k = 0; k < _maxComp; k++) SetNode(NodeId(cx, cz, k), 0f, 0f, 0);
 
         byte next = 0;
         for (int tz = z0; tz < z1; tz++)
@@ -298,6 +339,10 @@ public class WideGraph
                 // 안 지키면 격자에서는 통과인데 **몸이 두 면 사이에 낀다.**
                 if (d >= 4 && (!Walk(tx + DX[d], tz) || !Walk(tx, tz + DZ[d]))) continue;
 
+                // **얇은 벽이 가른 변은 못 건넌다**(`EdgeWalls`, 2026-10-01) — 칸은 둘 다 걸을 수 있어도
+                // 셀을 반으로 가르는 벽이면 덩어리가 둘이어야 한다(이 설계가 원래 하려던 일 그대로).
+                if (!EdgeWalls.StepOpen(tx + _ox, tz + _oz, nx + _ox, nz + _oz)) continue;
+
                 int ni = TileIdx(nx, nz);
                 if (_comp[ni] != None) continue;
 
@@ -306,15 +351,13 @@ public class WideGraph
             }
         }
 
-        _nodeTiles[node] = count;
-        if (count <= 0) return;
+        if (count <= 0) { SetNode(node, 0f, 0f, 0); return; }
 
         // 대표점은 무게중심이다. **간선 값과 어림값에만 쓰인다** — 웨이포인트로 나가는 것은
         // 경계 통과점이라, 오목한 덩어리에서 중심이 살짝 벗어나도 길이 틀어지지 않는다.
-        var w = _map.TileToWorld(new Vector2Int(Mathf.RoundToInt((float)(sumX / count)),
-                                                Mathf.RoundToInt((float)(sumZ / count))));
-        _nodeX[node] = w.x;
-        _nodeZ[node] = w.z;
+        var w = _map.TileToWorld(W(Mathf.RoundToInt((float)(sumX / count)),
+                                   Mathf.RoundToInt((float)(sumZ / count))));
+        SetNode(node, w.x, w.z, count);
     }
 
     // ── 경계 — HPA\*가 entrance라고 부르는 것 ─────────────────────────────
@@ -375,7 +418,7 @@ public class WideGraph
                 int bx = dir == 0 ? x1     : t;
                 int bz = dir == 0 ? t      : z1;
 
-                if (InTiles(bx, bz) && Walk(ax, az) && Walk(bx, bz))
+                if (InTiles(bx, bz) && Walk(ax, az) && Walk(bx, bz) && EdgeWalls.StepOpen(ax + _ox, az + _oz, bx + _ox, bz + _oz))
                 {
                     ca = _comp[TileIdx(ax, az)];
                     cb = _comp[TileIdx(bx, bz)];
@@ -407,8 +450,8 @@ public class WideGraph
             int bx = dir == 0 ? x1     : mid;
             int bz = dir == 0 ? mid    : z1;
 
-            var pa = _map.TileToWorld(new Vector2Int(ax, az));
-            var pb = _map.TileToWorld(new Vector2Int(bx, bz));
+            var pa = _map.TileToWorld(W(ax, az));
+            var pb = _map.TileToWorld(W(bx, bz));
 
             _linkA[b + written] = run.A;
             _linkB[b + written] = run.B;
@@ -432,7 +475,7 @@ public class WideGraph
         node = -1;
         if (_map == null) return false;
 
-        var t = _map.WorldToTile(world);
+        var t = _map.WorldToTile(world) - new Vector2Int(_ox, _oz);
         if (TryNodeAtTile(t.x, t.y, out node)) return true;
 
         for (int r = 1; r <= maxRadius; r++)
@@ -456,7 +499,7 @@ public class WideGraph
         if (c == None) return false;
 
         node = NodeId(CellOf(tx), CellOf(tz), c);
-        return _nodeTiles[node] > 0;
+        return NodeTiles(node) > 0;
     }
 
     // ── 이웃 ─────────────────────────────────────────────────────────────
@@ -502,7 +545,7 @@ public class WideGraph
             if (mine != comp) continue;
 
             int n = forward ? NodeId(ncx, ncz, other) : NodeId(cx, cz, other);
-            if (_nodeTiles[n] <= 0) continue;
+            if (NodeTiles(n) <= 0) continue;
 
             _steps.Add(new Step { Node = n, Gate = new Vector3(_linkX[b + k], 0f, _linkZ[b + k]) });
         }
@@ -671,7 +714,7 @@ public class WideGraph
 
     float Dist(int node, Vector3 p)
     {
-        float dx = _nodeX[node] - p.x, dz = _nodeZ[node] - p.z;
+        float dx = NodeX(node) - p.x, dz = NodeZ(node) - p.z;
         return Mathf.Sqrt(dx * dx + dz * dz);
     }
 
@@ -685,17 +728,17 @@ public class WideGraph
     {
         if (_map == null) return "격자 없음";
 
-        var t  = _map.WorldToTile(world);
+        var t  = _map.WorldToTile(world) - new Vector2Int(_ox, _oz);
         int cx = CellOf(t.x), cz = CellOf(t.y);
 
         int comps = 0;
-        for (int k = 0; k < _maxComp; k++) if (_nodeTiles[NodeId(cx, cz, k)] > 0) comps++;
+        for (int k = 0; k < _maxComp; k++) if (NodeTiles(NodeId(cx, cz, k)) > 0) comps++;
 
         if (!TryNodeAt(world, out int node, maxRadius: 0))
             return $"셀({cx},{cz}) 덩어리{comps} — **그 칸은 못 걷는다**";
 
         int links = Neighbors(node).Count;
-        return $"셀({cx},{cz}) 덩어리{comps} 그중 {node % _maxComp}번(칸 {_nodeTiles[node]}) "
+        return $"셀({cx},{cz}) 덩어리{comps} 그중 {node % _maxComp}번(칸 {NodeTiles(node)}) "
              + $"이웃 {links}{(IsBlocked(node) ? " · **막힘으로 배움**" : "")}";
     }
 }

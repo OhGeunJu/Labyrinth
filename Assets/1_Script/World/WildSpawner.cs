@@ -282,7 +282,7 @@ public class WildSpawner : MonoBehaviour
         Debug.Log($"[야생] 첫 {CensusChunks}청크 결산 — 표가 빔 {_cNoTable}{empty} · 확률에서 빠짐 {_cRolledOut} · " +
                   $"설 자리 없음 {_cNoOpen} · 내 폰 곁/핵 영역 {_cNearPlayer}(나중에 다시 본다) → **선 무리 {_cMade}**" +
                   (_cMade == 0 && _cNoTable == CensusChunks
-                      ? "  ← **표가 전부 비었다** — `World → L`(초안)과 `Pawn → 7`(개미)을 돌렸는지 볼 것." : ""));
+                      ? "  ← **표가 전부 비었다** — 바이옴 에셋의 `WildSpawns`를 저작할 것." : ""));
         _censusDone = -1;
     }
 

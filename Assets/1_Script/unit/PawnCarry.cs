@@ -130,7 +130,7 @@ public static class PawnCarry
         else                carrier.AbandonWork();
 
         // 걷던 중이면 멈춘다 — 멀쩡한 우리 폰도 업을 수 있으므로 가던 길이 남아 있을 수 있다.
-        target.GetComponent<PawnMover>()?.StopMovement();
+        if (target.TryGetComponent(out PawnMover mover)) mover.StopMovement();
 
         // **싸우던 중이었으면 여기서 끈다**(`BodyPartSystem.KnockOut`과 **같은 이유·같은 자리**).
         // 업히면 BT가 통째로 멎는데(`UnitBrain.Update`) 전투 상태를 끄는 자리는 그 BT의
@@ -143,7 +143,7 @@ public static class PawnCarry
         //
         // 기절해서 업히는 쪽은 `KnockOut`이 이미 껐다 — 남는 것은 **멀쩡한 우리 편을 싸움
         // 한복판에서 업어 나르는 길**이고, 그게 업기를 만든 이유다.
-        target.GetComponent<CombatHandler>()?.ExitCombat();
+        if (target.TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
 
         var cc = target.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;   // 켜진 채 부모에 붙이면 콜라이더가 제자리로 되민다

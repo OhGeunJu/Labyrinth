@@ -14,6 +14,7 @@ using UnityEngine;
 public static class UnderworldSetup
 {
     const string BiomeDir = "Assets/Resources/Data/Biomes";
+    const string GlowstonePath = "Assets/5_Data/World/WallLight_Glowstone.asset";
 
     // ── 지하 바이옴 에셋 ────────────────────────────────────────────────────
     //
@@ -43,10 +44,13 @@ public static class UnderworldSetup
         (Biome.Swamp,      2, MapDir.Auto),  // 지저늪 — 지상 값을 되살렸다
         (Biome.Ossuary,    2, MapDir.Auto),  // 납골굴
         (Biome.Desert,     2, MapDir.Auto),  // 모래굴 — 지상 값을 되살렸다
+        (Biome.Jungle,     2, MapDir.Auto),  // 지저밀림 — 2026-10-11, 사용자가 2층에 놓았다
+        (Biome.Blight,     2, MapDir.Auto),  // 기생림 — 2026-10-11, 사용자가 2층에 놓았다
 
         (Biome.Glacier,    3, MapDir.Auto),  // 빙하굴
         (Biome.Crystal,    3, MapDir.Auto),  // 수정동
         (Biome.Lava,       3, MapDir.Auto),  // 용암층
+        (Biome.Irradiated, 3, MapDir.Auto),  // 방사굴 — 2026-10-11, 사용자가 3층에 놓았다
 
         (Biome.Abyss,      4, MapDir.Auto),  // 심연 — 한 층에 하나. 그게 *끝*의 성격이다
     };
@@ -86,6 +90,13 @@ public static class UnderworldSetup
             {
                 data = ScriptableObject.CreateInstance<BiomeContentData>();
                 data.Biome = biome;
+
+                // **야광석은 모든 바이옴에 박힌다** — 새 에셋을 빈 채로 두면 그 바이옴만 벽이 캄캄하다.
+                // 만들 때만 적는다: 밀도는 사용자가 바이옴마다 고치는 값이라 있는 에셋은 안 건드린다.
+                var glow = AssetDatabase.LoadAssetAtPath<WallLightData>(GlowstonePath);
+                if (glow != null)
+                    data.WallLights.Add(new BiomeContentData.WallLightEntry { Light = glow, Chance = 0.03f });
+
                 AssetDatabase.CreateAsset(data, $"{BiomeDir}/Biome_{biome}.asset");
                 made++;
             }
@@ -446,12 +457,23 @@ public static class UnderworldSetup
             return false;
         }
 
-        // **지역을 청크 하나 크기로 맞춘다.** 세계 4,096m · 청크 256m이므로 지역도 256m다.
-        // 청크보다 크게 잡으면(예: 8×8 = 512m) 바이옴 덩어리가 세계의 절반이 되어 서너 개밖에
-        // 안 생긴다 — 지하 바이옴 여덟을 만들어 놓고 셋만 보게 된다.
-        int want = TerrainGrid.ChunksPerAxis;
+        // **층 지도 한 장은 16×16 그대로다**(2026-10-01, `Floors`). 세계 격자는 층 지도 넷을 2×2로 짜 맞춘 32×32이고,
+        // 세계 64청크라 **지역 하나 = 2청크(128m)**다(`ChunksPerAxis`가 세계 격자의 배수라는 규칙은 그대로 지킨다).
+        // 예전에는 *"지역 = 청크 하나"*로 지도를 세계 청크 수에 맞췄는데, 그대로 두면 층 지도가 64×64가 되어
+        // 그려 둔 1층이 깨지고 칠할 칸이 열여섯 배가 된다.
+        // 아래 검사는 **상수끼리의 셈**이라 지금 값으로는 늘 통과해 컴파일러가 *닿지 않는 코드*(CS0162)라고 경고한다.
+        // 지우지 않는다 — `ChunksPerAxis`나 층 수를 바꾸는 날 지도가 조용히 어긋나는 것을 여기서 멈춰 세우는 둑이다.
+        const int want = 16;
+#pragma warning disable CS0162
+        if (TerrainGrid.ChunksPerAxis % (want * Floors.PerAxis) != 0)
+        {
+            Debug.LogError($"[지하] 청크 {TerrainGrid.ChunksPerAxis}가 세계 격자 {want * Floors.PerAxis}의 배수가 아니다 — 여기서 멈춘다.");
+            return false;
+        }
+#pragma warning restore CS0162
 
-        if (data.Width == want && data.Height == want) return true;
+        // 2~4층 지도는 1층 크기를 따른다 — 1층을 맞춘 **뒤에** 만든다(먼저 만들면 옛 크기를 물려받는다).
+        if (data.Width == want && data.Height == want) { FloorMapsCreator.Create(); return true; }
 
         Undo.RecordObject(data, "지도 해상도 맞추기");
         int oldW = data.Width, oldH = data.Height;
@@ -462,7 +484,8 @@ public static class UnderworldSetup
         TerrainGrid.ForgetRegions();
         TerrainHeight.ForgetBiomes();
 
-        Debug.Log($"[지하] 지도 {oldW}×{oldH} → {want}×{want} (지역 {TerrainGrid.RegionSize}m = 청크 하나).");
+        Debug.Log($"[지하] 지도 {oldW}×{oldH} → {want}×{want} (지역 {TerrainGrid.RegionSize}m).");
+        FloorMapsCreator.Create();
         return true;
     }
 
@@ -516,7 +539,7 @@ public static class UnderworldSetup
             // 둘 다 **씬에 쓴다** — 이 묶음 끝에 씬을 저장해야 남는다.
             "DungeonColony/World/7. Create Flora (버섯 · 바닥 돌 · 단단한 나무)",  // 바닥에 나는 것 전부
             "DungeonColony/World/B. Create Metal Ladder (금속 사다리 · 광맥 배선)", // 층별 광맥 + 바닥 광맥
-            "DungeonColony/World/E. Create Wood Ladder (단단한 판자)",     // 2층 목재의 중간재
+            "DungeonColony/World/E. Create Wood Ladder (단단한 · 서리 · 흑단 판자)",  // 2~4층 목재 · 3·4층 나무 뿌리기
             "DungeonColony/World/F. Wire Building Costs (건설 비용)",      // 건물은 돌과 나무로 짓는다
             "DungeonColony/World/H. Wire Research Tiers (연구대 등급)",    // 어느 연구를 어느 연구대에서
             "DungeonColony/World/9. Set Wild Yields (야생 매장량)",        // 야생은 유한하다
@@ -546,6 +569,7 @@ public static class UnderworldSetup
         // 알고 넘어가고, 그 뒤 굽기는 빈 씬을 구워 **세계에 마을이 하나도 없게 된다.**
         // 실제로 그렇게 됐다(구운 청크 0개, 2026-08-30에 드러났다).
         WorldPopulator.RunHeadless();
+        SnapStartSpot();
 
         var authoring = WorldAuthoringScene.FindRoot();
         if (authoring == null)
@@ -589,6 +613,26 @@ public static class UnderworldSetup
         Debug.Log($"[지하] 다 세웠다 — {TerrainGrid.WorldSize}m · 지역 {TerrainGrid.RegionSize}m.\n" +
                   "**씬을 저장할 것**(배선·지형 프로필·조명이 씬에 들어갔다).\n" +
                   "남은 것은 지하 색조뿐이다(`C. Bake World Color Map` — 지금은 그림이 없어 꺼져 있다).");
+    }
+
+    // **시작 표식을 시작 칸으로**(2026-10-01) — 시작 방은 지도의 시작 칸 한가운데에 파이는데(`WorldPopulator.StartRooms`),
+    // `StartSpot`은 씬에 손으로 놓은 것이라 세계가 커지면(지역 64m → 128m) 옛 자리에 남아 **방 밖 바위 속**에 선다.
+    // 첫 폰이 거기서 태어나므로 방과 표식이 한 자리여야 한다.
+    static void SnapStartSpot()
+    {
+        var spot = Object.FindFirstObjectByType<StartSpot>(FindObjectsInactive.Include);
+        if (spot == null) return;
+
+        var c = TerrainGrid.RegionCenter(WorldMap.AuthoredStart);
+        var to = new Vector3(c.x, TerrainHeight.At(c.x, c.z), c.z);
+        if ((spot.transform.position - to).sqrMagnitude < 1f) return;
+
+        Undo.RecordObject(spot.transform, "시작 표식 옮기기");
+        var was = spot.transform.position;
+        spot.transform.position = to;
+        EditorUtility.SetDirty(spot);
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(spot.gameObject.scene);
+        Debug.Log($"[지하] 시작 표식을 시작 칸 {WorldMap.AuthoredStart}로 옮겼다 — ({was.x:0}, {was.z:0}) → ({to.x:0}, {to.z:0}).");
     }
 
     // ── 굴이 어떻게 났는지 본다 ─────────────────────────────────────────────

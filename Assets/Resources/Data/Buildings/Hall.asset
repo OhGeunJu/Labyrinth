@@ -13,18 +13,19 @@ MonoBehaviour:
   m_Name: Hall
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: hall
-  BuildingName: "\uD68C\uAD00"
+  BuildingName: 13x10
   Description: "13\xD710 \xB7 \uC548\uCABD 11\xD78\uCE78. \uAC00\uC7A5 \uD070 \uAECD\uB370\uAE30.
     \uB113\uACE0 \uB192\uC544 \uC548\uC5D0 \uBB34\uC5C7\uC744 \uB193\uC544\uB3C4
     \uB2F5\uB2F5\uD558\uC9C0 \uC54A\uB2E4."
   Category: 2
-  SortOrder: 27
+  SortOrder: 130
   Size: {x: 13, y: 10}
   Costs:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
     Amount: 40
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 30
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 0
@@ -49,3 +50,4 @@ MonoBehaviour:
   - '#...........#'
   - '#...........#'
   - '#####...#####'
+  EdgeWall: 0

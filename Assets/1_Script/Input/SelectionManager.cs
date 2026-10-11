@@ -323,7 +323,7 @@ public class SelectionManager : MonoBehaviour
             var dropped = hit.collider.GetComponent<DroppedItem>();
             if (dropped != null)
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 SelectItems(new List<DroppedItem> { dropped });
@@ -335,7 +335,7 @@ public class SelectionManager : MonoBehaviour
             if (pawn != null && faction != null && faction.IsPlayer)
             {
                 ClearSelection();
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 AddToSelection(pawn);
@@ -349,7 +349,7 @@ public class SelectionManager : MonoBehaviour
             if (pawn != null && hit.collider.GetComponent<IWorldClickable>() is { } pawnClickable
                              && AcceptsClick(pawnClickable))
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 pawnClickable.OnWorldClick();
@@ -364,7 +364,7 @@ public class SelectionManager : MonoBehaviour
             // 정보 패널은 `InspectPanelUI`가 "조사 중인 것이 있으면 그쪽"으로 가려 준다.
             if (pawn != null)
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(pawn.GetComponent<UnitBrain>());
                 return;
@@ -381,7 +381,7 @@ public class SelectionManager : MonoBehaviour
             var clickable = hit.collider.GetComponent<IWorldClickable>();
             if (clickable != null && AcceptsClick(clickable))
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
 
@@ -408,7 +408,7 @@ public class SelectionManager : MonoBehaviour
             var plain = hit.collider.GetComponentInParent<PlacedBuilding>();
             if (plain != null && (plain.Data == null || !plain.Data.IsFloor))
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 OnBuildingInspected?.Invoke(plain);
@@ -426,7 +426,7 @@ public class SelectionManager : MonoBehaviour
             var bp = BuildingBlueprint.PickAt(MapManager.Instance.WorldToTile(hit.point));
             if (bp != null)
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 OnBlueprintInspected?.Invoke(bp);
@@ -442,7 +442,7 @@ public class SelectionManager : MonoBehaviour
         //
         // 그래서 **선택을 푸는 별도 조작은 두지 않는다.** 바꾸는 길(다른 폰 클릭 · 사각 선택 ·
         // 로스터)이 이미 있고, 켄시도 그렇다. "아무도 안 고른 상태"가 필요한 곳은 없다.
-        DungeonCore.Instance?.Deselect();
+        DungeonCore.DeselectAll();
         OnNodeSelected?.Invoke(null);
         OnPawnInspected?.Invoke(null);
     }

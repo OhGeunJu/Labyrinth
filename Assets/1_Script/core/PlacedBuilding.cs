@@ -110,6 +110,18 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         data != null ? BlockingAt(transform.position, data, transform.rotation)
                      : System.Array.Empty<Vector2Int>();
 
+    // **다른 건물과 겹치면 안 되는 칸**(2026-10-06). 보통은 발자국 전체다 — 소환진·침대·창고처럼 칸을 안 막는 건물도
+    // 그 자리를 *차지한다*(그 위에 다른 것을 지으면 둘이 겹쳐 선다). **걸어 들어가는 건물(`BlockMask`)만 막는 칸**이다 —
+    // 집 껍데기의 안쪽은 침대·작업대를 들이는 자리다.
+    //
+    // 전에는 배치 판정이 남의 **중심 칸 하나**만 봤다(`footprint.Contains(WorldToTile(bp.position))`) — 여러 칸짜리
+    // 청사진·건물의 가장자리에 걸쳐 놓으면 통과해서, 소환진 위에 침대가 겹쳐 지어졌다.
+    public static IEnumerable<Vector2Int> ClaimedAt(Vector3 center, BuildingData data, Quaternion rot)
+    {
+        if (data == null) return System.Array.Empty<Vector2Int>();
+        return data.HasBlockMask ? BlockingAt(center, data, rot) : FootprintAt(center, data.Size, rot);
+    }
+
     // 중심에서 크기만큼 펼친 칸들. `BuildModeManager.GetFootprint`가 만드는 것과 같은 칸이
     // 나오고, 격자에서 반 칸쯤 어긋나게 놓인 건물도 반올림으로 제자리를 찾는다.
     public static IEnumerable<Vector2Int> FootprintAt(Vector3 center, Vector2Int size, Quaternion rot)
@@ -153,7 +165,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     public static PlacedBuilding Attach(GameObject go, BuildingData data)
     {
         if (go == null) return null;
-        var pb = go.GetComponent<PlacedBuilding>() ?? go.AddComponent<PlacedBuilding>();
+        if (!go.TryGetComponent(out PlacedBuilding pb)) pb = go.AddComponent<PlacedBuilding>();
         pb.data = data;
         return pb;
     }
@@ -215,7 +227,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         PawnPlacement.PlaceOnGround(brain.gameObject, groundPos);
 
         // 걸어오던 경로는 여기서 쓸모없다. 목표를 지우면 BT가 다음 틱에 새 자리에서 다시 계획한다.
-        brain.GetComponent<PawnMover>()?.StopMovement();
+        if (brain.TryGetComponent(out PawnMover brainMover)) brainMover.StopMovement();
         Debug.Log($"[PlacedBuilding] {brain.name} — 건물이 들어선 칸에서 밖으로 옮김");
     }
 
@@ -290,13 +302,16 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         ReleaseTiles();
         transform.SetPositionAndRotation(pos, rot);
         OccupyFootprint();          // 새 칸을 막고, 거기 서 있던 폰을 밖으로 내보낸다
+        // 얇은 벽은 칸이 아니라 변을 막는다 — 그것도 옮긴다. **`GetComponent<T>()?.`가 아니다**(
+        // 에디터의 가짜 null 위에서 `Reregister`가 돌다 끊겨 아래 다시 굽기가 통째로 빠졌다).
+        if (TryGetComponent(out ThinWall thin)) thin.Reregister();
 
         // 벽처럼 장애물인 건물은 **떠난 자리와 새 자리 둘 다** 다시 구워야 한다.
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(from);
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
 
         // 영역은 그대로고 건물만 움직였다 — `OnTerritoryChanged`가 안 뜨므로 스스로 다시 본다.
-        GetComponent<BuildingDormancy>()?.Reevaluate();
+        if (TryGetComponent(out BuildingDormancy dormancy)) dormancy.Reevaluate();
 
         Debug.Log($"[PlacedBuilding] {(data != null ? data.BuildingName : name)} 이전 — {from} → {pos}");
     }

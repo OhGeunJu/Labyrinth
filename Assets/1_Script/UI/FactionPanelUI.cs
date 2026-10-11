@@ -10,15 +10,15 @@ using UnityEngine.InputSystem;
 // 폰의 세력** 하나만 알려 주고(그 폰이 눈앞에 있어야 한다), 알림은 문턱을 넘는 순간에만 뜬다 —
 // **지금 전체가 어떤지**를 묻는 자리가 따로 있어야 한다.
 //
-// ── 세력은 전부 뜬다 ───────────────────────────────────────────────────────
+// ── 만난 세력만 뜬다 ───────────────────────────────────────────────────────
 //
-// 저작된 세력 전부를 나열한다(`DataManager.AllFactions`). 처음엔 "만난 세력만" 띄웠는데,
-// 그러면 **판을 시작하고 창을 열면 거의 비어 있다** — 세상에 누가 있는지를 알려 주는 것이
-// 이 창의 절반이고, 안 만난 세력의 시작 우호도도 **저작된 값이라 볼 값이 있다**
-// (`FactionData.StartingFavor` — 망자 −100, 산적 −55는 만나기 전에도 참이다).
+// 저작된 세력 전부(`DataManager.AllFactions`) 가운데 **만난 것만**(`FactionRelations.IsKnown`).
+// 08-14에는 전부 띄웠다 — 판을 열면 창이 비어 있었기 때문이다. 2026-10-01에 뒤집었다(사용자:
+// *"팩션UI가 발견하지 않은 팩션은 안 보이게"*) — 세상에 누가 있는지는 **찾아내는 것**이 됐다.
+// 비어 있을 때는 비어 있다고 말한다(창이 고장 난 것처럼 보이지 않게).
 //
-// 그래서 세력 에셋을 `Resources/Data/Factions`로 옮겼다 — **전부를 훑어야 하는 곳이 생기면
-// 폴더 스캔**이라는 이 저장소의 규약대로다(목록을 배열로 들면 런타임 생성물에서 반드시 빈다).
+// 세력 에셋은 `Resources/Data/Factions`에 산다 — **전부를 훑어야 하는 곳이 생기면 폴더 스캔**이라는
+// 이 저장소의 규약대로다(목록을 배열로 들면 런타임 생성물에서 반드시 빈다).
 //
 // ── 모양은 글자 한 덩어리 ──────────────────────────────────────────────────
 //
@@ -33,8 +33,19 @@ public class FactionPanelUI : MonoBehaviour
     // 자주 볼 이유가 없다.
     int _beat = -1;
 
+    // 모드 바의 `세력 (L)` 버튼이 부른다(2026-10-09) — 키와 같은 문.
+    public static FactionPanelUI Instance { get; private set; }
+    public bool IsOpen => panel != null && panel.activeSelf;
+    public void Toggle()
+    {
+        if (panel == null) return;
+        panel.SetActive(!panel.activeSelf);
+        if (panel.activeSelf) Refresh();
+    }
+
     void Awake()
     {
+        Instance = this;
         if (panel != null) panel.SetActive(false);
 
         // **줄바꿈을 못 박는다** — 씬에서 꺼져 있으면 긴 세력 이름이 오른쪽에서 그냥 잘린다
@@ -46,8 +57,13 @@ public class FactionPanelUI : MonoBehaviour
         }
     }
 
-    void OnEnable()  => FactionRelations.OnChanged += OnRelationChanged;
-    void OnDisable() => FactionRelations.OnChanged -= OnRelationChanged;
+    void OnEnable()  { FactionRelations.OnChanged += OnRelationChanged; FactionRelations.OnMet += OnMet; }
+    void OnDisable() { FactionRelations.OnChanged -= OnRelationChanged; FactionRelations.OnMet -= OnMet; }
+
+    void OnMet(FactionData f)
+    {
+        if (panel != null && panel.activeSelf) Refresh();
+    }
 
     // 값이 움직이면 **열려 있을 때만** 다시 그린다 — 닫힌 창을 갱신할 이유가 없다.
     void OnRelationChanged(FactionData f, float favor, string reason)
@@ -58,10 +74,7 @@ public class FactionPanelUI : MonoBehaviour
     void Update()
     {
         if (Keyboard.current != null && Keyboard.current.lKey.wasPressedThisFrame && panel != null && !InputFocus.KeysBlocked())
-        {
-            panel.SetActive(!panel.activeSelf);
-            if (panel.activeSelf) Refresh();
-        }
+            Toggle();
 
         if (panel == null || !panel.activeSelf) return;
 
@@ -73,10 +86,15 @@ public class FactionPanelUI : MonoBehaviour
     {
         if (infoText == null) return;
 
-        var list = Collect();
-        if (list.Count == 0)
+        var list = Collect(out int total);
+        if (total == 0)
         {
             infoText.text = "<color=#888>세력 데이터가 없습니다 — `Resources/Data/Factions`를 확인하세요.</color>";
+            return;
+        }
+        if (list.Count == 0)
+        {
+            infoText.text = "<color=#888>아직 만난 세력이 없습니다.\n탐험하며 다른 이들을 만나면 여기에 적힙니다.</color>";
             return;
         }
 
@@ -96,15 +114,23 @@ public class FactionPanelUI : MonoBehaviour
             sb.AppendLine();
         }
 
+        int unknown = total - list.Count;
+        if (unknown > 0) sb.Append($"<color=#777>아직 못 만난 세력 {unknown}</color>");
+
         infoText.text = sb.ToString();
     }
 
-    // 저작된 세력 전부. **플레이어 세력만 뺀다**(자기 자신과의 관계는 물을 것이 없다).
-    static List<FactionData> Collect()
+    // 만난 세력. **플레이어 세력은 뺀다**(자기 자신과의 관계는 물을 것이 없다). `total`은 남의 세력 전부.
+    static List<FactionData> Collect(out int total)
     {
         var list = new List<FactionData>();
+        total = 0;
         foreach (var f in DataManager.AllFactions)
-            if (f != null && !f.PlayerControlled) list.Add(f);
+        {
+            if (f == null || f.PlayerControlled) continue;
+            total++;
+            if (FactionRelations.IsKnown(f)) list.Add(f);
+        }
         return list;
     }
 

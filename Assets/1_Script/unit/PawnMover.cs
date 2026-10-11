@@ -80,6 +80,9 @@ public class PawnMover : MonoBehaviour
     bool _hasTarget;
     float _baseMoveSpeed;
     float _mobilityMult = 1f;   // 절뚝임/기어가기 등 이동 속도 배율
+
+    // 수레를 끄는 동안의 걸음 배율(`PawnCart`가 달고 뗄 때 쓴다).
+    [System.NonSerialized] public float CartSpeedMult = 1f;
     UnitStats _stats;
     Inventory _inventory;
     StatusEffectSystem _sfx;
@@ -275,7 +278,7 @@ public class PawnMover : MonoBehaviour
         foreach (var t in go.GetComponentsInChildren<Transform>(true))
             if (t.gameObject.layer == from) t.gameObject.layer = want;   // 초상화 등 딴 레이어는 둔다
 
-        go.GetComponent<PawnMover>()?.ApplyPawnCollisionRule();
+        if (go.TryGetComponent(out PawnMover mover)) mover.ApplyPawnCollisionRule();
     }
 
     public void ApplyPawnCollisionRule()
@@ -1176,7 +1179,7 @@ public class PawnMover : MonoBehaviour
                 float sfxMult = _sfx != null ? _sfx.MoveSpeedMult : 1f;
                 float effectiveSpeed = (_stats != null
                     ? _baseMoveSpeed * (1f + _stats.Athletics / 100f) * weightCorrection * sfxMult
-                    : moveSpeed) * _mobilityMult;
+                    : moveSpeed) * _mobilityMult * CartSpeedMult;
 
                 // **목표를 지나치지 않는다**(2026-08-30). 도착 판정은 0.12m인데 10배에서
                 // 한 걸음은 0.67m다 — **매 프레임 웨이포인트를 0.55m씩 지나쳤다가 되돌아온다.**
@@ -1363,7 +1366,7 @@ public class PawnMover : MonoBehaviour
     float CalcWeightCorrection()
     {
         if (_stats == null || _brain == null) return 1f;
-        float maxWeight     = CarryCapacity.For(_stats);
+        float maxWeight     = CarryCapacity.For(_brain);   // 수레까지 센다(`PawnCart`)
         float currentWeight = CarryCapacity.Load(_brain);
         if (maxWeight <= 0f || currentWeight <= maxWeight) return 1f;
         return maxWeight / currentWeight;

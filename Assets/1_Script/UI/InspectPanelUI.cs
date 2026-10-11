@@ -811,6 +811,13 @@ public class InspectPanelUI : MonoBehaviour
             return;
         }
 
+        // **줄이 없는 등급은 아직 올릴 곳이 없다는 뜻이다**(V — 5층이 아직 없다).
+        if (!BenchTier.CanRaiseTo(bench.Tier + 1))
+        {
+            sb.AppendLine("<color=#888>더 올릴 방법이 아직 알려지지 않았다.</color>");
+            return;
+        }
+
         // **다음 등급에 무엇이 드는지 미리 적는다** — 누르기 전에 알아야 *지금 올릴지*를
         // 정한다(누르고 나서 알면 취소하는 수밖에 없다).
         var cost = BenchUpgrade.CostFor(bench.Tier + 1);
@@ -836,9 +843,9 @@ public class InspectPanelUI : MonoBehaviour
             return;
         }
 
-        if (bench.Tier >= BenchTier.Max) return;
-
         int next = bench.Tier + 1;
+        if (!BenchTier.CanRaiseTo(next)) return;
+
         actions.Add(($"{BenchTier.Roman(next)} 등급으로 올린다",
                      (Action)(() => BenchUpgrade.Ensure(pb)?.Request())));
     }
@@ -1586,6 +1593,17 @@ public class InspectPanelUI : MonoBehaviour
                               $"(성공 {Conversion.DominateChance() * 100f:F0}%, 실패하면 죽는다).</color>");
             else
                 sb.AppendLine("<color=#888>던전 핵이 지배하는 중 — 두면 저절로 찬다.</color>");
+        }
+        else if (Conversion.IsBeast(brain))
+        {
+            // **짐승은 조련이다** — 같은 게이지 · 같은 쉬는 시간, 다루는 솜씨만 다르다.
+            float wait = Conversion.PersuadeCooldownLeft(brain);
+            if (!Conversion.CanTame(brain))
+                sb.AppendLine("<color=#F90>우리에 가둬야 길들일 수 있다.</color>");
+            else if (wait > 0f)
+                sb.AppendLine($"<color=#888>길들이기를 쉬는 중 — {Mathf.CeilToInt(wait)}초 뒤에 다시 붙는다.</color>");
+            else
+                sb.AppendLine("<color=#888>길들일 수 있는 짐승 — 조련을 켠 폰이 붙거나 우클릭 [길들인다].</color>");
         }
         else if (!Conversion.CanPersuade(brain))
         {

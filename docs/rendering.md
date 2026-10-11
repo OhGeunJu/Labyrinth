@@ -29,6 +29,10 @@
   **그중 하나는 반드시 뒤처진다.** 재질도 메시도 한 벌이고 **색만
   `MaterialPropertyBlock`으로 얹는다**(`RockRenderer`·`PawnMark`).
 
+## 그림자를 던지는 조명은 몫이 있다 (2026-10-11)
+
+점 조명 하나는 그림자 지도 여섯 장이다. 판(2048²)을 넘기면 URP가 버릴 것을 제멋대로 고른다 — 그래서 고르는 것을 `ShadowBudget`이 한다(시선 축에 가까운 `MaxCasters`개 · 경계에서 세기를 줄여 끈다). **그림자를 켠 조명을 새로 세우면 `ShadowBudget.Track`을 부를 것**(지금은 벽 조명 `RockRenderer`와 `Skylight`). 수백 개씩 서는 것(야광석·버섯·광맥)은 처음부터 그림자가 없다.
+
 ## 다른 곳에 있는 것
 
 - **바위 자르기(`RockCut.hlsl`)와 그리는 패스 목록** → `design_underworld.md` "바위"

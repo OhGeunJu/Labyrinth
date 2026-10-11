@@ -11,13 +11,13 @@ using UnityEngine.UI;
 // 가려져, "누구와 말하는 중인지"를 창 안의 글자로만 알게 된다. 아래에 눕히면 위쪽 화면이
 // 그대로 남아 폰도 지형도 계속 보인다.
 //
-// **월드맵 도착 메뉴(`WorldMenuUI`)와 다른 창인 이유**도 거기 있다. 그쪽은 *장소*에 들어설 때
+// **옛 월드맵 도착 메뉴(10-09에 걷어냄)와 다른 창이었던 이유**도 거기 있다. 그쪽은 *장소*에 들어설 때
 // 뜨는 화면이라 왼쪽을 통째로 차지해도 되지만(볼 것이 지도뿐이다), 이건 *사람* 앞에 서서
 // 뜨는 것이라 그 사람을 가리면 안 된다.
 //
 // ── 모양은 씬이, 코드는 데이터만 ───────────────────────────────────────────
 //
-// 선택지 줄은 **씬의 `OptionTemplate`을 복제**한다(`PawnContextMenuUI`·`WorldMenuUI`와 같은 규약).
+// 선택지 줄은 **씬의 `OptionTemplate`을 복제**한다(`PawnContextMenuUI`와 같은 규약).
 // 여백·폰트·색은 전부 씬 오브젝트가 갖고, 여기서는 글자와 콜백만 건다.
 public class DialogueUI : MonoBehaviour
 {
@@ -55,7 +55,7 @@ public class DialogueUI : MonoBehaviour
 
     // 한 마디를 띄운다. **고르면 다음 `Open`을 부르는 것이 곧 대화의 흐름이다** —
     // 트리를 미리 만들어 두는 대신, 선택지의 콜백이 다음 마디를 연다
-    // (`WorldMapView`가 마을 메뉴에서 "메뉴 안 메뉴"를 여는 것과 같은 방식).
+    //
     public void Open(string speaker, Sprite face, string line, IList<PawnMenuOption> options)
     {
         if (panel == null || optionContainer == null || optionTemplate == null) return;

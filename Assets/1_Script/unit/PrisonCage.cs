@@ -32,6 +32,9 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySit
     {
         _persuadeSlot = new SiteJobSlot(w => new PersuadeJob(Prisoner, w),
                                         () => Conversion.PersuadeReady(Prisoner));
+        // 짐승은 설득이 아니라 조련이다 — 같은 쉬는 시간을 쓴다(`Conversion.TameRound`).
+        _tameSlot     = new SiteJobSlot(w => new TameJob(Prisoner, w),
+                                        () => Conversion.PersuadeReady(Prisoner));
         FeedSlot      = PrisonFeeding.NewSlot(this);
     }
 
@@ -62,6 +65,7 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySit
     const float CheckInterval = 1f;
 
     SiteJobSlot _persuadeSlot;   // `Awake`에서 묶는다
+    SiteJobSlot _tameSlot;
     float _nextCheck;
 
     void Update()
@@ -78,6 +82,17 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySit
         // **쿨타임 동안은 일감을 안 낸다.** 내 놓고 `IsReady`로 막으면 폰이 우리 앞에 서서
         // 20초를 기다린다 — 쿨타임을 둔 이유가 그 사이에 다른 일을 하라는 것이다.
         _persuadeSlot?.Tick(Conversion.CanPersuade(Prisoner));
+        _tameSlot?.Tick(Conversion.CanTame(Prisoner));
+    }
+
+    // **이 폰에게 맡긴다**(우클릭 [길들인다]).
+    public bool RequestTameBy(UnitBrain tamer)
+    {
+        if (tamer == null || tamer == Prisoner) return false;
+        if (!Conversion.CanTame(Prisoner)) return false;
+        if (!Conversion.PersuadeReady(Prisoner)) return false;
+
+        return _tameSlot != null && _tameSlot.RequestBy(tamer);
     }
 
     // **이 폰에게 맡긴다**(우클릭 [설득한다]).
@@ -90,7 +105,7 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySit
         return _persuadeSlot != null && _persuadeSlot.RequestBy(speaker);
     }
 
-    void DropPersuadeJob() => _persuadeSlot?.Drop();
+    void DropPersuadeJob() { _persuadeSlot?.Drop(); _tameSlot?.Drop(); }
 
     // 빈 우리 중 가장 가까운 것.
     public static PrisonCage FindNearestFree(Vector3 from) => CarrySites.NearestFree(All, from);
@@ -163,8 +178,8 @@ public static class Imprisonment
         // 하던 것을 전부 끊는다 — 깨어나서 이어서 하면 안 된다.
         brain.Blackboard.Target      = null;
         brain.Blackboard.FollowTarget = null;
-        brain.GetComponent<CombatHandler>()?.ExitCombat();
-        brain.GetComponent<PawnMover>()?.StopMovement();
+        if (brain.TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
+        if (brain.TryGetComponent(out PawnMover brainMover)) brainMover.StopMovement();
     }
 
     // **게이지는 여기서 안 지운다.** `Unbind`는 "자리에서 뗀다"이지 "풀려났다"가 아니다 —

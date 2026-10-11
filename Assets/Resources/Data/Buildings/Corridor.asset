@@ -13,16 +13,17 @@ MonoBehaviour:
   m_Name: Corridor
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: corridor
-  BuildingName: "\uBCF5\uB3C4"
+  BuildingName: 3x9
   Description: "3\xD79 \xB7 \uC548\uCABD 1\xD77\uCE78. \uC591 \uB05D\uC774 \uD2B8\uC778
     \uD55C \uCE78 \uD3ED \uD1B5\uB85C. \uB5A8\uC5B4\uC838 \uC120 \uC9D1\uB4E4\uC744
     \uC787\uB294\uB2E4."
   Category: 2
-  SortOrder: 21
+  SortOrder: 27
   Size: {x: 3, y: 9}
   Costs:
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 8
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 0
@@ -46,3 +47,4 @@ MonoBehaviour:
   - '#.#'
   - '#.#'
   - '#.#'
+  EdgeWall: 0

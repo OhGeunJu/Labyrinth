@@ -47,6 +47,14 @@ public class WorldMapData : ScriptableObject
              "`Terrain → 8. Generate Biome Map`이 그것만 깐다.")]
     public int Floor = 1;
 
+    // **층 통로 자리**(2026-10-01, `FloorPassage`) — 지역 칸. **음수면 자동**(내려가는 길 (W−4, H−4) · 올라가는 길 (3, 3)).
+    // 내려가는 길은 이 층에서 다음 층으로, 올라가는 길은 앞 층에서 이 층으로 이어진다(1층엔 올라가는 길이 · 4층엔
+    // 내려가는 길이 안 선다).
+    [Tooltip("이 층에서 다음 층으로 내려가는 통로의 지역 칸. 음수면 자동(W-4, H-4).")]
+    public Vector2Int PassageDown = new(-1, -1);
+    [Tooltip("앞 층에서 이 층으로 올라오는 통로의 지역 칸. 음수면 자동(3, 3).")]
+    public Vector2Int PassageUp = new(-1, -1);
+
     // ── 손으로 칠했다 (2026-09-15) ──────────────────────────────────────────
     //
     // **생성기는 저작을 대신하지 않는다 — 저작을 시작할 자리를 만든다**(그 파일의 첫 줄이

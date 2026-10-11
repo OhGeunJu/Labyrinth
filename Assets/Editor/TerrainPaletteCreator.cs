@@ -92,6 +92,10 @@ public static class TerrainPaletteCreator
     // 상태가 조용히 생긴다(화면에는 바닥 한 장으로만 보인다). 모를 때는 넓게 가는 편이 낫다.
     static int MapFloor(out string why)
     {
+        // **층이 넷이 된 뒤로는 늘 전부 굽는다**(2026-10-01, `Floors`) — 한 세계에 층 넷이 나란히 서므로 팔레트에 네 층의
+        // 바이옴이 다 있어야 한다. 한 층으로 좁히면 나머지 세 층 바닥이 한 장으로 뜬다.
+        if (WorldMap.FloorData(2) != null) { why = null; return 0; }
+
         var view = Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include);
         var data = view != null ? new SerializedObject(view).FindProperty("mapData")?.objectReferenceValue
                                   as WorldMapData
@@ -134,8 +138,10 @@ public static class TerrainPaletteCreator
         // 용암층 — 탄 바닥과 검게 그을린 바위.
         (Biome.Lava,      GroundPack + "Burnt",           RockPack   + "06", None, None),
 
-        // 심연 — 어두운 바위 둘. **여기만 둘 다 바위다** — 흙 한 톨 없는 곳이라는 뜻이다.
-        (Biome.Abyss,     RockPack   + "02",              RockPack   + "10", None, None),
+        // 심연 — 어두운 바위에 **살덩이가 번졌다**(2026-10-11, 사용자: *"심연은 약간 크툴루 느낌"*).
+        // 전에는 바위 둘이었다. 변형을 살로 바꿔 바닥이 군데군데 살아 있는 것처럼 보이게 한다.
+        // **기생림 바닥과 같은 장이다** — 층이 달라 화면에서 안 부딪히고, 채널을 하나 아낀다.
+        (Biome.Abyss,     RockPack   + "02",              NaturePack + "Flesh", None, None),
 
         // ── 층마다 하나씩 더 (2026-09-15) ───────────────────────────────────
 
@@ -168,6 +174,23 @@ public static class TerrainPaletteCreator
         //
         // **없으면 이 바이옴만 첫 줄 바닥으로 떨어진다**(그리고 굽기가 에러로 말한다).
         (Biome.Swamp,      ExtPack    + "Moss01_MR_1K/Moss01_1K", NaturePack + "StagnantWater", None, None),
+
+        // ── 사용자가 더한 셋 (2026-10-11) ───────────────────────────────────
+        //
+        // **바이옴마다 새 장은 하나씩만 쓴다** — 변형은 이웃이 이미 쓰는 장을 빌린다(중복은 접힌다).
+        // 셋을 둘씩 새로 주면 스물여덟 장 = 일곱 패스이고, 이렇게 두면 스물넉 장 = 전과 같은 여섯 패스다.
+
+        // 기생림(2층) — **살 위에 마른 흙.** 시체에서 버섯이 자라는 곳이라 바닥이 살이다.
+        // 변형은 납골굴의 뼈빛 흙을 그대로 빌린다(이웃 바이옴이고 같은 죽음의 결이다).
+        (Biome.Blight,     NaturePack + "Flesh",           GroundPack + "Dry02",
+                           None,                           new Color(1.20f, 1.14f, 1.00f)),
+
+        // 지저밀림(2층) — 낙엽 덮인 풀과 이끼 낀 흙. 늪(이끼·고인 물)보다 **마르고 밝은 초록**이다.
+        (Biome.Jungle,     GroundPack + "GrassLeafs01",    GroundPack + "SoilMoss", None, None),
+
+        // 방사굴(3층) — **갈라진 땅을 연두로 민다.** 변형은 용암층의 탄 바닥(재)이다.
+        (Biome.Irradiated, GroundPack + "Dry03",           GroundPack + "Burnt",
+                           new Color(0.75f, 1.45f, 0.40f), None),
 
         // **미지정도 채운다** — 안 칠한 칸이 회색으로 뜨면 "버그"로 보인다. 동굴과 같은 것을
         // 쓰면 채널이 안 늘고(중복은 접힌다) 화면에서도 자연스럽다.

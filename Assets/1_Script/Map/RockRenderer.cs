@@ -336,6 +336,9 @@ public class RockRenderer : MonoBehaviour
         if (RockMap.Enabled && Application.isPlaying && GetComponent<FogOfWar>() == null)
             gameObject.AddComponent<FogOfWar>();
 
+        // **층 통로도 판이 열릴 때 선다**(2026-10-01, `FloorPassage`) — 둘레 바위를 여는 문이 시작 공터와 같다.
+        if (RockMap.Enabled && Application.isPlaying) FloorPassage.Build();
+
         if (!RockMap.Enabled || startClearing <= 0f) return;
 
         int opened = 0;
@@ -543,6 +546,7 @@ public class RockRenderer : MonoBehaviour
     void LateUpdate()
     {
         PushCutUniforms();
+        ShadowBudget.Tick(Camera.main);
 
         // **버리는 것이 먼저다** — 굽는 것보다 싸고, 안 쓰는 것을 들고 있을 이유가 없다.
         int reap = dropsPerFrame;
@@ -799,6 +803,7 @@ public class RockRenderer : MonoBehaviour
             var go = Instantiate(w.Prefab, w.Pos, w.Rot, ch.Go.transform);
             w.Data.AddMembers(go, w.Tile);   // 곁가지 — 모양만(불빛은 무리에 하나)
             w.Data.Dress(go, w.Tile);        // 크기·빛깔 — 칸마다 다르다, 곁가지까지 같이
+            ShadowBudget.Track(go);          // 그림자는 화면 가운데 몇 개만 던진다
             ch.Lights[w.Tile] = new PlacedLight { Go = go, Face = w.Face, Data = w.Data };
         }
 
@@ -974,14 +979,46 @@ public class RockRenderer : MonoBehaviour
         // **가운데에서 둘로 나눈다** — 벽선이 칸마다 한 번이 아니라 반 칸마다 굽는다(`Wobble`).
         var l = rock ? capList : list;
         float xm = (x1 + x2) * 0.5f, zm = (z1 + z2) * 0.5f;
-        Quad(l, new Vector3(x1, bottom, z1), new Vector3(x1, top, z1),
-                new Vector3(xm, top, zm),    new Vector3(xm, bottom, zm), n);
-        Quad(l, new Vector3(xm, bottom, zm), new Vector3(xm, top, zm),
-                new Vector3(x2, top, z2),    new Vector3(x2, bottom, z2), n);
+
+        // **드러난 벽은 세로로도 나눈다**(2026-10-12) — 셰이더가 높이마다 다르게 밀므로(`RockBulge`) 꺾일
+        // 자리가 있어야 한다. 단차 띠(`rock`)는 벽 꼭대기에 있어 밀리는 높이 밖이다.
+        float y0 = bottom;
+        if (!rock)
+        {
+            float until = Mathf.Min(top, bottom + BulgeSpan);
+            for (float y1 = (Mathf.Floor(y0 / BulgeRow) + 1f) * BulgeRow; y1 < until - 0.01f; y1 += BulgeRow)
+            {
+                WallBand(l, x1, z1, xm, zm, x2, z2, y0, y1, n);
+                y0 = y1;
+            }
+            if (until > y0 + 0.01f && until < top - 0.01f)
+            {
+                WallBand(l, x1, z1, xm, zm, x2, z2, y0, until, n);
+                y0 = until;
+            }
+        }
+        WallBand(l, x1, z1, xm, zm, x2, z2, y0, top, n);
 
         // **알갱이는 드러난 면에만.** 바위끼리 물린 사이의 얇은 띠는 *벽면*이 아니라 이음매라,
         // 거기에 광석을 박으면 **못 캐는 자리에 광맥이 보인다**(기반암에 안 박는 것과 같은 이유).
         return !rock;
+    }
+
+    // **줄은 세계 높이에 맞춘다**(바닥에서 재지 않는다) — 셰이더가 `y / BulgeRow`로 줄을 세므로, 벽마다
+    // 바닥이 달라도 꺾이는 높이가 같아야 이웃 벽과 뚜껑이 맞물린다. 값은 `RockCut.hlsl`의 `kRockBulgeRow`와 같다.
+    const float BulgeRow  = 0.75f;
+    // 이 높이까지만 잘게 나눈다 — 벽은 24m인데 다 나누면 정점이 서른 배가 된다. 셰이더는 자른 벽이 7.5m를
+    // 넘으면 밀기를 멈추고(`kRockBulgeUntil`), 나머지는 바닥이 층층이라 생기는 차이의 여유다.
+    const float BulgeSpan = 10f;
+
+    // **가운데에서 둘로 나눈다** — 벽선이 칸마다 한 번이 아니라 반 칸마다 굽는다(`Wobble`).
+    void WallBand(List<int> l, float x1, float z1, float xm, float zm, float x2, float z2,
+                  float y0, float y1, Vector3 n)
+    {
+        Quad(l, new Vector3(x1, y0, z1), new Vector3(x1, y1, z1),
+                new Vector3(xm, y1, zm), new Vector3(xm, y0, zm), n);
+        Quad(l, new Vector3(xm, y0, zm), new Vector3(xm, y1, zm),
+                new Vector3(x2, y1, z2), new Vector3(x2, y0, z2), n);
     }
 
     // ── 벽면에 광석 알갱이 ──────────────────────────────────────────────────

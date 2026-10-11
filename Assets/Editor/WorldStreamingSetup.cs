@@ -39,8 +39,8 @@ public static class WorldStreamingSetup
         go.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
         go.transform.localScale = Vector3.one;
 
-        var terrain = go.GetComponent<TerrainStreamer>() ?? Undo.AddComponent<TerrainStreamer>(go);
-        var content = go.GetComponent<WorldContentStreamer>() ?? Undo.AddComponent<WorldContentStreamer>(go);
+        if (!go.TryGetComponent(out TerrainStreamer terrain)) terrain = Undo.AddComponent<TerrainStreamer>(go);
+        if (!go.TryGetComponent(out WorldContentStreamer content)) content = Undo.AddComponent<WorldContentStreamer>(go);
 
         // **무리를 실체로 세우는 쪽**(2026-08-27). 이게 없으면 `WorldBandManager`가 토큰만 굴리고
         // **지도 위의 무리가 영영 실제 폰이 되지 않는다** — 습격이 예고돼도 아무도 안 온다.
@@ -97,7 +97,6 @@ public static class WorldStreamingSetup
         WireScatter(content);
         EnableProceduralTerrain();
         int slept   = SleepOldTerrains(go);
-        int screens = SleepLegacyWorldScreen();
         int shaders = RegisterRuntimeShaders();
 
         WarnStartTile();
@@ -107,7 +106,7 @@ public static class WorldStreamingSetup
 
         Debug.Log($"[월드] 배선 완료 — {go.name}에 TerrainStreamer + WorldContentStreamer + BandMaterializer. " +
                   $"레이어 '{LayerMask.LayerToName(layer)}' · 옛 Terrain {slept}개 · " +
-                  $"옛 월드맵 화면 {screens}개 재움 · 셰이더 {shaders}개 새로 등록." + "\n" +
+                  $"셰이더 {shaders}개 새로 등록." + "\n" +
                   $"세계 {TerrainGrid.WorldSize}m · 청크 {TerrainGrid.ChunkSize}m · " +
                   $"{TerrainGrid.ChunksPerAxis}×{TerrainGrid.ChunksPerAxis}");
     }
@@ -580,26 +579,6 @@ public static class WorldStreamingSetup
             Undo.RecordObject(t.gameObject, "옛 Terrain 재우기");
             t.gameObject.SetActive(false);
             EditorUtility.SetDirty(t.gameObject);
-            n++;
-        }
-        return n;
-    }
-
-    // **옛 3D 월드맵 화면의 M키를 끈다.** 안 끄면 지도가 둘 뜬다 — 새 `WorldMapPanel`과
-    // `WorldMapView`가 같은 키를 문다. **컴포넌트를 지우지는 않는다**(참조가 40곳이고
-    // 씬 배선이 걸려 있다) — 진입로만 끊는다.
-    static int SleepLegacyWorldScreen()
-    {
-        int n = 0;
-        foreach (var v in Object.FindObjectsByType<WorldMapView>(FindObjectsInactive.Include,
-                                                                 FindObjectsSortMode.None))
-        {
-            var so = new SerializedObject(v);
-            var p = so.FindProperty("legacyWorldScreen");
-            if (p == null) continue;
-            p.boolValue = false;
-            so.ApplyModifiedPropertiesWithoutUndo();
-            EditorUtility.SetDirty(v);
             n++;
         }
         return n;

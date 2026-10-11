@@ -46,7 +46,6 @@ public class DraftController : MonoBehaviour
 
         // **월드맵에서는 안 먹는다** — 거기서 R은 아무 뜻이 없고, 지도에 나가 있는 사이에
         // 필드의 폰들이 소집되면 돌아왔을 때 아무도 일을 안 하고 있다.
-        if (!GameModeManager.IsField) return;
 
         Toggle();
     }

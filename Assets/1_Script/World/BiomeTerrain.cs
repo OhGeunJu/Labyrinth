@@ -53,6 +53,10 @@ public static class BiomeTerrain
         Biome.Sulfur     => Flat,
         Biome.Rift       => Flat,
 
+        Biome.Blight     => Flat,
+        Biome.Jungle     => Flat,
+        Biome.Irradiated => Flat,
+
         // **지하로 되살린 둘**(2026-09-15) — 지상 arm을 **지우고** 여기로 옮겼다.
         // 그대로 뒀으면 사막이 진폭 1.2에 거칠기 0.5라 **천장의 여유를 바닥이 먹어**
         // 굴이 막힌다(지하 바닥은 완전 평지여야 한다).
