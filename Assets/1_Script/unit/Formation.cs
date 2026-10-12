@@ -204,6 +204,7 @@ public static class Formation
             var f = new Vector3(fwd.x, 0f, fwd.y);
             for (int s = 0; s < n; s++)
                 result[order[s]] = originWorld + r * cells[s].x - f * cells[s].y;
+            Untangle(result, order, pawns);
             return result;
         }
 
@@ -219,11 +220,106 @@ public static class Formation
             used.Add(tile);
             result[order[s]] = map.TileToGround(tile);
         }
+        Untangle(result, order, pawns);
         return result;
+    }
+
+    // **같은 사거리끼리는 걷는 거리가 가장 짧게 자리를 맞춘다**(2026-10-12) - 이름순으로만 주면 폰이 지금
+    // 어디 섰는지를 안 봐서, 왼쪽 끝 폰이 오른쪽 끝 자리를 받아 **가는 길이 서로 엇갈린다.** 묶음마다
+    // 헝가리안 알고리즘으로 전체 거리(제곱 합)가 가장 작은 짝을 찾는다 - 무리가 수십이라 세제곱이어도 값이 없다.
+    // 사거리가 다른 묶음은 안 섞는다(앞뒤 줄은 역할이 정한다).
+    //
+    // **이미 제 자리에 선 폰은 안 움직인다** - 그 짝의 거리가 0이라 더 나은 답이 없다. 같은 자리에 같은
+    // 명령을 다시 내려도 자리를 맞바꾸지 않는다(이름으로 동점을 가르던 이유가 그대로 지켜진다).
+    static void Untangle(Vector3[] result, List<int> order, IReadOnlyList<PawnMover> pawns)
+    {
+        int n = order.Count;
+        var range = new float[n];
+        for (int s = 0; s < n; s++) range[s] = RangeOf(pawns[order[s]]);
+
+        for (int lo = 0; lo < n;)
+        {
+            int hi = lo + 1;
+            while (hi < n && Mathf.Approximately(range[hi], range[lo])) hi++;
+
+            if (hi - lo > 1) Match(result, order, pawns, lo, hi - lo);
+            lo = hi;
+        }
+    }
+
+    // 묶음 하나(`order[lo .. lo+m)`)의 폰과 자리를 헝가리안 알고리즘으로 맞춘다. 값은 걷는 거리의 제곱 -
+    // 제곱이라 한 명이 멀리 도는 답보다 여럿이 조금씩 걷는 답이 이긴다. 표는 1부터 센다(0은 빈 칸).
+    static void Match(Vector3[] result, List<int> order, IReadOnlyList<PawnMover> pawns, int lo, int m)
+    {
+        var slot = new Vector3[m];
+        for (int j = 0; j < m; j++) slot[j] = result[order[lo + j]];
+
+        var cost = new float[m + 1, m + 1];
+        for (int i = 0; i < m; i++)
+        {
+            var pawn = pawns[order[lo + i]];
+            for (int j = 0; j < m; j++)
+            {
+                float c = pawn != null ? FlatSqr(pawn.transform.position, slot[j]) : 0f;
+                // 값이 같으면 이름순 자리를 지킨다 - 안 그러면 끄는 동안 미리보기가 두 답 사이를 오간다.
+                cost[i + 1, j + 1] = i == j ? c - 0.01f : c;
+            }
+        }
+
+        var u = new float[m + 1];
+        var v = new float[m + 1];
+        var rowOf = new int[m + 1];   // 자리 j를 맡은 폰
+        var way   = new int[m + 1];
+        var minv  = new float[m + 1];
+        var done  = new bool[m + 1];
+
+        for (int i = 1; i <= m; i++)
+        {
+            rowOf[0] = i;
+            int j0 = 0;
+            for (int j = 0; j <= m; j++) { minv[j] = float.MaxValue; done[j] = false; }
+
+            do
+            {
+                done[j0] = true;
+                int i0 = rowOf[j0], j1 = 0;
+                float delta = float.MaxValue;
+                for (int j = 1; j <= m; j++)
+                {
+                    if (done[j]) continue;
+                    float cur = cost[i0, j] - u[i0] - v[j];
+                    if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+                    if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+                }
+                for (int j = 0; j <= m; j++)
+                {
+                    if (done[j]) { u[rowOf[j]] += delta; v[j] -= delta; }
+                    else minv[j] -= delta;
+                }
+                j0 = j1;
+            } while (rowOf[j0] != 0);
+
+            do
+            {
+                int j1 = way[j0];
+                rowOf[j0] = rowOf[j1];
+                j0 = j1;
+            } while (j0 != 0);
+        }
+
+        for (int j = 1; j <= m; j++)
+            result[order[lo + rowOf[j] - 1]] = slot[j - 1];
+    }
+
+    static float FlatSqr(Vector3 a, Vector3 b)
+    {
+        float dx = a.x - b.x, dz = a.z - b.z;
+        return dx * dx + dz * dz;
     }
 
     // 사거리가 짧을수록 앞. **이름으로 동점을 가른다** - 안 가르면 같은 무기를 든 넷의
     // 앞뒤가 매번 바뀌어, 같은 자리에 같은 명령을 내려도 폰들이 서로 자리를 맞바꾼다.
+    // (같은 사거리 안에서 누가 어느 자리로 가나는 그 뒤에 `Untangle`이 거리로 다시 맞춘다.)
     static int Compare(PawnMover a, PawnMover b)
     {
         float ra = RangeOf(a), rb = RangeOf(b);

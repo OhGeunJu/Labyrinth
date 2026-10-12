@@ -767,7 +767,7 @@ public static class VeinArt
         // 세어 줬다). 없던 것이 아니라 **안 읽혔다.**
         //
         // 갈린 이유가 명확하다: 벽 쪽 알갱이(`RockRenderer.OreMat`)에는 **은은한 발광을
-        // 넣었고**(0.22 x 색) 여기에는 안 넣었다. **같은 광물이 벽에서와 바닥에서 다르게
+        // 넣었고**(지금은 `RockRenderer.OreFloorGlow` x 색) 여기에는 안 넣었다. **같은 광물이 벽에서와 바닥에서 다르게
         // 읽히면 그 둘은 화면에서 다른 물건이다** — `ResourceNodeData`에 색을 같이 적어
         // 맞춰 놓고, 정작 *읽히게 만드는 값*은 한쪽에만 있었다.
         //
@@ -784,7 +784,7 @@ public static class VeinArt
         {
             m.EnableKeyword("_EMISSION");
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-            m.SetColor("_EmissionColor", v.Ore * (v.Glow ? 0.8f : 0.22f));
+            m.SetColor("_EmissionColor", v.Ore * (v.Glow ? 0.8f : RockRenderer.OreFloorGlow));
         }
         EditorUtility.SetDirty(m);
         return m;

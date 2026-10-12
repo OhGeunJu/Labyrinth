@@ -1254,6 +1254,11 @@ public class RockRenderer : MonoBehaviour
     // **발광은 거의 끈다**(0.22 → 0.06). 발광이 알갱이를 *단색*으로 만든 주범이었다 — 조명과
     // 무관하게 같은 밝기를 더하므로 둘레 법선이 만든 톤 차이를 덮는다. **빛나는 광물은 그대로
     // 빛난다**(미스릴·마법 결정 — 그건 빛이 그 광물의 성격이다).
+    // **빛나지 않는 광물의 발광 바닥값 — 벽 알갱이와 바닥 광맥(`VeinArt`)이 같이 읽는다.**
+    // 둘이 따로 적혀 있었다(0.25 · 0.22). 2026-10-12에 굴을 더 어둡게 내린 뒤 사용자가 올렸다
+    // (*"광석 발광은 좀 더 높혀야할 거 같은데"*). 야광 광물(0.8~0.9)의 절반이라 둘은 여전히 갈린다.
+    public const float OreFloorGlow = 0.40f;
+
     Material OreMat(ResourceNodeData vein)
     {
         if (_oreMats.TryGetValue(vein, out var m) && m != null) return m;
@@ -1271,8 +1276,8 @@ public class RockRenderer : MonoBehaviour
 
         m.EnableKeyword("_EMISSION");
         // **빛나지 않는 광맥도 은은하게는 뜬다**(2026-09-29, 사용자가 골랐다) — 0.06이면 불빛 없는 굴에서
-        // 알갱이가 바위색에 묻혔다. 0.25는 *여기 뭔가 박혀 있다*만 읽히는 정도고, 야광 광맥(0.9)과는 여전히 갈린다.
-        m.SetColor("_EmissionColor", vein.VeinColor * (vein.VeinGlow ? 0.9f : 0.25f));
+        // 알갱이가 바위색에 묻혔다. 바닥값은 *여기 뭔가 박혀 있다*만 읽히는 정도고, 야광 광맥(0.9)과는 여전히 갈린다.
+        m.SetColor("_EmissionColor", vein.VeinColor * (vein.VeinGlow ? 0.9f : OreFloorGlow));
         m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
 
         _oreMats[vein] = m;

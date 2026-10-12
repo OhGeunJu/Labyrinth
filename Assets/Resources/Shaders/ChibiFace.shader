@@ -128,7 +128,9 @@ Shader "DungeonColony/ChibiFace"
                 // 살과 **같은 계단**을 탄다 — 안 타면 굴에서 흰자가 얼굴보다 밝게 뜬다.
                 half3 n = normalize(i.normalWS);
                 Light mainLight = GetMainLight();
-                half lit = ToonStep(n, mainLight.direction, mainLight.distanceAttenuation);
+                // 꺼진 해는 밝은 면을 못 고른다 — 근거는 `ToonOutline`의 같은 자리.
+                half sunOn = saturate(max(mainLight.color.r, max(mainLight.color.g, mainLight.color.b)));
+                half lit = ToonStep(n, mainLight.direction, mainLight.distanceAttenuation * sunOn);
                 // **등을 도는 문은 URP의 매크로다**(2026-10-12). PC 렌더러는 Forward+라 등이 물체가 아니라
                 // 화면 칸(cluster)에 매달려 있다 — 예전처럼 개수로 `for`를 돌면 한 개도 안 돈다.
                 //

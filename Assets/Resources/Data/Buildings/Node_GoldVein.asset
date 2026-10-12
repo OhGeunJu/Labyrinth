@@ -22,6 +22,7 @@ MonoBehaviour:
   Costs:
   - Item: {fileID: 11400000, guid: dd650f428a5c33344bf6516f7d2a56a8, type: 2}
     Amount: 25
+  MaxHealth: 0
   CostItem: {fileID: 11400000, guid: dd650f428a5c33344bf6516f7d2a56a8, type: 2}
   CostAmount: 25
   DragBuild: 0
@@ -30,8 +31,10 @@ MonoBehaviour:
   Prefab: {fileID: 29725934195965749, guid: 3fda51e6f8efd184c8d6da02203c0f6d, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  IsBridge: 0
   LevelFloor: 0
   LevelMaxStep: 0
   Stairs: 0
   OccupiesTile: 1
   BlockMask: []
+  EdgeWall: 0

@@ -188,6 +188,8 @@ Guidance for Claude Code in this repository.
 | 폰을 바닥 어디에 세우나 · 폰이 서는 자리 | `PawnPlacement` · `WorkSpot.TileFor` |
 | 얼마나 가까이 가야 하나 | `JobBase.Reach` |
 | 주변에 누가 있나 | `FactionScan` |
+| 근접이 표적 둘레 어디에 서나 | `MeleeSlots`(폰은 둘레 여덟, 건물은 발자국 둘레 한 줄 · 다 차면 뒷줄에서 대기 · 예약은 틱마다 다시 적는다) |
+| 진형에서 누가 어느 자리로 가나 | `Formation.Build`(앞뒤는 사거리 · 같은 사거리끼리는 `Match`가 걷는 거리로) |
 | 맵 가장자리가 어디인가 | `EventManager.WalkToEdge` |
 | 갇힘을 어떻게 푸나 · 업은 것을 어디에 놓나 | `Imprisonment.Release` · `ICarrySite` |
 | 무리를 늘어놓는 순서 | `PawnOrder.Compare` |

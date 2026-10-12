@@ -617,6 +617,15 @@ public static class MushroomCreator
     static readonly Biome[] BlightOnly     = { Biome.Blight };
     static readonly Biome[] IrradiatedOnly = { Biome.Irradiated };
 
+    // **볕이 드는 지대 — 사용자가 고르는 표다**(2026-10-12: *"4층에는 볕이 안들지 볕이 드는 지형을 따로
+    // 정해야할 거 같아"*). 지금은 심연(4층)만 뺀 전부다 — 지대를 고르면 여기서 줄을 지운다.
+    static readonly Biome[] Sunlit =
+    {
+        Biome.Fungal, Biome.Mossgrotto, Biome.Mine, Biome.Cavern,                  // 1층
+        Biome.Swamp, Biome.Ossuary, Biome.Desert, Biome.Jungle, Biome.Blight,      // 2층
+        Biome.Glacier, Biome.Crystal, Biome.Lava, Biome.Irradiated,                // 3층
+    };
+
     static readonly Color BlightCap   = new(0.86f, 0.28f, 0.16f);
     static readonly Color RadGreen    = new(0.55f, 0.95f, 0.20f);
     static readonly Color AbyssViolet = new(0.70f, 0.30f, 1.00f);
@@ -656,16 +665,16 @@ public static class MushroomCreator
             ScatterWiring.Set(rules, "빛나는 돌무더기", slagPrefab, perChunk: 6f, spacing: 10f,
                  regrowDays: 0f, biomes: IrradiatedOnly, cluster: (1, 3), spread: 1);
 
-        // **어디에나, 드물게**(바이옴을 안 가린다) — 굴 전체를 어둡게 내린 값이 이것이다. 간격이 넓어야
+        // **볕이 드는 지대에만, 드물게**(`Sunlit`) — 굴 전체를 어둡게 내린 값이 이것이다. 간격이 넓어야
         // 웅덩이 하나하나가 길잡이가 된다(촘촘하면 그냥 밝은 굴이다).
         //
         // **하나하나 다르다**(사용자: *"크게 나져 있는 곳도 있고 작게 나져 있는 곳도 있고 여러개 나져 있는 곳도"*) —
         // 홑구멍은 바닥 웅덩이 반지름으로 1.2m ~ 7m. 무리는 큰 것 하나에 작은 것 셋(`BuildSkylightCluster`).
         // 똑같은 것이 같은 간격으로 서면 뚫린 것이 아니라 달아 놓은 것이다.
         ScatterWiring.Set(rules, "채광 구멍", BuildSkylight(), perChunk: 1.5f, spacing: 28f,
-             regrowDays: 0f, biomes: null, cluster: (1, 1), spread: 0, scale: (0.35f, 2.0f));
+             regrowDays: 0f, biomes: Sunlit, cluster: (1, 1), spread: 0, scale: (0.35f, 2.0f));
         ScatterWiring.Set(rules, "채광 구멍 무리", BuildSkylightCluster(), perChunk: 0.6f, spacing: 40f,
-             regrowDays: 0f, biomes: null, cluster: (1, 1), spread: 0, scale: (0.7f, 1.6f));
+             regrowDays: 0f, biomes: Sunlit, cluster: (1, 1), spread: 0, scale: (0.7f, 1.6f));
 
         ScatterWiring.Commit(so);
     }

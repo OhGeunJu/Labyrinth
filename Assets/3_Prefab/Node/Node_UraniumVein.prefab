@@ -2086,9 +2086,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1626712718504662728}
+  - component: {fileID: 4779210956255324907}
   - component: {fileID: 4107986893589365288}
   - component: {fileID: 122233312981694116}
-  - component: {fileID: 4779210956255324907}
   m_Layer: 0
   m_Name: Node_UraniumVein
   m_TagString: Untagged
@@ -2146,6 +2146,21 @@ Transform:
   - {fileID: 8396480629558042875}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4779210956255324907
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6067749616915065442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a273205166808449901b1e90ac075a6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ResourceNode
+  data: {fileID: 11400000, guid: 44fd653ec56c6da41871693d7b07811d, type: 2}
+  haulThreshold: 10
+  size: {x: 3, y: 3}
 --- !u!136 &4107986893589365288
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -2187,21 +2202,6 @@ MonoBehaviour:
   flames: {fileID: 0}
   flicker: 0
   alwaysLit: 1
---- !u!114 &4779210956255324907
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6067749616915065442}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5a273205166808449901b1e90ac075a6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ResourceNode
-  data: {fileID: 11400000, guid: 44fd653ec56c6da41871693d7b07811d, type: 2}
-  haulThreshold: 10
-  size: {x: 1, y: 1}
 --- !u!1 &6806796298546448588
 GameObject:
   m_ObjectHideFlags: 0

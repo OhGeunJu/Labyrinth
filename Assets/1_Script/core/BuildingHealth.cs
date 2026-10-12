@@ -111,7 +111,10 @@ public class BuildingHealth : MonoBehaviour
         return Vector3.Distance(from, p);
     }
 
-    public Vector3 ClosestPoint(Vector3 from)
+    public Vector3 ClosestPoint(Vector3 from) => Footprint().ClosestPoint(from);
+
+    // 몸이 차지한 상자 — 가장 가까운 면도, 둘레에 서는 자리(`MeleeSlots`)도 여기서 나온다.
+    public Bounds Footprint()
     {
         var cols = GetComponentsInChildren<Collider>();
         bool any = false;
@@ -126,6 +129,6 @@ public class BuildingHealth : MonoBehaviour
             var s = Building.Data.Size;
             b = new Bounds(transform.position, new Vector3(Mathf.Max(1, s.x), 2f, Mathf.Max(1, s.y)));
         }
-        return b.ClosestPoint(from);
+        return b;
     }
 }

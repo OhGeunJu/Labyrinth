@@ -582,6 +582,7 @@ public class FightNode : BTNode
             bb.Target        = null;
             bb.FinishTarget  = null;   // 끝났으면 예외도 같이 거둔다(다음 대상에 새지 않게)
             bb.OrderedTarget = null;   // 명령도 그 표적과 함께 끝난다
+            MeleeSlots.Release(bb.Self);
             combat.ExitCombat();
             return BTStatus.Failure;
         }
@@ -596,8 +597,9 @@ public class FightNode : BTNode
             return BTStatus.Running;
         }
 
-        // 공격 범위 안이면 공격
+        // 공격 범위 안이면 공격 — 선 자리를 제 자리로 적는다(`MeleeSlots`).
         bb.Mover.StopMovement();
+        if (MeleeSlots.Applies(bb, bb.Target)) MeleeSlots.Arrive(bb, bb.Target);
         combat.EnterCombat();
         return BTStatus.Running;
     }
@@ -614,7 +616,10 @@ public class FightNode : BTNode
     // **소집이 아니면 한 줄도 안 바뀐다** — 평소 전투는 예전 그대로 표적까지 간다.
     static Vector3 Approach(UnitBlackboard bb)
     {
-        var to = BTTargetUtil.ApproachPoint(bb.Self.transform.position, bb.Target);
+        // 근접이 폰을 칠 때는 표적 둘레의 제 자리로 간다 — 중심 한 점으로 몰리지 않게(`MeleeSlots`).
+        var to = MeleeSlots.Applies(bb, bb.Target)
+            ? MeleeSlots.Approach(bb, bb.Target)
+            : BTTargetUtil.ApproachPoint(bb.Self.transform.position, bb.Target);
         if (!bb.IsDrafted) return to;
 
         // **사람이 지목한 표적은 목줄을 안 탄다** — 명령이 진형보다 위다. 안 그러면

@@ -150,8 +150,12 @@ Shader "DungeonColony/ToonOutline"
 
                 float4 shadowCoord = TransformWorldToShadowCoord(i.positionWS);
                 Light mainLight = GetMainLight(shadowCoord);
+                // **해가 없으면 해 쪽 면도 없다**(2026-10-12, 사용자: *"한쪽에 광이 고정되어 있는 느낌"*) —
+                // 계단은 세기를 안 보는데, 굴에는 방향광이 없어도 URP가 방향 기본값을 준다. 그래서 빛이
+                // 없는 곳에서도 늘 같은 쪽이 밝은 면으로 칠해졌다. 해의 밝기를 곱해 꺼진 해는 빼 준다.
+                half sunOn = saturate(max(mainLight.color.r, max(mainLight.color.g, mainLight.color.b)));
                 half lit = ToonStep(n, mainLight.direction,
-                                    mainLight.shadowAttenuation * mainLight.distanceAttenuation);
+                                    mainLight.shadowAttenuation * mainLight.distanceAttenuation * sunOn);
 
                 // **등을 도는 문은 URP의 매크로다**(2026-10-12). PC 렌더러는 Forward+라 등이 물체가 아니라
                 // 화면 칸(cluster)에 매달려 있다 — 예전처럼 개수로 `for`를 돌면 한 개도 안 돈다.
