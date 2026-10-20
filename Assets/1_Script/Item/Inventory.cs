@@ -152,7 +152,7 @@ public class Inventory : MonoBehaviour
     // 새 인스턴스가 기본값(일반·안 잠김)으로 태어났다 — 희귀 철검을 창고로 드래그하면
     // 조용히 일반이 됐다. 옮기는 건 **같은 물건**이므로 딸린 것도 같이 가야 한다.
     public bool TryAddAt(ItemData data, int amount, int x, int y, bool rotated,
-                         ItemQuality quality = ItemQuality.Common, bool locked = false)
+                         ItemQuality quality = ItemQuality.Common, bool locked = false, float left = 1f)
     {
         if (data == null || amount <= 0) return false;
         quality = Normalize(data, quality);   // `TryAdd`와 같은 문이어야 한다 — 아래 참고
@@ -164,6 +164,7 @@ public class Inventory : MonoBehaviour
         var inst = new ItemInstance(data, Math.Min(amount, data.MaxStack), x, y, rotated, quality)
         {
             Locked = locked,
+            Left   = data.Depletes ? Math.Clamp(left, ItemInstance.Epsilon, 1f) : 1f,   // 열린 하나째
         };
         PlaceCells(inst);
         _items.Add(inst);
@@ -331,7 +332,9 @@ public class Inventory : MonoBehaviour
             if (skipLocked   && inst.Locked)          continue;
             if (matchQuality && inst.Quality != quality) continue;
 
-            int take = Math.Min(remaining, inst.Quantity);
+            // **새것만 뺀다**(`ItemInstance.FullUnits`) — 열린 하나는 개수로 옮기는 길이 못 건드린다.
+            int take = Math.Min(remaining, inst.FullUnits);
+            if (take <= 0) continue;
             inst.Quantity -= take;
             remaining -= take;
             if (inst.Quantity <= 0)
@@ -381,7 +384,7 @@ public class Inventory : MonoBehaviour
             if (inst.Data != data) continue;
             if (skipLocked   && inst.Locked)          continue;
             if (matchQuality && inst.Quality != quality) continue;
-            total += inst.Quantity;
+            total += inst.FullUnits;   // 새것만 센다 — 빼는 쪽(`RemoveCore`)과 같은 답
         }
         return total;
     }
@@ -400,7 +403,7 @@ public class Inventory : MonoBehaviour
         {
             if (inst.Data == null || !inst.Data.Satisfies(want)) continue;
             if (skipLocked && inst.Locked) continue;
-            total += inst.Quantity;
+            total += inst.FullUnits;   // 쓰다 만 것은 재료로 안 친다
         }
         return total;
     }
@@ -585,6 +588,154 @@ public class Inventory : MonoBehaviour
 
         OnChanged?.Invoke();
         return false;
+    }
+
+    // ── 남은 양 — 열린 하나 (2026-10-16, `ItemInstance.Left`) ─────────────────────
+
+    // **열린 것 하나를 넣는다 — 양을 보존한다.** 같은 물건·등급의 열린 뭉치가 있으면 거기에 합치고(넘치면 새것
+    // 하나가 는다), 없으면 아직 안 열린 뭉치의 하나로 얹고, 그것도 없으면 빈 칸에 새 뭉치로. 넣었으면 참.
+    public bool TryAddOpened(ItemData data, ItemQuality quality, float left)
+    {
+        if (data == null) return false;
+        quality = Normalize(data, quality);
+        if (!data.Depletes || left >= 1f - ItemInstance.Epsilon) return TryAdd(data, 1, quality) > 0;
+        if (left <= ItemInstance.Epsilon) return true;   // 다 쓴 것 — 넣을 것이 없다
+
+        foreach (var inst in _items)
+        {
+            if (inst.Data != data || inst.Quality != quality || !inst.IsPartial) continue;
+
+            float sum = inst.Left + left;
+            if (sum < 1f - ItemInstance.Epsilon) { inst.Left = sum; OnChanged?.Invoke(); return true; }
+
+            // 합쳐서 하나를 넘었다 — 새것 하나 + 나머지가 열린 것
+            float rest = sum - 1f;
+            if (rest <= ItemInstance.Epsilon) { inst.Left = 1f; OnChanged?.Invoke(); return true; }
+            if (inst.Quantity < data.MaxStack)
+            {
+                inst.Quantity++;
+                inst.Left = rest;
+                OnChanged?.Invoke();
+                return true;
+            }
+            // 뭉치가 꽉 찼다 — 이 뭉치는 새것으로 채우고 나머지는 아래로 흘린다
+            var slot0 = FindEmptySlot(data.Width, data.Height, out bool rot0);
+            if (slot0 == null) return false;
+            inst.Left = 1f;
+            Place(new ItemInstance(data, 1, slot0.Value.x, slot0.Value.y, rot0, quality) { Left = rest });
+            return true;
+        }
+
+        foreach (var inst in _items)
+        {
+            if (inst.Data != data || inst.Quality != quality || inst.Quantity >= data.MaxStack) continue;
+            inst.Quantity++;
+            inst.Left = left;
+            OnChanged?.Invoke();
+            return true;
+        }
+
+        var slot = FindEmptySlot(data.Width, data.Height, out bool rotated);
+        if (slot == null) return false;
+        Place(new ItemInstance(data, 1, slot.Value.x, slot.Value.y, rotated, quality) { Left = left });
+        return true;
+    }
+
+    void Place(ItemInstance inst)
+    {
+        PlaceCells(inst);
+        _items.Add(inst);
+        OnChanged?.Invoke();
+    }
+
+    // 뭉치에서 열린 하나를 빼낸다 — 그 남은 양을 돌려준다(열린 것이 없으면 0).
+    public float TakeOpened(ItemInstance inst)
+    {
+        if (inst == null || !inst.IsPartial || !_items.Contains(inst)) return 0f;
+        float left = inst.Left;
+        inst.Left = 1f;
+        inst.Quantity--;
+        if (inst.Quantity <= 0) { ClearCells(inst); _items.Remove(inst); }
+        OnChanged?.Invoke();
+        return left;
+    }
+
+    // **양만큼 쓴다 — 열린 것부터.** 약을 치료한 만큼만 쓰는 자리(`Treatment.UseFromBackpack`). 실제로 쓴 양을
+    // 돌려준다(모자라면 있는 만큼). 새것을 헐면 그것이 그 뭉치의 열린 하나가 된다.
+    public float UseUp(ItemData data, float amount, bool skipLocked)
+    {
+        if (data == null || amount <= ItemInstance.Epsilon) return 0f;
+        float used = 0f;
+
+        // 열린 것부터 — 새것을 헐기 전에 쓰다 만 것을 마저 쓴다
+        for (int pass = 0; pass < 2 && used < amount - ItemInstance.Epsilon; pass++)
+        {
+            for (int i = _items.Count - 1; i >= 0 && used < amount - ItemInstance.Epsilon; i--)
+            {
+                var inst = _items[i];
+                if (inst.Data != data || (skipLocked && inst.Locked)) continue;
+                if (pass == 0 && !inst.IsPartial) continue;
+
+                while (used < amount - ItemInstance.Epsilon && inst.Quantity > 0)
+                {
+                    float take = Math.Min(amount - used, inst.Left);
+                    inst.Left -= take;
+                    used      += take;
+                    if (inst.Left > ItemInstance.Epsilon) break;
+                    inst.Quantity--;          // 하나를 다 썼다 — 다음 것을 연다
+                    inst.Left = 1f;
+                }
+                if (inst.Quantity <= 0) { ClearCells(inst); _items.RemoveAt(i); }
+            }
+        }
+        if (used > 0f) OnChanged?.Invoke();
+        return used;
+    }
+
+    // **뭉치에서 몇 개를 다른 통으로 — 열린 하나도 남은 양째 간다.** 물건을 통째로 옮기는 길(끌어 놓기 ·
+    // 빠른 이동 · 루팅)은 전부 여기를 탄다. `TryAdd(inst.Data, inst.Quantity, …)`로 옮기면 열린 것이 새것이 된다.
+    // 열린 것을 먼저 보낸다 — 다 못 가면 남는 쪽이 새것이어야 원래 뭉치가 온전하다.
+    public static int Transfer(Inventory src, ItemInstance inst, Inventory dst, int amount)
+    {
+        if (inst?.Data == null || dst == null || amount <= 0) return 0;
+        amount = Math.Min(amount, inst.Quantity);
+
+        int moved = 0;
+        if (inst.IsPartial)
+        {
+            if (!dst.TryAddOpened(inst.Data, inst.Quality, inst.Left)) return 0;
+            inst.Left = 1f;
+            inst.Quantity--;
+            moved = 1;
+        }
+        if (amount > moved && inst.Quantity > 0)
+        {
+            int n = dst.TryAdd(inst.Data, Math.Min(amount - moved, inst.Quantity), inst.Quality);
+            inst.Quantity -= n;
+            moved += n;
+        }
+
+        if (src != null)
+        {
+            if (inst.Quantity <= 0) src.RemoveInstance(inst);
+            else                    src.NotifyChanged();
+        }
+        return moved;
+    }
+
+    // 통에 넣을 뭉치 하나를 그대로 — 출처가 없는 것(손에 든 것 · 벗은 장비). 넣은 개수를 돌려준다.
+    public int TryAddLike(ItemInstance inst)
+    {
+        if (inst?.Data == null || inst.Quantity <= 0) return 0;
+        int added = 0;
+        if (inst.IsPartial)
+        {
+            if (!TryAddOpened(inst.Data, inst.Quality, inst.Left)) return 0;
+            added = 1;
+        }
+        int full = inst.Quantity - added;
+        if (full > 0) added += TryAdd(inst.Data, full, inst.Quality);
+        return added;
     }
 
     // **이 물건·이 등급의 뭉치 하나.** 방금 넣은 것을 되돌릴 때, *어느 뭉치에 들어갔나*를

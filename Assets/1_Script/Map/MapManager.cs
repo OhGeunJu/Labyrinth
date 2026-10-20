@@ -287,7 +287,7 @@ public class MapManager : MonoBehaviour
     // 폰이 **실제로 설 수 있는** 칸인가 — 통행 가능 + 바닥 있음.
     public bool IsWorkable(Vector2Int tile) => !IsOccupied(tile) && IsStandable(tile);
 
-    // 두 칸 사이의 **직선이 뚫려 있나.** 길찾기가 아니라 **어림값**이다 — 막혀 있으면
+    // 두 칸 사이의 **직선이 뚫려 있나**(바위·점유·얇은 벽). 길찾기가 아니라 **어림값**이다 — 막혀 있으면
     // *"실제로는 돌아가야 한다"*는 뜻이고, 뚫려 있어도 지형 턱까지 봐 주지는 않는다.
     //
     // **경로를 재는 것과는 값이 다르다.** 후보마다 길찾기를 돌리면 요청 한 번에 A*를
@@ -306,9 +306,16 @@ public class MapManager : MonoBehaviour
 
         while (x != b.x || z != b.y)
         {
+            int px = x, pz = z;
             int e2 = err * 2;
             if (e2 > -dz) { err -= dz; x += sx; }
             if (e2 <  dx) { err += dx; z += sz; }
+
+            // **얇은 벽도 막는 것이다**(2026-10-20). 벽 양쪽 칸은 둘 다 설 수 있어서 칸만 보면
+            // 벽을 가로지르는 직선을 뚫린 것으로 답한다 — 얇은 벽(10-01)이 이 함수보다 늦게 와서
+            // 빠져 있었다. 걸음마다 묻는다(길찾기와 같은 `StepOpen` — 대각선은 모퉁이 두 길 다).
+            // 도착 칸으로 들어가는 걸음도 본다 — 벽 하나 너머의 일감은 이쪽에서 손이 안 닿는다.
+            if (!EdgeWalls.StepOpen(px, pz, x, z)) return false;
 
             if (x == b.x && z == b.y) break;      // 도착 칸 자체는 안 본다(일감이 거기 있다)
 

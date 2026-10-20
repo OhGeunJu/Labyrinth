@@ -341,7 +341,7 @@ Content
 | `Grave_UI` | `GraveUI` | 무덤 — 묻힌 사람·멈춘 단계·[파낸다] |
 | `Pyre_UI` | `PyreUI` | 화장터 — 진행 게이지·연료 부족 사유·[내린다] |
 | `ButcherTable_UI` | `ButcherTableUI` | 도축대 — 규칙 셋(순환 버튼)·산출물 격자·운반/정리 |
-| `CorpseInventory_UI` | `CorpseInventoryUI` | 시체 루팅(+EquipRow 6슬롯), `InventoryUI` 연동 |
+| `CorpseInventory_UI` | `CorpseInventoryUI` | 시체 루팅(+장비칸 여덟), `InventoryUI` 연동. **장비칸(두 창 공통)은 이름표 달린 상자를 줄로 쌓는다**(2026-10-18 일회성 `EquipSlotLayout` — 지웠다): 무기 둘 4×1 · 머리|손 2×2 · 몸통|다리 2×3 · 허리|신발 2×1, 눈금은 배낭 격자와 한 벌(`InventoryGridUI.BuildCells`) |
 | `ItemInfo_UI` | `ItemInfoUI` | 아이템 툴팁. **커서를 따라다니므로 부모가 캔버스와 같은 크기여야 한다** |
 | `CraftingTable_UI` | `CraftingTableUI` | 마스터-디테일 + 연료 게이지·산출물 그리드·수량 주문 |
 | `ResearchTable_UI` | `ResearchTableUI` | 마스터-디테일. [연구] 버튼과 진행 게이지가 **같은 칸을 번갈아 쓴다** |

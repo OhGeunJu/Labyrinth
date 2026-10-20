@@ -19,4 +19,20 @@ public static class MovementDiagnosticsMenu
         Debug.Log($"[이동진단] 개별 이벤트 로그 {(MovementDiagnostics.LogEvents ? "켜짐" : "꺼짐")} " +
                   "(요약은 그대로)");
     }
+
+    // 지각 기억(놓침 · 수색 · 다시 봄 · 잊음) — 상태가 바뀔 때만 한 줄(2026-10-18).
+    [MenuItem("DungeonColony/Debug/Perception Log")]
+    static void TogglePerception()
+    {
+        Perception.Enabled = !Perception.Enabled;
+        Debug.Log($"[지각] 로그 {(Perception.Enabled ? "켜짐" : "꺼짐")}");
+    }
+
+    // 원거리 거리 유지(붙었다 · 벌어졌다 · 쐈다 · 몰렸다) — 상태가 바뀔 때만 한 줄(2026-10-20).
+    [MenuItem("DungeonColony/Debug/Kiting Log")]
+    static void ToggleKiting()
+    {
+        Kiting.Enabled = !Kiting.Enabled;
+        Debug.Log($"[거리] 로그 {(Kiting.Enabled ? "켜짐" : "꺼짐")}");
+    }
 }

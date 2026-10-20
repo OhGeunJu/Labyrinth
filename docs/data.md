@@ -169,6 +169,19 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 
 ---
 
+# 쓰다 만 물건 — 남은 양은 물건이 든다 (2026-10-16)
+
+사용자: *"B가 나을 거 같다"*(아이템마다 남은 양 — 다른 폰이 집어도 반쯤 탄 횃불) · *"회복 아이템도 치료한 만큼만 소모되는게 좋잖아"*.
+
+- **닳는 물건만**(`ItemData.Depletes` — `BurnDays > 0`인 횃불 · 모든 `MedicineData`). 나머지는 늘 1이다.
+- **뭉치마다 열린 하나**(`ItemInstance.Left` 0~1) — 붕대 25 = 새것 24 + 70% 남은 것 하나. 쓰다 만 것이 칸을 따로 먹지 않는다.
+- **개수로 세고 빼는 길은 새것만**(`FullUnits` — `Inventory.RemoveCore`·`CountCore`·`CountSatisfying`). 창고 챙기기·운반·상단·재료가 다 이 길이라, 빼는 것도 넣는 것도 새것이어서 **양이 저절로 보존된다.** 쓰다 만 것은 재료로 안 친다.
+- **열린 것을 넣는 문은 `Inventory.TryAddOpened` 하나** — 같은 물건의 열린 것과 합친다(0.3 + 0.8 → 새것 하나 + 0.1).
+- **뭉치를 통째로 옮기는 길은 `Inventory.Transfer`(출처가 있을 때) · `TryAddLike`(손에 든 것 · 벗은 장비)** — `TryAdd(inst.Data, inst.Quantity, …)`로 옮기면 열린 것이 새것이 된다. 바닥은 `DroppedItem.Left`, 시체·끌기·장비칸·짐내림(`UnloadJob`)이 남은 양째 옮긴다.
+- **쓰는 문**: 약은 `Inventory.UseUp`(열린 것부터 · `Treatment.Finish`) · 횃불은 찬 인스턴스의 `Left`를 게임 시각으로 깎는다(`Equipment.Update`).
+- **상인은 쓰다 만 것을 안 산다**(`Shop.TrySell` — 새것만). 끌어 합치기(`DraggableItem.TryMerge`)는 열린 것을 안 받는다.
+- 화면: 격자 칸 오른쪽 위 `70%` · 툴팁 등급줄에 `n시간 남음`/`n% 남음`.
+
 # 식별자는 `Id`다 — 표시명이 아니다 (2026-08-01)
 
 `ItemData` · `RecipeData` · `ResearchData` · `BuildingData`에 **`Id` 필드**가 있다.

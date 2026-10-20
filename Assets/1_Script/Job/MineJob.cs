@@ -21,14 +21,9 @@ public class MineJob : JobBase
     readonly Vector2Int _tile;
     readonly ResourceNodeData _vein;
 
-    float _work;
-
     // **광맥이든 맨바위든 같은 모양이다** — 둘 다 `ResourceNodeData`라 나오는 것·개수·
     // 걸리는 시간을 **한 곳에서** 읽는다. 광맥이 없으면 기본 바위(`RockMap.PlainRock`).
     ResourceNodeData Node => _vein != null ? _vein : RockMap.PlainRock;
-
-    // 데이터가 아예 없을 때의 눈금. **경고는 `RockRenderer`가 한 번만 한다.**
-    const float FallbackWork = 60f;
 
     public MineJob(Vector2Int tile)
     {
@@ -42,8 +37,6 @@ public class MineJob : JobBase
     }
 
     public Vector2Int Tile => _tile;
-
-    float Required => Node != null ? Mathf.Max(1f, Node.GaugeRequired) : FallbackWork;
 
     // **이미 파였으면 할 일이 없다** — 두 폰이 같은 칸을 겨눴거나, 찍어 둔 사이에 다른
     // 경로로 파였을 수 있다.
@@ -97,12 +90,12 @@ public class MineJob : JobBase
         // **틱 델타를 곱한다.** 안 곱하면 초당 `skill × 10`이 되어 배속·프레임레이트가
         // 밸런스를 바꾼다 — `ResourceNode.Work`가 시그니처로 못 박은 그 사고다.
         float dt = unit != null && unit.Blackboard != null ? unit.Blackboard.TickDelta : Time.deltaTime;
-        _work += power * dt;
 
         // 캐는 만큼 는다. `BTLeafNodes`가 노동에 쓰는 것과 같은 축이다.
         stats?.GrowStat(StatName.Mining, dt * 0.05f);
 
-        if (_work < Required) return;
+        // **깎인 만큼은 칸이 든다**(`RockMap.Wear`, 2026-10-15) — 일감이 취소돼도 다음 폰이 이어 판다.
+        if (!RockMap.Wear(_tile, power * dt)) return;
 
         Finish(unit);
     }

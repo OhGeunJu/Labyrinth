@@ -429,6 +429,8 @@ public static class DataManager
         item.BaseValue   = Mathf.Max(0, s.baseValue);
         item.Stack       = Mathf.Max(1, s.maxStack);
         item.CountsAsId  = string.IsNullOrWhiteSpace(s.countsAs) ? null : s.countsAs.Trim();
+        item.LightRadius = Mathf.Max(0f, s.lightRadius);
+        item.BurnDays    = Mathf.Max(0f, s.burnDays);
 
         // 그림·모델은 **이 콘텐츠가 온 폴더 안에서** 먼저 찾는다(`ModAssets`).
         // 그래야 모드가 자기 PNG를 들고 올 수 있다 — 예전엔 `Resources.Load`뿐이라
@@ -533,6 +535,7 @@ public static class DataManager
         ApplyBase(a, s, root);
         a.Slot = ParseEnum(s.armorSlot, a.Slot, s.id, "armorSlot");
         a.DamageReduction = s.damageReduction;
+        a.MoveSpeedMult   = s.moveSpeedMult > 0f ? s.moveSpeedMult : 1f;
         a.Ability         = ResolveAbility(s.abilityId, s.id);
         return a;
     }

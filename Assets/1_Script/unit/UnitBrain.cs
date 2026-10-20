@@ -144,6 +144,18 @@ public partial class UnitBrain : MonoBehaviour
     // 됐는데 명령을 안 듣고 저 혼자 배회하다 맵을 나간다. 세력을 바꾸는 것(`ChangeFaction`)과
     // **짝으로** 부를 것 — 트리를 다시 짓는 것은 그쪽이 한다.
     public void ClearNpcRole() => npcData = null;
+
+    // **영입할 수 있는 사람인가 — 세우는 쪽이 정한다**(2026-10-15).
+    //
+    // 전에는 역할이 답했다(`NpcType.Drifter`면 누구든). 사람이 길에 돌아다니게 되면 그 답은 *"길에서 만난
+    // 떠돌이는 다 데려올 수 있다"*가 된다. *"핵 영역 안인가"*로 거르는 길은 버렸다 — 사용자: *"돌아다니다가
+    // 핵 영역 안에오면 영입이 되는게 이상하잖아 … 맘에 드는 애 발견하면 핵 영역 깔아버리면 영입을하는거야?
+    // 차라리 영입 플래그를 따로"*. 자리가 아니라 **그 사람이 어떻게 왔나**가 답이다.
+    //
+    // 켜는 곳은 세우는 쪽 둘이다: 이벤트(`GameEventData.Recruitable` — 거점을 찾아온 떠돌이)와
+    // 야생 무리(`BiomeContentData.WildSpawnEntry.Recruitable` — 기본 꺼짐). 프리팹에는 없다 — 같은 떠돌이
+    // 프리팹이 찾아오기도 하고 길에 있기도 하다. 읽는 곳은 `Conversation.AddRecruit` 하나.
+    public bool Recruitable { get; set; }
     public AiProfileData AiProfile => aiProfile;
 
     // ── 전투 성향 (런타임 조정 가능) ─────────────────────────────────────
@@ -980,6 +992,7 @@ public partial class UnitBrain : MonoBehaviour
         _bb.Target       = null;
         _bb.FinishTarget = null;
         _bb.LastAttacker = null;
+        _bb.ClearMemory();   // 지각 기억 · 원한
         _bb.FollowTarget = null;
         _bb.LeavingMap   = false;
         _bb.Routed       = false;
@@ -1295,6 +1308,7 @@ public partial class UnitBrain : MonoBehaviour
         _bb.Target       = null;
         _bb.FinishTarget = null;
         _bb.LastAttacker = null;
+        _bb.ClearMemory();   // 지각 기억 · 원한
         _bb.FollowTarget = null;
         _bb.LeavingMap   = false;
         _bb.Routed       = false;

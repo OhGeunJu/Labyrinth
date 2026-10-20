@@ -10,13 +10,20 @@ public class InventoryGridUI : MonoBehaviour
 {
     [Header("셀 크기 (셀 1칸의 픽셀 크기)")]
     [Tooltip("미리 배치한 셀들의 크기와 동일해야 함")]
-    [SerializeField] float cellSize = 48f;
+    [SerializeField] float cellSize = DefaultCellSize;
+
+    // **장비칸도 이 칸을 쓴다**(2026-10-18, 사용자: *"인벤토리에 쓰는 칸이랑 동일한 걸 사용해"*) — 격자는
+    // 런타임에 붙으므로(`InventoryUI`가 `AddComponent`) 씬 값이 없고 이 기본값이 곧 실제 값이다. 장비칸을
+    // 짓는 쪽이 같은 값과 같은 문(`BuildCells`)을 쓴다.
+    public const float DefaultCellSize = 48f;
+    public static readonly Color DefaultEmptyCell = new(0.16f, 0.16f, 0.19f, 0.65f);
+    public static readonly Color DefaultCellLine  = new(0.34f, 0.34f, 0.40f, 1f);
 
     [Header("빈 칸 격자")]
     [Tooltip("빈 칸 바탕. 아무것도 안 들었을 때 몇 칸짜리인지 보이게 한다.")]
-    [SerializeField] Color emptyCellColor = new Color(0.16f, 0.16f, 0.19f, 0.65f);
+    [SerializeField] Color emptyCellColor = DefaultEmptyCell;
     [Tooltip("칸 사이 선")]
-    [SerializeField] Color cellLineColor  = new Color(0.34f, 0.34f, 0.40f, 1f);
+    [SerializeField] Color cellLineColor  = DefaultCellLine;
     [Tooltip("드래그 중 놓일 자리 표시. 된다/안 된다를 색으로 가르지 않는다 — 자리만 보여준다.")]
     [SerializeField] Color previewColor    = new Color(0.85f, 0.85f, 0.95f, 0.30f);
 
@@ -289,11 +296,18 @@ public class InventoryGridUI : MonoBehaviour
         _cellRoot.sizeDelta = Vector2.zero;
         EnsureIgnoreLayout(go);
 
-        for (int y = 0; y < size.y; y++)
-        for (int x = 0; x < size.x; x++)
+        BuildCells(_cellRoot, size.x, size.y, cellSize, emptyCellColor, cellLineColor);
+        _builtFor = size;
+    }
+
+    // **빈 칸 눈금 — 한 벌이다.** 배낭 격자와 장비칸(`EquipSlotUI`의 `_Cells`, 에디터에서 깐다)이 같이 쓴다.
+    public static void BuildCells(RectTransform root, int cols, int rows, float cellSize, Color fill, Color lineColor)
+    {
+        for (int y = 0; y < rows; y++)
+        for (int x = 0; x < cols; x++)
         {
             var cell = new GameObject($"Cell_{x}_{y}", typeof(RectTransform), typeof(Image));
-            cell.transform.SetParent(_cellRoot, false);
+            cell.transform.SetParent(root, false);
 
             var rt = (RectTransform)cell.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
@@ -301,15 +315,14 @@ public class InventoryGridUI : MonoBehaviour
             rt.sizeDelta = new Vector2(cellSize, cellSize);
 
             var img = cell.GetComponent<Image>();
-            img.color = emptyCellColor;
-            img.raycastTarget = false;   // 드롭 판정은 격자 본체가 한다
+            img.color = fill;
+            img.raycastTarget = false;   // 드롭 판정은 격자 본체(장비칸이면 칸 본체)가 한다
 
             var line = cell.AddComponent<Outline>();
-            line.effectColor     = cellLineColor;
+            line.effectColor     = lineColor;
             line.effectDistance  = new Vector2(1f, 1f);
             line.useGraphicAlpha = false;   // 옅은 칸 위에도 선이 보이게
         }
-        _builtFor = size;
     }
 
     void ClearCellGrid()
@@ -518,6 +531,10 @@ public class InventoryGridUI : MonoBehaviour
         // 수량이 오른쪽 아래에 있으므로 왼쪽 위 — 서로 겹치지 않는다.
         if (inst.Locked)
             AddLabel(icon, "잠금", 10, TextAlignmentOptions.TopLeft, lockTextColor);
+
+        // **쓰다 만 것이 남은 양**(`ItemInstance.Left`) — 오른쪽 위. 뭉치면 그중 열린 하나의 것이다.
+        if (inst.IsPartial)
+            AddLabel(icon, $"{Mathf.CeilToInt(inst.Left * 100f)}%", 10, TextAlignmentOptions.TopRight, qtyTextColor);
     }
 
     void AddLabel(Transform parent, string text, float fontSize, TextAlignmentOptions align, Color color)

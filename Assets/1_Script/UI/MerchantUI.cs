@@ -65,7 +65,7 @@ public class MerchantUI : MonoBehaviour
             //
             // **되돌리기는 반드시 성공한다**: 갈라져 나온 그 뭉치가 좌판에 그대로 있고 그만큼
             // 자리가 비어 있으므로 `TryAdd`가 거기에 도로 합친다(칸을 새로 안 먹는다).
-            if (detached) _instance._shop?.Stall.TryAdd(inst.Data, inst.Quantity, inst.Quality);
+            if (detached) _instance._shop?.Stall.TryAddLike(inst);
 
             _instance.BuyInstance(inst, inst.Quantity, to.Inventory, at, rotated);
 

@@ -37,7 +37,7 @@ public class RockRenderer : MonoBehaviour
     //
     // **조명으로는 못 가른다** — 주변광을 낮추면 옆면도 같이 죽고, 방향광을 눕히면 한쪽
     // 옆면만 밝다. 면의 역할이 다르므로 **재질이 달라야 한다.**
-    [Tooltip("바위 **윗면**. 비우면 거의 검게 만든다 — 안 판 자리가 곧 어둠이다.")]
+    [Tooltip("바위 **윗면**. 비우면 벽 색의 절반(`TopShade`)인 단색으로 만든다.")]
     [SerializeField] Material rockMaterial;
 
     [Tooltip("바위 **옆면**(파낸 방의 벽). 비우면 밝은 청회색으로 만든다.")]
@@ -231,7 +231,7 @@ public class RockRenderer : MonoBehaviour
     readonly List<Vector3> _verts = new();
     readonly List<Vector3> _norms = new();
     readonly List<Vector2> _uvs   = new();
-    readonly List<int>     _top   = new();   // 윗면 — 검다
+    readonly List<int>     _top   = new();   // 윗면 — 벽과 같은 무늬, 밝기는 절반(`TopShade`)
     readonly List<int>     _mark  = new();   // 캘 것으로 찍힌 칸
 
     readonly List<int>     _side  = new();   // 옆면 — 밝다
@@ -1594,11 +1594,10 @@ public class RockRenderer : MonoBehaviour
     // **재질을 바이옴마다 만들지 않는다** — `MaterialPropertyBlock`으로 **색만** 얹는다.
     // 재질을 늘리면 여덟 벌을 손으로 맞추게 되고, 그중 하나는 반드시 뒤처진다.
     //
-    // **옆면(서브메시 1)에만 건다**(2026-09-06에 바로잡았다).
-    //
-    // 윗면은 *안 판 자리 = 어둠*이라 거의 검어야 **세계의 경계가 어디인지**가 읽힌다
-    // (기본색이 0.05~0.07인 이유). 거기까지 물들이면 **안 판 바위가 밝아져** 판 곳과
-    // 안 판 곳이 한 덩어리로 보인다.
+    // **윗면(서브메시 0)에는 절반 밝기로 건다**(2026-10-15). 09-06에는 옆면에만 걸었다 — 윗면은
+    // *안 판 자리 = 어둠*이라 거의 검어야 판 곳과 안 판 곳이 갈렸다. 그 뒤로 굴 전체가 어두워져
+    // (`UnderworldLighting`) 불빛 밖의 뚜껑은 조명이 검게 누르고, 단색 0.05는 **불빛 아래서도 검어서**
+    // 잘린 벽의 단면이 무늬 없는 구멍으로 보였다(사용자). 판 곳과 갈리는 것은 이제 밝기의 절반(`TopShade`)이 맡는다.
     //
     // 찍힌 칸(서브메시 2)도 안 건다 — 그건 *"여기를 판다"*는 표시라 어느 바이옴에서든 같은
     // 주황이어야 한다. `MaterialPropertyBlock`은 **머티리얼 인덱스별로** 걸 수 있다.
@@ -1639,8 +1638,21 @@ public class RockRenderer : MonoBehaviour
         _mpb.Clear();
         _mpb.SetColor("_BaseColor", tint);
         _mpb.SetColor("_Color",     tint);   // 빌트인으로 떨어졌을 때
-        mr.SetPropertyBlock(_mpb, 1);        // 옆면만
+        mr.SetPropertyBlock(_mpb, 1);        // 옆면
+
+        // **윗면도 같은 색조를 절반 밝기로**(2026-10-15) — 윗면에 무늬를 깔면서(`Rock_Top.mat`) 옆면만
+        // 물들이면 위에서 볼 때 뚜껑과 벽이 다른 돌로 보인다. 색조가 재질 색을 덮어쓰므로 어둡게 하는
+        // 몫(`TopShade`)도 여기서 같이 곱한다.
+        var topTint = tint * TopShade;
+        topTint.a = 1f;
+        _mpb.Clear();
+        _mpb.SetColor("_BaseColor", topTint);
+        _mpb.SetColor("_Color",     topTint);
+        mr.SetPropertyBlock(_mpb, 0);        // 윗면
     }
+
+    // **윗면은 벽의 몇 배 밝기인가.** 재질을 만드는 도구(`World → 0b`)와 바이옴 색조가 같은 값을 쓴다.
+    public const float TopShade = 0.5f;
 
     void Drop(Vector2Int chunk)
     {
@@ -1671,7 +1683,7 @@ public class RockRenderer : MonoBehaviour
         if (rockMaterial != null) return rockMaterial;
         if (_topMat != null) return _topMat;
 
-        _topMat = Lit("Rock top (runtime)", new Color(0.05f, 0.06f, 0.07f));
+        _topMat = Lit("Rock top (runtime)", new Color(0.52f, 0.57f, 0.60f) * TopShade);
         return _topMat;
     }
 

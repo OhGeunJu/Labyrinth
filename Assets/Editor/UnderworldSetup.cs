@@ -164,8 +164,15 @@ public static class UnderworldSetup
         //
         // **텍스처를 안 물리면 그냥 평평한 어둠이다.** 윗면은 원래 *"안 판 자리 = 어둠"*을
         // 말하는 자리라 잃는 것이 없다 — 완전한 0으로만 안 내리면 경계는 그대로 읽힌다.
-        var top  = Mat("Rock_Top",  null, null, new Color(0.04f, 0.045f, 0.05f));
-        var wall = Mat("Rock_Wall", diffuse, normal, new Color(0.72f, 0.76f, 0.80f));
+        //
+        // **다시 무늬를 깐다**(2026-10-15, 사용자: *"벽 윗부분 텍스쳐 보이게 — 지금은 윗면 텍스쳐가 그냥
+        // 검은색"*). 09-07과 사정이 바뀌었다: 그 뒤로 굴 전체가 어두워져(`UnderworldLighting`의 `gloom`)
+        // *안 판 자리 = 어둠*은 조명이 맡는다 — 불빛 밖의 뚜껑은 무늬가 있어도 검게 눌린다. 0.04 단색은
+        // **불빛 바로 아래서도 검어서** 잘린 벽의 단면이 구멍처럼 보였다. 밝기는 벽의 절반(`RockRenderer.TopShade`
+        // — 바이옴 색조를 얹을 때 같은 값을 곱한다) — 위에서 볼 때 옆면이 여전히 방의 모양을 그린다.
+        var wallTint = new Color(0.72f, 0.76f, 0.80f);
+        var top  = Mat("Rock_Top",  diffuse, normal, wallTint * RockRenderer.TopShade);
+        var wall = Mat("Rock_Wall", diffuse, normal, wallTint);
 
         // **찍힌 칸은 스스로 빛난다.** 색만 바꾸면 어두운 굴에서 **주변광에 같이 묻혀**
         // 티가 안 난다 — 밝기를 올리면 벽도 같이 밝아지므로 대비가 그대로다.

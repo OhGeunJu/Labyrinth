@@ -17,6 +17,8 @@ public class CorpseInventoryUI : MonoBehaviour
     [SerializeField] EquipSlotUI        chestSlot;
     [SerializeField] EquipSlotUI        handsSlot;
     [SerializeField] EquipSlotUI        legsSlot;
+    [SerializeField] EquipSlotUI        beltSlot;   // 허리(2026-10-15)
+    [SerializeField] EquipSlotUI        feetSlot;   // 신발(2026-10-18)
     [SerializeField] InventoryUI playerInventoryPanel;
 
     InventoryGridUI _gridUI;
@@ -58,6 +60,8 @@ public class CorpseInventoryUI : MonoBehaviour
         chestSlot?.Bind(eq);
         handsSlot?.Bind(eq);
         legsSlot?.Bind(eq);
+        beltSlot?.Bind(eq);
+        feetSlot?.Bind(eq);
     }
 
     void Update()
@@ -125,7 +129,7 @@ public class CorpseInventoryUI : MonoBehaviour
     void SetEquipColumnVisible(bool on)
     {
         foreach (var slot in new[] { mainHandSlot, offHandSlot, headSlot,
-                                     chestSlot, handsSlot, legsSlot })
+                                     chestSlot, handsSlot, legsSlot, beltSlot, feetSlot })
             if (slot != null) slot.gameObject.SetActive(on);
     }
 

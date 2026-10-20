@@ -85,4 +85,44 @@ public static class Vision
 
     public static float RangeFor(UnitBlackboard bb) =>
         bb?.Self == null ? 0f : RangeFor(bb.DetectRange, bb.NightVision, bb.Self.transform.position);
+
+    // ── 보이나 — 반경 안이고, 사이에 바위가 없다 (2026-10-18) ──────────────────────
+    //
+    // 전에는 반경만 있었다 — **벽 너머도 보였다**(`FactionScan` 머리말). 그래서 굴 모퉁이를 돌아도 적이 정확히
+    // 따라왔다. 가림은 **안개와 같은 판정**이다(`FogOfWar` — `RockMap.IsRock` 하나: 길이 막히는 곳이 곧 눈이 막히는
+    // 곳). 지은 벽은 안개처럼 안 막는다 — 한쪽만 바꾸면 *"화면엔 보이는데 폰은 못 본다"*가 생긴다.
+    //
+    // `rangeMult` — 이미 든 표적을 놓을 때는 조금 넉넉히 본다(`DetectNode.HoldMargin`). 같은 값으로 잡고 놓으면
+    // 반경 끝에서 한 틱마다 잡았다 놓았다 한다.
+    public static bool CanSee(UnitBlackboard bb, GameObject target, float rangeMult = 1f)
+    {
+        if (bb?.Self == null || target == null) return false;
+        Vector3 from = bb.Self.transform.position, to = target.transform.position;
+        float range = RangeFor(bb) * rangeMult;
+        Vector3 d = to - from; d.y = 0f;
+        if (d.sqrMagnitude > range * range) return false;
+        return SightClear(from, to);
+    }
+
+    // 두 자리 사이 칸에 바위가 없나 — **양 끝 칸은 안 본다**(선 자리·표적 자리가 바위면 그건 길찾기의 일이다).
+    // 칸 단위 DDA라 반경 10m면 열 칸 남짓이다. 거리로 먼저 거른 뒤에만 부른다.
+    public static bool SightClear(Vector3 from, Vector3 to)
+    {
+        var map = MapManager.Instance;
+        if (map == null || !RockMap.Enabled) return true;
+        Vector2Int a = map.WorldToTile(from), b = map.WorldToTile(to);
+        if (a == b) return true;
+
+        int dx = Mathf.Abs(b.x - a.x), dy = Mathf.Abs(b.y - a.y);
+        int sx = b.x > a.x ? 1 : -1, sy = b.y > a.y ? 1 : -1;
+        int err = dx - dy, x = a.x, y = a.y;
+        while (true)
+        {
+            int e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x += sx; }
+            if (e2 <  dx) { err += dx; y += sy; }
+            if (x == b.x && y == b.y) return true;
+            if (RockMap.IsRock(new Vector2Int(x, y))) return false;
+        }
+    }
 }

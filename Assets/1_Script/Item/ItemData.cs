@@ -55,6 +55,23 @@ public class ItemData : ScriptableObject
     // 시장에서 산 그 물건만 되는 줄 안다). `DataManager.ResolveCountsAs`가 켠다.
     [System.NonSerialized] public bool HasStandIns;
 
+    // ── 들고 다니는 불빛 (2026-10-15) ────────────────────────────────────────
+    //
+    // **허리 램프와 손 횃불이 같은 두 값을 쓴다** — 하나는 갑옷(허리), 하나는 무기(보조손)라 따로 적으면
+    // 같은 물음(*얼마나 비추나 · 얼마나 타나*)에 답이 둘이 된다. 빛은 `CarriedLight`가 세우고, 시야는
+    // `LightSource` → `Vision`이 그대로 받는다(화면과 판정이 같은 수를 본다).
+    [Header("들고 다니는 불빛")]
+    [Tooltip("차고 있으면 둘레를 밝힌다(m) — 시야가 걷히는 거리. 0이면 빛이 없다. 램프와 횃불은 큰 차이 없게(사용자).")]
+    [Min(0f)] public float LightRadius = 0f;
+
+    [Tooltip("타는 시간(게임 일). **0이면 영구** — 램프. 다 타면 그 하나가 없어지고 배낭의 같은 것을 이어 든다.")]
+    [Min(0f)] public float BurnDays = 0f;
+
+    public bool GivesLight => LightRadius > 0f;
+
+    // **쓰면 닳는 물건인가** — 그러면 뭉치의 열린 하나가 남은 양을 든다(`ItemInstance.Left`). 타는 불과 약.
+    public virtual bool Depletes => BurnDays > 0f;
+
     // 레시피·연구 재료 줄에 쓰는 이름.
     public string IngredientName => HasStandIns ? $"{ItemName}(종류 무관)" : ItemName;
 

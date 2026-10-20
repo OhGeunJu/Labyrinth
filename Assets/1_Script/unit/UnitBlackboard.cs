@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class UnitBlackboard
@@ -46,6 +47,7 @@ public class UnitBlackboard
 
         LastAttacker     = attacker;
         LastAttackedTime = Time.time;
+        Grudges.Add(attacker);   // 같은 편 오사는 위에서 걸렀다
     }
 
     // **사수는 제가 쏠 수 있는 데까지 본다**(2026-08-26, 사용자 검증에서 드러났다).
@@ -72,7 +74,69 @@ public class UnitBlackboard
     //
     // 끄는 것은 **훑어 봤는데 아무도 없을 때** 하나다(둘 다 `DetectNode`).
     // `CombatHandler.IsInCombat`과 **다른 물건이다** — 저쪽은 공격 타이머가 도는 중인지다.
-    public bool Engaged;
+    //
+    // **교전은 경계 상태의 한 칸이다**(2026-10-18 — `Alert`). 읽고 쓰는 곳(여덟)은 그대로 이 이름을 쓴다.
+    public bool Engaged
+    {
+        get => Alert == AlertState.Combat;
+        set
+        {
+            if (value) Alert = AlertState.Combat;
+            else if (Alert == AlertState.Combat) Alert = AlertState.Calm;
+        }
+    }
+
+    // ── 지각 기억 (2026-10-18 — `docs/combat.md` "지각 기억") ─────────────────────
+    //
+    // 전에는 **한번 잡은 표적을 벽 너머로도, 맵 끝까지도 정확히 알았다** — `DetectNode`가 새 후보가 없으면 든 것을
+    // 그대로 쥐었고, 놓는 조건은 *칠 수 없게 됐나* 하나였다. 이제 **보이는 동안만 안다**(`Vision.CanSee`).
+    // 놓치면 마지막으로 본 자리까지 가서 둘러보고(`SearchNode`), 못 찾으면 잊는다.
+    //
+    // - **보이는 동안은 끝까지 쫓는다** — 시계는 *안 보일 때만* 돈다(사용자: *"도망치는데 거리가 안 벌어지면 끝까지
+    //   따라오는 게 맞다"*). 시간이 지났다고 돌아서지 않는다.
+    // - **잊는 것은 둘 중 먼저 오는 것**: 마지막으로 본 뒤 `SearchMemory`(게임 초) · 마지막 자리가 `SearchReachMult`
+    //   × 감지 범위보다 멀다(거리 + 시간 — 사용자).
+    public AlertState Alert;
+    public GameObject LastSeenTarget;
+    public Vector3    LastSeenPos;
+    public float      LastSeenAt = -999f;   // `GameTimeManager.Elapsed`
+
+    public const float SearchMemory    = 30f;   // 안 보인 뒤 이만큼 지나면 잊는다(게임 초)
+    public const float SearchLook      = 6f;    // 마지막 자리에 닿아 둘러보는 시간(게임 초)
+    public const float SearchReachMult = 3f;    // 마지막 자리가 감지 범위의 이 배수보다 멀면 안 간다
+
+    public void SawTarget(GameObject target)
+    {
+        LastSeenTarget = target;
+        LastSeenPos    = target.transform.position;
+        LastSeenAt     = GameTimeManager.Elapsed;
+    }
+
+    public void Forget()
+    {
+        LastSeenTarget = null;
+        if (Alert == AlertState.Search) Alert = AlertState.Calm;
+    }
+
+    // ── 원한 — 나를 친 놈은 세력과 상관없이 적이다 (2026-10-18) ──────────────────────
+    //
+    // 사용자: *"이미 적대 관계가 됐는데 시간이 지났다고 풀리는 경우"*. 전에는 중립이 나를 쳐도 **15초**만 칠 수
+    // 있었다(`HasFreshAttacker`) — 그 뒤로는 `FactionScan`이 세력만 보므로 다시 중립이었다. 칸도 하나라 두 번째로
+    // 친 놈이 첫 놈을 덮었다.
+    //
+    // **원한은 *누구인가*만 든다 — *어디 있는가*는 안 든다.** 보여야 친다(먼저 노리지도 않는다 — 가까운 순).
+    // 시간으로 안 풀린다. 그놈이 죽거나 · 갇히거나 · 내 세력이 바뀌면(`ClearMemory`) 끝난다.
+    public readonly HashSet<GameObject> Grudges = new();
+
+    public bool HoldsGrudge(GameObject other) => other != null && Grudges.Contains(other);
+
+    // 죽음 · 세력 변경 — 들고 있던 기억을 다 버린다(`UnitBrain`의 두 자리).
+    public void ClearMemory()
+    {
+        Alert          = AlertState.Calm;
+        LastSeenTarget = null;
+        Grudges.Clear();
+    }
 
     public float DetectRange
     {
@@ -239,6 +303,9 @@ public class UnitBlackboard
     // 녹는다**(자리를 나눠 주기만 하고 지키게 하지 않으면 대형은 *출발 직전의 그림*일 뿐이다).
     public Vector3 FormationSpot;
 
+    // 원거리가 거리를 벌리는 중인가(`Kiting` — 물러남 · 쏠 때까지 섬).
+    public readonly Kiting.State Kite = new Kiting.State();
+
     public bool    LeavingMap;
 
     // **떠나는 이유가 둘이라 맞았을 때가 갈린다**(2026-09-08).
@@ -300,4 +367,12 @@ public class UnitBlackboard
     public Vector3 NpcDestination; // EventMerchant 목적지
     public float   NpcTimer;       // 범용 타이머
     public int     NpcPhase;       // EventMerchant 단계 (0=이동중 1=대기 2=퇴장)
+}
+
+// 경계 상태. 런타임 전용(직렬화 안 함) — 그래도 꼬리에만 붙인다.
+public enum AlertState
+{
+    Calm,     // 평온
+    Search,   // 놓친 표적을 찾는 중(마지막으로 본 자리로)
+    Combat,   // 교전(`Engaged`)
 }

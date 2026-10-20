@@ -151,11 +151,9 @@ public class TreatJob : JobBase
 
         // **약은 다 쓰고 나서 소모한다.** 먼저 빼면 도중에 끊겼을 때(폰이 밥 먹으러 가거나
         // 죽으면) 약만 사라진다. 그새 없어졌으면 맨손 값으로 친다.
-        var used = Treatment.ConsumeFromBackpack(unit, _using) ? _using : null;
-
+        // **치료한 만큼만 쓴다**(`Treatment.Finish` — 쓰고 · 낫게 하는 것이 한 곳이다).
         float skill = unit.Stats != null ? unit.Stats.Medicine : 0f;
-        float power = Treatment.Power(used, skill, IsSelf(unit));
-        Treatment.Apply(body, power);
+        var used = Treatment.Finish(unit, _using, body, skill, IsSelf(unit), out float power);
 
         // 노동 성장 — 다른 노동과 같은 축(SOL). 상대가 얼마나 다쳤는지는 안 본다:
         // 중상을 골라 치료하는 것이 이득이 되면 가벼운 부상을 방치하게 된다.

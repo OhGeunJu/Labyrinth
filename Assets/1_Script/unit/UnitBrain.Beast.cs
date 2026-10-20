@@ -18,14 +18,12 @@ public partial class UnitBrain
 
     BTNode BuildBeastTree()
     {
-        var tree = new BTSelector()
-            .Add(new ManualOrderNode())
+        var tree = new BTSelector();
+        tree.Add(new ManualOrderNode())
             .Add(new FollowNode())
-            .Add(PlayerFleeNode())
-            .Add(new BTSequence()
-                .Add(new DetectNode())
-                .Add(new FightNode()))
-            .Add(new RestNode())
+            .Add(PlayerFleeNode());
+        AddFight(tree, skipWhenFleeing: false);
+        tree.Add(new RestNode())
             .Add(new EatNode())
             .Add(new WorkNode())
             .Add(new IdleNode());

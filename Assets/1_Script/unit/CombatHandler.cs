@@ -117,6 +117,35 @@ public class CombatHandler : MonoBehaviour
 
     WeaponData Shield => OneHanded ? null : _equipment?.OffHand;
 
+    // **보조손의 횃불**(2026-10-15) — 근접으로 맞히면 불을 한 번 더 얹는다. 쌍수가 아니다: 휘두르는 것은 주 무기 하나고,
+    // 횃불은 그 타격에 붙는 불이다(사용자: *"공격 가능"*). 업고 있으면 한 손이 막혀 안 붙는다(방패와 같은 규칙).
+    WeaponData Torch
+    {
+        get
+        {
+            var off = OneHanded ? null : _equipment?.OffHand;
+            return off != null && off.Type == WeaponType.Torch ? off : null;
+        }
+    }
+
+    // 횃불의 불 한 번. 값은 횃불의 `BaseDamage` × 등급, 상태이상 확률은 횃불의 것(화상).
+    void ApplyTorchBurn(GameObject target, BodyPartSystem body, UnitBrain brain)
+    {
+        var torch = Torch;
+        if (torch == null || torch.BaseDamage <= 0f) return;
+
+        float q = _equipment.OffHandInstance != null ? _equipment.OffHandInstance.Quality.StatMultiplier() : 1f;
+        var burn = new DamageInfo
+        {
+            Amount       = torch.BaseDamage * q,
+            Type         = torch.DamageType,
+            EffectChance = torch.EffectChance,
+            Source       = gameObject,
+        };
+        if (body != null) body.TakeDamage(burn);
+        else if (brain != null) brain.TakeDamage(burn);
+    }
+
     void Start()
     {
         _brain     = GetComponent<UnitBrain>();
@@ -184,6 +213,7 @@ public class CombatHandler : MonoBehaviour
         if (_attackTimer >= interval)
         {
             _attackTimer = 0f;
+            LastStrikeTime = Time.time;
             WeaponData weapon = Weapon;
             var target = _brain.Blackboard.Target;
             OnStrike?.Invoke();
@@ -196,6 +226,9 @@ public class CombatHandler : MonoBehaviour
                 TryAttack();
         }
     }
+
+    // 마지막으로 친(쏜) 때 — 거리를 벌린 사수가 *한 발 쏠 때까지* 서 있는 것을 이것으로 안다(`Kiting`).
+    public float LastStrikeTime { get; private set; } = -999f;
 
     public void EnterCombat() => IsInCombat = true;
 
@@ -350,6 +383,8 @@ public class CombatHandler : MonoBehaviour
             targetBodySystem.TakeDamage(dmgInfo);
         else
             targetBrain.TakeDamage(dmgInfo);
+
+        ApplyTorchBurn(target, targetBodySystem, targetBrain);
 
         // 신성 무기: 공격 성공 시 힐/버프 발동
         var weapon = Weapon;

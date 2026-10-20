@@ -74,6 +74,7 @@ public class LightSource : MonoBehaviour
     // 쓰는 쪽은 크기가 칸마다 다른 것뿐이다(`Skylight` — 구멍이 크면 볕도 넓다).
     public float Radius { get => radius; set => radius = value; }
     public float Strength => strength;
+    public float Flicker { get => flicker; set => flicker = Mathf.Clamp(value, 0f, 0.5f); }   // `CarriedLight` — 램프는 거의 안 흔들린다
     public bool  Lit      => _lit;
 
     // **불빛이 화면에서 퍼지는 거리의 배율**(2026-10-12, 사용자: *"빛이 퍼지는 범위를 두배정도 늘려도 될 거

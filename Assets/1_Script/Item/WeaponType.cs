@@ -26,6 +26,11 @@ public enum WeaponType
     // (게다가 툴팁은 열둘을 전부 "지팡이"라고 부르고 있었다 — 갈라 둔 것이 화면에 나타난
     // 적이 없다).
     Staff,
+
+    // **횃불 — 보조손에 드는 불**(2026-10-15). 허리 램프를 얻기 전의 빛이고, 근접으로 칠 때 불을 얹는다
+    // (`CombatHandler` — 주 무기 타격 뒤에 한 번 더). 주손에 넣으면 보조손으로 간다(방패와 같다).
+    // 타는 시간은 `ItemData.BurnDays` · 남은 시간은 폰이 든다(`Equipment`). **꼬리에 붙인다** — 정수 직렬화.
+    Torch,
 }
 
 // **무엇을 든 사람이 어떻게 휘두르나**(2026-09-11). 애니메이터의 `Style` 매개변수가 이 값이고
@@ -71,6 +76,7 @@ public static class WeaponTypeExt
         WeaponType.Crossbow     => "쇠뇌",
         WeaponType.Javelin      => "투창",
         WeaponType.Staff        => "지팡이",
+        WeaponType.Torch        => "횃불",
         _                       => t.ToString(),
     };
 

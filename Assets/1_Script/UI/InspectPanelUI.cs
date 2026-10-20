@@ -323,6 +323,8 @@ public class InspectPanelUI : MonoBehaviour
         sb.AppendLine($"<color=#888>({tile.x}, {tile.y})</color>");
         sb.AppendLine();
 
+        sb.AppendLine(DurabilityLine(tile));
+
         if (item != null)
             sb.AppendLine($"파면  <b>{item.ItemName}</b>  " +
                           $"<color=#888>한 번에 {data.DropMin}~{data.DropMax}개</color>");
@@ -356,6 +358,18 @@ public class InspectPanelUI : MonoBehaviour
         if (item != null) acts.Add(HaulSwitch(item));
 
         SetActions(acts);
+    }
+
+    // **벽의 내구도 한 줄**(2026-10-15) — 살펴보기와 채굴 커서(`MineDesignator`)가 같은 줄을 쓴다.
+    // 깎인 벽은 색이 바뀐다: 다 남았으면 회색, 깎이기 시작하면 노랑, 절반 아래면 주황.
+    public static string DurabilityLine(Vector2Int tile)
+    {
+        float max  = RockMap.MaxDurability(tile);
+        float left = RockMap.Durability(tile);
+        float frac = max > 0f ? left / max : 1f;
+        string col = frac >= 0.999f ? "#c9c9c9" : frac >= 0.5f ? "#E8C566" : "#F0883E";
+        return $"내구도  <b><color={col}>{Mathf.CeilToInt(left)}</color></b> / {Mathf.CeilToInt(max)}  " +
+               $"<color=#888>({Mathf.RoundToInt(frac * 100f)}%)</color>";
     }
 
     // **힘을 받고 있나.** 없는 건물에는 한 줄도 안 적는다 — 이 축과 무관한 것에 전력 줄이

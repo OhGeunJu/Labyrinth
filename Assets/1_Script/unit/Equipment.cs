@@ -81,7 +81,8 @@ public class Equipment : MonoBehaviour
 
         // **방패는 주손에 들지 않는다.** 주손 칸에 떨어뜨려도 보조손으로 보낸다 —
         // 방패를 들고 때릴 수는 없는데, 막지 않으면 주손에 끼워 무기를 못 드는 상태가 된다.
-        if (weapon.Type == WeaponType.Shield) return WearOffHand(inst);
+        // **횃불도 같다**(2026-10-15) — 보조손에 드는 불이다.
+        if (BelongsInOffHand(weapon)) return WearOffHand(inst);
 
         Bind();
 
@@ -92,12 +93,12 @@ public class Equipment : MonoBehaviour
         if (weapon.IsLargeWeapon && !StowOffHand()) return false;
 
         if (MainHand != null)
-            ReturnToInventory(MainHand, _mainHandInst?.Quality ?? ItemQuality.Common);
+            ReturnToInventory(MainHand, _mainHandInst);
 
         MainHand      = weapon;
         _mainHandInst = inst;
         SyncBlackboard();
-        OnEquipChanged?.Invoke(this);
+        Changed();
         Debug.Log($"[Equipment] {gameObject.name} 장착: {weapon.ItemName} [{inst.Quality.DisplayName()}]");
         return true;
     }
@@ -110,8 +111,7 @@ public class Equipment : MonoBehaviour
         if (OffHand == null) return true;
         if (_inventory == null) return false;
 
-        var quality = _offHandInst?.Quality ?? ItemQuality.Common;
-        if (_inventory.TryAdd(OffHand, 1, quality) <= 0) return false;
+        if (!PutInBackpack(OffHand, _offHandInst)) return false;
 
         OffHand      = null;
         _offHandInst = null;
@@ -123,8 +123,7 @@ public class Equipment : MonoBehaviour
         if (MainHand == null) return true;
         if (_inventory == null) return false;
 
-        var quality = _mainHandInst?.Quality ?? ItemQuality.Common;
-        if (_inventory.TryAdd(MainHand, 1, quality) <= 0) return false;
+        if (!PutInBackpack(MainHand, _mainHandInst)) return false;
 
         MainHand      = null;
         _mainHandInst = null;
@@ -145,11 +144,12 @@ public class Equipment : MonoBehaviour
         if (OffHandLocked && !StowMainHand()) return false;
 
         if (OffHand != null)
-            ReturnToInventory(OffHand, _offHandInst?.Quality ?? ItemQuality.Common);
+            ReturnToInventory(OffHand, _offHandInst);
 
         OffHand      = item;
         _offHandInst = inst;
-        OnEquipChanged?.Invoke(this);
+        _burnClock   = -1f;
+        Changed();
         Debug.Log($"[Equipment] {gameObject.name} 오프핸드 장착: {item.ItemName} [{inst.Quality.DisplayName()}]");
         return true;
     }
@@ -161,11 +161,11 @@ public class Equipment : MonoBehaviour
 
         Bind();
         if (_armor.TryGetValue(armor.Slot, out var prev))
-            ReturnToInventory(prev, _armorInst.TryGetValue(armor.Slot, out var pi) ? pi.Quality : ItemQuality.Common);
+            ReturnToInventory(prev, _armorInst.TryGetValue(armor.Slot, out var pi) ? pi : null);
 
         _armor[armor.Slot]     = armor;
         _armorInst[armor.Slot] = inst;
-        OnEquipChanged?.Invoke(this);
+        Changed();
         Debug.Log($"[Equipment] {gameObject.name} 갑옷 장착: {armor.ItemName} ({armor.Slot}) [{inst.Quality.DisplayName()}]");
         return true;
     }
@@ -178,7 +178,7 @@ public class Equipment : MonoBehaviour
         _armorInst.TryGetValue(slot, out var inst);
         _armor.Remove(slot);
         _armorInst.Remove(slot);
-        OnEquipChanged?.Invoke(this);
+        Changed();
         return inst;
     }
 
@@ -188,7 +188,7 @@ public class Equipment : MonoBehaviour
         var inst = _mainHandInst;
         MainHand = null; _mainHandInst = null;
         SyncBlackboard();
-        OnEquipChanged?.Invoke(this);
+        Changed();
         return inst;
     }
 
@@ -197,7 +197,7 @@ public class Equipment : MonoBehaviour
         if (OffHand == null) return null;
         var inst = _offHandInst;
         OffHand = null; _offHandInst = null;
-        OnEquipChanged?.Invoke(this);
+        Changed();
         return inst;
     }
 
@@ -208,7 +208,7 @@ public class Equipment : MonoBehaviour
     {
         Bind();
         if (weapon == null) return false;
-        if (weapon.Type == WeaponType.Shield) return EquipOffHand(weapon);
+        if (BelongsInOffHand(weapon)) return EquipOffHand(weapon);
 
         var inst = PullOne(weapon);
         return inst != null && (WearMainHand(inst) || PutBack(inst));
@@ -233,6 +233,15 @@ public class Equipment : MonoBehaviour
     ItemInstance PullOne(ItemData data)
     {
         var found = FindInInventory(data);
+
+        // **열린 것부터 든다** — 반쯤 탄 횃불을 두고 새것을 켜면 배낭에 타다 만 것만 쌓인다.
+        if (found != null && found.IsPartial)
+        {
+            var q    = found.Quality;
+            float left = _inventory.TakeOpened(found);
+            return new ItemInstance(data, 1, 0, 0, false, q) { Left = left };
+        }
+
         // 찾은 인스턴스를 정확히 소모 — Remove(data)는 다른 등급 인스턴스를 뺄 수 있음
         if (found == null || !_inventory.RemoveOne(found)) return null;
 
@@ -244,12 +253,12 @@ public class Equipment : MonoBehaviour
     {
         if (MainHand == null) return;
 
-        ReturnToInventory(MainHand, _mainHandInst?.Quality ?? ItemQuality.Common);
+        ReturnToInventory(MainHand, _mainHandInst);
         Debug.Log($"[Equipment] {gameObject.name} 해제: {MainHand.ItemName}");
         MainHand      = null;
         _mainHandInst = null;
         SyncBlackboard();
-        OnEquipChanged?.Invoke(this);
+        Changed();
     }
 
     public bool EquipOffHand(WeaponData item)
@@ -268,11 +277,11 @@ public class Equipment : MonoBehaviour
     {
         if (OffHand == null) return;
 
-        ReturnToInventory(OffHand, _offHandInst?.Quality ?? ItemQuality.Common);
+        ReturnToInventory(OffHand, _offHandInst);
         Debug.Log($"[Equipment] {gameObject.name} 오프핸드 해제: {OffHand.ItemName}");
         OffHand      = null;
         _offHandInst = null;
-        OnEquipChanged?.Invoke(this);
+        Changed();
     }
 
     public bool EquipArmor(ArmorData armor)
@@ -289,11 +298,87 @@ public class Equipment : MonoBehaviour
         if (!_armor.TryGetValue(slot, out var armor)) return;
 
         _armorInst.TryGetValue(slot, out var inst);
-        ReturnToInventory(armor, inst?.Quality ?? ItemQuality.Common);
+        ReturnToInventory(armor, inst);
         _armor.Remove(slot);
         _armorInst.Remove(slot);
-        OnEquipChanged?.Invoke(this);
+        Changed();
         Debug.Log($"[Equipment] {gameObject.name} 갑옷 해제: {armor.ItemName} ({slot})");
+    }
+
+    // 주손이 아니라 보조손에 가는 것 — 방패와 횃불.
+    public static bool BelongsInOffHand(WeaponData w) =>
+        w != null && (w.Type == WeaponType.Shield || w.Type == WeaponType.Torch);
+
+    // ── 들고 다니는 불빛 (2026-10-15) ──────────────────────────────────────────
+    //
+    // **어느 것이 비추나** — 보조손 횃불과 허리 램프 중 **넓은 쪽 하나**다. 둘을 겹쳐 더 밝게 하지 않는다
+    // (`LightSource.BrightestAt`이 가장 밝은 하나만 보는 것과 같은 규칙). 세우는 것은 `CarriedLight`.
+    public ItemData LightItem
+    {
+        get
+        {
+            ItemData best = OffHand != null && OffHand.GivesLight ? OffHand : null;
+            var belt = GetArmor(ArmorSlot.Belt);
+            if (belt != null && belt.GivesLight && (best == null || belt.LightRadius > best.LightRadius))
+                best = belt;
+            return best;
+        }
+    }
+
+    // **걸음 배율** — 찬 갑옷 전부의 `MoveSpeedMult`를 곱한다(2026-10-18, 신발). `PawnMover`가 읽는다.
+    public float MoveSpeedMult
+    {
+        get
+        {
+            float m = 1f;
+            foreach (var a in _armor.Values) if (a != null) m *= a.MoveSpeedMult;
+            return m;
+        }
+    }
+
+    // **장비가 바뀌는 문은 하나다** — 화면(`OnEquipChanged`)과 빛(`CarriedLight`)이 같이 따라온다.
+    void Changed()
+    {
+        CarriedLight.Sync(this);
+        OnEquipChanged?.Invoke(this);
+    }
+
+    // ── 횃불이 타는 시간 ──────────────────────────────────────────────────────
+    //
+    // **남은 시간은 횃불이 든다**(`ItemInstance.Left`, 2026-10-16). 처음(10-15)엔 폰이 들었는데 사용자: *"다른 폰이
+    // 그 횃불을 집었을때는?"* — 벗어서 넘기면 새것이 됐다. 이제 반쯤 탄 횃불은 배낭에서도 바닥에서도 다른 손에서도
+    // 반쯤 탄 횃불이다. 다 타면 그 하나가 없어지고 **배낭의 같은 횃불을 이어 든다**(열린 것부터 — `PullOne`).
+    //
+    // 시계는 게임 시각(`GameTimeManager.Elapsed`)이라 배속을 그대로 탄다.
+    float _burnClock = -1f;
+
+    void Update()
+    {
+        var torch = OffHand;
+        if (torch == null || torch.BurnDays <= 0f || _offHandInst == null) { _burnClock = -1f; return; }
+
+        float now = GameTimeManager.Elapsed;
+        if (_burnClock < 0f) { _burnClock = now; return; }
+        float dt = now - _burnClock;
+        _burnClock = now;
+        if (dt <= 0f) return;
+
+        _offHandInst.Left -= dt / (torch.BurnDays * GameTimeManager.DayDuration);
+        if (_offHandInst.Left <= ItemInstance.Epsilon) BurnOut(torch);
+    }
+
+    void BurnOut(WeaponData torch)
+    {
+        Bind();
+        OffHand      = null;
+        _offHandInst = null;
+
+        bool relit = _inventory != null && FindInInventory(torch) != null && EquipOffHand(torch);
+        if (relit) return;   // 새 횃불을 들면서 `Changed`가 이미 났다
+
+        Changed();
+        if (TryGetComponent(out Faction f) && f.IsPlayer && TryGetComponent(out UnitBrain b))
+            EventNotificationUI.Notify("횃불", $"{b.UnitName}의 {torch.ItemName}이(가) 다 탔습니다.");
     }
 
     // Blackboard 상태를 장착 상태에 맞게 갱신 (무기 등급 배율 반영)
@@ -321,19 +406,38 @@ public class Equipment : MonoBehaviour
     //
     // 교체를 거절하는 길도 있었지만, 그러면 "왜 안 입지"가 되고 원인이 화면에 안 남는다.
     // 내려놓으면 눈에 보이고 운반이 알아서 창고로 옮긴다 — 이 프로젝트의 증발 방지 관례다.
-    void ReturnToInventory(ItemData item, ItemQuality quality)
+    void ReturnToInventory(ItemData item, ItemInstance inst)
     {
         if (item == null) return;
-        if (_inventory != null && _inventory.TryAdd(item, 1, quality) > 0) return;
+        var   quality = inst != null ? inst.Quality : ItemQuality.Common;
+        float left    = inst != null ? inst.Left    : 1f;
+        if (PutInBackpack(item, inst)) return;
 
-        DroppedItem.Spawn(item, 1, transform.position + Vector3.up * 0.15f, quality);
+        DroppedItem.Spawn(item, 1, transform.position + Vector3.up * 0.15f, quality, left);
         Debug.Log($"[Equipment] {gameObject.name}: 배낭에 자리가 없어 {item.ItemName}을 발밑에 내려놓았습니다.");
     }
 
+    // 배낭에 넣는다 — **남은 양째**(반쯤 탄 횃불은 반쯤 탄 채로, `Inventory.TryAddOpened`).
+    bool PutInBackpack(ItemData item, ItemInstance inst)
+    {
+        if (_inventory == null || item == null) return false;
+        var quality = inst != null ? inst.Quality : ItemQuality.Common;
+        return inst != null && inst.IsPartial
+            ? _inventory.TryAddOpened(item, quality, inst.Left)
+            : _inventory.TryAdd(item, 1, quality) > 0;
+    }
+
+    // **열린 뭉치를 먼저 준다** — 꺼내 드는 것도 쓰다 만 것부터다(`PullOne`).
     ItemInstance FindInInventory(ItemData data)
     {
+        if (_inventory == null) return null;
+        ItemInstance first = null;
         foreach (var inst in _inventory.Items)
-            if (inst.Data == data) return inst;
-        return null;
+        {
+            if (inst.Data != data) continue;
+            if (inst.IsPartial) return inst;
+            first ??= inst;
+        }
+        return first;
     }
 }

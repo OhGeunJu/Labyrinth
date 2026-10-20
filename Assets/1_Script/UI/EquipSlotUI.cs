@@ -21,7 +21,7 @@ public class EquipSlotUI : MonoBehaviour,
     // (`IDropHandler`가 없어졌으므로 유니티가 알려 주지 않는다).
     static readonly List<EquipSlotUI> All = new();
 
-    public enum SlotKind { MainHand, OffHand, Head, Chest, Hands, Legs }
+    public enum SlotKind { MainHand, OffHand, Head, Chest, Hands, Legs, Belt, Feet }   // 허리(10-15)·신발(10-18)은 꼬리에
 
     [SerializeField] Image           bg;
     [SerializeField] Image           icon;
@@ -31,7 +31,7 @@ public class EquipSlotUI : MonoBehaviour,
     [SerializeField] Color emptyColor    = new(0.14f, 0.14f, 0.16f, 0.95f);
     [SerializeField] Color equippedColor = new(0.18f, 0.28f, 0.18f, 0.95f);
 
-    static readonly string[] KindLabels = { "주손", "보조", "머리", "몸통", "손", "다리" };
+    static readonly string[] KindLabels = { "주손 무기", "보조손", "머리", "몸통", "손", "다리", "허리", "신발" };
 
     // **반드시 직렬화한다.** 예전엔 private 필드였고 `Init()`을 부르는 곳도 없어서
     // 6칸 전부 기본값(`MainHand`)으로 남았다 — 그래서 어느 칸을 봐도 주손 아이템이 떴다
@@ -145,7 +145,7 @@ public class EquipSlotUI : MonoBehaviour,
 
         Debug.LogWarning($"[EquipSlot] {taken.Data.ItemName} — 손에 못 들어 되돌린다(캔버스 없음).");
         if (Wear(taken)) return;
-        if (back.Inventory.TryAdd(taken.Data, taken.Quantity, taken.Quality) >= taken.Quantity) return;
+        if (back.Inventory.TryAddLike(taken) >= taken.Quantity) return;
 
         Debug.LogError($"[EquipSlot] {taken.Data.ItemName}을(를) 되돌릴 곳이 없다 — 잃었다.");
     }
@@ -166,6 +166,8 @@ public class EquipSlotUI : MonoBehaviour,
             case SlotKind.Chest:    _equipment.UnequipArmor(ArmorSlot.Chest); break;
             case SlotKind.Hands:    _equipment.UnequipArmor(ArmorSlot.Hands); break;
             case SlotKind.Legs:     _equipment.UnequipArmor(ArmorSlot.Legs);  break;
+            case SlotKind.Belt:     _equipment.UnequipArmor(ArmorSlot.Belt);  break;
+            case SlotKind.Feet:     _equipment.UnequipArmor(ArmorSlot.Feet);  break;
         }
     }
 
@@ -197,7 +199,8 @@ public class EquipSlotUI : MonoBehaviour,
         }
 
         var prev  = slot.GetCurrentInstance();
-        var one   = new ItemInstance(inst.Data, 1, 0, 0, false, inst.Quality) { Locked = inst.Locked };
+        // **찰 하나는 열린 것부터**(2026-10-16) — 반쯤 탄 횃불 뭉치를 끌어 차면 타다 만 것이 손에 간다.
+        var one   = new ItemInstance(inst.Data, 1, 0, 0, false, inst.Quality) { Locked = inst.Locked, Left = inst.Left };
         bool rest = inst.Quantity > 1;
 
         if (prev != null) slot.TakeOff();        // 먼저 벗긴다 — `Wear`에 맡기면 배낭으로 보낸다
@@ -225,6 +228,7 @@ public class EquipSlotUI : MonoBehaviour,
         {
             // 손에는 나머지가 남는다. 벗은 것을 같이 들 수는 없으니 배낭으로 보낸다.
             inst.Quantity -= 1;
+            inst.Left      = 1f;          // 열린 것은 찬 쪽으로 갔다 — 남은 것은 새것이다
             srcInv?.NotifyChanged();      // 통에 있는 그 뭉치가 곧 손에 든 것이다
             carried.KeepCarryingRest();
             if (prev != null) slot.SendBack(prev, srcInv);
@@ -346,13 +350,14 @@ public class EquipSlotUI : MonoBehaviour,
 
     void SendBack(ItemInstance inst, Inventory source)
     {
-        if (source != null && source.TryAdd(inst.Data, 1, inst.Quality) > 0) return;
+        // 남은 양째(`TryAddLike`) — 벗은 반쯤 탄 횃불이 배낭에서 새것이 되면 안 된다.
+        if (source != null && source.TryAddLike(inst) > 0) return;
 
         var backpack = _equipment.GetComponent<Inventory>();
-        if (backpack != null && backpack.TryAdd(inst.Data, 1, inst.Quality) > 0) return;
+        if (backpack != null && backpack.TryAddLike(inst) > 0) return;
 
         DroppedItem.Spawn(inst.Data, 1, _equipment.transform.position + Vector3.up * 0.15f,
-                          inst.Quality);
+                          inst.Quality, inst.Left);
     }
 
     // 이 칸이 받는 물건인가. **판정을 한 곳에 모은다** — 전엔 `switch` 안에 섞여 있어서
@@ -371,6 +376,8 @@ public class EquipSlotUI : MonoBehaviour,
         SlotKind.Chest    => data is ArmorData a && a.Slot == ArmorSlot.Chest,
         SlotKind.Hands    => data is ArmorData a && a.Slot == ArmorSlot.Hands,
         SlotKind.Legs     => data is ArmorData a && a.Slot == ArmorSlot.Legs,
+        SlotKind.Belt     => data is ArmorData a && a.Slot == ArmorSlot.Belt,
+        SlotKind.Feet     => data is ArmorData a && a.Slot == ArmorSlot.Feet,
         _                 => false,
     };
 
@@ -390,6 +397,8 @@ public class EquipSlotUI : MonoBehaviour,
         SlotKind.Chest    => _equipment.TakeOff(ArmorSlot.Chest),
         SlotKind.Hands    => _equipment.TakeOff(ArmorSlot.Hands),
         SlotKind.Legs     => _equipment.TakeOff(ArmorSlot.Legs),
+        SlotKind.Belt     => _equipment.TakeOff(ArmorSlot.Belt),
+        SlotKind.Feet     => _equipment.TakeOff(ArmorSlot.Feet),
         _                 => null,
     };
 
@@ -403,6 +412,8 @@ public class EquipSlotUI : MonoBehaviour,
         SlotKind.Chest    => _equipment?.ArmorInstance(ArmorSlot.Chest),
         SlotKind.Hands    => _equipment?.ArmorInstance(ArmorSlot.Hands),
         SlotKind.Legs     => _equipment?.ArmorInstance(ArmorSlot.Legs),
+        SlotKind.Belt     => _equipment?.ArmorInstance(ArmorSlot.Belt),
+        SlotKind.Feet     => _equipment?.ArmorInstance(ArmorSlot.Feet),
         _                 => null,
     };
 
@@ -416,7 +427,7 @@ public class EquipSlotUI : MonoBehaviour,
         // 차고 있어도 툴팁이 `일반 · 한손 검`이라고 했다 — 격자에서 보던 등급과 어긋난다.
         var inst = GetCurrentInstance();
         if (inst?.Data != null)
-            ItemInfoUI.Show(inst.Data, inst.Quality, -1, null, false, this);
+            ItemInfoUI.Show(inst.Data, inst.Quality, -1, null, false, this, inst.Left);   // 반쯤 탄 횃불이면 남은 시간
     }
 
     public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();
@@ -429,6 +440,8 @@ public class EquipSlotUI : MonoBehaviour,
         SlotKind.Chest    => _equipment?.GetArmor(ArmorSlot.Chest),
         SlotKind.Hands    => _equipment?.GetArmor(ArmorSlot.Hands),
         SlotKind.Legs     => _equipment?.GetArmor(ArmorSlot.Legs),
+        SlotKind.Belt     => _equipment?.GetArmor(ArmorSlot.Belt),
+        SlotKind.Feet     => _equipment?.GetArmor(ArmorSlot.Feet),
         _                 => null,
     };
 }

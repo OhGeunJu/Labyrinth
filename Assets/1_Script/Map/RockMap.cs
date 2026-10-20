@@ -85,6 +85,43 @@ public static class RockMap
         if (_dug.ContainsKey(tile)) _dug[tile] = at;
     }
 
+    // ── 벽의 내구도 (2026-10-15) ────────────────────────────────────────────
+    //
+    // 사용자: *"벽 내구도 표시(커서 위 미리보기까지)"*. **깎인 만큼은 칸이 든다** — 전에는 일감(`MineJob`)이
+    // 들고 있어서, 일감이 취소되거나 폰이 놓고 쉬었다 다시 오면 **새 일감이 0부터 다시 팠다.** 보여 줄 값도
+    // 일감 안에 숨어 있어 찍지 않은 벽은 물을 데가 없었다.
+    //
+    // 최대치는 그 칸에서 나오는 것의 눈금(`ResourceNodeData.GaugeRequired` — 광맥이면 광맥, 아니면 `PlainRock`)이라
+    // 따로 저작할 것이 없다. **깎인 값은 판 순간·메워진 순간 지운다**(`Mine`·`Refill`) — 메워진 벽은 새 벽이다.
+    //
+    // **깎여도 `OnChanged`를 안 쏜다** — 그건 청크를 다시 굽는 소식이다. 보는 쪽(살펴보기 · 채굴 커서)이 묻는다.
+    static readonly Dictionary<Vector2Int, float> _worn = new();
+
+    // 데이터가 아예 없을 때의 눈금. **경고는 `RockRenderer`가 한 번만 한다.**
+    const float FallbackDurability = 60f;
+
+    public static float MaxDurability(Vector2Int tile)
+    {
+        var vein = VeinAt(tile);
+        var data = vein != null ? vein : PlainRock;
+        return data != null ? Mathf.Max(1f, data.GaugeRequired) : FallbackDurability;
+    }
+
+    public static float Durability(Vector2Int tile)
+    {
+        float max = MaxDurability(tile);
+        return _worn.TryGetValue(tile, out float w) ? Mathf.Max(0f, max - w) : max;
+    }
+
+    // 깎는다. **다 깎였으면 참** — 파는 것은 부른 쪽이 한다(`Mine` — 떨굴 것이 그쪽에 있다).
+    public static bool Wear(Vector2Int tile, float amount)
+    {
+        _worn.TryGetValue(tile, out float w);
+        w += Mathf.Max(0f, amount);
+        _worn[tile] = w;
+        return w >= MaxDurability(tile);
+    }
+
     // 캘 것으로 찍어 둔 칸. **바위인지와 다른 축이다** — 찍어 놓고 아직 안 판 상태가 있다.
     static readonly HashSet<Vector2Int> _marked = new();
 
@@ -324,6 +361,7 @@ public static class RockMap
         _mined.Add(tile);
         _dug[tile] = GameTimeManager.Elapsed + RockRegrow.Days * GameTimeManager.DayDuration;
         _marked.Remove(tile);
+        _worn.Remove(tile);
 
         // **길찾기에 알린다.** 안 알리면 격자가 옛 상태로 남아 **판 자리를 폰이 계속 벽으로
         // 본다.** 점유는 안 건드린다 — 바위는 `_occupied`가 아니라 여기가 들고 있으므로,
@@ -388,6 +426,7 @@ public static class RockMap
     {
         if (!_dug.Remove(tile)) return false;
         if (!_mined.Remove(tile)) return false;
+        _worn.Remove(tile);   // 메워진 벽은 새 벽이다
 
         var map = MapManager.Instance;
         if (map != null) HierarchicalPathfinder.Instance?.RebakeObstacleAt(map.TileToWorld(tile));
@@ -556,6 +595,7 @@ public static class RockMap
         _mined.Clear();
         _dug.Clear();
         _marked.Clear();
+        _worn.Clear();
         OnChanged?.Invoke(Vector2Int.zero);
     }
 

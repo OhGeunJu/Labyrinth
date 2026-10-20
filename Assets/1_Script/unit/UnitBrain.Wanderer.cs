@@ -12,30 +12,28 @@ public partial class UnitBrain
 {
     BTNode BuildWandererTree()
     {
-        var tree = new BTSelector()
-            .Add(new ManualOrderNode())
+        var tree = new BTSelector();
+        tree.Add(new ManualOrderNode())
             // **업기는 줍기보다 위다.** 둘 다 손으로 콕 집어 시킨 일인데, 사람을 업으라는
             // 명령은 대개 전투 직후 급한 것이다(피 흘리는 동료를 침대로). 물건은 기다린다.
             .Add(new CarryPawnNode())
             .Add(new PickUpNode())
             .Add(new FollowNode())
-            .Add(PlayerFleeNode())
-            // **맞으면 되받아친다 — 먼저 걸지는 않는다.**
-            //
-            // 전엔 `bb.Target != null`만 봤는데, 방랑자 트리에는 `DetectNode`가 없어서
-            // **`Target`이 저 혼자 붙는 길이 아예 없었다** — 우클릭으로 지목하기 전까지는
-            // 두들겨 맞으면서 가만히 서서 일했다.
-            //
-            // **먼저 거는가는 성향이 정한다**(P패널) — 기본값 `반격`이면 안 훑는다. 훑으면
-            // 지나가는 적을 보고 저 혼자 달려 나가서, 어디에 세워 둘지가 명령이 아니라 지형의
-            // 문제가 된다. 지목한 표적은 그대로 유지된다(`DetectNode`가 기존 `Target`을 안 버린다).
-            //
-            // **소집하면 오히려 안 건다** — 소집은 *"내가 조종할 때까지 그 자리에 있어라"*다.
-            // 다만 맞으면 되받아치고 **곁의 적까지는** 문다(짧은 목줄).
-            .Add(new BTSequence()
-                .Add(new DetectNode())
-                .Add(new FightNode()))
-            .Add(new RestNode())
+            .Add(PlayerFleeNode());
+        // **맞으면 되받아친다 — 먼저 걸지는 않는다.**
+        //
+        // 전엔 `bb.Target != null`만 봤는데, 방랑자 트리에는 `DetectNode`가 없어서
+        // **`Target`이 저 혼자 붙는 길이 아예 없었다** — 우클릭으로 지목하기 전까지는
+        // 두들겨 맞으면서 가만히 서서 일했다.
+        //
+        // **먼저 거는가는 성향이 정한다**(P패널) — 기본값 `반격`이면 안 훑는다. 훑으면
+        // 지나가는 적을 보고 저 혼자 달려 나가서, 어디에 세워 둘지가 명령이 아니라 지형의
+        // 문제가 된다. 지목한 표적은 그대로 유지된다(`DetectNode`가 기존 `Target`을 안 버린다).
+        //
+        // **소집하면 오히려 안 건다** — 소집은 *"내가 조종할 때까지 그 자리에 있어라"*다.
+        // 다만 맞으면 되받아치고 **곁의 적까지는** 문다(짧은 목줄).
+        AddFight(tree, skipWhenFleeing: false);
+        tree.Add(new RestNode())
             .Add(new EatNode())
             // **몸이 셋이라 채우는 자리도 셋이다** — 골렘은 충전대, 해골은 제단으로
             // 간다(`RechargeNode`). 산 몸에게는 첫 줄에서 실패로 흘러가므로

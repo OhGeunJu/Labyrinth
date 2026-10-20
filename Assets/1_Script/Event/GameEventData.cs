@@ -54,6 +54,10 @@ public class GameEventData : ScriptableObject
     [Tooltip("스폰할 지원군 수")]
     public int ReinforcementCount = 3;
 
+    [Tooltip("이 이벤트로 온 사람을 **대화로 영입할 수 있는가**(`UnitBrain.Recruitable`). 거점을 찾아온 " +
+             "떠돌이는 켠다. 영입은 역할이 아니라 이 플래그가 정한다 — 같은 떠돌이도 길에서 만나면 안 된다.")]
+    public bool Recruitable;
+
     // ── 습격에 딸려 오는 구원 ────────────────────────────────────────────────
     //
     // **혼자 굴러서는 도움이 안 된다.** 추첨으로만 오면 조용한 날에 와서 어슬렁거리다

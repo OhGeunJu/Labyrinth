@@ -12,6 +12,10 @@ public class DroppedItem : MonoBehaviour, IGatherTarget
     public int         Amount  { get; private set; }
     public ItemQuality Quality { get; private set; }
 
+    // 열린 하나의 남은 양(`ItemInstance.Left`) — 반쯤 탄 횃불은 떨어져도 반쯤 탄 횃불이다.
+    public float       Left    { get; private set; } = 1f;
+    public bool        IsPartial => Left < 1f - ItemInstance.Epsilon;
+
     // ── 바닥의 물건은 **아무도 안 건드린다. 체크한 것만 실려 간다.** ────────────
     //
     // 예전엔 "누가 놓았나"로 갈랐다 — 손으로 내려놓은 것은 두고, 사건으로 떨어진 것(발견·
@@ -201,8 +205,10 @@ public class DroppedItem : MonoBehaviour, IGatherTarget
     // 어디서든 호출 가능한 팩토리 메서드. quality를 보존해 등급 있는 장비가 드롭을 거쳐도 소실되지 않게 한다.
     // **자동 운반은 안 켜진 채로 나온다** — 떨구는 쪽이 고를 수 없다. 고르는 것은 사람이고,
     // 그래야 "이건 왜 실려 가지"가 안 생긴다(예전엔 부르는 쪽마다 기본값을 정했다).
+    //
+    // `left`는 **열린 하나의 남은 양**이다(`ItemInstance.Left` — 반쯤 탄 횃불·쓰다 만 붕대). 떨어져도 그대로다.
     public static DroppedItem Spawn(ItemData item, int amount, Vector3 position,
-                                    ItemQuality quality = ItemQuality.Common)
+                                    ItemQuality quality = ItemQuality.Common, float left = 1f)
     {
         var go = new GameObject($"Drop_{item.ItemName}");
         go.transform.position = position;
@@ -244,6 +250,7 @@ public class DroppedItem : MonoBehaviour, IGatherTarget
         dropped.Item    = item;
         dropped.Amount  = amount;
         dropped.Quality = quality;
+        dropped.Left    = item.Depletes ? Mathf.Clamp01(left) : 1f;
         return dropped;
     }
 
@@ -299,7 +306,14 @@ public class DroppedItem : MonoBehaviour, IGatherTarget
     public int PickUp(Inventory inventory, int max)
     {
         int want  = Mathf.Min(Amount, Mathf.Max(0, max));
-        int added = want > 0 ? inventory.TryAdd(Item, want, Quality) : 0;
+
+        // **열린 하나를 먼저 싣는다** — 남은 양째(`Inventory.TryAddOpened`). 못 실으면 아무것도 안 싣는다:
+        // 새것만 실려 가면 바닥에 남은 것이 열린 것 하나뿐인 뭉치가 되는데, 그건 괜찮지만 순서가 바뀌면
+        // 남은 쪽의 `Left`를 다시 셈해야 한다 — 한 길로만 둔다.
+        int added = 0;
+        bool openedGone = !IsPartial;
+        if (want > 0 && IsPartial && inventory.TryAddOpened(Item, Quality, Left)) { added = 1; openedGone = true; }
+        if (want > added && openedGone) added += inventory.TryAdd(Item, want - added, Quality);
 
         // **못 실은 잔량은 체크를 물려받는다.** 나르라고 시킨 것의 나머지도 나르라고 시킨
         // 것이다 — 안 물려주면 배낭이 모자란 폰이 한 번 다녀간 것만으로 나머지가 조용히
@@ -307,7 +321,7 @@ public class DroppedItem : MonoBehaviour, IGatherTarget
         int leftover = Amount - added;
         if (leftover > 0)
         {
-            var rest = DroppedItem.Spawn(Item, leftover, transform.position, Quality);
+            var rest = DroppedItem.Spawn(Item, leftover, transform.position, Quality, openedGone ? 1f : Left);
             if (HaulAllowed) rest.SetHaulAllowed(true);
         }
         Destroy(gameObject);

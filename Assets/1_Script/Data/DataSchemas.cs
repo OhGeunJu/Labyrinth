@@ -38,6 +38,11 @@ public class ItemSchema
 
     // 재료로 칠 때 이 아이템으로도 센다(`ItemData.CountsAs`) — 예: 늑대 고기 → `Food_RawMeat`.
     public string countsAs;
+
+    // 차고 있으면 둘레를 밝힌다(m · `ItemData.LightRadius`). 0이면 빛이 없다.
+    public float  lightRadius;
+    // 타는 시간(게임 일 · `ItemData.BurnDays`). 0이면 영구.
+    public float  burnDays;
 }
 
 [Serializable]
@@ -74,6 +79,7 @@ public class ArmorSchema : ItemSchema
 {
     public string armorSlot       = "Chest";
     public float  damageReduction = 5f;
+    public float  moveSpeedMult   = 1f;   // 걸음 배율(신발) — 안 적으면 1
 
     // **장비가 능동을 준다**(2026-08-23). JSON 아이템은 런타임 생성이라 SO를 참조할 수
     // 없으므로 **id로 가리킨다** — `LoadoutData.ItemId`·`MerchantPoolEntry`와 같은 규약이다.

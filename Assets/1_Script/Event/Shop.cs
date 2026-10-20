@@ -352,8 +352,11 @@ public class Shop
         int price = GetSellPrice(inst);
         if (price <= 0) return 0;
 
+        // **쓰다 만 것은 안 산다**(2026-10-16, `ItemInstance.Left`) — 새것만 판다. 좌판에 얹는 것은 새것이라
+        // 반쯤 탄 횃불을 받아 주면 제값에 팔고 그것이 새것으로 진열된다. 뭉치에서는 새것이 먼저 빠진다(`RemoveOne`).
         int sold = 0;
-        int want = Mathf.Clamp(count, 1, inst.Quantity);
+        int want = Mathf.Min(Mathf.Max(1, count), inst.FullUnits);
+        if (want <= 0) return 0;
 
         for (int i = 0; i < want; i++)
         {

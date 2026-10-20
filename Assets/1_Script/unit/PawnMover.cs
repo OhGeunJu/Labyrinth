@@ -83,6 +83,7 @@ public class PawnMover : MonoBehaviour
 
     // 수레를 끄는 동안의 걸음 배율(`PawnCart`가 달고 뗄 때 쓴다).
     [System.NonSerialized] public float CartSpeedMult = 1f;
+    Equipment _equip;   // 신발의 걸음 배율(`Equipment.MoveSpeedMult`)
     UnitStats _stats;
     Inventory _inventory;
     StatusEffectSystem _sfx;
@@ -321,6 +322,7 @@ public class PawnMover : MonoBehaviour
         _inventory = inventory;
         _sfx       = GetComponent<StatusEffectSystem>();
         _brain     = GetComponent<UnitBrain>();
+        TryGetComponent(out _equip);
         _isMinion  = _brain?.Data is MinionData;
     }
 
@@ -1179,7 +1181,7 @@ public class PawnMover : MonoBehaviour
                 float sfxMult = _sfx != null ? _sfx.MoveSpeedMult : 1f;
                 float effectiveSpeed = (_stats != null
                     ? _baseMoveSpeed * (1f + _stats.Athletics / 100f) * weightCorrection * sfxMult
-                    : moveSpeed) * _mobilityMult * CartSpeedMult;
+                    : moveSpeed) * _mobilityMult * CartSpeedMult * (_equip != null ? _equip.MoveSpeedMult : 1f);
 
                 // **목표를 지나치지 않는다**(2026-08-30). 도착 판정은 0.12m인데 10배에서
                 // 한 걸음은 0.67m다 — **매 프레임 웨이포인트를 0.55m씩 지나쳤다가 되돌아온다.**

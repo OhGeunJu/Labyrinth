@@ -3,6 +3,8 @@ using UnityEngine;
 
 // **짐승과 떠도는 적은 그 지역에 원래 산다 — 청크가 설 때 선다**
 // (2026-09-28, 사용자: *"동물 + 적 무리 자연스폰"* → 청크에 뿌리기 · 늑대·곰부터 · 초안은 도구가).
+// **사람 무리도 같은 길이다**(2026-10-15) — 표에 세력 무리를 넣으면 그 지형을 돌아다닌다. 영입은 표의
+// 줄마다 고른다(`WildSpawnEntry.Recruitable` — 기본 꺼짐).
 //
 // ## 소굴과 무엇이 다른가
 //
@@ -372,6 +374,8 @@ public class WildSpawner : MonoBehaviour
             var brain = go.GetComponent<UnitBrain>();
             if (brain == null) continue;
             if (m.Spec != null) brain.ApplySpec(m.Spec);
+            brain.Recruitable = e.Recruitable;
+            WarnIfLeaves(brain, e.Band);
 
             // **떠도는 동안은 길만 따라 걷는다**(`PawnMover.OnRails`) — 상대가 생기면 몸으로 돌아간다.
             var mover = go.GetComponent<PawnMover>();
@@ -390,6 +394,20 @@ public class WildSpawner : MonoBehaviour
         _live[id] = g;
         Debug.Log($"[야생] {g.Name} {g.Pawns.Count} — 청크 {chunk} ({at.x:F0}, {at.z:F0})");
         return true;
+    }
+
+    // **맵을 떠나는 역할은 무리에 안 맞는다**(2026-10-15) — 떠돌이는 머문 시간이 차면, 행상인은 거점에 들렀다가
+    // 맵 밖으로 걸어 나간다(`DrifterDepartNode` · `NpcEventMerchantNode`). 무리는 그를 붙들지 않으므로 식구가 하나씩
+    // 빠져나가 흩어진다. 막지 않고 알린다 — 고칠 곳은 무리 에셋의 구성이다. 무리마다 한 번만.
+    static readonly HashSet<WorldBandData> _warnedLeavers = new();
+
+    static void WarnIfLeaves(UnitBrain b, WorldBandData band)
+    {
+        var npc = b.Npc;
+        if (npc == null || npc.Package == null || !npc.Package.LeavesMap) return;   // 떠나는가는 패키지가 답한다
+        if (!_warnedLeavers.Add(band)) return;
+        Debug.LogWarning($"[야생] 무리 '{band.BandName}'의 {b.name}은(는) 패키지가 {npc.Package.name}라 시간이 차면 맵을 " +
+                         "떠난다 — 돌아다니는 무리의 식구는 떠나지 않는 패키지로 둘 것.");
     }
 
     // 이만큼 떨어지면 거둔다(m) — 청크가 서는 반경(130~160m)보다 넉넉히.

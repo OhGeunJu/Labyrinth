@@ -35,14 +35,11 @@ public class NpcData : ScriptableObject
             _                     => name,
         };
 
-    [Tooltip("배회 반경 (Villager, Guard)")]
-    public float WanderRadius = 10f;
-
-    [Tooltip("도주 감지 범위 (Villager)")]
-    public float FleeDetectRange = 8f;
-
-    [Tooltip("EventMerchant 머무는 시간(초)")]
-    public float StayDuration = 120f;
+    // **평소에 무엇을 하나는 패키지가 답한다**(2026-10-18 — `docs/design_ai_packages.md`). 역할은 *누구인가*(이름 ·
+    // 파는 물건 · 경비인가)만 든다. 전에는 `NpcType`마다 코드로 짠 트리가 하나씩이었고 배회 반경 · 도주 범위 ·
+    // 머무는 시간이 여기 있었다 — 그 값은 패키지의 목표로 옮겼다.
+    [Tooltip("평소 행동(AI 패키지). 비우면 대기만 한다.")]
+    public AiPackageData Package;
 
     // **역할의 기본 상품일 뿐이다.** 무엇을 파는가는 폰에 붙인 `Merchant` 컴포넌트가 들고,
     // 그쪽이 비어 있을 때만 이 값이 쓰인다(`UnitBrain.EnsureMerchant`). 여기에만 적을 수

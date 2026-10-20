@@ -209,6 +209,10 @@ public class BodyPartSystem : MonoBehaviour
                     float qualMult = Equip?.GetArmorQualityMult(armorSlot) ?? 1f;
                     damage = Mathf.Max(0f, damage - armor.DamageReduction * qualMult);
                 }
+                // **신발도 다리를 막는다**(2026-10-18) — 몸에 발이 없어 다리 갑옷 위에 얹는다. 물리만.
+                if (info.Type != DamageType.Pierce && armorSlot == ArmorSlot.Legs && Equip != null &&
+                    Equip.GetArmor(ArmorSlot.Feet) is { } feet)
+                    damage = Mathf.Max(0f, damage - feet.DamageReduction * Equip.GetArmorQualityMult(ArmorSlot.Feet));
             }
             else
             {
@@ -679,6 +683,22 @@ public class BodyPartSystem : MonoBehaviour
         RestoreBloodCap(capHeal);
         HealBlood(partHeal, degradeCap: false);
         StopBleeding();
+    }
+
+    // **한 회차(`Treat(partHeal, capHeal)`) 중 얼마가 필요한가**(0~1, 2026-10-16) — 약을 치료한 만큼만 쓰려고
+    // (`Treatment.Dose`). 가장 많이 빈 곳이 답한다: 부위 하나 · 혈액 상한 · 혈액. 회차가 그 셋을 한꺼번에 채우므로
+    // 셋 중 가장 큰 몫만큼 쓰면 전부 찬다.
+    public float TreatNeed(float partHeal, float capHeal)
+    {
+        float need = 0f;
+        if (partHeal > 0f)
+        {
+            foreach (var part in _parts.Values)
+                if (!part.IsDestroyed) need = Mathf.Max(need, (part.MaxHP - part.CurrentHP) / partHeal);
+            need = Mathf.Max(need, (BloodCap - Blood) / partHeal);
+        }
+        if (capHeal > 0f) need = Mathf.Max(need, (maxBlood - BloodCap) / capHeal);
+        return Mathf.Clamp01(need);
     }
 
     // **즉시 지혈.** 출혈은 `LastWoundTime`부터 `clotSeconds`에 걸쳐 저절로 멎는데,

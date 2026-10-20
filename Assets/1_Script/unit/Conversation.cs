@@ -142,14 +142,19 @@ public static class Conversation
         opts.Add(("그냥 가라. 다시는 보지 말자", (System.Action)(() => Imprisonment.Release(u))));
     }
 
-    // ── 떠돌이 영입 ───────────────────────────────────────────────────────────
+    // ── 영입 ──────────────────────────────────────────────────────────────────
+    //
+    // **누가 영입되나는 그 사람의 플래그가 답한다**(`UnitBrain.Recruitable`, 2026-10-15) — 역할이 아니다.
+    // 전에는 `NpcType.Drifter`면 누구든이었는데, 그러면 길에서 만난 떠돌이도 데려올 수 있다.
     //
     // **값은 고용가 하나다**(`PawnSpec.Price`) — 마을에서 사람을 구하는 값과 같은 상수를 쓴다.
     // 값이 두 벌이면 "마을은 싼데 길에서는 비싸다"가 설명이 아니라 사고가 된다.
     static void AddRecruit(UnitBrain u, UnitBrain speaker, List<PawnMenuOption> opts,
                            ref string line)
     {
-        if (u.Npc == null || u.Npc.NpcType != NpcType.Drifter) return;
+        if (!u.Recruitable) return;
+        if (u.Blackboard != null && u.Blackboard.IsPrisoner) return;   // 붙잡은 사람은 회유가 길이다
+        if (u.TryGetComponent(out Faction f) && f.IsPlayer) return;
 
         // **`Spec`을 직접 읽지 않는다** — 저작한 폰만 갖고 있어서, 굴려서 태어난 떠돌이는
         // 값이 0이 되어 **선택지가 통째로 사라진다**(실제로 그랬다). `PriceOf`가 명세가 있으면
@@ -255,6 +260,8 @@ public static class Conversation
     static void Hire(UnitBrain u, int price)
     {
         if (!Wallet.TrySpend(price)) return;   // 전액 아니면 0 — 반쯤 내는 일은 없다
+
+        u.Recruitable = false;
 
         // **역할을 지운다.** 떠돌이 역할이 남으면 `BuildTree`가 NPC 트리를 다시 골라
         // 우리 편인데 명령을 안 듣고 떠돌다 맵을 나간다.

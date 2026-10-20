@@ -9,16 +9,13 @@ public partial class UnitBrain
 {
     BTNode BuildMinionTree()
     {
-        return new BTSelector()
-            .Add(new ManualOrderNode())
-            .Add(PlayerFleeNode())
-            .Add(new BTSequence()
-                .Add(new DetectNode())
-                // **하수인은 명령을 안 받으므로 사람이 눌러 줄 길이 없다** —
-                // `AbilityController`가 `AcceptsOrders`로 거른다. 여기가 유일한 자리다.
-                .Add(new UseAbilityNode())
-                .Add(new FightNode()))
-            .Add(new RestNode())
+        var tree = new BTSelector();
+        tree.Add(new ManualOrderNode())
+            .Add(PlayerFleeNode());
+        // **하수인은 명령을 안 받으므로 사람이 눌러 줄 길이 없다** — `AbilityController`가 `AcceptsOrders`로
+        // 거른다. 능동을 스스로 쓰는 자리는 전투 묶음 안이다(`AddFight`).
+        AddFight(tree, skipWhenFleeing: false);
+        return tree.Add(new RestNode())
             .Add(new EatNode())
             // **몸이 셋이라 채우는 자리도 셋이다** — 골렘은 충전대, 해골은 제단으로
             // 간다(`RechargeNode`). 산 몸에게는 첫 줄에서 실패로 흘러가므로

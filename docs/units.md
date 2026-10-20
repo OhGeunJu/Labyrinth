@@ -96,7 +96,20 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 **슬롯:**
 - `MainHand` — `Equip(WeaponData)` / `Unequip()`
 - `OffHand` — `EquipOffHand` / `UnequipOffHand`. IsLargeWeapon 시 `OffHandLocked`
-- `Head / Chest / Hands / Legs` — `EquipArmor(ArmorData)` / `UnequipArmor(ArmorSlot)`
+- `Head / Chest / Hands / Legs / Belt` — `EquipArmor(ArmorData)` / `UnequipArmor(ArmorSlot)`. **허리(`Belt`)는 램프 자리**(2026-10-15)
+- **발(`Feet`) — 신발**(2026-10-18, 사용자: *"신발은 필요해 보여"* → *"다리 방어 + 이동 속도"*). 몸에 발 부위는 없다 — 다리를 맞으면 **다리 갑옷과 신발의 감소가 둘 다** 걸린다(물리만 · `BodyPartSystem.ApplyDamage`). 걸음은 `ArmorData.MoveSpeedMult`(JSON `moveSpeedMult`, 안 적으면 1) — 찬 갑옷 전부를 곱해(`Equipment.MoveSpeedMult`) `PawnMover`가 싣는다. 첫 신발은 `Arm_LeatherBoots`(가죽 2 · 감소 1 · 걸음 +5%).
+- **장비칸은 이름표 달린 상자다**(2026-10-18, 사용자: *"사람 형태로 맞추지 말고"* · *"인벤토리 그 단위처럼 딱딱 나눠줘"*) — 눈금은 배낭 격자와 한 벌(`InventoryGridUI.DefaultCellSize`·`BuildCells`). 판 210×500에 무기 둘 4×1 · 머리|손 2×2 · 몸통|다리 2×3(갑옷 2×3) · 허리|신발 2×1, 쌓은 높이 497.
+
+**들고 다니는 불빛 — 허리 램프 · 손 횃불**(2026-10-15, 사용자: *"허리 램프는 영구지속 · 범위는 큰 차이 없게 · 손 횃불은
+램프를 얻기 전에 쓰는 것 · 공격 가능 · 시간 타면 꺼지는 소모품 · 보조손"*):
+- 값은 `ItemData` 두 칸 — `LightRadius`(시야가 걷히는 거리 m) · `BurnDays`(0 = 영구). JSON은 `lightRadius`·`burnDays`.
+- 무엇이 비추나는 `Equipment.LightItem`(보조손 횃불과 허리 램프 중 넓은 쪽 하나 — 겹쳐 밝아지지 않는다) → 등은 `CarriedLight`가
+  폰에 `LightSource`로 세운다(그림자 없음). 시야는 `Vision`이 그대로 받는다. 모형은 아직 없다 — 빛만.
+- **횃불**(`WeaponType.Torch`) — 주손에 넣어도 보조손으로 간다(`Equipment.BelongsInOffHand`, 방패와 같다). 근접으로 맞히면 주 무기
+  타격 뒤에 **불을 한 번 더**(`CombatHandler.ApplyTorchBurn` — 횃불의 `BaseDamage` × 등급, `DamageType` 불). 업고 있으면 안 붙는다.
+- **타는 시간은 횃불이 든다**(`ItemInstance.Left`, 2026-10-16 — 10-15엔 폰이 들었는데 다른 폰에게 넘기면 새것이 됐다).
+  배낭·바닥·다른 손에서도 반쯤 탄 횃불이다. 다 타면 그 하나가 없어지고 배낭의 같은 횃불을 열린 것부터 이어 든다. 규칙은 `docs/data.md` "쓰다 만 물건".
+- 지금 있는 것: `Wpn_Torch`(빛 10m · 반나절 · 불 4 · 작업대에서 목재 1 → 둘) · `Arm_GlowLamp`(빛 10m · 영구 · 청동 2 + 야광석 2 · 주조술).
 
 **ItemQuality 연동:**
 - `_mainHandInst`, `_offHandInst`, `_armorInst` 딕셔너리로 `ItemInstance` 추적
@@ -106,7 +119,7 @@ HP는 없음 — `BodyPartSystem.Blood`를 혈액 수치로 사용.
 
 `WeaponData` 주요 필드: `WeaponType`, `BaseDamage`, `BaseAttackInterval`, `AttackRange`, `IsLargeWeapon`, `IsBladed`, `IsRanged`, `BlockBonus`, `RangedBlockBonus`, **`DamageType`**, `EffectChance`
 
-`WeaponType` enum: Unarmed, Shield, OneHand/TwoHand 근접, Polearm, Bow/Crossbow/Javelin, **Staff**(마법 열둘을 하나로 — 무엇을 쏘느냐는 `DamageType`이 든다)
+`WeaponType` enum: Unarmed, Shield, OneHand/TwoHand 근접, Polearm, Bow/Crossbow/Javelin, **Staff**(마법 열둘을 하나로 — 무엇을 쏘느냐는 `DamageType`이 든다), **Torch**(보조손 불빛)
 
 ## Movement (`PawnMover.cs`)
 
@@ -545,7 +558,7 @@ BT는 `UnitBrain.tickInterval`(기본 0.1초)마다 돈다. **노드 안에서 `
   - **10-09 — 본 몸 전부가 한 덩어리 몸이다**(사용자: *"1번하자"* — 시제품을 본 몸으로). 체형 여섯 · 방랑자 · 고블린 넷이 시제품과 **같은 짓기**(`DressSkinned`)를 탄다. **체형은 폭만 가른다 — 남성 체형이 곧 시제품 몸이고 다른 체형은 옛 옆선 표(`Shape.Half`)·깊이·손에서 *남성에 대한 비*만 가져온다**(`DimsOf` — 처음엔 옛 표를 줄여 그대로 썼다가 남성 엉덩이가 시제품보다 20% 넘게 좁아 사용자: *"프로토에비해 너무 마른 거 아냐?"* · 옛 몸은 다리 없이 밑이 모이는 모양이라 표가 좁다). 밑은 엉덩이 비를 따른다, 다리 자리·굵기는 엉덩이 폭에서 · 팔 굵기는 손에서(시제품의 비). 높이·다리·팔 길이는 머리 높이의 배수로 모두 같다. **팔·다리가 보이니 키가 커졌다**(대략 1.55 → 1.85m — 루트 콜라이더 2m 안). **곡괭이질 대체(`ChibiToolSwing`)·몸통 덜어 내기(`ChibiPoseDamp`)는 본 몸에서도 뗐다** — 손을 자리로 옮기는 장치라 보이는 팔에서 손이 떨어진다. 곡괭이질은 받은 클립 그대로다(시제품에서 사용자가 본 그 동작). 옛 `BodyParts`·`TorsoRadius`는 지웠다.
   머리에 얹을 것은 `Head.` 꼴 이름이라 리거가 머리 관절에 붙인다(`관절.무엇`).
 - **외곽선은 뒤집은 껍질이다**(`Resources/Shaders/ToonOutline.shader`) — 패스는 `SRPDefaultUnlit`(URP는 같은 LightMode
-  패스를 하나만 그린다: 둘 다 `UniversalForward`면 **폰이 통째로 검다**). 굵기는 월드 6cm와 화면 최소 중 큰 쪽.
+  패스를 하나만 그린다: 둘 다 `UniversalForward`면 **폰이 통째로 검다**). 굵기는 월드 6cm와 화면 최소(1px) 중 큰 쪽.
   **외곽선은 메시 테두리마다 선다** — 보이면 안 되는 이음매는 **메시를 가르지 않는다**(머리카락이 두 조각이던 동안
   이마를 가로지르는 줄이 섰다). **머리와 몸 사이 틈 6.5cm는 외곽선 6cm보다 넓어야 한다**(좁으면 몸통 꼭대기가
   머리 껍질 안으로 들어가 셔츠가 선을 뚫는다 — 굵기를 바꾸면 틈도 같이).

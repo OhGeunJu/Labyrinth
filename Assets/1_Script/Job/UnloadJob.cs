@@ -89,6 +89,15 @@ public class UnloadJob : JobBase
 
         foreach (var (item, quality) in pairs)
             Deposit(unit, item, quality, inv.GetUnlockedQuantity(item, quality));
+
+        // **열린 하나도 부린다**(2026-10-16) — 개수로 빼는 길(`Deposit`)은 새것만 옮긴다(`ItemInstance.FullUnits`).
+        // 쓰다 만 붕대가 배낭에 남는 것은 괜찮지만, 온 김에 받아 줄 창고가 있으면 남은 양째 넣는다.
+        for (int i = inv.Items.Count - 1; i >= 0; i--)
+        {
+            var inst = inv.Items[i];
+            if (inst?.Data == null || inst.Locked || !inst.IsPartial) continue;
+            if (_storage.TryAddOpened(inst.Data, inst.Quality, inst.Left)) inv.TakeOpened(inst);
+        }
     }
 
     // 한 종류를 부린다. **필터는 `Storage.TryAdd`가 본다** — `Inventory`를 직접 만지면

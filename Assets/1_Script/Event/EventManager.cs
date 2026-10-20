@@ -515,6 +515,7 @@ public class EventManager : MonoBehaviour
             if (prefab == null) continue;
 
             var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used));
+            if (data.Recruitable && go.TryGetComponent(out UnitBrain brain)) brain.Recruitable = true;
 
             // 던전 코어 방향으로 초기 이동 (랜덤 오프셋으로 뭉치지 않게)
             var mover = go.GetComponent<PawnMover>();

@@ -34,7 +34,7 @@ Shader "DungeonColony/ToonOutlineOuter"
     {
         _OutlineColor("외곽선 색", Color) = (0.04,0.04,0.05,1)
         _OutlineWidth("외곽선 굵기(m)", Range(0,0.12)) = 0.06
-        _OutlineMin("외곽선 최소 굵기(화면 기준)", Range(0,0.03)) = 0.008
+        _OutlineMin("외곽선 최소 굵기(px)", Range(0,4)) = 1
         _OutlineGroundPush("땅 이기기 여유(배)", Range(0,3)) = 1.3
         [IntRange] _StencilRef("스텐실 번호(폰마다)", Range(0,255)) = 1
         // 얼굴의 선인가(코) — 켜면 번호 + 128과 비교해 **제 얼굴 위에서만** 비킨다(`PawnOutlineId`가 읽는다).

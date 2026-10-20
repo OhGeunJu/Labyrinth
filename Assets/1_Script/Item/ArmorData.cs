@@ -24,6 +24,11 @@ public class ArmorData : ItemData
     [Tooltip("이 갑옷이 막아 주는 원소. 비우면 원소에는 아무 힘이 없다.")]
     public List<DamageResistance> Resistances = new();
 
+    // **걸음 배율**(2026-10-18 — 신발이 쓴다, 다른 부위도 쓸 수 있다). 1이면 그대로 · 가벼운 신은 1보다 크게,
+    // 무거운 철갑화는 작게. 찬 것 전부를 곱한다(`Equipment.MoveSpeedMult` → `PawnMover`).
+    [Tooltip("이동 속도 배율. 1 = 그대로, 1.1 = 10% 빠르게")]
+    [Range(0.5f, 1.5f)] public float MoveSpeedMult = 1f;
+
     // **능동은 폰이 아니라 장비가 준다**(2026-08-23) — 중갑이 도발을 준다.
     // 폰에 스킬 슬롯을 두면 *"어느 폰에게 무엇을 배울까"*가 폰 수만큼 늘어나는 잡일이 되는데,
     // 장비가 주면 **갈아입히는 것이 곧 역할을 바꾸는 것**이라 이미 있는 조작으로 끝난다.

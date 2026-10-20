@@ -80,7 +80,8 @@ Guidance for Claude Code in this repository.
 
 ### 팩션 · 세력 관계 · 용병 (`docs/factions.md`)
 
-축은 다섯이고 서로를 모른다 — 종족(`UnitData`) · 세력(`FactionData`) · AI 성향(`AiProfileData`) · 역할(`NpcData`) · 소지(`LoadoutData`).
+축은 여섯이고 서로를 모른다 — 종족(`UnitData`) · 세력(`FactionData`) · AI 성향(`AiProfileData`) · 역할(`NpcData` — 누구인가) · 소지(`LoadoutData`) · **AI 패키지**(`AiPackageData` — 평소에 무엇을 하나).
+- **NPC·적의 트리는 패키지가 짓는다**(목표 목록 · `UnitBrain.BuildGoal` · 새 목표는 `AiGoalKind` 꼬리에) · 내 폰은 안 쓴다 · `NpcType`은 *누구인가*로만 묻는다. → `docs/design_ai_packages.md`
 - **세력 SO는 반드시 연결할 것**(비우면 전부 중립) · 관계는 방향별 · 우호도를 얹는 자리는 `Faction.StanceTo` 하나.
 - 먼저 거는가는 성향이 답한다(`DetectNode`) · **`is MinionData`는 "하수인 종족"이지 "내 편"이 아니다.**
 - 값을 곱하는 자리는 `Trading.Haggle` 하나(`negotiator`에 기본값 금지) · 사람 값은 `PawnSpec.PriceOf` · 폰 부르는 이름은 `UnitBrain.DisplayTitle`.
@@ -98,7 +99,7 @@ Guidance for Claude Code in this repository.
 
 - **Needs 넷은 같은 물건이고 몸이 축을 정한다**(`Needs.BodyOf`/`Runs` — 산 몸 허기·피로 · 골렘 에너지 · 해골 사기) · 저장은 `bb.Need(kind)` · 갇힌 사람은 허기만 · 채우는 자리는 `Recharger`.
 - **잠** — 손으로 붙인 침대는 명령, 저 혼자 잡은 침대는 잠자리(`Bed.AutoClaimed`) · 누워 있을지는 `RestNode` 한 곳.
-- **밤** — 시계는 `GameTimeManager` · 시야는 `Vision` 한 벌 · 불빛은 `LightSource`로(장식 `Light` 금지) · 초상화는 조명을 안 탄다.
+- **밤** — 시계는 `GameTimeManager` · 시야는 `Vision` 한 벌 · 불빛은 `LightSource`로(장식 `Light` 금지) · 초상화는 조명을 안 탄다 · 폰이 드는 불빛은 `CarriedLight`(무엇이 · `Equipment.LightItem`, 얼마나 · `ItemData.LightRadius`/`BurnDays`).
 - **굴은 불빛 밖이 검다** — 화면 밝기는 `UnderworldLighting`의 `gloom`, 시야는 `Tide`(둘은 따로다) · 폰의 최저 밝기는 전역 `_PawnFloor` · 등을 도는 커스텀 셰이더는 `LIGHT_LOOP_BEGIN`(PC는 Forward+) · 그림자를 던지는 등은 `ShadowBudget.Track` · 볕은 `Skylight`. → `docs/rendering.md`
 
 ### 일감 · 창고 · 채집 · 농사 (`docs/jobs.md` · `docs/gathering.md` · `docs/design_power.md`)
@@ -115,6 +116,7 @@ Guidance for Claude Code in this repository.
 ### 전투 · 붙잡은 사람 (`docs/combat.md` · `docs/prisoners.md`)
 
 - `DamageType`은 한 축(물리 셋 + 원소 일곱) · **정수로 직렬화되는 enum은 꼬리에만 붙인다**(`StatName`·`DamageType`·`JobCategory`·`BuildCategory`·`MerchantType`·`ModeBarUI.Mode`) · 안 맞는 것은 `CombatHandler.Measure` · 신성 ×2는 `IsUndead`.
+- **보이는 동안만 안다**(바위가 가린다 · 놓치면 마지막 자리로 수색 · 원한은 안 풀린다 — `docs/combat.md` "지각 기억") · 전투 묶음은 `UnitBrain.AddFight` 한 벌.
 - 표적이 없으면 싸우는 중이 아니다 · 도는 것은 `PawnMover.FaceTowards` · 능동은 장비가 준다(`AbilityUser`) · 도발은 `DetectNode` 맨 위.
 - 몸은 켄시 눈금 · **프리팹이 든 `[SerializeField]` 값은 코드 기본값을 고쳐도 안 바뀐다** · 치료는 `Treatment` · 기절한 폰은 안 때린다(`IsAttackable`) · 지녔던 것은 `Corpse.SpillBelongings` 하나.
 - 업기·옮기기는 `PawnCarry` · 받는 자리는 `ICarrySite` · 갇힘은 `Imprisonment`(푸는 문 `Release` 하나) · 세력을 바꾸는 길은 `UnitBrain.ChangeFaction` 하나 · 포로를 넘기는 몸값은 `WorldRansom.Sell`.
@@ -177,7 +179,7 @@ Guidance for Claude Code in this repository.
 |---|---|
 | 몸이 얼마나 요구하나 · 무엇을 요구하는 몸인가 | `Needs` · `Needs.BodyOf`/`Runs` |
 | 무엇을 먹나 · 무엇으로 채우나 | `Feeding` · `Recharge` |
-| 지금 얼마나 보이나 | `Vision` |
+| 지금 얼마나 보이나 · 저것이 보이나(바위 가림) | `Vision` · `Vision.CanSee` |
 | 얼마나 질 수 있나 | `CarryCapacity` |
 | 재료가 어디 있나 | `MaterialPool` |
 | 무엇을 그 재료로 쳐 주나 | `ItemData.CountsAs` → `Inventory.CountSatisfying`/`RemoveSatisfying` |
@@ -201,6 +203,8 @@ Guidance for Claude Code in this repository.
 | 저작 도구가 보는 지형 값 | `TerrainAuthoring` |
 | 몇 층인가 · 지금 보는 층 | `Floors`(`At` · `Current` · `Origin` · `IsSeam`) |
 | 이 걸음이 막힌 변을 건너나 | `EdgeWalls`(`StepOpen` · `MaskAt`) |
+| 쓰다 만 물건의 남은 양 · 넣는 문 · 옮기는 문 | `ItemInstance.Left`(뭉치마다 열린 하나) · `Inventory.TryAddOpened` · `Inventory.Transfer`/`TryAddLike` — 개수로 빼는 길은 새것만 |
+| 대화로 영입할 수 있나 | `UnitBrain.Recruitable`(세우는 쪽이 켠다 — 역할·자리로 묻지 말 것) |
 | 화면을 언제 다시 그리나 | `UiRefresh`(박 0.15초 · `Due(ref _beat, 배수)`) — 켜고 끄는 것은 이 박자에 안 태운다 · 주기는 코드가 든다 |
 
 ## 알려진 이슈 (`docs/timing.md` · `docs/rendering.md`)

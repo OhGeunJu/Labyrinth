@@ -69,7 +69,7 @@ public class Corpse : MonoBehaviour
     static void Drop(ItemInstance inst, Vector3 at)
     {
         if (inst?.Data == null) return;
-        DroppedItem.Spawn(inst.Data, Mathf.Max(1, inst.Quantity), at, inst.Quality);
+        DroppedItem.Spawn(inst.Data, Mathf.Max(1, inst.Quantity), at, inst.Quality, inst.Left);   // 반쯤 탄 횃불은 반쯤 탄 채로
     }
 
     // ── 부패 ──────────────────────────────────────────────────────────────────

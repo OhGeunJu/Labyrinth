@@ -618,12 +618,12 @@ public static class MushroomCreator
     static readonly Biome[] IrradiatedOnly = { Biome.Irradiated };
 
     // **볕이 드는 지대 — 사용자가 고르는 표다**(2026-10-12: *"4층에는 볕이 안들지 볕이 드는 지형을 따로
-    // 정해야할 거 같아"*). 지금은 심연(4층)만 뺀 전부다 — 지대를 고르면 여기서 줄을 지운다.
+    // 정해야할 거 같아"*). 2026-10-15 사용자: *"일단 지금은 1층과 2층 밀림만"* — 1층 넷과 2층의 지저밀림.
+    // 지대를 더하면 여기에 줄을 넣고 `World → 7`을 다시 돌린다(규칙은 씬에 적힌다).
     static readonly Biome[] Sunlit =
     {
         Biome.Fungal, Biome.Mossgrotto, Biome.Mine, Biome.Cavern,                  // 1층
-        Biome.Swamp, Biome.Ossuary, Biome.Desert, Biome.Jungle, Biome.Blight,      // 2층
-        Biome.Glacier, Biome.Crystal, Biome.Lava, Biome.Irradiated,                // 3층
+        Biome.Jungle,                                                              // 2층
     };
 
     static readonly Color BlightCap   = new(0.86f, 0.28f, 0.16f);

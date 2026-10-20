@@ -40,6 +40,10 @@ public class InventoryUI : MonoBehaviour
     [SerializeField] EquipSlotUI     chestSlot;
     [SerializeField] EquipSlotUI     handsSlot;
     [SerializeField] EquipSlotUI     legsSlot;
+    [Tooltip("허리(램프). 2026-10-15 다리 칸을 복제해 세웠다.")]
+    [SerializeField] EquipSlotUI     beltSlot;
+    [Tooltip("신발. 2026-10-18 허리 칸을 복제해 세웠다(`EquipSlotLayout`).")]
+    [SerializeField] EquipSlotUI     feetSlot;
 
     [Header("입력")]
     [SerializeField] Key toggleKey = Key.I;
@@ -436,7 +440,18 @@ public class InventoryUI : MonoBehaviour
         Show(chestSlot,    eq, show);
         Show(handsSlot,    eq, show);
         Show(legsSlot,     eq, show);
+        Show(beltSlot,     eq, show);
+        Show(feetSlot,     eq, show);
+
+        if ((beltSlot == null || feetSlot == null) && !_warnedBelt)
+        {
+            _warnedBelt = true;
+            Debug.LogWarning($"[InventoryUI] 장비칸이 씬에 없습니다 — 허리 {beltSlot != null} · 신발 {feetSlot != null}. " +
+                             "없는 칸의 장비는 찰 곳이 안 뜬다.");
+        }
     }
+
+    bool _warnedBelt;
 
     static void Show(EquipSlotUI slot, Equipment eq, bool show)
     {
@@ -681,11 +696,9 @@ public class InventoryUI : MonoBehaviour
         var src = from.Inventory;
         var dst = to.Inventory;
 
-        int moved = dst.TryAdd(inst.Data, inst.Quantity, inst.Quality);
+        // 남은 양째 옮긴다(`Inventory.Transfer` — 열린 것도 그대로 간다). 출처 정리도 거기서 한다.
+        int moved = Inventory.Transfer(src, inst, dst, inst.Quantity);
         if (moved <= 0) return;
-
-        inst.Quantity -= moved;
-        if (inst.Quantity <= 0) src.RemoveInstance(inst);
         else                    src.NotifyChanged();
 
         if (_selectedItem == inst && inst.Quantity <= 0) _selectedItem = null;
@@ -717,7 +730,7 @@ public class InventoryUI : MonoBehaviour
 
         // 어느 칸에 차는 물건인가 — 벗을 때도 채울 때도 같은 칸이다.
         ArmorSlot? armorSlot = inst.Data is ArmorData a ? a.Slot : null;
-        bool offHand  = inst.Data is WeaponData sh && sh.Type == WeaponType.Shield;
+        bool offHand  = inst.Data is WeaponData sh && Equipment.BelongsInOffHand(sh);   // 방패 · 횃불
         bool mainHand = inst.Data is WeaponData && !offHand;
         if (armorSlot == null && !offHand && !mainHand) return;   // 장비가 아니다
 
@@ -742,15 +755,17 @@ public class InventoryUI : MonoBehaviour
         if (wholeCell) src.RemoveInstance(inst);
         else
         {
+            // 입을 하나는 열린 것부터 — 남은 것은 새것이다
+            toWear = new ItemInstance(inst.Data, 1, x, y, rotated, inst.Quality) { Locked = inst.Locked, Left = inst.Left };
             inst.Quantity--;
-            toWear = new ItemInstance(inst.Data, 1, x, y, rotated, inst.Quality) { Locked = inst.Locked };
+            inst.Left = 1f;
             src.NotifyChanged();
         }
 
         void PutBackClicked()
         {
-            if (wholeCell) src.TryAddAt(toWear.Data, 1, x, y, rotated, toWear.Quality, toWear.Locked);
-            else         { inst.Quantity++; src.NotifyChanged(); }
+            if (wholeCell) src.TryAddAt(toWear.Data, 1, x, y, rotated, toWear.Quality, toWear.Locked, toWear.Left);
+            else         { inst.Quantity++; inst.Left = toWear.Left; src.NotifyChanged(); }
         }
 
         // 차고 있던 것을 먼저 빼낸다 — `Wear*`에 맡기면 그쪽이 배낭 첫 빈 칸으로 돌려보낸다.
@@ -767,8 +782,8 @@ public class InventoryUI : MonoBehaviour
         // **벗은 것은 방금 빈 그 칸으로.** 안 되면 배낭 아무 데나.
         if (old?.Data != null)
         {
-            bool placed = src.TryAddAt(old.Data, 1, x, y, rotated, old.Quality, old.Locked)
-                       || src.TryAdd(old.Data, 1, old.Quality) > 0;
+            bool placed = src.TryAddAt(old.Data, 1, x, y, rotated, old.Quality, old.Locked, old.Left)
+                       || src.TryAddLike(old) > 0;
 
             if (!placed)
             {
@@ -855,13 +870,9 @@ public class InventoryUI : MonoBehaviour
         var srcInv = fromPlayer ? playerInv : _lootInventory;
         var dstInv = fromPlayer ? _lootInventory : playerInv;
 
-        int added = dstInv.TryAdd(_selectedItem.Data, _selectedItem.Quantity, _selectedItem.Quality);
+        // 남은 양째(`Inventory.Transfer`) — 출처 정리도 거기서 한다.
+        int added = Inventory.Transfer(srcInv, _selectedItem, dstInv, _selectedItem.Quantity);
         if (added <= 0) return;
-
-        if (added >= _selectedItem.Quantity)
-            srcInv.RemoveInstance(_selectedItem);
-        else
-            _selectedItem.Quantity -= added;
 
         _selectedItem = null;
         RefreshActionBar();

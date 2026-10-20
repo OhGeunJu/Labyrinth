@@ -38,7 +38,7 @@ public class AiProfileData : ScriptableObject
     [Tooltip("도주 시 한 번에 물러나는 거리.")]
     [SerializeField] float fleeDistance = 15f;
 
-    [Tooltip("위협 감지 범위. 0이면 UnitData.DetectRange(NPC 주민은 FleeDetectRange)를 쓴다.")]
+    [Tooltip("위협 감지 범위. 0이면 패키지 Combat 목표의 Range, 그것도 0이면 UnitData.DetectRange.")]
     [SerializeField] float fleeDetectRange = 0f;
 
     [Header("유휴 행동")]

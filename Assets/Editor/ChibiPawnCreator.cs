@@ -1323,7 +1323,7 @@ public static partial class ChibiPawnCreator
 
     // 외곽선 값은 한 벌 — 살 재질과 바깥 선 재질이 같이 쓴다(갈리면 몸통 선만 굵기가 다르다).
     static readonly Color OutlineColor = new(0.06f, 0.05f, 0.06f, 1f);
-    const float OutlineWidth = 0.06f, OutlineMin = 0.008f;
+    const float OutlineWidth = 0.06f, OutlineMin = 1f;   // 최소는 픽셀(`ToonOutlineHull`)
 
     static Material LoadOrMake(string path, Shader shader)
     {

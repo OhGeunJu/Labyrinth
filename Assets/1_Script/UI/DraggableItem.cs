@@ -72,7 +72,7 @@ public class DraggableItem : MonoBehaviour,
         int price = _sourceGrid != null && _sourceGrid.IconPrice != null
                   ? _sourceGrid.IconPrice(_instance) : -1;
 
-        ItemInfoUI.Show(_instance.Data, _instance.Quality, price, null, _instance.Locked, this);
+        ItemInfoUI.Show(_instance.Data, _instance.Quality, price, null, _instance.Locked, this, _instance.Left);
     }
 
     public void OnPointerExit(PointerEventData _) => ItemInfoUI.Hide();
@@ -491,13 +491,15 @@ public class DraggableItem : MonoBehaviour,
             var back = _sourceGrid != null ? _sourceGrid.Inventory : null;
             if (back == null && InventoryUI.Instance != null && InventoryUI.Instance.Grid != null)
                 back = InventoryUI.Instance.Grid.Inventory;
-            int kept  = back != null ? back.TryAdd(_instance.Data, _instance.Quantity, _instance.Quality) : 0;
+            // 남은 양째 — 열린 것이 먼저 들어간다(`TryAddLike`). 하나도 못 넣었으면 떨구는 쪽에 열린 것이 있다.
+            int kept  = back != null ? back.TryAddLike(_instance) : 0;
             int spill = _instance.Quantity - kept;
 
             if (spill > 0 && back != null)
             {
                 var at = back.transform.position;
-                DroppedItem.Spawn(_instance.Data, spill, at + Vector3.up * 0.15f, _instance.Quality);
+                DroppedItem.Spawn(_instance.Data, spill, at + Vector3.up * 0.15f, _instance.Quality,
+                                  kept == 0 ? _instance.Left : 1f);
             }
         }
         _detached = false;
@@ -816,7 +818,7 @@ public class DraggableItem : MonoBehaviour,
         // **건너가는 것도 밀어낼 수 있다** — 규칙이 통마다 다르면 "여기서는 되고 저기서는
         // 안 되는" 것이 된다. 옮길 뭉치를 새로 지어 꽂고, 성공했을 때만 출처에서 뺀다.
         var moving = new ItemInstance(_instance.Data, _instance.Quantity, newX, newY,
-                                      _dragRotated, _instance.Quality) { Locked = keepLock };
+                                      _dragRotated, _instance.Quality) { Locked = keepLock, Left = _instance.Left };
 
         if (!dstInv.TryPlaceOverAt(moving, newX, newY, _dragRotated, out var pushedOut)) return false;
 
@@ -844,6 +846,10 @@ public class DraggableItem : MonoBehaviour,
         var target = dstInv.GetAt(cursorCell.x, cursorCell.y);
         if (target == null || ReferenceEquals(target, _instance)) return false;
         if (target.Data != _instance.Data || target.Quality != _instance.Quality) return false;
+
+        // **열린 것은 끌어 합치지 않는다**(2026-10-16) — 개수만 더하면 남은 양이 사라진다(반쯤 탄 횃불이 새것이 된다).
+        // 그냥 옮겨 놓이고, 같은 물건끼리 합치는 것은 넣는 문(`Inventory.TryAddOpened`)이 양을 보존하며 한다.
+        if (_instance.IsPartial) return false;
 
         int room = _instance.Data.MaxStack - target.Quantity;
         if (room <= 0) return false;   // 이미 꽉 찼으면 합치지 말고 평소대로 이동시킨다
@@ -929,7 +935,7 @@ public class DraggableItem : MonoBehaviour,
         // **자동 운반은 안 켜진 채로 떨어진다** — 이제 그게 모든 드롭의 기본이라 여기서
         // 따로 끌 것이 없다(예전엔 손 드롭만 예외로 껐다). 나르게 하려면 그 물건을
         // 우클릭해 [창고로 옮긴다].
-        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality);
+        DroppedItem.Spawn(_instance.Data, _instance.Quantity, dropPos, _instance.Quality, _instance.Left);
         return true;
     }
 }

@@ -70,38 +70,60 @@ public class MineDesignator : MonoBehaviour
     readonly HashSet<Vector2Int> _next    = new();   // 이번 프레임에 찍혀야 할 것
     readonly List<Vector2Int>    _undo    = new();   // 훑는 도중에 고치지 않으려고
 
-    // ── 판 굴이 남나를 커서 옆에 적는다 (2026-09-28) ─────────────────────────
+    // ── 커서가 짚은 벽을 커서 옆에 적는다 (2026-09-28 · 10-15) ─────────────────
     //
     // **화면 구석에 적으면 눈은 커서에 가 있어 있어도 못 읽는다**(건설 모드가 값과 거절
     // 사유를 커서 옆에 두는 것과 같은 자리).
     //
-    // 09-18에는 여기가 *"파면 천장 N칸이 내려앉습니다"*였다. 붕괴를 걷어내고 **판 굴이 이틀 뒤 메워지는**
-    // 규칙으로 바꾸면서(`RockRegrow`) 알릴 것도 바뀌었다: **이 자리는 남나, 메워지나.** 판정은
-    // `RockRegrow.Keeps` 하나 — 메우는 쪽과 같은 답이다.
-    Vector2Int? _warnAt;
-    bool        _warnRefills;
+    // 적는 것은 둘이다:
+    //   · **내구도**(2026-10-15, 사용자: *"벽 내구도 표시(커서 위 미리보기까지)"*) — 줄은 살펴보기 창과 한 벌
+    //     (`InspectPanelUI.DurabilityLine`). 깎인 값은 칸이 든다(`RockMap.Wear`).
+    //   · **판 굴이 남나, 메워지나** — 판정은 `RockRegrow.Keeps` 하나(메우는 쪽과 같은 답).
+    //
+    // 09-28에는 `OnGUI`의 맨 글자였고 **왼쪽 버튼을 누르고 있을 때만 쟀다** — 호버로는 안 떴다. 이제 공용
+    // 툴팁(`HoverTooltipUI` — 게임 폰트)에 띄우고 누르지 않아도 잰다. 글은 **칸이 바뀌거나 박자가 돌 때만**
+    // 다시 쓴다(`UiRefresh`) — 파는 동안 내구도가 줄어드는 것이 보인다.
+    Vector2Int? _hoverAt;
+    bool        _hoverRefills;   // 칸이 바뀔 때만 잰다 — `Keeps`는 둘레를 훑는다
+    int         _hoverBeat = -1;
 
-    // 같은 칸을 다시 재지 않는다.
-    void UpdateWarning(Vector2Int? tile)
+    void Hover(Vector2Int? tile)
     {
-        if (tile == null) { _warnAt = null; _warnRefills = false; return; }
-        if (_warnAt == tile) return;
+        if (tile == null || !RockMap.IsRock(tile.Value)) { HideHover(); return; }
 
-        _warnAt      = tile;
-        var at       = tile.Value;
-        _warnRefills = RockMap.IsRock(at) && !RockMap.IsBedrock(at) && !RockRegrow.Keeps(at);
+        var at = tile.Value;
+        bool moved = _hoverAt != at;
+        if (moved)
+        {
+            _hoverAt      = at;
+            _hoverRefills = !RockMap.IsBedrock(at) && !RockRegrow.Keeps(at);
+            UiRefresh.Now(ref _hoverBeat);
+        }
+        if (!UiRefresh.Due(ref _hoverBeat)) return;
+
+        if (RockMap.IsBedrock(at))
+        {
+            HoverTooltipUI.Show("기반암", "캘 수 없습니다.");
+            return;
+        }
+
+        var vein = RockMap.VeinAt(at);
+        var item = vein != null ? vein.DropItem : null;
+        string title = vein != null ? $"{(item != null ? item.ItemName : "광맥")} 광맥" : "바위";
+
+        var body = InspectPanelUI.DurabilityLine(at);
+        if (RockMap.IsMarked(at)) body += "\n<color=#7fe08a>채굴 지정됨</color>";
+        if (_hoverRefills)
+            body += $"\n<color=#FFBF59>핵 영역 밖 — 판 굴은 {RockRegrow.Days:0}일 뒤 메워집니다 (버팀목을 세우면 남습니다)</color>";
+
+        HoverTooltipUI.Show(title, body);
     }
 
-    void OnGUI()
+    void HideHover()
     {
-        if (!IsActive || _warnAt == null || !_warnRefills || Event.current == null) return;
-
-        var at = Event.current.mousePosition + new Vector2(20f, 18f);
-        var was = GUI.color;
-        GUI.color = new Color(1f, 0.75f, 0.35f);
-        GUI.Label(new Rect(at.x, at.y, 460f, 22f),
-                  $"핵 영역 밖 — 판 굴은 {RockRegrow.Days:0}일 뒤 메워집니다 (버팀목을 세우면 남습니다)");
-        GUI.color = was;
+        if (_hoverAt == null) return;
+        _hoverAt = null;
+        HoverTooltipUI.Hide();
     }
 
     void Update()
@@ -120,10 +142,15 @@ public class MineDesignator : MonoBehaviour
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
             ClearPreview();
+            HideHover();
             return;
         }
 
         Vector2 cur = mouse.position.ReadValue();
+
+        // **상자를 끄는 동안은 안 띄운다** — 눈은 상자에 가 있고, 커서 옆 상자가 찍히는 칸을 가린다.
+        if (_dragging) HideHover();
+        else           Hover(TileUnder(cur, out var hov) ? hov : (Vector2Int?)null);
 
         // **우클릭은 반대로 지운다 — 누르면 한 칸, 끌면 상자째**(2026-09-19). 명령 도구 바가 *채굴·채집·운반*
         // 셋이 되면서 `취소` 타일이 빠졌다(사용자: *"채굴 채집 운반 세 버튼을 명령으로 합쳐서"*) — 넓게 무르는
@@ -203,10 +230,6 @@ public class MineDesignator : MonoBehaviour
             _next.Clear();
             if (_dragging) CollectBox(_dragStart, cur, _next);
             else if (TileUnder(cur, out var t) && RockMap.IsRock(t) && !RockMap.IsBedrock(t)) _next.Add(t);
-
-            // **커서가 짚은 한 칸만 잰다** — 드래그 중에 상자 안을 전부 재면 칸마다
-            // 81칸을 훑어 프레임이 죽는다. 무리한 자리인지는 **한 칸으로도 드러난다.**
-            UpdateWarning(_dragging ? null : TileUnder(cur, out var w) ? w : (Vector2Int?)null);
 
             // **무를 수 있는 것은 이번 드래그가 찍은 것뿐이다**(2026-08-30).
             //
@@ -487,7 +510,7 @@ public class MineDesignator : MonoBehaviour
     {
         if (IsActive == on) return;
         IsActive = on;
-        if (!on) { ClearPreview(); _dragging = false; }
+        if (!on) { ClearPreview(); _dragging = false; HideHover(); }
 
         if (on) ExclusiveMode.Claim(this);
 

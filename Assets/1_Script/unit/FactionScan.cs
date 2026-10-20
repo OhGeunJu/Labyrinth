@@ -25,7 +25,8 @@ using UnityEngine;
 //  · 콜라이더가 여럿인 폰을 두 번 세지 않는다(`CountNearbyEnemies`가 그랬다).
 //  · 꺼진 폰(원정)은 `OnDisable`로 레지스트리에서 빠져 있어 애초에 안 잡힌다.
 //
-// **벽 너머도 보이는 것은 예전 그대로다** — `OverlapSphere`도 시야를 안 봤다.
+// **벽 너머도 보이는 것은 예전 그대로다** — `OverlapSphere`도 시야를 안 봤다. 탐지만은 2026-10-18부터 바위에
+// 가린 것을 안 본다(`NearestSeen`) — 도주·수적 보너스·도발은 그대로다.
 public static class FactionScan
 {
     // 가장 가까운 적대 대상.
@@ -59,6 +60,49 @@ public static class FactionScan
             // **거리를 먼저 보고 나서 묻는다** — `IsAttackable`은 `GetComponent`를 몇 번 타므로
             // 멀리 있는 것까지 물어보면 아낀 것을 도로 쓴다.
             if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
+
+            bestSqr = d;
+            best    = other.gameObject;
+        }
+        return best;
+    }
+
+    // **보이는 것 중 가장 가까운 적**(2026-10-18 — 탐지가 쓴다). `NearestHostile`과 같은 규칙에 둘을 더한다:
+    //  · **눈** — 사이에 바위가 있으면 안 보인다(`Vision.SightClear`). 거리로 먼저 거르고 **지금 최선보다 가까울
+    //    때만** 선을 훑는다 — 대부분은 거리에서 떨어져 선을 안 탄다.
+    //  · **원한**(`bb.Grudges`) — 나를 친 놈은 세력이 중립이어도 적이다. `hostiles`를 끄면 원한만 훑는다
+    //    (반격 성향 · 소집 — 먼저 걸지는 않지만, 이미 시작된 싸움의 상대는 본다).
+    // 도주·수적 보너스는 예전 그대로 `NearestHostile`(벽 너머도 센다)이다.
+    public static GameObject NearestSeen(UnitBlackboard bb, float range, bool hostiles)
+    {
+        var self = bb?.Self;
+        var mine = bb?.Faction;
+        if (self == null || mine == null) return null;
+        if (!hostiles && bb.Grudges.Count == 0) return null;
+        bb.Grudges.RemoveWhere(g => g == null);   // 파괴된 것은 버린다
+
+        Vector3 pos    = self.transform.position;
+        float rangeSqr = range * range;
+
+        GameObject best = null;
+        float bestSqr   = float.MaxValue;
+
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var other = all[i];
+            if (other == null || other.gameObject == self) continue;
+
+            // **같은 편이 된 놈에게는 원한이 안 걸린다** — 나를 쳤던 적을 영입하면 그놈은 이제 동료다(원한 목록은
+            // 그대로 두어도 된다 — 다시 적이 되면 다시 원한이다).
+            bool wanted = (hostiles && mine.IsHostileTo(other))
+                       || (bb.Grudges.Contains(other.gameObject) && !mine.IsAllyOf(other));
+            if (!wanted) continue;
+
+            float d = (other.transform.position - pos).sqrMagnitude;
+            if (d > rangeSqr || d >= bestSqr) continue;
+            if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
+            if (!Vision.SightClear(pos, other.transform.position)) continue;
 
             bestSqr = d;
             best    = other.gameObject;

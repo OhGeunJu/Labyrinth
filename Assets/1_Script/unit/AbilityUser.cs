@@ -56,7 +56,7 @@ public class AbilityUser : MonoBehaviour
 
         Add(_equipment.MainHand != null ? _equipment.MainHand.Ability : null);
         Add(_equipment.OffHand  != null ? _equipment.OffHand.Ability  : null);
-        for (var slot = ArmorSlot.Head; slot <= ArmorSlot.Legs; slot++)
+        foreach (ArmorSlot slot in System.Enum.GetValues(typeof(ArmorSlot)))
         {
             var armor = _equipment.GetArmor(slot);
             Add(armor != null ? armor.Ability : null);

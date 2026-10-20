@@ -99,7 +99,17 @@ public class DetectNode : BTNode
         // (옆에 적을 두고 멀리 있는 상대를 패러 가는 것 방지 — 단 매 틱 흔들리지 않게 여유를 둔다)
         // 들고 있던 타겟은 `bb`를 같이 물어본다(지목한 마무리 대상이면 기절해도 유지).
         // 아래 새 후보 스캔·반격은 `bb` 없이 물어 **자동으로는 쓰러진 놈을 안 고른다.**
-        GameObject current = bb.Target != null && BTTargetUtil.IsAttackable(bb.Target, bb) ? bb.Target : null;
+        GameObject held    = bb.Target != null && BTTargetUtil.IsAttackable(bb.Target, bb) ? bb.Target : null;
+        GameObject current = null;
+
+        // **든 표적은 아는 동안만 든다**(2026-10-18 — 지각 기억). 전에는 여기서 무조건 쥐어서 **벽 너머로도, 맵
+        // 끝까지도** 정확히 따라갔다. 모르게 되면 놓고(근접 자리 · 공격 타이머도), 마지막 자리는 기억에 남는다 —
+        // 찾으러 가는 것은 `SearchNode`다. **보이는 동안은 시간 제한 없이 쫓는다.**
+        if (held != null)
+        {
+            if (Knows(bb, held)) { current = held; bb.SawTarget(held); }
+            else                 LoseSight(bb, held);
+        }
         float currentDistSqr = current != null ? SqrDist(selfPos, current) : float.MaxValue;
 
         var myFaction = bb.Faction;
@@ -153,15 +163,20 @@ public class DetectNode : BTNode
         // 그 폰은 이미 싸우는 중이다.
         if (bb.HasFreshAttacker || current != null) bb.Engaged = true;
 
-        bool scan  = (initiates || bb.Engaged) && myFaction != null;
+        // **수색 중에도 훑는다** — 찾는 그놈이 다시 보이면 잡아야 한다(반격 성향이라도 이미 시작된 싸움이다).
+        bool scan  = (initiates || bb.Alert != AlertState.Calm) && myFaction != null;
+
+        // **원한은 늘 본다**(먼저 걸지 않는 폰도) — 나를 친 놈은 이미 싸움을 건 놈이다. 도주 성향만 안 본다.
+        bool grudges = bb.Brain == null || bb.Brain.EffectiveStance != CombatStance.Flee;
 
         // **소집 중에는 목줄이 짧다** — 다가온 것과 그 곁만 문다. 자리를 지키라는 명령이므로
         // 반격으로 붙은 싸움이어도 표적을 찾아 멀리 나가면 안 된다.
         float range = Mathf.Min(Vision.RangeFor(bb),
                                 bb.IsDrafted ? bb.AttackRange * DraftLeash : float.MaxValue);
 
-        GameObject best = scan
-            ? FactionScan.NearestHostile(bb.Self, myFaction, range, theirsToMine: false)
+        // **보이는 것만 고른다**(바위에 가린 것은 안 본다 — `FactionScan.NearestSeen`).
+        GameObject best = scan || grudges
+            ? FactionScan.NearestSeen(bb, range, hostiles: scan)
             : null;
         float bestDistSqr = best != null ? SqrDist(selfPos, best) : float.MaxValue;
 
@@ -182,14 +197,45 @@ public class DetectNode : BTNode
 
             // **훑어 봤는데 아무도 없으면 싸움이 끝난 것이다.** `scan`이 꺼져 있을 때는
             // 훑지를 않았으므로 *없다*고 말할 근거가 없다 — 그대로 둔다.
-            if (scan && current == null) bb.Engaged = false;
+            //
+            // **다만 놓친 놈이 있으면 끝이 아니라 수색이다**(2026-10-18) — 찾으러 갈 수 있고 기억이 살아 있으면.
+            if (scan && current == null && bb.Alert == AlertState.Combat)
+            {
+                if (SearchNode.MaySearch(bb)) { bb.Alert = AlertState.Search; Perception.Log(bb, "교전→수색"); }
+                else                          { bb.Engaged = false; }
+            }
 
             return current != null ? BTStatus.Success : BTStatus.Failure;
         }
 
         // 기존 타겟보다 확실히 가까울 때만 교체 (SwitchMargin 배 이내면 그대로 — 타겟 흔들림 방지)
         bb.Target = (current == null || bestDistSqr * SwitchMargin < currentDistSqr) ? best : current;
+        if (bb.Alert == AlertState.Search) Perception.Log(bb, $"수색→교전 ({Perception.NameOf(bb.Target)} 다시 봄)");
+        bb.SawTarget(bb.Target);
+        bb.Engaged = true;
         return BTStatus.Success;
+    }
+
+    // ── 지각 (2026-10-18) ───────────────────────────────────────────────────
+    //
+    // **눈 없이도 아는 것** — 도발(위에서 먼저 받는다) · 뚫는 벽(위) · **사람이 지목한 것**(명령은 눈을 안 탄다) ·
+    // **방금 나를 친 놈**(15초 · *"맞은 것을 아는 것은 눈이 아니라 아픔이다"* — 아래 반격 규칙과 같은 축).
+    // 나머지는 보여야 안다. 놓을 때는 반경을 `HoldMargin`배 넉넉히 본다(끝에서 잡았다 놓았다 하지 않게).
+    const float HoldMargin = 1.2f;
+
+    static bool Knows(UnitBlackboard bb, GameObject t) =>
+        t == bb.OrderedTarget || t == bb.FinishTarget || t == bb.BreachTarget
+        || (bb.HasFreshAttacker && t == bb.LastAttacker)
+        || Vision.CanSee(bb, t, HoldMargin);
+
+    static void LoseSight(UnitBlackboard bb, GameObject lost)
+    {
+        bb.Target = null;
+        MeleeSlots.Release(bb.Self);
+        if (bb.Combat != null) bb.Combat.ExitCombat();
+        Perception.Log(bb, $"놓침 ({Perception.NameOf(lost)} — " +
+                           $"{(Vision.SightClear(bb.Self.transform.position, lost.transform.position) ? "범위 밖" : "바위에 가림")} · " +
+                           $"마지막 자리 ({bb.LastSeenPos.x:0},{bb.LastSeenPos.z:0}))");
     }
 
     // ── 뚫기 ────────────────────────────────────────────────────────────────
@@ -277,6 +323,87 @@ public class DetectNode : BTNode
 
     static float SqrDist(Vector3 from, GameObject go) =>
         (go.transform.position - from).sqrMagnitude;
+}
+
+// **수색 — 놓친 표적을 마지막으로 본 자리에서 찾는다**(2026-10-18 · `docs/combat.md` "지각 기억").
+//
+// 전투 묶음 바로 뒤에 선다(`UnitBrain.AddFight`). 감지가 다시 잡으면 묶음이 `Running`을 물어 여기까지 안 온다 —
+// **찾는 동안에도 감지는 매 틱 돈다.** 가서(못 가면 닿은 데까지) `SearchLook`초 둘러보고, 못 찾으면 잊는다.
+//
+// **찾으러 안 가는 폰**(`MaySearch`) — 소집(자리를 지킨다 · `DraftLeash`) · 도주 성향 · 떠나는 중. 그리고 기억이
+// 낡았거나(`SearchMemory`) 마지막 자리가 너무 멀면(`SearchReachMult` × 감지 범위) 잊는다 — 거리 + 시간(사용자).
+public class SearchNode : BTNode
+{
+    const float ArriveDist = 1.5f;
+
+    float _searchFor = float.NaN;   // 어느 기억을 찾는 중인가(`LastSeenAt`) — 바뀌면 처음부터
+    bool  _arrived;
+    bool  _sent;
+    float _look;
+
+    public static bool MaySearch(UnitBlackboard bb)
+    {
+        if (bb == null || bb.Self == null || bb.LastSeenTarget == null) return false;
+        if (bb.IsDrafted || bb.LeavingMap) return false;
+        if (bb.Brain != null && bb.Brain.EffectiveStance == CombatStance.Flee) return false;
+        if (GameTimeManager.Elapsed - bb.LastSeenAt > UnitBlackboard.SearchMemory) return false;
+
+        Vector3 d = bb.LastSeenPos - bb.Self.transform.position; d.y = 0f;
+        float reach = bb.DetectRange * UnitBlackboard.SearchReachMult;
+        return d.sqrMagnitude <= reach * reach;
+    }
+
+    public override BTStatus Tick(UnitBlackboard bb)
+    {
+        if (bb.Alert != AlertState.Search) return BTStatus.Failure;
+
+        if (!MaySearch(bb)) { GiveUp(bb, "기억이 낡았거나 갈 수 없다"); return BTStatus.Failure; }
+
+        if (!Mathf.Approximately(_searchFor, bb.LastSeenAt))
+        {
+            _searchFor = bb.LastSeenAt;
+            _arrived = _sent = false;
+            _look = 0f;
+        }
+
+        if (!_arrived)
+        {
+            Vector3 d = bb.LastSeenPos - bb.Self.transform.position; d.y = 0f;
+            // 닿았거나, 보냈는데 길이 끝났으면(막혀 못 좁힌다) 거기서 둘러본다.
+            if (d.magnitude <= ArriveDist || (_sent && !bb.Mover.HasTarget())) _arrived = true;
+            else
+            {
+                if (!_sent || !bb.Mover.HasTarget()) { bb.Mover.SetMoveTarget(bb.LastSeenPos); _sent = true; }
+                return BTStatus.Running;
+            }
+        }
+
+        bb.Mover.StopMovement();
+        _look += bb.TickDelta;   // 틱마다 누적 — 배속에서도 같은 게임 시간
+        if (_look >= UnitBlackboard.SearchLook) { GiveUp(bb, $"못 찾음 {UnitBlackboard.SearchLook:0}초"); return BTStatus.Failure; }
+        return BTStatus.Running;
+    }
+
+    static void GiveUp(UnitBlackboard bb, string why)
+    {
+        Perception.Log(bb, $"수색→평온 ({why})");
+        bb.Forget();
+    }
+}
+
+// **지각 진단** — 상태가 바뀔 때만 한 줄(`DungeonColony/Debug/Perception Log`). 놓침 · 수색 · 다시 봄 · 잊음.
+public static class Perception
+{
+    public static bool Enabled;
+
+    public static void Log(UnitBlackboard bb, string msg)
+    {
+        if (!Enabled || bb?.Self == null) return;
+        Debug.Log($"[지각] {NameOf(bb.Self)}: {msg}");
+    }
+
+    public static string NameOf(GameObject go) =>
+        go == null ? "없음" : go.TryGetComponent(out UnitBrain b) ? b.UnitName : go.name;
 }
 
 // 플레이어 직접 이동 명령 — 도착할 때까지 자동 행동(전투/휴식/작업)을 막는다.
@@ -583,6 +710,7 @@ public class FightNode : BTNode
             bb.FinishTarget  = null;   // 끝났으면 예외도 같이 거둔다(다음 대상에 새지 않게)
             bb.OrderedTarget = null;   // 명령도 그 표적과 함께 끝난다
             MeleeSlots.Release(bb.Self);
+            Kiting.Reset(bb);
             combat.ExitCombat();
             return BTStatus.Failure;
         }
@@ -592,10 +720,22 @@ public class FightNode : BTNode
         // 공격 범위 밖이면 이동
         if (dist > bb.AttackRange)
         {
+            Kiting.Reset(bb);
             combat.ExitCombat();
             bb.Mover.SetMoveTarget(Approach(bb));
             return BTStatus.Running;
         }
+
+        // **원거리는 붙으면 물러난다**(`Kiting`) — 걷는 동안에도 전투는 켠 채다(장전은 걸으며 찬다).
+        if (Kiting.Applies(bb, bb.Target))
+        {
+            if (Kiting.Tick(bb, dist))
+            {
+                combat.EnterCombat();
+                return BTStatus.Running;
+            }
+        }
+        else Kiting.Reset(bb);
 
         // 공격 범위 안이면 공격 — 선 자리를 제 자리로 적는다(`MeleeSlots`).
         bb.Mover.StopMovement();
@@ -1371,9 +1511,7 @@ public class RestNode : BTNode
 
         if (Time.time < _tendEndTime) return;
 
-        var used  = Treatment.ConsumeFromBackpack(brain, _tending) ? _tending : null;
-        float pow = Treatment.Power(used, skill, self: true);
-        Treatment.Apply(body, pow);
+        var used = Treatment.Finish(brain, _tending, body, skill, self: true, out float pow);   // 치료한 만큼만 쓴다
 
         if (brain.Stats != null)
             brain.Stats.GrowStat(StatName.Medicine, 6f * CombatXp.Sol(skill));

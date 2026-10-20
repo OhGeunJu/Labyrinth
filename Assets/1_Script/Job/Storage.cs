@@ -102,6 +102,11 @@ public class Storage : MonoBehaviour, IWorldClickable
         return Inventory.TryAdd(item, amount, quality);
     }
 
+    // **열린 하나를 남은 양째 넣는다**(`Inventory.TryAddOpened`) — 필터는 같은 문이 본다. 짐내림이 쓰다 만 붕대·
+    // 반쯤 탄 횃불을 부릴 때(`UnloadJob`).
+    public bool TryAddOpened(ItemData item, ItemQuality quality, float left)
+        => CanAccept(item) && Inventory.TryAddOpened(item, quality, left);
+
     // ── 집계는 **아이템 기준 하나뿐**이다 ─────────────────────────────
     // 예전엔 `GetTotal(ResourceType)`과 `GetTotalByItem(ItemData)`가 같은 일을 두 벌로 했다.
     // 종류가 아이템으로 흡수되면서 앞엣것은 뒤엣것과 완전히 같은 뜻이 됐다 — 그래서 지웠다.

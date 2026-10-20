@@ -20,10 +20,12 @@ OutlineOut OutlineHull(OutlineIn v, float groundPush)
     float4 clipThick = TransformWorldToHClip(posWS + nrmWS * _OutlineWidth);
     float2 dWorld    = clipThick.xy - clipBase.xy;
 
-    // 화면 최소: `w`를 곱해 원근 나눗셈을 상쇄한 **픽셀 일정** 굵기.
+    // 화면 최소: `w`를 곱해 원근 나눗셈을 상쇄한 **픽셀 일정** 굵기. `_OutlineMin`은 **픽셀**이다
+    // (2026-10-18 — 전에는 NDC 0.008, 1080p에서 약 4px이라 13m만 멀어져도 최소가 이겨 폰은 작아지는데
+    // 선만 그대로였다 — 사용자: *"카메라가 멀어지면 뚱뚱해지고"*). NDC 한 픽셀 = 2 / 화면 높이.
     float3 nrmCS   = TransformWorldToHClipDir(nrmWS);
     float2 nrm2    = nrmCS.xy / max(length(nrmCS.xy), 1e-5);
-    float2 dScreen = nrm2 * _OutlineMin * clipBase.w;
+    float2 dScreen = nrm2 * (_OutlineMin * 2.0 / _ScreenParams.y) * clipBase.w;
 
     // **화면에서 굵은 쪽** — 가까이서는 월드가, 멀리서는 최소가 이긴다.
     float2 d = dot(dWorld, dWorld) > dot(dScreen, dScreen) ? dWorld : dScreen;
