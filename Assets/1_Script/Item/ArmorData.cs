@@ -35,4 +35,12 @@ public class ArmorData : ItemData
     [Tooltip("이 장비를 차면 쓸 수 있는 능동 능력. 비우면 없다")]
     public AbilityData Ability;
 
+    // **입은 색**(2026-10-23, 사용자: *"무기나 방어구 같은걸 착용하면 착용시키고 싶었던거야"*). 갑옷은 따로 모델을 안 붙이고
+    // 그 부위의 옷 칸을 이 색으로 칠한다(`PawnApparel`) — 재질이 곧 색이다(가죽 갈색 · 강철 회색). 알파 0이면 `DefaultWorn`.
+    [Tooltip("입었을 때 그 부위를 칠하는 색. 투명이면 기본 갈색")]
+    public Color WornColor = Color.clear;
+
+    static readonly Color DefaultWorn = new(0.45f, 0.36f, 0.28f, 1f);
+    public Color WornTint => WornColor.a > 0f ? WornColor : DefaultWorn;
+
 }

@@ -25,6 +25,7 @@ using UnityEngine.UI;
 //   6. **지휘소·상단을 모드 바 끝에**(2026-10-09, 사용자: *"지휘소랑 상단은 왜 왼쪽 상단에 있는거야? 차라리 가운데 하단에
 //      버튼들이랑 같이"*) — 마지막 모드 칸을 복제해 `Posts`·`Caravan` 칸을 세우고, 거점 바에 있던 두 버튼은 지운다(`WindowButtons`).
 //      같은 날 무리 관리 · 세력 · 지도도(*"PLM 정도?"*).
+//   7. **살펴보기 창을 바 위로**(2026-10-23) — 왼쪽 아래 창 둘이 바의 왼쪽 끝을 덮었다. 바는 그대로, 창을 올린다(`LiftInspect`).
 //
 // 칸 크기와 틈은 **이미 있는 칸에서 잰다** — 상수로 적으면 씬을 손본 날 어긋난다. 끝나면 씬을 저장할 것.
 public static class CommandBarSetup
@@ -406,6 +407,53 @@ public static class CommandBarSetup
         var tool = Object.FindFirstObjectByType<ModeToolBarUI>(FindObjectsInactive.Include);
         if (tool != null && mode != null && Dock(tool, mode, top, log)) log.Add("도구 바를 모드 바 위에 붙임");
         if (mode != null && RaiseBuildBand(mode)) log.Add("건설 띠를 모드 바 위로 올림");
+        if (mode != null && LiftInspect(mode, tool)) log.Add("살펴보기 창을 바 위로 올림");
+    }
+
+    // ── 7. 살펴보기 창도 바 위에 선다 (2026-10-23) ──────────────────────────
+    //
+    // 사용자: *"이거 밑에 UI 겹치는 건 어케할까"*(스크린샷 — 왼쪽 아래 살펴보기 창 둘이 모드 바·도구 줄의 왼쪽 끝을
+    // 덮었다). 바는 가운데에 두고 **창 둘(`PawnSheet_Panel` · `PawnHealth_Panel`)의 바닥을 도구 줄 윗변 + 칸 간격에**
+    // 맞춘다(사용자가 고른 안). 도구 줄까지 넘는 이유: 명령의 칸 일곱이 펼쳐지면 그 줄도 창 밑으로 들어간다.
+    //
+    // **올리기만 한다** — 손으로 더 위에 옮겨 둔 창은 그대로 둔다. 창 자리는 `Create Inspect Sheet`를 다시 돌려도
+    // 물려받으므로 한 번 올리면 남는다.
+    static bool LiftInspect(ModeBarUI mode, ModeToolBarUI tool)
+    {
+        var insp = Object.FindFirstObjectByType<InspectPanelUI>(FindObjectsInactive.Include);
+        if (insp == null) return false;
+
+        var slots = new SerializedObject(mode).FindProperty("slots");
+        Button sample = null;
+        for (int i = 0; i < slots.arraySize && sample == null; i++)
+            sample = slots.GetArrayElementAtIndex(i).FindPropertyRelative("Button").objectReferenceValue as Button;
+        var modePanel = sample != null ? sample.transform.parent as RectTransform : null;
+        if (modePanel == null) return false;
+
+        var c = new Vector3[4];
+        modePanel.GetWorldCorners(c);
+        float top = c[1].y;
+        float scale = modePanel.lossyScale.y;
+
+        if (tool != null)
+            foreach (var t in tool.Tiles)
+                if (t != null && t.transform.parent is RectTransform toolPanel)
+                {
+                    toolPanel.GetWorldCorners(c);
+                    top = Mathf.Max(top, c[1].y);
+                    break;
+                }
+
+        float target = top + Gap * scale;
+        bool moved = false;
+        foreach (var name in new[] { "PawnSheet_Panel", "PawnHealth_Panel" })
+        {
+            if (!(insp.transform.Find(name) is RectTransform rt)) continue;
+            rt.GetWorldCorners(c);
+            if (c[0].y >= target - 0.5f * scale) continue;
+            if (ShiftBottomTo(rt, target, c)) moved = true;
+        }
+        return moved;
     }
 
     // ── 6. 건설 띠도 모드 바 위에 선다 (2026-09-29) ─────────────────────────

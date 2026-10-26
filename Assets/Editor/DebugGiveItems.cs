@@ -12,21 +12,19 @@ public static class DebugGiveItems
     const int MaxChests = 12;             // 안전장치 — 무한히 만들지 않는다
     const string ChestName = "[DebugChest]";
 
-    // **등급은 장비에만 준다.**
+    // **장비는 한 종에 등급 여섯 벌을 다 준다 — 일반에서 전설까지 차례로 나란히**(2026-10-23, 사용자: *"방어구마다 등급이
+    // 순서대로 있는건데 하나의 방어구가 하나의 등급이면 어떡해"*).
     //
-    // `StatMultiplier`(1.0~3.0)가 실제로 바꾸는 것은 셋뿐이다 — 무기 피해(`SyncBlackboard`),
-    // 갑옷 감소(`GetArmorQualityMult`), 값(`CalcSellPrice`·툴팁). 앞의 둘이 장비 전용이므로
-    // **광석·음식은 등급이 달라도 값만 오르고 하는 일이 같다.**
+    // 10-22에 상자 수를 줄이려고 한 종에 하나씩 등급을 돌려 가며 줬다 — 그러면 강철 투구는 희귀 하나뿐이라 같은 물건의
+    // 등급끼리 견줄 수가 없었다. 이제 한 종의 여섯 벌을 **이어서** 넣어 상자 안에서 한 줄로 읽힌다. 상자는 다시 여럿이
+    // 된다(장비 54종 × 6 — 여덟 개 남짓, 한 줄로 늘어선다).
     //
-    // 그런 것까지 여섯 벌씩 주면 상자만 여섯 배로 불고, 정작 비교해야 할 장비가 그 사이에
-    // 묻힌다. 값 확인은 장비로도 충분하다.
+    // 등급이 있는가는 물건이 답한다(`ItemData.HasQuality`) — 없는 것은 `Common`으로 눌린다.
     static readonly ItemQuality[] GearQualities =
     {
         ItemQuality.Common, ItemQuality.Uncommon, ItemQuality.Rare,
         ItemQuality.Unique, ItemQuality.Epic,     ItemQuality.Legendary,
     };
-
-    static readonly ItemQuality[] PlainQuality = { ItemQuality.Common };
 
     static readonly List<Storage> _chests = new();
 
@@ -37,27 +35,35 @@ public static class DebugGiveItems
 
         _chests.Clear();
         var items = CollectItems();
+
+        // **넣는 순서가 곧 상자 안의 모양이다** — 무기 → 방어구 → 나머지, 그 안에서 큰 것부터.
+        // 큰 것을 먼저 넣어야 빈칸이 덜 남고, 갈래끼리 모여 있어야 열었을 때 읽힌다.
+        items.Sort((a, b) =>
+        {
+            int c = Group(a).CompareTo(Group(b));
+            if (c != 0) return c;
+            c = (b.Width * b.Height).CompareTo(a.Width * a.Height);
+            return c != 0 ? c : string.CompareOrdinal(a.ItemName, b.ItemName);
+        });
+
         int placed = 0;
         var failed = new List<string>();
 
         foreach (var item in items)
         {
-            // 장비(스택 1)는 하나가 한 자리를 먹으므로 **등급마다 하나씩**,
-            // 그 밖은 **일반 등급으로 최대치까지 꽉** 채운다 — 재료가 모자라 제작을 끝까지
+            // 장비는 등급마다 하나씩, 그 밖은 **최대치까지 꽉** 채운다 — 재료가 모자라 제작을 끝까지
             // 못 돌려 보는 일이 없게.
-            bool gear = item is WeaponData || item is ArmorData;
-            var qualities = gear ? GearQualities : PlainQuality;
-            int want      = gear ? 1 : Mathf.Max(1, item.MaxStack);
+            int got = 0;
+            if (item.HasQuality)
+                foreach (var q in GearQualities) got += Give(item, 1, q);
+            else
+                got = Give(item, Mathf.Max(1, item.MaxStack), ItemQuality.Common);
 
-            bool any = false;
-            foreach (var q in qualities)
-                if (Give(item, want, q) > 0) any = true;
-
-            if (any) placed++;
+            if (got > 0) placed++;
             else failed.Add(item.ItemName);
         }
 
-        Debug.Log($"[Debug] {placed}/{items.Count}종 지급 (장비는 등급 6종 각 1개, 그 밖은 최대 스택). " +
+        Debug.Log($"[Debug] {placed}/{items.Count}종 지급 (장비는 한 종에 등급 여섯 벌, 그 밖은 최대 스택). " +
                   $"디버그 상자 {_chests.Count}개 — 클릭해 확인하세요.");
 
         if (failed.Count > 0)
@@ -314,14 +320,20 @@ public static class DebugGiveItems
     //
     // **`RockRenderer.Start`가 이미 같은 물음에 답해 두었다** — 판이 열릴 때 굴을 어디에 뚫을지를
     // 정하면서 **내 폰 둘레**를 열고, 아무도 없으면 카메라 앞을 연다. 기준을 거기에 맞춘다:
-    // **내 폰 → (없으면) 핵 → (그것도 없으면) 원점.**
+    // **(10-22부터 시작 자리가 맨 앞) → 내 폰 → (없으면) 핵 → (그것도 없으면) 원점.**
     //
     // **무게중심이 아니라 거기서 가장 가까운 폰의 자리를 쓴다** — 무리가 흩어져 있으면
     // 무게중심이 바위 한복판에 떨어질 수 있고, 그러면 `FindWorkableNear`가 8칸 안에서
     // 아무것도 못 찾아 **center를 그대로 돌려줘 상자가 바위에 박힌다.** 폰이 선 자리는
     // 설 수 있는 자리임이 이미 증명돼 있다.
+    //
+    // **시작 자리가 있으면 그것이 먼저다**(2026-10-22, 사용자: *"지금 스폰 되는쪽에 생성되게"*).
+    // 폰은 흩어져 돌아다니지만 `StartSpot`은 판이 열릴 때 굴이 뚫린 자리라 늘 서 있을 수 있고,
+    // 만든 폰이 처음 서는 곳이기도 하다 — 상자가 어디 생겼는지 찾으러 다닐 일이 없다.
     static Vector3 Anchor()
     {
+        if (StartSpot.Current != null) return StartSpot.Current.transform.position;
+
         var all = UnitBrain.All;
 
         var  sum = Vector3.zero;
@@ -389,6 +401,8 @@ public static class DebugGiveItems
         var tile = map.FindWorkableNear(map.WorldToTile(want), maxRadius: 8, exclude: taken);
         return map.TileToGround(tile);
     }
+
+    static int Group(ItemData item) => item is WeaponData ? 0 : item is ArmorData ? 1 : item.HasQuality ? 2 : 3;
 
     // 자원 아이템 + 장비 + 소비품 전부. 골드도 포함(살 것을 사 보려면 필요하다).
     static List<ItemData> CollectItems()

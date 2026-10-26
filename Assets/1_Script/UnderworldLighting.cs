@@ -62,6 +62,11 @@ public class UnderworldLighting : MonoBehaviour
     static readonly int PawnFloorId = Shader.PropertyToID("_PawnFloor");
 
     // **이 컴포넌트가 없는 자리(편집 중 · 지상)에서는 옛 값이다** — 전역 값은 아무도 안 적으면 0이다.
+    // **에디터를 켤 때도 적는다** — 안 적으면 Play를 한 번 돌기 전까지 0이라, 그 사이에 구운
+    // 프리팹 미리보기와 씬 뷰의 폰이 검게 나온다(2026-10-24).
+#if UNITY_EDITOR
+    [UnityEditor.InitializeOnLoadMethod]
+#endif
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetPawnFloor() => Shader.SetGlobalFloat(PawnFloorId, PawnFloor);
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 // **턱 · 머리 — 전부 구워 두고 여기서 한 벌씩만 켠다**
@@ -29,6 +30,10 @@ using UnityEngine;
 // **못 박을 수 있다**(2026-09-18, 사용자: *"인스펙터로 바꿀 수 있게 만들자"*) — 둘 다 비우면
 // 씨앗이 고르고, 적으면 그것이 이긴다. 퀘스트 NPC처럼 *이 사람은 이 얼굴*이어야 하는 저작이
 // 여기 적힌다(`PawnSpecData`가 등급·특성을 못 박는 것과 같은 자리). 인스펙터는 `PawnLookEditor`.
+//
+// **고르는 축이 여럿인 머리**(2026-10-27 — 해골: 두개골 · 턱 · 이 · 빠진 이) — `Head.Pick.{축}.{벌}`. 축마다 씨앗이 따로 하나를
+// 고르고(축 이름을 씨앗에 섞는다), 못 박을 수도 있다(`pickOverrides`). 벌이 다른 축에 매이면 이름 뒤에 `@{축}.{벌}`을 붙인다 —
+// `@Jaw.!None`은 *턱이 없지 않을 때만*. 축과 벌은 렌더러 이름에서 모은다(조건에만 나오는 벌도 — 턱 `None`은 렌더러가 없다).
 public class PawnLook : MonoBehaviour
 {
     // **기준 머리** — 이름이 이것으로 끝나는 머리(`Male_BroadSoft`). 머리카락은 그것에 맞춰 구웠다.
@@ -65,6 +70,9 @@ public class PawnLook : MonoBehaviour
     public const string None = "-";
     public static readonly string[] FaceFeatures = { "EyeL", "EyeR", "Mouth" };
 
+    [Tooltip("고르는 축을 못 박는다 — `축=벌`(예: `Jaw=None`). 없는 축이면 씨앗이 고른다.")]
+    [SerializeField] List<string> pickOverrides = new();
+
     // 코드가 부른 표정 — 인스펙터보다 앞선다. 비면 안 부른 것이다.
     readonly Dictionary<string, string> _expression = new();
     readonly List<ChibiFacePart> _faceParts = new();
@@ -73,7 +81,15 @@ public class PawnLook : MonoBehaviour
     readonly SortedDictionary<string, List<Renderer>> _hairs  = new();
     readonly SortedDictionary<string, List<Renderer>> _ears   = new();
     readonly SortedDictionary<string, List<Renderer>> _noses  = new();   // 모양 → (머리형마다 한 벌)
+    // **투구**(2026-10-23) — 머리카락처럼 기준 머리에 맞춰 굽고 윗머리 모양마다 한 벌(`Head.Helmet.Cap.Shell.Box`).
+    // 켜는 것은 찬 장비가 정한다(`PawnApparel` → `Helmeted`) — 씨앗이 고르는 묶음이 아니다.
+    readonly List<Renderer> _helmets = new();
     readonly Dictionary<string, Transform> _shapeHead = new();   // 머리형 → 그 머리 살(이목구비 판 말고)
+
+    // 고르는 축 — 축 → 벌들 · 렌더러마다 (축, 벌, 조건들) · 지금 고른 것.
+    readonly SortedDictionary<string, SortedSet<string>> _pickAxes = new();
+    readonly List<(Renderer r, string axis, string option, (string axis, string option, bool not)[] when)> _pickParts = new();
+    readonly Dictionary<string, string> _picked = new();
 
     // **머리카락이 지금 어느 머리에 맞춰져 있나** — 옮길 때 *그 머리의 틀*에서 *고른 머리의 틀*로
     // 옮긴다. 구운 값을 따로 들면 한 번 옮긴 자리가 저장된 뒤 그것을 *구운 값*으로 다시 읽어 **옮길
@@ -87,11 +103,40 @@ public class PawnLook : MonoBehaviour
     public string Ear        { get; private set; } = None;
     public string Nose       { get; private set; } = None;
 
+    // 투구를 썼나 — 쓰면 머리카락을 다 끄고 투구 껍데기를 켠다. 색은 `PawnApparel`이 칠한다.
+    bool _helmeted;
+    public bool Helmeted { get => _helmeted; set { if (_helmeted == value) return; _helmeted = value; Apply(); } }
+    public IReadOnlyList<Renderer> HelmetRenderers { get { if (!_gathered) Gather(); return _helmets; } }
+
     // 인스펙터가 읽는 목록 — 모은 뒤에만 찬다.
     public IEnumerable<string> ShapeNames => _shapes.Keys;
     public IEnumerable<string> HairNames  => _hairs.Keys;
     public IEnumerable<string> EarNames   => _ears.Keys;
     public IEnumerable<string> NoseNames  => _noses.Keys;
+    public IEnumerable<string> PickAxes   => _pickAxes.Keys;
+    public IEnumerable<string> PickOptions(string axis) => _pickAxes.TryGetValue(axis, out var set) ? set : Enumerable.Empty<string>();
+    public string Picked(string axis) => _picked.TryGetValue(axis, out var v) ? v : "";
+    // 고른 축의 살들 — 개체마다 칠하는 쪽(`BoneLook`)이 읽는다.
+    public IEnumerable<Renderer> PickRenderers { get { if (!_gathered) Gather(); foreach (var p in _pickParts) if (p.r != null) yield return p.r; } }
+
+    public string PickOverride(string axis)
+    {
+        foreach (var e in pickOverrides)
+            if (e.StartsWith(axis + "=")) return e.Substring(axis.Length + 1);
+        return "";
+    }
+
+    public void SetPickOverride(string axis, string option)
+    {
+        pickOverrides.RemoveAll(e => e.StartsWith(axis + "="));
+        if (!string.IsNullOrEmpty(option)) pickOverrides.Add($"{axis}={option}");
+        Apply();
+    }
+
+    public void ClearPickOverrides() { pickOverrides.Clear(); Apply(); }
+
+    // 씨앗 — 같은 사람은 늘 같은 얼굴(`SeedOf`). 칠하는 쪽도 이것으로 고른다.
+    public int Seed => SeedOf();
 
     public string ShapeOverride      { get => shapeOverride;      set { shapeOverride = value ?? "";      Apply(); } }
     public string HairOverride       { get => hairOverride;       set { hairOverride = value ?? "";       Apply(); } }
@@ -150,7 +195,7 @@ public class PawnLook : MonoBehaviour
         mouthOverride = ChibiNames.Migrate(mouthOverride);
 
         if (!_gathered) Gather();
-        if (_shapes.Count == 0) return;   // 치비 머리가 아닌 폰 — 아무 일도 안 한다
+        if (_shapes.Count == 0 && _pickAxes.Count == 0) return;   // 치비 머리가 아닌 폰 — 아무 일도 안 한다
 
         int seed = SeedOf();
 
@@ -167,7 +212,7 @@ public class PawnLook : MonoBehaviour
         }
 
         Show(_shapes, Shape);
-        Show(_hairs,  Hair);
+        Show(_hairs,  _helmeted ? Bald : Hair);   // 투구 밑으로 머리카락이 뚫고 나오지 않게 — 민머리처럼 다 끈다
 
         // 귀 — 비우면 둥근 귀, `-`면 없음, 모르는 이름이면 둥근 귀.
         Ear = earOverride == None ? None
@@ -183,13 +228,19 @@ public class PawnLook : MonoBehaviour
 
         // 머리카락은 윗머리 모양이 맞는 벌만 — 마지막 마디가 모양이다(`Shell.Box`).
         string fit = HairFitOf(Shape);
-        if (_hairs.TryGetValue(Hair, out var shown))
+        if (!_helmeted && _hairs.TryGetValue(Hair, out var shown))
             foreach (var r in shown)
             {
                 if (r == null) continue;
                 var parts = r.name.Split('.');
                 if (parts.Length >= 5) r.enabled = parts[4] == fit;
             }
+        foreach (var r in _helmets)
+        {
+            if (r == null) continue;
+            var parts = r.name.Split('.');
+            r.enabled = _helmeted && parts.Length >= 5 && parts[4] == fit;
+        }
 
         // **머리카락을 고른 머리로 옮긴다** — 기준 머리의 틀(자리·크기)에서 고른 머리의 틀로 같은 비로.
         // 폭만 넓히던 동안은 괜찮았는데, 좁은 머리는 **길고 더 높이 솟아** 폭만 맞추면 정수리가 뚫는다.
@@ -200,19 +251,52 @@ public class PawnLook : MonoBehaviour
             Vector3 fP = frame.localPosition, cP = chosen.localPosition;
             Vector3 k  = Div(chosen.localScale, frame.localScale);
             // **귀도 같은 셈으로 옮긴다** — 기준 머리에 맞춰 구웠으므로 머리카락과 같은 틀을 탄다(따로 셈하면 한쪽만 어긋난다).
-            foreach (var map in new[] { _hairs, _ears })
-            foreach (var kv in map)
-            foreach (var r in kv.Value)
+            // 투구도 같은 틀이다.
+            void Fit(Renderer r)
             {
-                if (r == null) continue;
+                if (r == null) return;
                 var t = r.transform;
                 t.localPosition = cP + Vector3.Scale(t.localPosition - fP, k);
                 t.localScale    = Vector3.Scale(t.localScale, k);
             }
+            foreach (var map in new[] { _hairs, _ears })
+            foreach (var kv in map)
+            foreach (var r in kv.Value) Fit(r);
+            foreach (var r in _helmets) Fit(r);
         }
         if (chosen != null) fittedTo = Shape;
 
+        ApplyPicks(seed);
         ApplyFace();
+    }
+
+    void ApplyPicks(int seed)
+    {
+        _picked.Clear();
+        foreach (var kv in _pickAxes)
+        {
+            string authored = PickOverride(kv.Key);
+            _picked[kv.Key] = kv.Value.Contains(authored) ? authored : KeyAt(kv.Value, Mod(Mix(seed, kv.Key), kv.Value.Count));
+        }
+        foreach (var (r, axis, option, when) in _pickParts)
+        {
+            if (r == null) continue;
+            bool on = _picked[axis] == option;
+            foreach (var (a, o, not) in when)
+                if (on && a != null && _picked.TryGetValue(a, out var got)) on = not ? got != o : got == o;
+            r.enabled = on;
+        }
+    }
+
+    // 축마다 씨앗을 갈라 쓴다 — 같은 씨앗을 그대로 나누면 벌 수가 같은 축끼리 늘 같은 자리를 고른다.
+    static int Mix(int seed, string axis)
+    {
+        unchecked
+        {
+            int h = seed;
+            foreach (char c in axis) h = (h ^ c) * 16777619;
+            return h ^ (h >> 13);
+        }
     }
 
     // 턱 다섯 벌의 판 **모두**에 건다 — 켜진 턱에만 걸면 턱을 가는 순간 표정이 풀린다.
@@ -252,7 +336,8 @@ public class PawnLook : MonoBehaviour
     void Gather()
     {
         _gathered = true;
-        _shapes.Clear(); _hairs.Clear(); _ears.Clear(); _noses.Clear(); _shapeHead.Clear(); _faceParts.Clear();
+        _shapes.Clear(); _hairs.Clear(); _ears.Clear(); _noses.Clear(); _shapeHead.Clear(); _faceParts.Clear(); _helmets.Clear();
+        _pickAxes.Clear(); _pickParts.Clear();
 
         // 머리 관절 아래를 본다. 리그가 없으면(아직 안 세운 프리팹) 이름으로 찾는다.
         var rig  = GetComponentInChildren<PawnRig>(true);
@@ -267,6 +352,7 @@ public class PawnLook : MonoBehaviour
             // 윗반쪽은 **모두가 쓰는 공통 조각**이라 묶음이 아니다 — 늘 켜져 있다.
             if (n == "HeadMesh" || n == "Head") continue;
             if (!n.StartsWith("Head.")) continue;
+            if (n.StartsWith("Head.Pick.")) { AddPick(r); continue; }
 
             var parts = n.Split('.');
             if (parts.Length < 3) continue;
@@ -279,8 +365,42 @@ public class PawnLook : MonoBehaviour
                 case "Hair": Add(_hairs, parts[2], r); break;
                 case "Ear":  Add(_ears,  parts[2], r); break;
                 case "Nose": Add(_noses, parts[2], r); break;
+                case "Helmet": _helmets.Add(r); break;
             }
         }
+    }
+
+    // `Head.Pick.Teeth.Orc@Gap.One@Jaw.!None` → 축 Teeth · 벌 Orc · 조건 (Gap = One) · (Jaw ≠ None).
+    void AddPick(Renderer r)
+    {
+        var segs = r.name.Split('@');
+        var head = segs[0].Split('.');
+        if (head.Length < 4) return;
+        Option(head[2], head[3]);
+        var when = new (string, string, bool)[segs.Length - 1];
+        for (int i = 1; i < segs.Length; i++)
+        {
+            int dot = segs[i].IndexOf('.');
+            if (dot <= 0) continue;
+            string axis = segs[i].Substring(0, dot), opt = segs[i].Substring(dot + 1);
+            bool not = opt.StartsWith("!");
+            if (not) opt = opt.Substring(1);
+            Option(axis, opt);
+            when[i - 1] = (axis, opt, not);
+        }
+        _pickParts.Add((r, head[2], head[3], when));
+
+        void Option(string axis, string opt)
+        {
+            if (!_pickAxes.TryGetValue(axis, out var set)) _pickAxes[axis] = set = new SortedSet<string>();
+            set.Add(opt);
+        }
+    }
+
+    static string KeyAt(SortedSet<string> set, int index)
+    {
+        foreach (var k in set) if (index-- == 0) return k;
+        return "";
     }
 
     static void Add(SortedDictionary<string, List<Renderer>> map, string key, Renderer r)

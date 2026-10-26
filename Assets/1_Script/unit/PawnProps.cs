@@ -1,7 +1,9 @@
 using UnityEngine;
 
-// **손에 무엇을 보여 주나.** 일하는 중이면 그 동작의 도구, 싸우거나 소집됐으면 든 무기(와 방패),
-// 아니면 빈손.
+// **손에 무엇을 보여 주나.** 일하는 중이면 그 동작의 도구, 아니면 찬 무기(와 방패) — 없으면 빈손.
+//
+// **찬 무기는 늘 쥐고 있다**(2026-10-23, 사용자: *"무기나 방어구 같은걸 착용하면 착용시키고 싶었던거야"*). 전에는 싸우거나
+// 소집됐을 때만 꺼내서 평소에는 칼을 찬 폰도 빈손이었다 — 장비칸에 넣어도 몸에서는 안 보였다. 방어구는 `PawnApparel`.
 //
 // **판정을 안 만든다** — 일하는지는 블랙보드의 `Working`(일감이 적는다), 무기는 `Equipment`,
 // 싸우는지는 `CombatHandler`·소집이 답한다. 여기서 제 판단을 더하면 *화면은 곡괭이인데 판정은
@@ -29,7 +31,6 @@ public class PawnProps : MonoBehaviour
     Animator      _anim;
     UnitBrain     _brain;
     Equipment     _equip;
-    CombatHandler _combat;
     IToolPose     _pose;
     Transform     _handR, _handL, _chest, _elbowR;
     bool          _handsResolved;
@@ -45,7 +46,6 @@ public class PawnProps : MonoBehaviour
         _anim   = GetComponentInChildren<Animator>(true);
         _brain  = GetComponent<UnitBrain>();
         _equip  = GetComponent<Equipment>();
-        _combat = GetComponent<CombatHandler>();
         _pose   = GetComponent<IToolPose>();
     }
 
@@ -72,11 +72,16 @@ public class PawnProps : MonoBehaviour
 
         if (bb != null && bb.Working != WorkAnim.None)
             wantR = set.ToolPrefab(bb.Working);
-        else if (_equip != null && (IsDrafted || (_combat != null && _combat.IsInCombat)))
+        else if (_equip != null)
         {
             if (_equip.MainHand != null) wantR = set.WeaponPrefab(_equip.MainHand.Type);
             if (_equip.OffHand  != null) wantL = set.WeaponPrefab(_equip.OffHand.Type);
         }
+
+        // **횃불은 드는 동안 늘 보인다**(2026-10-22). 꺼내 휘두르는 무기가 아니라 길을 밝히는 불이다 —
+        // 빛은 늘 켜져 있는데(`CarriedLight`) 손이 비어 있으면 불이 허공에서 난다. 일하는 중에도 보조손은 든다.
+        if (wantL == null && _equip != null && _equip.OffHand != null && _equip.OffHand.Type == WeaponType.Torch)
+            wantL = set.WeaponPrefab(WeaponType.Torch);
 
         if (Show(ref _right, ref _rightSrc, wantR, _handR))
         {
@@ -167,8 +172,6 @@ public class PawnProps : MonoBehaviour
         }
         return float.IsInfinity(min) ? 0f : min;
     }
-
-    bool IsDrafted => _brain != null && _brain.IsDrafted;
 
     void ResolveHands()
     {

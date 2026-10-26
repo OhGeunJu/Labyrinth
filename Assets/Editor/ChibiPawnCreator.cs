@@ -200,10 +200,16 @@ public static partial class ChibiPawnCreator
         // 6cm 선은 스텐실을 안 봐서 **얼굴 위에 검은 덩어리**로 떴다. 선은 `OutlineOuterFine`이 얼굴 밖에만 긋는다.
         ("SkinFine",  new Color32(0xF2, 0xD2, 0xA8, 0xFF)),
         ("NoseDark",  new Color32(0x2E, 0x24, 0x24, 0xFF)),   // 동물 코 — 짙은 코끝
+        // **투구 · 허리 램프**(2026-10-23) — 찬 장비가 켜고 칠한다(`PawnApparel`). 여기 색은 씬 뷰에서 켰을 때의 기본값이다.
+        ("Helmet",    new Color32(0x8A, 0x8E, 0x96, 0xFF)),
+        ("Lamp",      new Color32(0xF2, 0xC6, 0x5A, 0xFF)),
+        // **해골 머리**(2026-10-27) — 코처럼 제 선을 끄고 바깥 선만 받는다(이가 선보다 작다) · 정점 색의 그늘을 곱한다(`_VertexAO`).
+        // 색은 해골 옷 벌(`Chibi_Bone_Skeleton`)이 덮고, 개체마다의 뼈 색은 `BoneLook`이 얹는다.
+        ("Bone",      new Color32(0xE2, 0xD9, 0xC2, 0xFF)),
     };
 
-    // 제 선을 끄고 바깥 선을 따로 받는 코 재질 — 이름으로 가른다(`Mats`의 둘).
-    static bool FineOutline(string mat) => mat == "SkinFine" || mat == "NoseDark";
+    // 제 선을 끄고 바깥 선을 따로 받는 재질 — 이름으로 가른다(`Mats`의 코 둘 · 해골 머리).
+    static bool FineOutline(string mat) => mat == "SkinFine" || mat == "NoseDark" || mat == "Bone";
 
     // ── 이목구비 판 ─────────────────────────────────────────────────────────
     //
@@ -459,6 +465,12 @@ public static partial class ChibiPawnCreator
         Shell("Bun",      "Short", on: false);
         Hair ("Bun",      "Knot",  null, bPos + new Vector3(0f, 0.30f, -0.26f), Vector3.one * 0.26f, on: false);
 
+        // **투구**(2026-10-23) — 머리카락보다 한 겹 크게, 머리카락처럼 윗머리 모양마다 한 벌. 꺼 두고 찬 장비가 켠다
+        // (`PawnLook.Helmeted` — 켜면 머리카락이 다 꺼진다). 이름이 `Head.` 꼴이라 머리 관절에 붙고 `PawnLook`이 고른 머리로 옮긴다.
+        foreach (var fit in HairFits)
+            parts.Add(new Part($"Head.Helmet.Cap.Shell.{fit}", hairs[$"{fit}.Helmet"], capPos + new Vector3(0f, 0.01f, 0f),
+                               basis.Size * HelmetScale, "Helmet", on: false));
+
         // 귀 — **기준 머리에 맞춰 굽고** 머리카락처럼 `PawnLook`이 고른 머리로 옮긴다. 기본은 일반 귀만 켠다.
         // **밑동을 머리 옆에 붙이고 끝을 기울인다** — 가운데를 옆에 두면 긴 귀가 머리 속으로 반쯤 파묻힌다.
         foreach (var e in Ears)
@@ -639,6 +651,7 @@ public static partial class ChibiPawnCreator
             hairs[$"{fit}.Short"] = Shear(HairShell($"Chibi_Hair_{fit}_Short", hairR, 0.44f, 150f), forward);
             hairs[$"{fit}.Bob"]   = Shear(HairShell($"Chibi_Hair_{fit}_Bob",   hairR, 0.26f, 125f), forward);
             hairs[$"{fit}.Long"]  = Shear(HairShell($"Chibi_Hair_{fit}_Long",  hairR, 0.10f, 110f), forward);
+            hairs[$"{fit}.Helmet"] = HelmetShell(fit, hairR, forward);
         }
         var ears = new Dictionary<string, Mesh>();
         foreach (var e in Ears)
@@ -653,6 +666,10 @@ public static partial class ChibiPawnCreator
 
         var headParts = new Dictionary<string, List<Part>>();
         foreach (var g in Genders) headParts[g] = HeadParts(g, heads, features, hairs, ears, noses);
+        // 해골 머리 — 해골 셋만 받는다(`ChibiPawnCreator.Skull`).
+        var skull      = SkullMeshes();
+        var skullParts = new Dictionary<string, List<Part>>();
+        foreach (var g in Genders) skullParts[g] = SkullHeadParts(g, skull, hairs);
 
         var made   = new List<string>();
         var bodies = new List<string>();   // 방랑자가 태어날 수 있는 몸들(`BodyVariants`)
@@ -703,6 +720,20 @@ public static partial class ChibiPawnCreator
                 if (Dress(gp, gShape, headParts, gMats, atlases, isSource: false, GoblinLook))
                     made.Add($"고블린({Path.GetFileNameWithoutExtension(gp)})");
             }
+        }
+
+        // **사람(적 · NPC · 용병)과 해골도 치비 몸이다**(2026-10-23, 사용자: *"다른 캐릭터들도 챠비 캐릭으로 바꿔줘"* → 범위는
+        // *사람 + 해골*). 고블린과 같은 길 — **제자리에서 `Model`만 간다**(이벤트·무리·로드아웃·씬이 guid로 가리킨다). 역할마다
+        // 체형 하나 · 옷 색 한 벌이고, 얼굴·머리카락은 씨앗이 고른다. 짐승·골렘은 사람 몸이 아니라 안 건드린다.
+        foreach (var o in Outfits)
+        {
+            string op = $"{OutDir}/{o.Prefab}.prefab";
+            if (!File.Exists(op)) { Debug.LogWarning($"[치비] 프리팹이 없다 — {op}"); continue; }
+            var oShape = Array.Find(Shapes, x => x.Suffix == o.Shape);
+            var oMats  = OutfitMaterials(mats, o.Key, o.Shirt, o.Pants, o.Skin, null);
+            if (o.Skeleton) oMats["Bone"] = Variant(mats["Bone"], $"Chibi_Bone_{o.Key}", "_BaseColor", o.Skin ?? (Color)Bone);
+            if (Dress(op, oShape, o.Skeleton ? skullParts : headParts, oMats, atlases, isSource: false, o.Skeleton ? SkeletonLook : null))
+                made.Add(o.Prefab);
         }
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
@@ -764,16 +795,29 @@ public static partial class ChibiPawnCreator
     // 색만 고블린 것이다. **눈·입 판도 살색을 든다**(`_SkinColor` — 판의 바탕이 살과 섞인다) — 안 바꾸면 초록 얼굴에
     // 살색 눈두덩이 뜬다.
     static Dictionary<string, Material> GoblinMaterials(Dictionary<string, Material> baseMats)
+        => OutfitMaterials(baseMats, "Goblin", GoblinRag, null, GoblinSkin, GoblinEye);
+
+    // **옷 벌 — 셔츠 · 바지 · (살) · (눈)의 사본**(고블린에서 나왔다 — 2026-10-23에 사람·해골이 같은 길을 탄다). 적지 않은 것은
+    // 원본 그대로 쓴다. 사본 이름은 `Chibi_{재질}_{key}`.
+    static Dictionary<string, Material> OutfitMaterials(Dictionary<string, Material> baseMats, string key,
+                                                         Color shirt, Color? pants, Color? skin, Color? eye)
     {
         var map = new Dictionary<string, Material>(baseMats);
-        foreach (var n in new[] { "Skin", "HeadSkin", "SkinFine", "SkinOuter" })
-            map[n] = Variant(baseMats[n], $"Chibi_{n}_Goblin", "_BaseColor", GoblinSkin);
-        map["Shirt"] = Variant(baseMats["Shirt"], "Chibi_Shirt_Goblin", "_BaseColor", GoblinRag);
-
-        var eyes = Variant(baseMats["FaceEyes"], "Chibi_FaceEyes_Goblin", "_SkinColor", GoblinSkin);
-        eyes.SetColor("_AccentColor", GoblinEye);
-        map["FaceEyes"]   = eyes;
-        map["FaceMouths"] = Variant(baseMats["FaceMouths"], "Chibi_FaceMouths_Goblin", "_SkinColor", GoblinSkin);
+        map["Shirt"] = Variant(baseMats["Shirt"], $"Chibi_Shirt_{key}", "_BaseColor", shirt);
+        if (pants is Color pc) map["Pants"] = Variant(baseMats["Pants"], $"Chibi_Pants_{key}", "_BaseColor", pc);
+        if (skin is Color sk)
+        {
+            foreach (var n in new[] { "Skin", "HeadSkin", "SkinFine", "SkinOuter" })
+                map[n] = Variant(baseMats[n], $"Chibi_{n}_{key}", "_BaseColor", sk);
+            map["FaceEyes"]   = Variant(baseMats["FaceEyes"], $"Chibi_FaceEyes_{key}", "_SkinColor", sk);
+            map["FaceMouths"] = Variant(baseMats["FaceMouths"], $"Chibi_FaceMouths_{key}", "_SkinColor", sk);
+        }
+        if (eye is Color ec)
+        {
+            if (!map.ContainsKey("FaceEyes") || map["FaceEyes"] == baseMats["FaceEyes"])
+                map["FaceEyes"] = Variant(baseMats["FaceEyes"], $"Chibi_FaceEyes_{key}", "_SkinColor", baseMats["FaceEyes"].GetColor("_SkinColor"));
+            map["FaceEyes"].SetColor("_AccentColor", ec);
+        }
         return map;
     }
 
@@ -787,6 +831,65 @@ public static partial class ChibiPawnCreator
         m.SetColor(colorProp, color);
         EditorUtility.SetDirty(m);
         return m;
+    }
+
+    // ── 사람 · 해골 (2026-10-23) ─────────────────────────────────────────────
+    //
+    // 역할마다 체형 하나 · 옷 한 벌. **체형이 성별을 든다**(`PawnBody`) — 여성 체형을 준 역할은 그 프리팹의 사람이 다 여성이다
+    // (이름도 그 성별에서 뽑는다). 한 역할 안에서 성별을 섞으려면 방랑자처럼 몸 목록(`BodyVariants`)이 필요한데, 그건 역할마다
+    // 프리팹 여섯 벌이라 이번에는 안 했다. **같은 역할의 두 세력**(`Npc_` · `Npc_Freefolk_`)은 체형·옷을 갈라 둘이 섞여 서도 구별된다.
+    readonly struct Outfit
+    {
+        public readonly string Prefab, Key, Shape;
+        public readonly Color  Shirt;
+        public readonly Color? Pants, Skin;
+        public readonly bool   Skeleton;
+        public Outfit(string prefab, string key, string shape, Color32 shirt, Color32? pants, Color32? skin = null, bool skeleton = false)
+        {
+            Prefab = prefab; Key = key; Shape = shape; Shirt = shirt; Skeleton = skeleton;
+            Pants = pants.HasValue ? pants.Value : (Color?)null;
+            Skin  = skin.HasValue  ? skin.Value  : (Color?)null;
+        }
+    }
+
+    static readonly Color32 Bone = new(0xE2, 0xD9, 0xC2, 0xFF);
+
+    static readonly Outfit[] Outfits =
+    {
+        //            프리팹                     재질 이름        체형          셔츠                                 바지
+        new Outfit("Enemy_Bandit",           "Bandit",        "Male",       new Color32(0x8A, 0x3B, 0x2E, 0xFF), new Color32(0x3A, 0x30, 0x2A, 0xFF)),
+        new Outfit("Enemy_BanditArcher",     "BanditArcher",  "ThinMale",   new Color32(0x5E, 0x6B, 0x3A, 0xFF), new Color32(0x3A, 0x30, 0x2A, 0xFF)),
+        new Outfit("Enemy_BanditChief",      "BanditChief",   "Hulk",       new Color32(0x4A, 0x24, 0x20, 0xFF), new Color32(0x2A, 0x22, 0x20, 0xFF)),
+        new Outfit("Enemy_CultAcolyte",      "CultAcolyte",   "ThinMale",   new Color32(0x4B, 0x34, 0x66, 0xFF), new Color32(0x2E, 0x22, 0x40, 0xFF)),
+        new Outfit("Enemy_CultMagus",        "CultMagus",     "Female",     new Color32(0x2C, 0x1E, 0x3E, 0xFF), new Color32(0x1E, 0x16, 0x30, 0xFF)),
+        new Outfit("Ally_Mercenary",         "Mercenary",     "Hulk",       new Color32(0x4E, 0x5A, 0x6E, 0xFF), new Color32(0x3A, 0x3A, 0x40, 0xFF)),
+        new Outfit("Ally_MercenaryArcher",   "MercArcher",    "ThinFemale", new Color32(0x56, 0x66, 0x4A, 0xFF), new Color32(0x3A, 0x3A, 0x40, 0xFF)),
+        new Outfit("Npc_Drifter",            "Drifter",       "ThinMale",   new Color32(0x8C, 0x7B, 0x5A, 0xFF), new Color32(0x4A, 0x3F, 0x33, 0xFF)),
+        new Outfit("Npc_Guard",              "Guard",         "Male",       new Color32(0x5A, 0x6A, 0x7A, 0xFF), new Color32(0x2E, 0x34, 0x40, 0xFF)),
+        new Outfit("Npc_Merchant",           "Merchant",      "Fat",        new Color32(0x8A, 0x5A, 0x9A, 0xFF), new Color32(0x4A, 0x3A, 0x2A, 0xFF)),
+        new Outfit("Npc_Peddler",            "Peddler",       "ThinFemale", new Color32(0x6A, 0x8A, 0x7A, 0xFF), new Color32(0x4A, 0x3F, 0x33, 0xFF)),
+        new Outfit("Npc_Villager",           "Villager",      "Male",       new Color32(0x6A, 0x8A, 0xA8, 0xFF), new Color32(0x5A, 0x4A, 0x3A, 0xFF)),
+        new Outfit("Npc_Freefolk_Guard",     "FreeGuard",     "Hulk",       new Color32(0x3E, 0x6A, 0x8A, 0xFF), new Color32(0x2E, 0x34, 0x40, 0xFF)),
+        new Outfit("Npc_Freefolk_Merchant",  "FreeMerchant",  "Fat",        new Color32(0xB0, 0x8A, 0x3A, 0xFF), new Color32(0x4A, 0x3A, 0x2A, 0xFF)),
+        new Outfit("Npc_Freefolk_Peddler",   "FreePeddler",   "ThinMale",   new Color32(0x7A, 0x8A, 0x5A, 0xFF), new Color32(0x4A, 0x3F, 0x33, 0xFF)),
+        new Outfit("Npc_Freefolk_Villager",  "FreeVillager",  "Female",     new Color32(0xA8, 0x5A, 0x5A, 0xFF), new Color32(0x5A, 0x4A, 0x3A, 0xFF)),
+
+        // **해골** — 살·옷 전부 뼈 색 · 마른 몸. 머리는 사람 머리가 아니라 빚은 해골이다(`ChibiPawnCreator.Skull` · 2026-10-27).
+        new Outfit("Enemy_Skeleton",         "Skeleton",      "ThinMale",   Bone, new Color32(0xCF, 0xC5, 0xAC, 0xFF), Bone, skeleton: true),
+        new Outfit("Enemy_SkeletonArcher",   "Skeleton",      "ThinMale",   Bone, new Color32(0xCF, 0xC5, 0xAC, 0xFF), Bone, skeleton: true),
+        new Outfit("Minion_Skeleton",        "Skeleton",      "ThinMale",   Bone, new Color32(0xCF, 0xC5, 0xAC, 0xFF), Bone, skeleton: true),
+    };
+
+    // 해골 머리에는 머리카락 · 귀 · 코가 없다 — 사람 머리 시절에 못 박아 둔 것(민머리 · 동물 코)을 비운다. 뼈 색 · 눈구멍 속은 `BoneLook`.
+    static void SkeletonLook(GameObject root)
+    {
+        var look = root.GetComponent<PawnLook>();
+        if (look == null) return;
+        var so = new SerializedObject(look);
+        foreach (var f in new[] { "shapeOverride", "hairOverride", "earOverride", "noseOverride" })
+            so.FindProperty(f).stringValue = "";
+        so.ApplyModifiedPropertiesWithoutUndo();
+        if (!root.TryGetComponent(out BoneLook _)) root.AddComponent<BoneLook>();
     }
 
     // 얼굴을 못 박는다 — 민머리 · 고블린 귀 · 긴 코. 머리형은 씨앗이 고른다(고블린마다 턱이 다르다).
@@ -819,6 +922,8 @@ public static partial class ChibiPawnCreator
             if (root.GetComponent<PawnLook>() == null) root.AddComponent<PawnLook>();
             // 몸통 선이 **제 몸만** 피하게 폰마다 번호를 준다(`ToonOutlineOuter`).
             if (root.GetComponent<PawnOutlineId>() == null) root.AddComponent<PawnOutlineId>();
+            // 찬 방어구를 몸에 칠한다(투구 · 옷 칸 · 손 · 신발 · 허리 램프).
+            if (root.GetComponent<PawnApparel>() == null) root.AddComponent<PawnApparel>();
 
             // **이 몸이 무엇인가** — 성별은 몸이 답한다(`PawnBody`). 머리형도 이 성별의 것만 구웠다.
             if (!root.TryGetComponent(out PawnBody pb)) pb = root.AddComponent<PawnBody>();
@@ -963,6 +1068,12 @@ public static partial class ChibiPawnCreator
         }
         return Save(name, verts, uvs, tris);
     }
+
+    // **투구 한 장** — 머리카락과 같은 껍데기(정수리를 덮고 이마 선 아래 앞을 비운다)를 조금 아래(t 0.50)까지 내린다. 크기는
+    // 머리카락(× 1.06)보다 한 겹 크게(`HelmetScale`) — 켜면 머리카락은 꺼지지만 귀·머리 살 위로 떠야 쇠로 읽힌다.
+    const float HelmetScale = 1.14f;
+    static Mesh HelmetShell(string fit, Func<float, float> radiusAt, float forward)
+        => Shear(HairShell($"Chibi_Helmet_{fit}", radiusAt, 0.50f, 150f), forward);
 
     // ── 이목구비 판 굽기 ────────────────────────────────────────────────────
     //
@@ -1272,7 +1383,10 @@ public static partial class ChibiPawnCreator
             mat.SetFloat("_StencilRef",       isFace ? 1f + PawnOutlineId.FaceBit : 1f);
             mat.SetFloat("_StencilWriteMask", outerOnly || isFace ? 255f : 0f);
             // **머리카락만 양면이다** — 커튼은 앞을 비운 한 겹이라 트인 자리로 안쪽이 보인다.
-            mat.SetFloat("_Cull", name == "Hair" ? 0f : 2f);
+            // 투구도 같은 모양의 한 겹이다.
+            mat.SetFloat("_Cull", name == "Hair" || name == "Helmet" ? 0f : 2f);
+            // **정점 색을 곱하는 것은 해골 머리뿐이다** — 다른 메시는 정점 색이 없다.
+            mat.SetFloat("_VertexAO", name == "Bone" ? 1f : 0f);
             EditorUtility.SetDirty(mat);
             map[name] = mat;
         }

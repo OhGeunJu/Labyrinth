@@ -20,7 +20,8 @@ using UnityEngine;
 //
 // 그림자를 던지는 등은 여덟 개까지다(`ShadowBudget`). 폰마다 던지면 굴의 횃불·화톳불 몫을 폰이 다 먹는다.
 //
-// 모형(손에 든 횃불 · 허리에 단 등)은 아직 없다 — 빛만 선다.
+// 손에 든 횃불의 모형은 `PawnProps`가 보조손에 쥐여 준다(표는 `HandPropSet` — 모형의 팩 등은 떼고 빛은 여기 하나).
+// 허리에 단 등의 모형은 아직 없다 — 빛만 선다.
 public class CarriedLight : MonoBehaviour
 {
     // 횃불은 벽 횃불과 같은 불빛(`WallTorch.prefab`의 등 — 색 · 세기 2.4). 램프는 야광석이라 차고 고르다.

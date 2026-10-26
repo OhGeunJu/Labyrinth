@@ -537,6 +537,12 @@ public static class DataManager
         a.DamageReduction = s.damageReduction;
         a.MoveSpeedMult   = s.moveSpeedMult > 0f ? s.moveSpeedMult : 1f;
         a.Ability         = ResolveAbility(s.abilityId, s.id);
+        // 색 오타는 조용히 기본 갈색이 된다 — 적었는데 못 읽은 것은 알린다(`ResolveAbility`와 같은 이유).
+        if (!string.IsNullOrEmpty(s.wornColor))
+        {
+            if (ColorUtility.TryParseHtmlString(s.wornColor, out var worn)) a.WornColor = worn;
+            else Debug.LogWarning($"[데이터] `{s.id}`의 wornColor `{s.wornColor}`를 못 읽었습니다 — `#RRGGBB`로 적을 것.");
+        }
         return a;
     }
 

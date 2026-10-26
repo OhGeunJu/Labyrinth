@@ -22,7 +22,27 @@ public class PawnLookEditor : Editor
         var look = (PawnLook)target;
 
         // 처음 열 때 목록을 채운다 — 플레이 중이 아니면 `Start`가 안 돌아 비어 있다.
-        if (!look.ShapeNames.Any()) look.Regather();
+        if (!look.ShapeNames.Any() && !look.PickAxes.Any()) look.Regather();
+
+        // **해골처럼 고르는 축으로 된 머리**(`Head.Pick.*`) — 사람 머리 줄은 비어 있으니 축 줄만 낸다.
+        if (look.PickAxes.Any())
+        {
+            EditorGUILayout.LabelField("고르는 축 — 비우면 씨앗이 고른다", EditorStyles.boldLabel);
+            foreach (var axis in look.PickAxes.ToList())
+            {
+                var a = axis;
+                Row($"{a} ({look.Picked(a)})", look.PickOptions(a).ToList(), look.PickOverride(a), v => look.SetPickOverride(a, v), look);
+            }
+            EditorGUILayout.Space();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("전부 씨앗으로")) Change(look, look.ClearPickOverrides);
+                if (GUILayout.Button("다시 모으기"))   Change(look, look.Regather);
+            }
+            EditorGUILayout.HelpBox("축마다 씨앗(명세 Seed · 없으면 이름 해시)이 따로 고른다. `@축.벌`이 붙은 벌은 그 축이 맞을 때만 켜진다" +
+                                    "(이는 턱이 있을 때만). 뼈 색 · 눈구멍 속은 `BoneLook`.", MessageType.None);
+            return;
+        }
 
         EditorGUILayout.LabelField("지금", EditorStyles.boldLabel);
         using (new EditorGUI.DisabledScope(true))

@@ -6,20 +6,27 @@ alch_potion_heal,치유 물약 조제,potion_heal,1,alch_essence x2 + herbs x1,4
 alch_potion_antidote,해독제 조제,potion_antidote,1,alch_essence x2 + herbs x3,54,94,1.74,Alchemy,25,12.0,Res_Alchemy,JSON
 alch_refined_essence,응축 정수 정제,res_refined_essence,1,alch_essence x4 + herbs x3,90,140,1.56,Alchemy,25,14.0,Res_Refining,JSON
 alch_surgery,수술 도구 꾸리기,med_surgery,1,med_kit x2 + res_refined_essence x1 + Res_Steel x1,600,420,0.7,Alchemy,40,20.0,Res_Surgery,JSON
+craft_bronze_feet,청동 장화 제작,arm_bronze_feet,1,Res_Bronze x2 + leather x1,164,271,1.65,ArmorCrafting,10,11.0,Res_Casting,JSON
+craft_bronze_hands,청동 손갑 제작,arm_bronze_hands,1,Res_Bronze x2 + leather x1,164,271,1.65,ArmorCrafting,10,11.0,Res_Casting,JSON
 craft_bronze_head,청동 투구 제작,arm_bronze_head,1,Res_Bronze x3,210,345,1.64,ArmorCrafting,10,12.0,Res_Casting,JSON
 craft_bronze_legs,청동 각반 제작,arm_bronze_legs,1,Res_Bronze x3 + leather x1,234,385,1.65,ArmorCrafting,10,13.0,Res_Casting,JSON
 craft_glow_lamp,야광석 램프 제작,Arm_GlowLamp,1,Res_Bronze x2 + res_glowstone x2,220,360,1.64,ArmorCrafting,10,14.0,Res_Casting,JSON
 craft_bronze_chest,청동 흉갑 제작,arm_bronze_chest,1,Res_Bronze x5 + leather x2,398,655,1.65,ArmorCrafting,15,18.0,Res_Casting,JSON
 craft_steel_head,강철 투구 제작,arm_steel_head,1,Res_Steel x3 + leather x1,414,685,1.65,ArmorCrafting,20,15.0,Res_Casting,JSON
+craft_steel_feet,강철 철화 제작,arm_steel_feet,1,Res_Steel x3 + leather x1,414,683,1.65,ArmorCrafting,28,16.0,Res_Platemail,JSON
 craft_steel_hands,강철 건틀릿 제작,arm_steel_hands,1,Res_Steel x3 + leather x1,414,685,1.65,ArmorCrafting,28,16.0,Res_Platemail,JSON
 craft_steel_shield,강철 방패 제작,Wpn_SteelShield,1,Res_Steel x4 + Res_HardLumber x2,584,964,1.65,ArmorCrafting,28,18.0,Res_Platemail,JSON
 craft_steel_chest,강철 흉갑 제작,arm_steel_chest,1,Res_Steel x5 + leather x2,698,1150,1.65,ArmorCrafting,30,22.0,Res_Casting,JSON
 craft_steel_legs,강철 각반 제작,arm_steel_legs,1,Res_Steel x4 + leather x1,544,900,1.65,ArmorCrafting,30,20.0,Res_Platemail,JSON
+craft_titanium_feet,티타늄 철화 제작,arm_titanium_feet,1,Res_Titanium x3 + leather x1,774,1277,1.65,ArmorCrafting,30,22.0,Res_Platemail,JSON
+craft_titanium_hands,티타늄 건틀릿 제작,arm_titanium_hands,1,Res_Titanium x3 + leather x1,774,1277,1.65,ArmorCrafting,30,22.0,Res_Platemail,JSON
 craft_titanium_head,티타늄 투구 제작,arm_titanium_head,1,Res_Titanium x3 + leather x1,774,1275,1.65,ArmorCrafting,30,24.0,Res_Platemail,JSON
 craft_titanium_legs,티타늄 각반 제작,arm_titanium_legs,1,Res_Titanium x4 + leather x1,1024,1690,1.65,ArmorCrafting,32,28.0,Res_Platemail,JSON
 craft_chain_chest,사슬 갑옷 제작,arm_chain_chest,1,Res_Steel x3 + res_hardleather x2,538,890,1.65,ArmorCrafting,34,24.0,Res_Chainmail,JSON
 craft_titanium_chest,티타늄 흉갑 제작,arm_titanium_chest,1,Res_Titanium x5 + leather x2,1298,2140,1.65,ArmorCrafting,34,30.0,Res_Platemail,JSON
 craft_mithril_chest,미스릴 흉갑 제작,arm_mithril_chest,1,Res_Mithril x5 + res_hardleather x2,2498,4120,1.65,ArmorCrafting,55,34.0,Res_MasterSmithing,JSON
+craft_mithril_feet,미스릴 장화 제작,arm_mithril_feet,1,Res_Mithril x2 + res_hardleather x1,1014,1673,1.65,ArmorCrafting,55,26.0,Res_MasterSmithing,JSON
+craft_mithril_hands,미스릴 건틀릿 제작,arm_mithril_hands,1,Res_Mithril x2 + res_hardleather x1,1014,1673,1.65,ArmorCrafting,55,26.0,Res_MasterSmithing,JSON
 cook_bread,빵 굽기,Food_Bread,2,flour x2,18,18,1.0,Cooking,0,6.0,Res_Baking,JSON
 cook_dried_meat,고기 말리기,food_dried_meat,2,Food_RawMeat x2,16,24,1.5,Cooking,0,9.0,Res_Cooking,JSON
 cook_flour,밀가루 빻기,flour,2,Crop_Wheat x3,12,18,1.5,Cooking,0,4.0,,JSON
@@ -59,6 +66,8 @@ craft_cloth_chest,천 옷 제작,arm_cloth_chest,1,cloth x4,56,84,1.5,Tailoring,
 craft_leather_boots,가죽 장화 제작,Arm_LeatherBoots,1,leather x2,48,74,1.54,Tailoring,5,8.0,,JSON
 craft_leather_hands,가죽 장갑 제작,Arm_LeatherHands,1,leather x2,48,74,1.54,Tailoring,5,8.0,,JSON
 craft_leather_head,가죽 모자 제작,Arm_LeatherHead,1,leather x2,48,74,1.54,Tailoring,5,8.0,,JSON
+craft_chitin_feet,갑각 장화 제작,arm_chitin_feet,1,res_chitin x3 + leather x1,60,99,1.65,Tailoring,8,8.0,Res_BoneArmor,JSON
+craft_chitin_hands,갑각 장갑 제작,arm_chitin_hands,1,res_chitin x3 + leather x1,60,99,1.65,Tailoring,8,8.0,Res_BoneArmor,JSON
 craft_chitin_head,갑각 투구 제작,arm_chitin_head,1,res_chitin x3 + leather x1,60,110,1.83,Tailoring,8,9.0,Res_BoneArmor,JSON
 craft_chitin_legs,갑각 각반 제작,arm_chitin_legs,1,res_chitin x4 + leather x1,72,140,1.94,Tailoring,8,10.0,Res_BoneArmor,JSON
 craft_leather_legs,가죽 각반 제작,Arm_LeatherLegs,1,leather x3,72,114,1.58,Tailoring,8,10.0,,JSON

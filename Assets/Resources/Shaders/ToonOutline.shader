@@ -51,6 +51,11 @@ Shader "DungeonColony/ToonOutline"
         [IntRange] _StencilWriteMask("스텐실 쓰기 마스크", Range(0,255)) = 0
         // 얼굴인가 — 셰이더는 안 읽는다. `PawnOutlineId`가 번호에 128을 얹을지 여기서 읽는다(재질이 들어야 저장된다).
         [ToggleUI] _StencilFace("얼굴(번호 + 128)", Float) = 0
+
+        // **정점 색(그늘)을 곱한다**(2026-10-27) — 해골 머리만 1이다(`ChibiPawnCreator.Skull`이 구멍 속 그늘을 정점 색에 굽는다).
+        // 계단 음영은 빛의 방향만 봐서 깊은 구멍의 바닥도 밝게 칠한다 — 구운 그늘이 그것을 누른다. 0이면 정점 색을 안 본다
+        // (다른 메시는 정점 색이 없다). 눈구멍 속을 뼈색으로 둘 개체는 `BoneLook`이 렌더러마다 낮춘다.
+        _VertexAO("정점 색 그늘", Range(0,1)) = 0
     }
 
     SubShader
@@ -68,6 +73,7 @@ Shader "DungeonColony/ToonOutline"
             float4 _OutlineColor;
             float  _OutlineWidth;
             float  _OutlineMin;
+            float  _VertexAO;
         CBUFFER_END
 
         // 폰의 최저 밝기 — **재질이 아니라 세계가 든다**(`UnderworldLighting`). 상수(0.35)였을 때는 굴을
@@ -120,12 +126,13 @@ Shader "DungeonColony/ToonOutline"
             #pragma multi_compile_fragment _ _SHADOWS_SOFT
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
-            struct LitIn  { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
+            struct LitIn  { float4 positionOS : POSITION; float3 normalOS : NORMAL; half4 color : COLOR; };
             struct LitOut
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
+                half3  ao         : TEXCOORD2;
             };
 
             LitOut LitVert(LitIn v)
@@ -134,6 +141,7 @@ Shader "DungeonColony/ToonOutline"
                 o.positionWS = TransformObjectToWorld(v.positionOS.xyz);
                 o.normalWS   = TransformObjectToWorldNormal(v.normalOS);
                 o.positionCS = TransformWorldToHClip(o.positionWS);
+                o.ao         = lerp(half3(1, 1, 1), v.color.rgb, _VertexAO);
                 return o;
             }
 
@@ -179,7 +187,7 @@ Shader "DungeonColony/ToonOutline"
                 LIGHT_LOOP_END
 
                 half3 shade = _BaseColor.rgb * _ShadeColor.rgb;
-                half3 col   = lerp(shade, _BaseColor.rgb, lit);
+                half3 col   = lerp(shade, _BaseColor.rgb, lit) * i.ao;
 
                 // 주변광이 **바닥을 든다** — 굴의 주변광이 폰의 최저 밝기다.
                 // **불빛 안에서도 0.6까지다** — 폰의 색은 주변광 0.35~0.45 아래에서 맞춘 것이라, 1까지 올리면

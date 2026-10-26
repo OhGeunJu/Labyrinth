@@ -68,6 +68,21 @@ public static class HandPropCreator
         ("Staff", new Vector3(0f, 0f, 0.15f), new Vector3(90f, 0f, 0f), BuildStaff),
     };
 
+    // **팩 프리팹을 통째로 쥐는 것** — 메시만이 아니라 딸린 불꽃까지 써야 하는 것(2026-10-22, 사용자:
+    // *"횃불을 들면 횃불을 손에 들었으면 좋겠어"*). 동굴 팩의 횃불은 나무 자루 위에 불꽃 파티클이 이미 붙어 있다.
+    //
+    // **팩의 등(`Light`)과 렌즈 플레어는 뗀다** — 폰이 드는 빛은 `CarriedLight` 하나가 세운다(`LightSource`라
+    // 시야까지 걷힌다). 둘을 두면 같은 횃불이 두 번 밝고, 장식 등은 시야를 모른다.
+    //
+    // 이름 · 프리팹 · 왼손인가 · 쥐는 자리 · 쥐는 회전. 자루는 +Y로 서고 밑동이 피벗이라 검과 같은 회전에서
+    // 시작하고, 밑동에서 한 뼘 위를 쥐게 -Z로 민다(+Z가 머리 쪽 — `HandProp`). 회전은 **눈으로 맞출 값**이다.
+    static readonly (string name, string prefab, bool left, Vector3 grip, Vector3 euler)[] Kits =
+    {
+        ("Torch", Cave + "/Props/Torches/torch_wooden_small.prefab", true, new Vector3(0f, 0f, -0.08f), new Vector3(90f, 0f, 0f)),
+    };
+
+    const string Cave = "Assets/assetsss/3DForge/Cave Adventure kit/Prefabs";
+
     // 무기 종류 → 프롭.
     //
     // **투창은 창을 쓴다** — 던지는 창이라 같은 집안이고(*없는 것을 엉뚱한 것으로 보여 주는 것*에
@@ -81,6 +96,7 @@ public static class HandPropCreator
         (WeaponType.Polearm,      "Spear"), (WeaponType.Javelin,      "Spear"),
         (WeaponType.Staff,        "Staff"),
         (WeaponType.Shield,       "Shield"),
+        (WeaponType.Torch,        "Torch"),
     };
 
     // 일 동작 → 도구. 빈손으로 하는 동작(씨 뿌리기·줍기)은 없다.
@@ -138,6 +154,27 @@ public static class HandPropCreator
 
         foreach (var (name, grip, euler, build) in Blocks)
             made[name] = SaveProp(name, left: false, twoHanded: false, euler, grip, build);
+
+        foreach (var (name, prefab, left, grip, euler) in Kits)
+        {
+            var kit = AssetDatabase.LoadAssetAtPath<GameObject>(prefab);
+            if (kit == null) { Debug.LogWarning($"[HandProp] 프리팹을 못 찾았다 — {prefab}"); continue; }
+
+            made[name] = SaveProp(name, left, twoHanded: false, euler, grip, root =>
+            {
+                var mesh = (GameObject)PrefabUtility.InstantiatePrefab(kit, root);
+                // 풀어 둔다 — 팩 프리팹 인스턴스에서는 자식을 못 지우고, 손에 든 소품이 팩 갱신을 따라갈 이유도 없다.
+                PrefabUtility.UnpackPrefabInstance(mesh, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                mesh.name = "Mesh";
+                mesh.transform.localPosition = Vector3.zero;
+                mesh.transform.localRotation = Quaternion.identity;
+                mesh.transform.localScale    = Vector3.one;
+
+                foreach (var c in mesh.GetComponentsInChildren<Collider>(true))  Object.DestroyImmediate(c);
+                foreach (var l in mesh.GetComponentsInChildren<Light>(true))     Object.DestroyImmediate(l);
+                foreach (var f in mesh.GetComponentsInChildren<LensFlare>(true)) Object.DestroyImmediate(f);
+            });
+        }
 
         // ── 표 ──────────────────────────────────────────────────────────
         var set = AssetDatabase.LoadAssetAtPath<HandPropSet>(SetPath);

@@ -248,6 +248,16 @@ public class Corpse : MonoBehaviour
             mpb.SetColor("_BaseColor", c);   // URP
             mpb.SetColor("_Color", c);       // 빌트인 폴백
             rend.SetPropertyBlock(mpb);
+
+            // **치비 몸은 칸마다 칠해져 있다**(`PawnApparel` — 셔츠 · 바지 칸에 입은 색). 칸 블록이 렌더러 블록을 이기므로
+            // 렌더러에만 적으면 옷만 산 사람 색으로 남는다(2026-10-27 리뷰). 칸으로 칠하는 것은 몸 메시뿐이라 거기만 칸에도 적는다.
+            if (rend is SkinnedMeshRenderer)
+                for (int i = 0; i < rend.sharedMaterials.Length; i++)
+                {
+                    rend.GetPropertyBlock(mpb, i);
+                    mpb.SetColor("_BaseColor", c);
+                    rend.SetPropertyBlock(mpb, i);
+                }
         }
     }
 }

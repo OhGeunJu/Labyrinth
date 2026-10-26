@@ -57,6 +57,7 @@ public static partial class ChibiPawnCreator
     const float PPantsH   = 0.22f;                  // 몸통 밑동의 바지 — 셔츠 밑단이 여기서 끝나 보인다
     const float PShoeH    = 0.22f, PShoeW = 0.33f, PShoeLen = 0.50f, PShoeFwd = 0.08f;
     const float PHand     = 0.32f;
+    const float PLamp     = 0.20f;                  // 허리 램프 알의 지름
     const float PArmLen   = 0.56f, PArmW = 0.20f;
     const float PArmIn    = 0.30f;                  // 팔 가운데가 몸통 옆선에서 팔 굵기의 이만큼 밖(나머지는 몸통에 묻힌다)
     const float PShoulder = 0.10f;                  // 어깨가 몸통 꼭대기에서 이만큼 아래
@@ -111,6 +112,7 @@ public static partial class ChibiPawnCreator
             hairs[$"{fit}.Short"] = Shear(HairShell($"Chibi_Hair_{fit}_Short", hairR, 0.44f, 150f), forward);
             hairs[$"{fit}.Bob"]   = Shear(HairShell($"Chibi_Hair_{fit}_Bob",   hairR, 0.26f, 125f), forward);
             hairs[$"{fit}.Long"]  = Shear(HairShell($"Chibi_Hair_{fit}_Long",  hairR, 0.10f, 110f), forward);
+            hairs[$"{fit}.Helmet"] = HelmetShell(fit, hairR, forward);
         }
         var ears = new Dictionary<string, Mesh>();
         foreach (var e in Ears) ears[e.Name] = Lathe($"Chibi_Ear_{e.Name}", e.Profile, 16, 16, out _, densePole: 2);
@@ -196,6 +198,13 @@ public static partial class ChibiPawnCreator
         rigid.Add(new Part("HandR.Ball", null, new Vector3( d.ArmX, d.HandY - d.Hand * 0.25f, 0f), Vector3.one * d.Hand, "SkinOuter", outerMat: "OutlineOuter"));
         rigid.Add(new Part("FootL.Shoe", null, new Vector3(-d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
         rigid.Add(new Part("FootR.Shoe", null, new Vector3( d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
+
+        // **허리 램프**(2026-10-23) — 바지 띠 높이, 몸 앞 오른쪽에 반쯤 묻힌 알. 꺼 두고 허리에 무엇을 차면 켜진다(`PawnApparel`).
+        {
+            float r = BodyTorsoRadius(d.Half, PPantsH / PTorsoH, d.TorsoH);
+            rigid.Add(new Part("Hips.Lamp", null, new Vector3(r * 0.55f, d.HemY, r * d.Depth * 0.85f),
+                               Vector3.one * PLamp * d.Hh, "Lamp", on: false));
+        }
 
         // 관절 — 팔을 내린 자세로 세운다(몸을 그 자세로 지었으니 바인드 포즈도 그 자세다). T자는 맨 끝에.
         if (!model.TryGetComponent(out PawnRig rig)) rig = model.gameObject.AddComponent<PawnRig>();

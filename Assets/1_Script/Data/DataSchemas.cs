@@ -80,6 +80,7 @@ public class ArmorSchema : ItemSchema
     public string armorSlot       = "Chest";
     public float  damageReduction = 5f;
     public float  moveSpeedMult   = 1f;   // 걸음 배율(신발) — 안 적으면 1
+    public string wornColor       = "";   // 입은 색 `#RRGGBB`(`ArmorData.WornColor`) — 안 적으면 기본 갈색
 
     // **장비가 능동을 준다**(2026-08-23). JSON 아이템은 런타임 생성이라 SO를 참조할 수
     // 없으므로 **id로 가리킨다** — `LoadoutData.ItemId`·`MerchantPoolEntry`와 같은 규약이다.
