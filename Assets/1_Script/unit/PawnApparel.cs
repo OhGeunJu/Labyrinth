@@ -10,6 +10,11 @@ using UnityEngine;
 //   - 머리 → 투구 껍데기(머리카락 대신 — `PawnLook.Helmeted`) · 허리 → 램프 알(`Hips.Lamp`)
 // 색은 갑옷이 든다(`ArmorData.WornTint`). 무기는 `PawnProps`가 손에 쥔다.
 //
+// **해골은 칠할 옷이 없다 — 껍데기를 켠다**(2026-10-27). 뼈 몸(`ChibiPawnCreator.Bones`)에는 칸마다 껍데기(`관절.Armor.칸` —
+// 흉갑 · 다리 · 장갑 · 장화)가 꺼진 채 붙어 있고, 찼으면 켜고 갑옷 색으로 칠한다. 덮은 자리의 뼈만 가려진다.
+// **껍데기는 렌더러가 아니라 게임 오브젝트로 켠다** — 렌더러를 다 켜고 끄는 문이 따로 있다(시체를 파낼 때 `Corpse.SetBuried` ·
+// 전용 모델을 입힐 때 `UnitBrain.ApplyLook`). 렌더러로 켜면 안 찬 껍데기가 파낸 시체에 다 돋거나, 전용 모델 위에 껍데기가 뜬다.
+//
 // **판정을 안 만든다** — 무엇을 찼나는 `Equipment`가 답하고 바뀌면 알린다(`OnEquipChanged`). 치비 몸이 아니면(골렘·짐승)
 // 찾을 살이 없어 아무 일도 안 한다.
 //
@@ -28,6 +33,7 @@ public class PawnApparel : MonoBehaviour
     SkinnedMeshRenderer _body;
     readonly List<Renderer> _hands = new(), _shoes = new();
     Renderer              _lamp;
+    readonly List<(Renderer r, ArmorSlot slot)> _shells = new();
     MaterialPropertyBlock _mpb;
     bool                  _gathered;
 
@@ -50,6 +56,13 @@ public class PawnApparel : MonoBehaviour
         Paint(_body, PantsSlot, _equip.GetArmor(ArmorSlot.Legs));
         foreach (var r in _hands) Paint(r, -1, _equip.GetArmor(ArmorSlot.Hands));
         foreach (var r in _shoes) Paint(r, -1, _equip.GetArmor(ArmorSlot.Feet));
+
+        foreach (var (r, slot) in _shells)
+        {
+            var armor = _equip.GetArmor(slot);
+            r.gameObject.SetActive(armor != null);
+            Paint(r, -1, armor);
+        }
 
         var helmet = _equip.GetArmor(ArmorSlot.Head);
         if (_look != null)
@@ -80,12 +93,13 @@ public class PawnApparel : MonoBehaviour
         if (slot < 0) r.SetPropertyBlock(_mpb); else r.SetPropertyBlock(_mpb, slot);
     }
 
-    // 이름으로 찾는다 — 생성기가 붙인 이름이다(`ChibiPawnCreator.DressSkinned`: `Body` · `HandL.Ball` · `FootL.Shoe` · `Hips.Lamp`).
+    // 이름으로 찾는다 — 생성기가 붙인 이름이다(`ChibiPawnCreator.DressSkinned`: `Body` · `HandL.Ball` · `FootL.Shoe` · `Hips.Lamp` ·
+    // 해골의 `관절.Armor.칸`).
     void Gather()
     {
         _gathered = true;
         TryGetComponent(out _look);
-        _hands.Clear(); _shoes.Clear();
+        _hands.Clear(); _shoes.Clear(); _shells.Clear();
         foreach (var r in GetComponentsInChildren<Renderer>(true))
         {
             string n = r.name;
@@ -93,6 +107,11 @@ public class PawnApparel : MonoBehaviour
             else if (n.EndsWith(".Ball") && n.StartsWith("Hand")) _hands.Add(r);
             else if (n.EndsWith(".Shoe")) _shoes.Add(r);
             else if (n == "Hips.Lamp") _lamp = r;
+            else
+            {
+                int at = n.IndexOf(".Armor.", System.StringComparison.Ordinal);
+                if (at > 0 && System.Enum.TryParse(n.Substring(at + 7), out ArmorSlot slot)) _shells.Add((r, slot));
+            }
         }
     }
 }

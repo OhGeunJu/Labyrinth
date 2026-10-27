@@ -206,7 +206,19 @@ public static partial class ChibiPawnCreator
         // **해골 머리**(2026-10-27) — 코처럼 제 선을 끄고 바깥 선만 받는다(이가 선보다 작다) · 정점 색의 그늘을 곱한다(`_VertexAO`).
         // 색은 해골 옷 벌(`Chibi_Bone_Skeleton`)이 덮고, 개체마다의 뼈 색은 `BoneLook`이 얹는다.
         ("Bone",      new Color32(0xE2, 0xD9, 0xC2, 0xFF)),
+        // **해골 몸**(2026-10-27) — 선이 둘이다. 제 선은 가늘게(`BoneLine` — 붙은 뼈 사이의 이음매) · 폰 밖의 선은 부위마다 굵기가
+        // 다른 바깥 선 재질(`OutlineBone*` — 머리 6 · 몸통 4.5 · 팔다리 3.5 · 손발 2.5cm, 사용자가 고른 C). 그래서 몸통처럼 스텐실에
+        // 제 번호를 적는다. 방어구 껍데기도 같다 · 색은 찬 갑옷이 칠한다(`PawnApparel`).
+        ("BoneBody",  new Color32(0xE2, 0xD9, 0xC2, 0xFF)),
+        ("BoneArmor", new Color32(0x8A, 0x8E, 0x96, 0xFF)),
     };
+
+    public const string OutlineBoneTorso = "OutlineBoneTorso", OutlineBoneLimb = "OutlineBoneLimb", OutlineBoneDigit = "OutlineBoneDigit";
+    static readonly (string key, float width)[] BoneOuterLines =
+        { (OutlineBoneTorso, 0.045f), (OutlineBoneLimb, 0.035f), (OutlineBoneDigit, 0.025f) };
+
+    // 제 선이 가는 재질 — 해골 몸의 뼈 · 방어구 껍데기.
+    static bool ThinLine(string mat) => mat == "BoneBody" || mat == "BoneArmor";
 
     // 제 선을 끄고 바깥 선을 따로 받는 재질 — 이름으로 가른다(`Mats`의 코 둘 · 해골 머리).
     static bool FineOutline(string mat) => mat == "SkinFine" || mat == "NoseDark" || mat == "Bone";
@@ -616,6 +628,7 @@ public static partial class ChibiPawnCreator
         var mats = EnsureMaterials(toon, face, outer, atlases);
 
         _saved.Clear();
+        _boneBodies.Clear();   // 뼈 몸 메시는 돌 때마다 다시 굽는다(남겨 두면 `_saved`에 안 적혀 끝의 청소가 지운다)
         Heads = MakeHeads(ChibiFaceLayout.LoadOrCreate());
         var heads    = new Dictionary<string, Mesh>();
         var features = new Dictionary<(string, string), Mesh>();
@@ -669,7 +682,7 @@ public static partial class ChibiPawnCreator
         // 해골 머리 — 해골 셋만 받는다(`ChibiPawnCreator.Skull`).
         var skull      = SkullMeshes();
         var skullParts = new Dictionary<string, List<Part>>();
-        foreach (var g in Genders) skullParts[g] = SkullHeadParts(g, skull, hairs);
+        foreach (var g in Genders) skullParts[g] = SkullHeadParts(g, skull);
 
         var made   = new List<string>();
         var bodies = new List<string>();   // 방랑자가 태어날 수 있는 몸들(`BodyVariants`)
@@ -731,8 +744,13 @@ public static partial class ChibiPawnCreator
             if (!File.Exists(op)) { Debug.LogWarning($"[치비] 프리팹이 없다 — {op}"); continue; }
             var oShape = Array.Find(Shapes, x => x.Suffix == o.Shape);
             var oMats  = OutfitMaterials(mats, o.Key, o.Shirt, o.Pants, o.Skin, null);
-            if (o.Skeleton) oMats["Bone"] = Variant(mats["Bone"], $"Chibi_Bone_{o.Key}", "_BaseColor", o.Skin ?? (Color)Bone);
-            if (Dress(op, oShape, o.Skeleton ? skullParts : headParts, oMats, atlases, isSource: false, o.Skeleton ? SkeletonLook : null))
+            if (o.Skeleton)
+            {
+                oMats["Bone"]     = Variant(mats["Bone"],     $"Chibi_Bone_{o.Key}",     "_BaseColor", o.Skin ?? (Color)Bone);
+                oMats["BoneBody"] = Variant(mats["BoneBody"], $"Chibi_BoneBody_{o.Key}", "_BaseColor", o.Skin ?? (Color)Bone);
+            }
+            if (Dress(op, oShape, o.Skeleton ? skullParts : headParts, oMats, atlases, isSource: false, o.Skeleton ? SkeletonLook : null,
+                      o.Skeleton ? BoneBodyFor(oShape) : null))
                 made.Add(o.Prefab);
         }
 
@@ -908,16 +926,16 @@ public static partial class ChibiPawnCreator
     // `finish` — 저장 직전에 한 번 더 손볼 것(고블린의 얼굴처럼).
     //
     // **몸은 한 덩어리다**(2026-10-09 — 시제품에서 옮겨 왔다, `ChibiPawnCreator.Proto`의 `DressSkinned`). 관절까지 여기서
-    // 세우므로 `Pawn/2`가 따로 필요 없다(그 도구는 스킨 메시 몸을 건너뛴다).
+    // 세우므로 `Pawn/2`가 따로 필요 없다(그 도구는 치비 몸 — `PawnLook`이 붙은 몸을 건너뛴다).
     static bool Dress(string path, Shape s, Dictionary<string, List<Part>> headParts,
                       Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, bool isSource,
-                      Action<GameObject> finish = null)
+                      Action<GameObject> finish = null, BoneBody skeleton = null)
     {
         var root = PrefabUtility.LoadPrefabContents(path);
         try
         {
             if (!DressSkinned(root, DimsOf(s), headParts[s.Gender], mats, atlases,
-                              Path.GetFileNameWithoutExtension(path), $"Chibi_Body_{s.Suffix}")) return false;
+                              Path.GetFileNameWithoutExtension(path), $"Chibi_Body_{s.Suffix}", skeleton)) return false;
 
             if (root.GetComponent<PawnLook>() == null) root.AddComponent<PawnLook>();
             // 몸통 선이 **제 몸만** 피하게 폰마다 번호를 준다(`ToonOutlineOuter`).
@@ -1373,7 +1391,7 @@ public static partial class ChibiPawnCreator
             // **다리(`Pants`)도 몸통처럼** — 팔다리는 관절마다 두 토막이라 제 선을 두면 무릎·팔꿈치마다 검은 띠가 선다(시제품, 2026-10-06).
             // **신발·시제품 손도** — 제 선(스텐실을 안 보는 껍데기)이 발목·손목에 검은 띠를 긋고, 땅 이기기를 안 받아 발밑 선이 먹혔다(10-09).
             bool outerOnly = name == "Shirt" || name == "Pants" || name == "Shoe" || name == "SkinOuter" || FineOutline(name);
-            mat.SetFloat("_OutlineWidth", outerOnly ? 0f : OutlineWidth);
+            mat.SetFloat("_OutlineWidth", outerOnly ? 0f : ThinLine(name) ? BoneLine : OutlineWidth);
             mat.SetFloat("_OutlineMin",   outerOnly ? 0f : OutlineMin);
             // 스텐실에 제 자리를 적는 것은 **몸통과 얼굴**뿐이다 — 번호는 폰마다 `PawnOutlineId`가 준다(여기 값은 씬 뷰용 기본값).
             // 얼굴(머리 살·코)은 번호에 **128을 얹어** 적는다: 코 선이 비킬 곳은 제 얼굴뿐이라 손·몸통과 갈라야 한다.
@@ -1381,12 +1399,12 @@ public static partial class ChibiPawnCreator
             bool isFace = name == "HeadSkin" || FineOutline(name);
             mat.SetFloat("_StencilFace",      isFace ? 1f : 0f);
             mat.SetFloat("_StencilRef",       isFace ? 1f + PawnOutlineId.FaceBit : 1f);
-            mat.SetFloat("_StencilWriteMask", outerOnly || isFace ? 255f : 0f);
+            mat.SetFloat("_StencilWriteMask", outerOnly || isFace || ThinLine(name) ? 255f : 0f);
             // **머리카락만 양면이다** — 커튼은 앞을 비운 한 겹이라 트인 자리로 안쪽이 보인다.
             // 투구도 같은 모양의 한 겹이다.
             mat.SetFloat("_Cull", name == "Hair" || name == "Helmet" ? 0f : 2f);
             // **정점 색을 곱하는 것은 해골 머리뿐이다** — 다른 메시는 정점 색이 없다.
-            mat.SetFloat("_VertexAO", name == "Bone" ? 1f : 0f);
+            mat.SetFloat("_VertexAO", name == "Bone" || name == "BoneBody" ? 1f : 0f);
             EditorUtility.SetDirty(mat);
             map[name] = mat;
         }
@@ -1413,6 +1431,17 @@ public static partial class ChibiPawnCreator
         o.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 1;
         EditorUtility.SetDirty(o);
         map["OutlineOuter"] = o;
+
+        // 해골 몸의 바깥 선 — 몸통 선과 같고 굵기만 부위마다(뼈가 가늘어 6cm면 뼈보다 선이 넓다 · 끝으로 갈수록 가늘게).
+        foreach (var (key, width) in BoneOuterLines)
+        {
+            var b = LoadOrMake($"{MatDir}/Chibi_{key}.mat", outer);
+            b.CopyPropertiesFromMaterial(o);
+            b.SetFloat("_OutlineWidth", width);
+            b.renderQueue = o.renderQueue;
+            EditorUtility.SetDirty(b);
+            map[key] = b;
+        }
 
         // 코의 바깥 선 — **굵기는 머리와 같고 · 땅을 이기려 당기지 않는다**(코는 땅에 안 닿는다 · 당기면 얼굴 앞으로 떠 보인다).
         // 처음엔 1.2cm로 가늘게 뒀는데 머리 테두리(6cm) 옆에서 **코끝만 선이 얇아** 선이 없는 것처럼 읽혔다(2026-09-19, 사용자:

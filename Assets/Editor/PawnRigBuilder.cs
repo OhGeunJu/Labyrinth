@@ -247,6 +247,9 @@ public static class PawnRigBuilder
         if (root.GetComponent<PawnMover>() == null) return "PawnMover가 없다";
         var model = root.transform.Find("Model");
         if (model == null) return "`Model`이 없다";
+        // **치비 몸은 `Pawn/3`이 관절까지 세운다** — 사람 몸은 스킨 메시라 아래에서 걸렸지만, 해골의 뼈 몸(2026-10-27)은 관절마다
+        // 굳은 조각이라 스킨 메시가 없다. 그대로 두면 `Flatten`이 관절을 지우고 뼈를 `Model` 밑으로 펼친다.
+        if (root.TryGetComponent(out PawnLook _)) return "치비 몸 — `Pawn/3`이 관절까지 세운다";
 
         Undress(root, model);
         if (model.GetComponentInChildren<SkinnedMeshRenderer>(true) != null) return "스킨 메시(골렘 · 치비 시제품) — 제 뼈가 있다";

@@ -28,14 +28,16 @@ using UnityEngine;
 public static partial class ChibiPawnCreator
 {
     // 거리장 좌표(머리 지름 ≈ 1)를 메시 좌표(머리 높이 1)로 — 턱을 단 해골의 키(1.24)가 사람 머리 높이와 거의 같게.
-    // 사람 머리는 폭이 높이의 0.91이고 해골은 0.83이라 조금 좁다 — 투구를 그만큼 줄여 씌운다(`SkullHelmetSlim`).
     const float SkullUnit = 1.20f;
     static readonly Vector3 SkullCenter = new(0f, 0.01f, -0.045f);
-    const float SkullHelmetSlim = 0.92f;
 
     // 격자 한 칸(거리장 단위) — 머리는 화면에서 100px 안팎이라 이보다 촘촘하면 정점만 늘어난다(두개골 1.1cm → 1.5cm로 4.4만 → 2.4만).
     // 금(2.2cm)과 이(3cm)가 끊기지 않을 만큼은 촘촘해야 한다.
     const float SkullStep = 0.015f, JawStep = 0.012f, TeethStep = 0.0065f;
+
+    // 뽑은 뒤 남기는 정점 비율(`Decimate`) — 유니티 밖에서 뽑아 그려 원본과 나란히 보고 정했다(2026-10-27). 두개골 2.4만 → 3.5천 ·
+    // 깨진 판은 금의 가는 가지가 무뎌져 덜 줄인다 · 이는 낟알이 작아 덜 줄인다.
+    const float SkullKeep = 0.15f, CrackedKeep = 0.25f, JawKeep = 0.2f, TeethKeep = 0.25f;
 
     public static readonly string[] SkullTeeth = { "Normal", "Vampire", "Orc", "Monster" };
     public static readonly string[] SkullGaps  = { "None", "One", "Two" };
@@ -48,12 +50,15 @@ public static partial class ChibiPawnCreator
         Func<Vector3, float> cranium = p => Cranium(p, false);
 
         var b = new Bounds(new Vector3(0f, 0.165f, -0.04f), new Vector3(1.12f, 1.0f, 1.14f));
-        meshes["Skull.Whole"]   = Sculpt("Chibi_Skull_Whole",   cranium,                b, SkullStep, cranium);
-        meshes["Skull.Cracked"] = Sculpt("Chibi_Skull_Cracked", p => Cranium(p, true),  b, SkullStep, p => Cranium(p, true));
+        meshes["Skull.Whole"]   = Sculpt("Chibi_Skull_Whole",   cranium,                b, SkullStep, cranium,                 SkullKeep);
+        meshes["Skull.Cracked"] = Sculpt("Chibi_Skull_Cracked", p => Cranium(p, true),  b, SkullStep, p => Cranium(p, true),  CrackedKeep);
 
         var jb = new Bounds(new Vector3(0f, -0.39f, 0.14f), new Vector3(0.70f, 0.56f, 0.66f));
-        meshes["Jaw.Round"] = Sculpt("Chibi_Jaw_Round", p => Jaw(p, false), jb, JawStep, p => Mathf.Min(Jaw(p, false), cranium(p)));
-        meshes["Jaw.V"]     = Sculpt("Chibi_Jaw_V",     p => Jaw(p, true),  jb, JawStep, p => Mathf.Min(Jaw(p, true),  cranium(p)));
+        meshes["Helmet"] = Sculpt("Chibi_Skull_Helmet", SkullCap, new Bounds(new Vector3(0f, 0.2f, -0.04f), new Vector3(1.24f, 1.0f, 1.26f)),
+                                   SkullStep, SkullCap, SkullKeep);
+
+        meshes["Jaw.Round"] = Sculpt("Chibi_Jaw_Round", p => Jaw(p, false), jb, JawStep, p => Mathf.Min(Jaw(p, false), cranium(p)), JawKeep);
+        meshes["Jaw.V"]     = Sculpt("Chibi_Jaw_V",     p => Jaw(p, true),  jb, JawStep, p => Mathf.Min(Jaw(p, true),  cranium(p)), JawKeep);
 
         var ub = new Bounds(new Vector3(0f, -0.37f, 0.27f), new Vector3(0.48f, 0.26f, 0.40f));   // 흡혈귀 송곳니 끝(-0.485)까지
         var lb = new Bounds(new Vector3(0f, -0.32f, 0.27f), new Vector3(0.64f, 0.44f, 0.46f));   // 오크 엄니 끝(-0.14)까지
@@ -64,14 +69,14 @@ public static partial class ChibiPawnCreator
             Func<Vector3, float> lo = p => Teeth(p, style, gap, false);
             Func<Vector3, float> scene = p => Mathf.Min(Mathf.Min(up(p), lo(p)), Mathf.Min(cranium(p), Jaw(p, true)));
             meshes[$"Teeth.{style}.{gap}"] = SaveSkull($"Chibi_Teeth_{style}_{gap}",
-                Join(SurfaceNets(up, ub, TeethStep, scene), SurfaceNets(lo, lb, TeethStep, scene)));
+                Join(SurfaceNets(up, ub, TeethStep, scene, keep: TeethKeep), SurfaceNets(lo, lb, TeethStep, scene, keep: TeethKeep)));
         }
         return meshes;
     }
 
     // 해골 머리 부위 — 사람 머리(`HeadParts`) 대신 해골 셋이 받는다. **목 관절 자리(`Head`)와 투구는 사람과 같은 틀**이라
     // 몸·투구·`PawnLook`이 사람 머리와 똑같이 다룬다.
-    static List<Part> SkullHeadParts(string gender, Dictionary<string, Mesh> skull, Dictionary<string, Mesh> hairs)
+    static List<Part> SkullHeadParts(string gender, Dictionary<string, Mesh> skull)
     {
         var parts = new List<Part>();
         var basis = BasisOf(gender);
@@ -91,10 +96,9 @@ public static partial class ChibiPawnCreator
         foreach (var gap in SkullGaps)
             Pick($"Teeth.{style}@Gap.{gap}@Jaw.!None", $"Teeth.{style}.{gap}", style == "Normal" && gap == "None");
 
-        var capPos  = bPos + new Vector3(0f, 0.015f, -0.01f);
-        var capSize = Vector3.Scale(basis.Size * HelmetScale, new Vector3(SkullHelmetSlim, 1f, SkullHelmetSlim));
+        // 투구는 두개골에 맞춰 빚은 모자 한 벌(`SkullCap`) — 이름만 윗머리 모양마다 둔다(`PawnLook`이 모양으로 켠다).
         foreach (var fit in HairFits)
-            parts.Add(new Part($"Head.Helmet.Cap.Shell.{fit}", hairs[$"{fit}.Helmet"], capPos, capSize, "Helmet", on: false));
+            parts.Add(new Part($"Head.Helmet.Cap.Shell.{fit}", skull["Helmet"], bPos, size, "Helmet", on: false));
         return parts;
     }
 
@@ -117,6 +121,16 @@ public static partial class ChibiPawnCreator
         d = SMax(d, -Mathf.Max(Nose2D(p) - 0.004f, -0.05f - p.z), 0.012f);                      // 코 — 곧게 뚫는다
         d = SMax(d, -(p.y + 0.30f), 0.02f);                                                      // 위턱 바닥은 평평하다
         return cracked ? Crack(d, p) : d;
+    }
+
+    // **투구 — 두개골을 한 겹 부풀린 모자**(2026-10-27). 사람 투구 껍데기(머리카락 틀)를 줄여 씌웠더니 귀 옆까지 내려와
+    // 가죽 투구가 **단발머리로 읽혔다**(사용자: *"해골이 머리카락이 있어"*). 앞은 눈구멍 위에서, 뒤는 뒤통수 아래에서 기울게 끊는다.
+    // 속은 채운다 — 쓰면 두개골 윗머리가 다 가려진다.
+    static float SkullCap(Vector3 p)
+    {
+        float d = Ell(p, new Vector3(0f, 0.16f, -0.04f), new Vector3(0.55f, 0.52f, 0.57f));
+        d = SMax(d, 0.13f + 0.25f * p.z - p.y, 0.03f);   // 앞(z 0.5) 0.255 — 눈구멍 위(0.215)를 비켜서 · 뒤(z -0.5) 0.005
+        return d;
     }
 
     // 광대 다리 — 눈구멍 바깥 아래에서 귀 쪽으로, 살짝 바깥으로 휜 막대.
@@ -398,10 +412,13 @@ public static partial class ChibiPawnCreator
         public Surface(List<Vector3> v, List<Vector3> n, List<Color> c, List<int> t) { Verts = v; Normals = n; Colors = c; Tris = t; }
     }
 
-    static Mesh Sculpt(string name, Func<Vector3, float> f, Bounds b, float step, Func<Vector3, float> scene)
-        => SaveSkull(name, SurfaceNets(f, b, step, scene));
+    static Mesh Sculpt(string name, Func<Vector3, float> f, Bounds b, float step, Func<Vector3, float> scene, float keep)
+        => SaveSkull(name, SurfaceNets(f, b, step, scene, keep: keep));
 
-    static Surface SurfaceNets(Func<Vector3, float> f, Bounds b, float step, Func<Vector3, float> scene)
+    // `place` — 거리장 좌표를 메시 좌표로(비우면 해골 머리의 틀 — `SkullCenter` · `SkullUnit`) · `aoStep`·`aoGain` — 그늘을 재는 걸음(거리장 단위) ·
+    // `keep` — 뽑은 뒤 정점을 이 비율까지 줄인다(`Decimate`).
+    static Surface SurfaceNets(Func<Vector3, float> f, Bounds b, float step, Func<Vector3, float> scene,
+                               Func<Vector3, Vector3> place = null, float aoStep = 0.04f, float aoGain = 4.5f, float keep = 1f)
     {
         int nx = Mathf.CeilToInt(b.size.x / step) + 1, ny = Mathf.CeilToInt(b.size.y / step) + 1, nz = Mathf.CeilToInt(b.size.z / step) + 1;
         var min = b.min;
@@ -448,24 +465,29 @@ public static partial class ChibiPawnCreator
             verts.Add(At(i, j, k) + sum / cnt * step);
         }
 
-        // 표면으로 당기고 법선을 잰다 — 평균 점은 표면에서 조금 떠 있다.
-        var normals = new Vector3[verts.Count];
-        var pts = verts.ToArray();
-        Parallel.For(0, pts.Length, v =>
+        // 표면으로 당기고 법선을 잰다 — 평균 점은 표면에서 조금 떠 있다. `reach` 0이면 옮기지 않고 법선만 잰다.
+        Vector3[] Settle(Vector3[] ps, float reach)
         {
-            var p = pts[v];
-            for (int it = 0; it < 2; it++)
+            var ns = new Vector3[ps.Length];
+            Parallel.For(0, ps.Length, v =>
             {
-                var g = Grad(f, p, step * 0.5f);
-                float gl = g.magnitude;
-                if (gl < 1e-6f) break;
-                var moved = p - g / gl * (f(p) / gl);
-                if ((moved - pts[v]).sqrMagnitude > step * step) break;   // 칸 밖으로 튀면 평균 자리에 둔다
-                p = moved;
-            }
-            pts[v] = p;
-            normals[v] = Grad(f, p, step * 0.5f).normalized;
-        });
+                var p = ps[v];
+                for (int it = 0; it < 2; it++)
+                {
+                    var g = Grad(f, p, step * 0.5f);
+                    float gl = g.magnitude;
+                    if (gl < 1e-6f) break;
+                    var moved = p - g / gl * (f(p) / gl);
+                    if ((moved - ps[v]).sqrMagnitude > reach * reach) break;   // 멀리 튀면 제자리에 둔다
+                    p = moved;
+                }
+                ps[v] = p;
+                ns[v] = Grad(f, p, step * 0.5f).normalized;
+            });
+            return ns;
+        }
+        var pts = verts.ToArray();
+        var normals = Settle(pts, step);
 
         // 부호가 바뀌는 격자 변마다 사각형 하나. 네 칸은 변 축을 오른손으로 도는 순서로 받는다 — 그 순서면 면이 변 축의 +쪽을
         // 본다. **앞뒤는 그 변의 부호로만 정한다**(안 → 밖이 +쪽이면 그대로) — 꺾인 사각형의 대각선으로 재면 접힌 자리에서
@@ -501,13 +523,193 @@ public static partial class ChibiPawnCreator
                      in0);
         }
 
+        if (keep < 1f)
+        {
+            // **줄인 점은 다시 표면으로 당기지 않는다** — 접은 자리는 이차 오차가 이미 둘레 면 위에 두었다. 당기면 큰 세모의 꼭짓점만
+            // 곡면으로 끌려가 면이 울퉁불퉁해졌다(쇄골 · 껍데기). 법선만 그 자리의 기울기로 잰다.
+            pts = Decimate(pts, tris, Mathf.Max(64, Mathf.RoundToInt(pts.Length * keep)));
+            normals = Settle(pts, 0f);
+        }
+
         var colors = new Color[pts.Length];
-        Parallel.For(0, pts.Length, v => { float ao = AoOf(scene, pts[v], normals[v]); colors[v] = new Color(ao, ao, ao, 1f); });
+        Parallel.For(0, pts.Length, v => { float ao = AoOf(scene, pts[v], normals[v], aoStep, aoGain); colors[v] = new Color(ao, ao, ao, 1f); });
 
         var outV = new List<Vector3>(pts.Length);
-        foreach (var p in pts) outV.Add((p - SkullCenter) / SkullUnit);
+        foreach (var p in pts) outV.Add(place != null ? place(p) : (p - SkullCenter) / SkullUnit);
         return new Surface(outV, new List<Vector3>(normals), new List<Color>(colors), tris);
     }
+
+    // ── 표면 줄이기 — 이차 오차로 변을 접는다 ──────────────────────────────────
+    //
+    // 표면 그물은 평평한 곳에도 굽은 곳과 같은 촘촘함으로 점을 깐다 — 해골 하나가 사람 폰의 여덟 배(8.4만)였다(2026-10-27,
+    // 사용자: *"보통 몹 하나의 정점이 어느정도여야하는데?"*). 점마다 둘레 면의 평면을 모아 두고(이차 오차), **모양을 덜 바꾸는 변부터**
+    // 접는다. 접어서 둘레 면이 뒤집히거나 납작해지면 그 변은 건너뛴다. 법선 · 그늘은 줄인 뒤 거리장에서 다시 잰다(`Settle`).
+    // `tris`는 제자리에서 고쳐 쓰고, 살아남은 점만 새 번호로 돌려준다.
+    static Vector3[] Decimate(Vector3[] pos, List<int> tris, int target)
+    {
+        int nv = pos.Length, nt = tris.Count / 3;
+        if (nv <= target) return pos;
+        var tv = tris.ToArray();
+        var q = new double[nv * 10];
+        var vtris = new List<int>[nv];
+        for (int v = 0; v < nv; v++) vtris[v] = new List<int>(8);
+        for (int t = 0; t < nt; t++)
+        {
+            Vector3 a = pos[tv[3 * t]], b = pos[tv[3 * t + 1]], c = pos[tv[3 * t + 2]];
+            var n = Vector3.Cross(b - a, c - a);
+            double area = n.magnitude;
+            for (int k = 0; k < 3; k++) vtris[tv[3 * t + k]].Add(t);
+            if (area < 1e-12) continue;
+            double nx = n.x / area, ny = n.y / area, nz = n.z / area, d = -(nx * a.x + ny * a.y + nz * a.z);
+            double[] kp = { nx * nx, nx * ny, nx * nz, nx * d, ny * ny, ny * nz, ny * d, nz * nz, nz * d, d * d };
+            for (int k = 0; k < 3; k++)
+            {
+                int o = tv[3 * t + k] * 10;
+                for (int i = 0; i < 10; i++) q[o + i] += kp[i] * area;
+            }
+        }
+
+        double ErrAt(int o, double x, double y, double z)
+            => q[o] * x * x + 2 * q[o + 1] * x * y + 2 * q[o + 2] * x * z + 2 * q[o + 3] * x
+             + q[o + 4] * y * y + 2 * q[o + 5] * y * z + 2 * q[o + 6] * y + q[o + 7] * z * z + 2 * q[o + 8] * z + q[o + 9];
+        double Err(int v, int w, Vector3 p) => ErrAt(v * 10, p.x, p.y, p.z) + ErrAt(w * 10, p.x, p.y, p.z);
+        // 두 점의 오차를 가장 덜 키우는 자리 — 3×3을 풀고, 안 풀리거나(평평 · 곧은 홈) 멀리 튀면 두 끝과 가운데 중 낫는 것.
+        (double cost, Vector3 at) Best(int v, int w)
+        {
+            int o = v * 10, u = w * 10;
+            double a00 = q[o] + q[u], a01 = q[o + 1] + q[u + 1], a02 = q[o + 2] + q[u + 2];
+            double a11 = q[o + 4] + q[u + 4], a12 = q[o + 5] + q[u + 5], a22 = q[o + 7] + q[u + 7];
+            double b0 = -(q[o + 3] + q[u + 3]), b1 = -(q[o + 6] + q[u + 6]), b2 = -(q[o + 8] + q[u + 8]);
+            double det = a00 * (a11 * a22 - a12 * a12) - a01 * (a01 * a22 - a12 * a02) + a02 * (a01 * a12 - a11 * a02);
+            Vector3 mid = (pos[v] + pos[w]) * 0.5f;
+            if (Math.Abs(det) > 1e-15)
+            {
+                double x = (b0 * (a11 * a22 - a12 * a12) - a01 * (b1 * a22 - a12 * b2) + a02 * (b1 * a12 - a11 * b2)) / det;
+                double y = (a00 * (b1 * a22 - a12 * b2) - b0 * (a01 * a22 - a12 * a02) + a02 * (a01 * b2 - b1 * a02)) / det;
+                double z = (a00 * (a11 * b2 - b1 * a12) - a01 * (a01 * b2 - b1 * a02) + b0 * (a01 * a12 - a11 * a02)) / det;
+                var p = new Vector3((float)x, (float)y, (float)z);
+                if ((p - mid).sqrMagnitude <= (pos[v] - pos[w]).sqrMagnitude) return (Err(v, w, p), p);
+            }
+            double ev = Err(v, w, pos[v]), ew = Err(v, w, pos[w]), em = Err(v, w, mid);
+            return ev <= ew && ev <= em ? (ev, pos[v]) : ew <= em ? (ew, pos[w]) : (em, mid);
+        }
+
+        // 최소 힙 — 꺼낼 때 두 점의 도장(`stamp`)이 그대로인지 보고 낡은 것은 버린다.
+        var dead  = new bool[nt];
+        var gone  = new bool[nv];
+        var stamp = new int[nv];
+        var heap  = new List<(double cost, int v, int w, int sv, int sw, Vector3 at)>();
+        void Push(int v, int w)
+        {
+            var (c, at) = Best(v, w);
+            heap.Add((c, v, w, stamp[v], stamp[w], at));
+            for (int i = heap.Count - 1; i > 0;)
+            {
+                int pa = (i - 1) / 2;
+                if (heap[pa].cost <= heap[i].cost) break;
+                (heap[pa], heap[i]) = (heap[i], heap[pa]); i = pa;
+            }
+        }
+        (double cost, int v, int w, int sv, int sw, Vector3 at) Pop()
+        {
+            var top = heap[0];
+            heap[0] = heap[^1]; heap.RemoveAt(heap.Count - 1);
+            for (int i = 0; ;)
+            {
+                int l = 2 * i + 1, r = l + 1, m = i;
+                if (l < heap.Count && heap[l].cost < heap[m].cost) m = l;
+                if (r < heap.Count && heap[r].cost < heap[m].cost) m = r;
+                if (m == i) break;
+                (heap[m], heap[i]) = (heap[i], heap[m]); i = m;
+            }
+            return top;
+        }
+        bool Has(int t, int v) => tv[3 * t] == v || tv[3 * t + 1] == v || tv[3 * t + 2] == v;
+        // `v`를 `at`으로 옮기면 `v`의 면 중 `w`와 안 닿는 것이 뒤집히거나 납작해지나.
+        bool Folds(int v, int w, Vector3 at)
+        {
+            foreach (int t in vtris[v])
+            {
+                if (dead[t] || Has(t, w)) continue;
+                Vector3 a = pos[tv[3 * t]], b = pos[tv[3 * t + 1]], c = pos[tv[3 * t + 2]];
+                var before = Vector3.Cross(b - a, c - a);
+                if (tv[3 * t] == v) a = at; else if (tv[3 * t + 1] == v) b = at; else c = at;
+                var after = Vector3.Cross(b - a, c - a);
+                if (after.sqrMagnitude < 1e-14f || Vector3.Dot(before.normalized, after.normalized) < 0.8f) return true;   // 37°보다 꺾이면
+            }
+            return false;
+        }
+        // 두 점의 이웃 중 둘 다와 닿는 것은 그 변을 낀 면의 맞은편 꼭짓점 둘뿐이어야 한다 — 더 있으면 접는 순간 면이 겹쳐 붙는다(얇은 판 · 고리).
+        var mark = new int[nv];
+        int markGen = 0;
+        bool Pinches(int v, int w)
+        {
+            markGen++;
+            foreach (int t in vtris[v]) if (!dead[t]) for (int k = 0; k < 3; k++) mark[tv[3 * t + k]] = markGen;
+            int shared = 0;
+            foreach (int t in vtris[w])
+                if (!dead[t])
+                    for (int k = 0; k < 3; k++)
+                    {
+                        int n = tv[3 * t + k];
+                        if (n != v && n != w && mark[n] == markGen) { shared++; mark[n] = 0; }   // 센 것은 지운다 — 두 면에서 나와도 한 번
+                    }
+            return shared != 2;
+        }
+
+        for (int t = 0; t < nt; t++)
+            for (int k = 0; k < 3; k++)
+            {
+                int v = tv[3 * t + k], w = tv[3 * t + (k + 1) % 3];
+                if (v < w) Push(v, w);   // 닫힌 면이면 변마다 두 번 나온다 — 한 번만
+            }
+
+        int live = nv;
+        while (live > target && heap.Count > 0)
+        {
+            var e = Pop();
+            if (gone[e.v] || gone[e.w] || stamp[e.v] != e.sv || stamp[e.w] != e.sw) continue;
+            if (Pinches(e.v, e.w) || Folds(e.v, e.w, e.at) || Folds(e.w, e.v, e.at)) continue;
+
+            int keep = e.v, drop = e.w;
+            pos[keep] = e.at;
+            for (int i = 0; i < 10; i++) q[keep * 10 + i] += q[drop * 10 + i];
+            gone[drop] = true; live--;
+            foreach (int t in vtris[drop])
+            {
+                if (dead[t]) continue;
+                if (Has(t, keep)) { dead[t] = true; continue; }
+                for (int k = 0; k < 3; k++) if (tv[3 * t + k] == drop) tv[3 * t + k] = keep;
+                vtris[keep].Add(t);
+            }
+            vtris[drop].Clear();
+            vtris[keep].RemoveAll(t => dead[t]);
+            stamp[keep]++;
+            markGen++;   // 이웃은 면 둘에 걸쳐 나온다 — 한 번만 넣는다
+            foreach (int t in vtris[keep])
+                for (int k = 0; k < 3; k++)
+                {
+                    int n = tv[3 * t + k];
+                    if (n == keep || mark[n] == markGen) continue;
+                    mark[n] = markGen;
+                    Push(keep, n);
+                }
+        }
+
+        var remap = new int[nv];
+        var outP = new List<Vector3>(live);
+        for (int v = 0; v < nv; v++) { remap[v] = gone[v] ? -1 : outP.Count; if (!gone[v]) outP.Add(pos[v]); }
+        tris.Clear();
+        for (int t = 0; t < nt; t++)
+        {
+            if (dead[t]) continue;
+            int a = tv[3 * t], b = tv[3 * t + 1], c = tv[3 * t + 2];
+            if (a == b || b == c || a == c) continue;
+            tris.Add(remap[a]); tris.Add(remap[b]); tris.Add(remap[c]);
+        }
+        return outP.ToArray();
+    }
+
 
     static Vector3 Grad(Func<Vector3, float> f, Vector3 p, float e) => new(
         f(p + new Vector3(e, 0, 0)) - f(p - new Vector3(e, 0, 0)),
@@ -515,13 +717,13 @@ public static partial class ChibiPawnCreator
         f(p + new Vector3(0, 0, e)) - f(p - new Vector3(0, 0, e)));
 
     // 그늘 — 법선 쪽으로 나가며 가까운 표면이 얼마나 막나(렌더의 v25 셈 그대로). 깊은 구멍 속이 검어지는 것은 이것 하나다.
-    static float AoOf(Func<Vector3, float> scene, Vector3 p, Vector3 n)
+    static float AoOf(Func<Vector3, float> scene, Vector3 p, Vector3 n, float step, float gain)
     {
         float ao = 1f;
         for (int i = 1; i <= 8; i++)
         {
-            float h = 0.04f * i;
-            ao -= Mathf.Max(h - scene(p + n * h), 0f) * Mathf.Pow(0.8f, i) * 4.5f;
+            float h = step * i;
+            ao -= Mathf.Max(h - scene(p + n * h), 0f) * Mathf.Pow(0.8f, i) * gain;
         }
         return Mathf.Clamp(ao, 0.08f, 1f);
     }

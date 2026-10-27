@@ -167,7 +167,8 @@ public static partial class ChibiPawnCreator
     // 하나로 짓고 → T자로 벌려 아바타를 세운다. 머리 부위(`headParts`)는 옛 몸의 몸통 꼭대기(`TorsoH`)에 맞춰 놓인 것을
     // 받아 이 몸의 꼭대기로 옮긴다. **갈라 적으면 시제품에서 고친 것이 본 몸에 안 간다.**
     static bool DressSkinned(GameObject root, BodyDims d, List<Part> headParts, Dictionary<string, Material> mats,
-                             Dictionary<string, ChibiFaceAtlas> atlases, string prefabName, string meshName)
+                             Dictionary<string, ChibiFaceAtlas> atlases, string prefabName, string meshName,
+                             BoneBody skeleton = null)
     {
         var model = root.transform.Find("Model");
         if (model == null) { Debug.LogError($"[치비] {prefabName}에 `Model`이 없다."); return false; }
@@ -187,17 +188,25 @@ public static partial class ChibiPawnCreator
         }
 
         float headShift = d.Top - TorsoH;
+        // **해골은 목이 짧다** — 두개골 거리장의 원점을 `SkullOriginY`에 둔다(해골 메시는 `Head` 틀에서 `SkullCenter`만큼 비켜 있다).
+        if (skeleton != null)
+            foreach (var p in headParts)
+                if (p.Name == "Head") headShift = SkullOriginY * d.Hh - p.Center.y + SkullCenter.y / SkullUnit * p.Size.y;
         var rigid = new List<Part>();
         foreach (var p in headParts)
             rigid.Add(new Part(p.Name, p.Mesh, p.Center + Vector3.up * headShift, p.Size, p.Mat, p.On, p.Cell, p.Kind, p.OuterMat, p.Euler));
         float neckY = d.Top + HeadGap;   // 목 관절 = 머리 밑동(`Head` 구의 밑)
         foreach (var p in rigid) if (p.Name == "Head") neckY = p.Center.y - p.Size.y * 0.5f;
 
-        // 손·신발 — 관절에 붙는 굳은 살. 팔·다리 통의 끝이 이 속에 묻힌다.
-        rigid.Add(new Part("HandL.Ball", null, new Vector3(-d.ArmX, d.HandY - d.Hand * 0.25f, 0f), Vector3.one * d.Hand, "SkinOuter", outerMat: "OutlineOuter"));
-        rigid.Add(new Part("HandR.Ball", null, new Vector3( d.ArmX, d.HandY - d.Hand * 0.25f, 0f), Vector3.one * d.Hand, "SkinOuter", outerMat: "OutlineOuter"));
-        rigid.Add(new Part("FootL.Shoe", null, new Vector3(-d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
-        rigid.Add(new Part("FootR.Shoe", null, new Vector3( d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
+        // 손·신발 — 관절에 붙는 굳은 살. 팔·다리 통의 끝이 이 속에 묻힌다. 해골은 그 대신 뼈 · 방어구 껍데기(`BoneBody`).
+        if (skeleton != null) rigid.AddRange(skeleton.Parts);
+        else
+        {
+            rigid.Add(new Part("HandL.Ball", null, new Vector3(-d.ArmX, d.HandY - d.Hand * 0.25f, 0f), Vector3.one * d.Hand, "SkinOuter", outerMat: "OutlineOuter"));
+            rigid.Add(new Part("HandR.Ball", null, new Vector3( d.ArmX, d.HandY - d.Hand * 0.25f, 0f), Vector3.one * d.Hand, "SkinOuter", outerMat: "OutlineOuter"));
+            rigid.Add(new Part("FootL.Shoe", null, new Vector3(-d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
+            rigid.Add(new Part("FootR.Shoe", null, new Vector3( d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
+        }
 
         // **허리 램프**(2026-10-23) — 바지 띠 높이, 몸 앞 오른쪽에 반쯤 묻힌 알. 꺼 두고 허리에 무엇을 차면 켜진다(`PawnApparel`).
         {
@@ -208,7 +217,7 @@ public static partial class ChibiPawnCreator
 
         // 관절 — 팔을 내린 자세로 세운다(몸을 그 자세로 지었으니 바인드 포즈도 그 자세다). T자는 맨 끝에.
         if (!model.TryGetComponent(out PawnRig rig)) rig = model.gameObject.AddComponent<PawnRig>();
-        var bones = BodyJoints(model, rig, d, neckY);
+        var bones = BodyJoints(model, rig, d, neckY, skeleton?.ArmX);
 
         // 굳은 살은 이름의 앞머리(`관절.무엇`)가 붙을 관절이다 — `PawnRigBuilder.RigBiped`와 같은 규칙.
         foreach (var p in rigid)
@@ -220,24 +229,28 @@ public static partial class ChibiPawnCreator
             var at = Enum.TryParse(joint, out B bi) && bi != B.Count ? bones[(int)bi] : bones[(int)B.Spine];
             t.SetParent(at, worldPositionStays: true);
             if (p.Name == "Head") t.name = "HeadMesh";
+            if (skeleton != null && skeleton.Shells.Contains(p.Name)) t.gameObject.SetActive(false);   // 찼을 때 `PawnApparel`이 켠다
         }
 
-        // 몸 — 스킨 메시 하나(셔츠 · 바지 · 바깥 선 세 칸).
-        var bodyMesh = BodyMesh(d, model, bones, meshName);
-        var go = new GameObject("Body");
-        go.layer = root.layer;
-        go.transform.SetParent(model, false);
-        var smr = go.AddComponent<SkinnedMeshRenderer>();
-        smr.sharedMesh = bodyMesh;
-        smr.bones      = bones;
-        smr.rootBone   = bones[(int)B.Hips];
-        smr.sharedMaterials   = new[] { mats["Shirt"], mats["Pants"], mats["OutlineOuter"] };
-        smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        // 경계는 엉덩이 기준 · **지은 몸에 딱 맞게**(10cm 여유). 초상화(`PortraitCapture`)·미리보기(`PawnPreviewStage`)가 렌더러
-        // 경계로 틀을 잡아서, 휘두를 만큼 넉넉히 잡으면 얼굴이 멀어진다. 팔이 상자 밖으로 휘둘러질 때 몸통이 화면 밖이면 그 팔이
-        // 잠깐 안 그려지는 것은 감수한다(옛 몸도 렌더러마다 제 자리 상자였다).
-        var mb = bodyMesh.bounds;
-        smr.localBounds = new Bounds(mb.center - Vector3.up * d.HipY, mb.size + Vector3.one * 0.1f);
+        // 몸 — 스킨 메시 하나(셔츠 · 바지 · 바깥 선 세 칸). 해골은 뼈가 몸이다.
+        if (skeleton == null)
+        {
+            var bodyMesh = BodyMesh(d, model, bones, meshName);
+            var go = new GameObject("Body");
+            go.layer = root.layer;
+            go.transform.SetParent(model, false);
+            var smr = go.AddComponent<SkinnedMeshRenderer>();
+            smr.sharedMesh = bodyMesh;
+            smr.bones      = bones;
+            smr.rootBone   = bones[(int)B.Hips];
+            smr.sharedMaterials   = new[] { mats["Shirt"], mats["Pants"], mats["OutlineOuter"] };
+            smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            // 경계는 엉덩이 기준 · **지은 몸에 딱 맞게**(10cm 여유). 초상화(`PortraitCapture`)·미리보기(`PawnPreviewStage`)가 렌더러
+            // 경계로 틀을 잡아서, 휘두를 만큼 넉넉히 잡으면 얼굴이 멀어진다. 팔이 상자 밖으로 휘둘러질 때 몸통이 화면 밖이면 그 팔이
+            // 잠깐 안 그려지는 것은 감수한다(옛 몸도 렌더러마다 제 자리 상자였다).
+            var mb = bodyMesh.bounds;
+            smr.localBounds = new Bounds(mb.center - Vector3.up * d.HipY, mb.size + Vector3.one * 0.1f);
+        }
 
         // **T자** — 아바타의 기준 자세(`PawnRigBuilder.RigBiped`와 같다). 왼팔은 -x, 오른팔은 +x로 벌린다.
         rig.ArmL.localRotation = Quaternion.Euler(0f, 0f, -90f);
@@ -296,8 +309,10 @@ public static partial class ChibiPawnCreator
     }
 
     // 관절 — `PawnRig` 규격의 계층(Model/Hips/{Spine/{Head, ArmL/…}, LegL/…}). 돌려주는 배열은 `B` 순서다.
-    static Transform[] BodyJoints(Transform model, PawnRig rig, BodyDims d, float neckY)
+    // `armX` — 팔 자리(m)를 몸 치수 대신(해골 — `BoneArmX`).
+    static Transform[] BodyJoints(Transform model, PawnRig rig, BodyDims d, float neckY, float? armX = null)
     {
+        float ax = armX ?? d.ArmX;
         Transform J(Transform parent, string name, Vector3 at)
         {
             var go = new GameObject(name);
@@ -316,9 +331,9 @@ public static partial class ChibiPawnCreator
         {
             string side = s < 0 ? "L" : "R";
             int o = s < 0 ? 0 : 3;
-            b[(int)B.ArmL + o]      = J(b[(int)B.Spine],         "Arm" + side,      new Vector3(s * d.ArmX, d.ShoulderY, 0f));
-            b[(int)B.LowerArmL + o] = J(b[(int)B.ArmL + o],      "LowerArm" + side, new Vector3(s * d.ArmX, d.ElbowY, 0f));
-            b[(int)B.HandL + o]     = J(b[(int)B.LowerArmL + o], "Hand" + side,     new Vector3(s * d.ArmX, d.HandY, 0f));
+            b[(int)B.ArmL + o]      = J(b[(int)B.Spine],         "Arm" + side,      new Vector3(s * ax, d.ShoulderY, 0f));
+            b[(int)B.LowerArmL + o] = J(b[(int)B.ArmL + o],      "LowerArm" + side, new Vector3(s * ax, d.ElbowY, 0f));
+            b[(int)B.HandL + o]     = J(b[(int)B.LowerArmL + o], "Hand" + side,     new Vector3(s * ax, d.HandY, 0f));
             b[(int)B.LegL + o]      = J(b[(int)B.Hips],          "Leg" + side,      new Vector3(s * d.LegX, d.HipY, 0f));
             b[(int)B.LowerLegL + o] = J(b[(int)B.LegL + o],      "LowerLeg" + side, new Vector3(s * d.LegX, d.KneeY, 0f));
             b[(int)B.FootL + o]     = J(b[(int)B.LowerLegL + o], "Foot" + side,     new Vector3(s * d.LegX, d.FootY, 0f));
