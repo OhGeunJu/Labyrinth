@@ -4,7 +4,7 @@ using UnityEngine;
 // 폰이 얼마나 질 수 있는가 — **적재 한도의 단일 출처.**
 //
 // 전에는 같은 것을 네 군데가 따로 계산했고, 그중 둘이 서로 달랐다:
-//   `PawnMover` / `CombatHandler` / `ExpeditionParty` = 근력 × 5   (근력 10 → 50)
+//   `PawnMover` / `CombatHandler` / 상단 = 근력 × 5   (근력 10 → 50)
 //   `PartyCarry`                                      = 10 + 근력 × 0.5 (근력 10 → 15)
 // 3.3배 어긋난 두 답이 **같은 원정대**에 동시에 쓰였다. 편성 화면은 15kg이라 하고
 // 실제 적재는 50까지 받는 식이다. 여기로 모아 한 곳에서만 답한다.
@@ -21,8 +21,9 @@ public static class CarryCapacity
     public static float For(UnitStats stats) =>
         stats == null ? 0f : Base + stats.Strength * PerStrength;
 
+    // **수레를 단 가축은 그만큼 더 진다**(`PawnCart.BonusOf`, 2026-10-01) — 근력식은 그대로 두고 더한다.
     public static float For(UnitBrain brain) =>
-        brain == null ? 0f : For(brain.Stats);
+        brain == null ? 0f : For(brain.Stats) + PawnCart.BonusOf(brain);
 
     // **업고 있는 사람도 짐이다.** 배낭 무게만 세면 어깨에 사람을 메고도 빈손처럼 걷는다 —
     // 업기가 값을 치르는 유일한 방법이 무게라서, 여기서 안 세면 규칙이 통째로 사라진다.
@@ -37,13 +38,6 @@ public static class CarryCapacity
     }
 
     public static float Free(UnitBrain brain) => Mathf.Max(0f, For(brain) - Load(brain));
-
-    // 한도 대비 얼마나 실었나. 1을 넘으면 과적이다(막지는 않는다 — 아래 주석 참조).
-    public static float LoadRatio(UnitBrain brain)
-    {
-        float cap = For(brain);
-        return cap <= 0f ? 0f : Load(brain) / cap;
-    }
 
     // ── 몇 개나 더 실을 수 있나 ───────────────────────────────────────────────
     // **한도는 자동 운반에만 강제된다.** 플레이어가 배낭에 직접 끌어다 넣는 것은 막지 않고,
@@ -67,10 +61,4 @@ public static class CarryCapacity
         return sum;
     }
 
-    public static float TotalLoad(IEnumerable<UnitBrain> members)
-    {
-        float sum = 0f;
-        if (members != null) foreach (var m in members) sum += Load(m);
-        return sum;
-    }
 }

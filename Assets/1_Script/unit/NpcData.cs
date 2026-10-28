@@ -17,17 +17,29 @@ public class NpcData : ScriptableObject
 {
     public NpcType NpcType = NpcType.Villager;
 
-    [Tooltip("배회 반경 (Villager, Guard)")]
-    public float WanderRadius = 10f;
+    [Tooltip("화면에 보이는 역할 이름(`떠돌이`·`마을 사람`). **비우면 타입 기본값**을 쓴다 — " +
+             "역할이 늘 때마다 문구를 채우게 하면 하나 빠뜨렸을 때 에셋 이름(`Drifter`)이 그대로 뜬다.\n" +
+             "`UnitData.RaceName`·`FactionData.FactionName`과 같은 자리 — **식별자로 쓰지 말 것**(번역 대상).")]
+    public string RoleName;
 
-    [Tooltip("도주 감지 범위 (Villager)")]
-    public float FleeDetectRange = 8f;
+    // 이 역할을 뭐라고 부르나. **에셋 이름을 그대로 쓰지 않는다** — 그건 식별자라 영어이고,
+    // 화면에 `Drifter`가 뜨면 그게 곧 번역 안 된 UI다.
+    public string DisplayName =>
+        !string.IsNullOrWhiteSpace(RoleName) ? RoleName : NpcType switch
+        {
+            NpcType.Villager      => "마을 사람",
+            NpcType.Guard         => "경비",
+            NpcType.ShopMerchant  => "상인",
+            NpcType.EventMerchant => "행상인",
+            NpcType.Drifter       => "떠돌이",
+            _                     => name,
+        };
 
-    [Tooltip("EventMerchant 머무는 시간(초)")]
-    public float StayDuration = 120f;
-
-    [Tooltip("EventMerchant 목적지 — 비우면 던전 코어 위치 사용")]
-    public Vector3 ArrivalOffset = Vector3.zero;
+    // **평소에 무엇을 하나는 패키지가 답한다**(2026-10-18 — `docs/design_ai_packages.md`). 역할은 *누구인가*(이름 ·
+    // 파는 물건 · 경비인가)만 든다. 전에는 `NpcType`마다 코드로 짠 트리가 하나씩이었고 배회 반경 · 도주 범위 ·
+    // 머무는 시간이 여기 있었다 — 그 값은 패키지의 목표로 옮겼다.
+    [Tooltip("평소 행동(AI 패키지). 비우면 대기만 한다.")]
+    public AiPackageData Package;
 
     // **역할의 기본 상품일 뿐이다.** 무엇을 파는가는 폰에 붙인 `Merchant` 컴포넌트가 들고,
     // 그쪽이 비어 있을 때만 이 값이 쓰인다(`UnitBrain.EnsureMerchant`). 여기에만 적을 수

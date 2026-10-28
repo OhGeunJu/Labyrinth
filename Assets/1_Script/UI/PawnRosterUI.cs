@@ -28,15 +28,15 @@ public class PawnRosterUI : MonoBehaviour
     [Header("레퍼런스")]
     [SerializeField] SelectionManager selectionManager;
 
-    [Header("새로고침 간격 (초)")]
-    [SerializeField] float refreshInterval = 0.3f;
-
     readonly Dictionary<UnitBrain, PawnRosterRowUI> _rows = new();
-    float _timer;
+
+    // **박자는 세계에 하나다**(`UiRefresh`) — 두 박(0.3초)마다. 배수라 빠른 창이 도는 프레임에 같이 돈다.
+    int _beat = -1;
 
     void OnEnable()
     {
         UnitBrain.OnUnitSpawned          += OnSpawned;
+        UnitBrain.OnFactionChanged       += OnSpawned;
         UnitBrain.OnUnitDied             += OnDied;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
     }
@@ -44,18 +44,19 @@ public class PawnRosterUI : MonoBehaviour
     void OnDisable()
     {
         UnitBrain.OnUnitSpawned          -= OnSpawned;
+        UnitBrain.OnFactionChanged       -= OnSpawned;
         UnitBrain.OnUnitDied             -= OnDied;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
     }
 
     void Start()
     {
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
 
         // 템플릿은 편집 중 모양 확인용 — 게임에선 숨긴다(비활성 자식은 레이아웃에서도 빠진다)
         if (rowTemplate != null) rowTemplate.gameObject.SetActive(false);
 
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
             AddRow(brain);
         SortRows();
         RefreshAll();
@@ -65,13 +66,14 @@ public class PawnRosterUI : MonoBehaviour
 
     void Update()
     {
+        // **건설·명령·밭 구역 동안은 치우고 끝나면 되돌린다**(`FocusMode`) — 무리 목록이 드래그할 자리를 가린다.
+        if (panel != null && panel.activeSelf == FocusMode.Active) panel.SetActive(!FocusMode.Active);
+
         if (panel == null || !panel.activeSelf) return;
 
         EndDragIfMouseReleased();
 
-        _timer += Time.deltaTime;
-        if (_timer < refreshInterval) return;
-        _timer = 0f;
+        if (!UiRefresh.Due(ref _beat, 2)) return;
         RefreshAll();
     }
 
@@ -112,14 +114,9 @@ public class PawnRosterUI : MonoBehaviour
     void SortRows()
     {
         var list = new List<PawnRosterRowUI>(_rows.Values);
-        list.Sort((a, b) =>
-        {
-            if (a == null || b == null || a.Brain == null || b.Brain == null) return 0;
-            bool aMinion = a.Brain.Data is MinionData;
-            bool bMinion = b.Brain.Data is MinionData;
-            if (aMinion != bMinion) return aMinion ? 1 : -1;
-            return string.CompareOrdinal(a.Brain.UnitName, b.Brain.UnitName);
-        });
+        // 순서 규칙은 `PawnOrder` 하나다 — 로스터·무리 관리·자동 선택이 갈리면
+        // **명부 맨 위인 폰과 자동으로 골리는 폰이 달라진다.**
+        list.Sort((a, b) => (a == null || b == null) ? 0 : PawnOrder.Compare(a.Brain, b.Brain));
 
         for (int i = 0; i < list.Count; i++)
             if (list[i] != null) list[i].transform.SetSiblingIndex(i);
@@ -130,7 +127,7 @@ public class PawnRosterUI : MonoBehaviour
         List<UnitBrain> gone = null;
         foreach (var kv in _rows)
         {
-            // **원정 나간 폰은 명부에서 뺀다.** 나간 폰은 GameObject가 꺼져 있어(`ExpeditionFormation`)
+            // **밖에 나간 폰은 명부에서 뺀다**(상단이 포탈 너머에 있는 동안). 나간 폰은 GameObject가 꺼져 있어
             // 클릭해도 선택·명령이 안 된다 — 남겨두면 죽은 줄이 되고, 상태 표시도 떠날 때 그대로 멈춘다.
             // 돌아오면 아래 재탐색이 다시 붙인다.
             if (kv.Key == null || kv.Value == null || !kv.Key.gameObject.activeInHierarchy)
@@ -149,7 +146,7 @@ public class PawnRosterUI : MonoBehaviour
         // 원정에서 **돌아온 폰**을 다시 줍는다. `OnUnitSpawned`는 최초 스폰 때만 오므로
         // 복귀는 이 재탐색이 아니면 잡히지 않는다(비활성은 기본적으로 검색에서 빠진다).
         bool added = false;
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
             if (AddRow(brain)) added = true;
         if (added) SortRows();
 

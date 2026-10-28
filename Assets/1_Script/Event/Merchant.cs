@@ -23,18 +23,49 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
     public MerchantData Data
     {
         get => _data;
-        set { _data = value; _shop = new Shop(_data); }
+        // **다시 짓지 않고 버린다** — 다음에 물어볼 때 게터가 짓는다. 여기서 바로 지으면
+        // 진열 수가 우호도를 타는데(`FactionRelations.SlotBonus`) 스폰 시점엔 세력 판정이
+        // 아직 안 설 수 있다.
+        set
+        {
+            _data = value;
+            _shop = null;
+
+            // **이력의 성년기를 장사에 맞춘다**(2026-09-08). 종류가 정해지는 순간
+            // *무엇을 하며 살았나*도 정해진다 — 무기 상인인데 성년기가 *"산적"*이면
+            // 살펴보기 창이 딴사람을 말한다.
+            //
+            // **여기가 이음매인 이유**: 이벤트가 종류를 **스폰 뒤에** 주입하므로
+            // (`EventManager.SpawnMerchant`) `UnitBrain.Awake`의 굴림은 그걸 모른다.
+            // 저작한 상인(프리팹에 물린 것)도 같은 setter를 지나므로 한 자리로 족하다.
+            if (_data != null)
+                if (TryGetComponent(out UnitBrain myUnitBrain)) myUnitBrain.RerollAdulthood(_data.MerchantType.StoryGroup());
+        }
     }
 
     Shop _shop;
-    public Shop Shop => _shop ??= new Shop(_data);
+
+    // **세력은 붙들어 두지 않고 물어볼 때마다 맞춘다** — 폰의 소속은 바뀔 수 있다
+    // (회유로 넘어오거나 계약이 끝나거나). `Awake`에서 한 번 물리면 넘어온 상인이
+    // 옛 세력의 값으로 장사한다.
+    public Shop Shop
+    {
+        get
+        {
+            _shop ??= new Shop(_data, MyFaction);
+            _shop.Faction = MyFaction;
+            return _shop;
+        }
+    }
+
+    // **파는 사람의 세력** — 우호도가 값에 얹히는 통로다(`Shop.Faction`).
+    // 상인은 폰에 붙는 컴포넌트라 소속은 같은 오브젝트의 `Faction`이 이미 알고 있다.
+    FactionData MyFaction => TryGetComponent(out Faction faction) ? faction.Data : null;
 
     // 프리팹/씬에서 **손으로 물려 둔** 상품인가 — 역할 기본값이나 스폰 주입으로 채워진 것과
     // 구별한다. 저작한 것은 밖에서 덮으면 안 된다: "이 사람은 늘 이것만 판다"가 성립해야
     // 고정 상인(고블린 방어구 상인 등)을 프리팹 하나로 세울 수 있다.
     public bool HasAuthoredData { get; private set; }
-
-    public List<MerchantStockEntry> CurrentStock => Shop.Stock;
 
     // 이 상인의 지갑은 **거점 창고**다. 상인이 선 자리에서 가장 가까운 창고로 넣고 뺀다.
     public TradeAccount Account => new StorageAccount(transform.position);
@@ -44,7 +75,11 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
         GameTimeManager.OnDayChanged += RefreshStock;
         // 인스펙터에서 직접 Data가 지정된 경우 초기 재고 생성
         HasAuthoredData = _data != null;
-        if (_data != null) _shop = new Shop(_data);
+
+        // **여기서 상점을 짓지 않는다.** 진열 종류 수가 세력 우호도를 타는데
+        // (`FactionRelations.SlotBonus`), `Awake`는 `Faction.Player`가 아직 `_all`에 안
+        // 들어왔을 수 있는 시점이라 보너스가 0으로 굳는다 — 그러면 첫 갱신(자정)까지
+        // 진열이 관계를 반영 못 한다. 게터가 필요할 때 짓는다.
     }
 
     void OnDestroy() => GameTimeManager.OnDayChanged -= RefreshStock;

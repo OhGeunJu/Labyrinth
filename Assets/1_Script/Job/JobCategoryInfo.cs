@@ -22,25 +22,69 @@ public static class JobCategoryInfo
         // 시간이 정한다) — 자리에 넣는 일이 늦으면 붙잡은 것 자체가 없던 일이 된다.
         // 설득 회차도 여기 있다: 게이지가 도중에 줄지는 않지만, 우리 한 칸이 그동안 묶여 있다.
         JobCategory.Warden,
+        // **조련은 간수 바로 뒤다**(2026-10-01) — 같은 우리 앞에서 하는 일이고, 짐승도 깨어나면 탈출을 노린다.
+        JobCategory.Taming,
+        // **채굴이 건설보다 먼저다**(2026-08-29, 지하로 엎으면서). 지하에서는 **팔 때까지
+        // 지을 자리 자체가 없다** — 청사진을 놓아도 그 칸이 바위면 폰이 갈 수가 없다.
+        // 파는 일이 밀리면 그 뒤의 모든 일이 같이 밀린다.
+        //
+        // **채굴이 큐에 들어온 것이 이번 변화다.** 전에는 `DirectAssign`에만 있었고
+        // (자원 노드에 폰을 콕 집어 붙인다), 일감을 안 만들었다. 이제 **칸을 찍어 파는 길**이
+        // 생기면서 둘 다가 됐다 — 노드는 여전히 직접 배정, 칸은 큐다. **큐에 안 넣으면
+        // `Weight`가 0이라 찍어 놓고 아무도 안 간다**(찍기는 되는데 아무 일도 안 일어난다).
+        JobCategory.Mining,
         JobCategory.Construction,
         JobCategory.Farming,
+        // **채집은 농사 바로 뒤다.** 하는 일이 수확과 같고(자란 것을 거둔다), 한 번이면
+        // 끝나므로 줄을 오래 막지 않는다. **큐에 두는 것이 요점이다** — 직접 배정으로
+        // 두었더니 폰 하나가 버섯 한 무리에 *배정되어 눌러앉았다*(2026-09-06에 바로잡았다).
+        // 지나가다 집는 일에 붙이고 떼는 조작을 물리면 값만 크고 얻는 것이 없다.
+        JobCategory.Foraging,
+        // **벌목도 큐에 들어왔다**(2026-09-06). 전에는 `DirectAssign`에만 있어서
+        // **`Weight`가 0이라 찍어 놓고 아무도 안 갔다** — 야생 거대버섯에 *[여기서 캔다]*를
+        // 걸어도 폰이 꿈쩍하지 않았다. **채굴이 2026-08-29에 겪은 것과 글자 그대로 같은
+        // 함정**이고, 그때 남긴 경고를 이번에 그대로 밟았다.
+        //
+        // **이제 둘 다다**(채굴과 같은 모양): 기지에 심은 나무는 **직접 배정**, 야생은 **큐**.
+        JobCategory.Logging,
+        // **땅 고르기는 벌목 뒤, 제작 앞이다**(2026-09-24). 파는 것과 **막히는 자리가 다르다** —
+        // 채굴은 *길을 내는 일*이라 맨 앞이어야 하지만 고르기는 *다듬는 일*이다: 늦어도 그
+        // 뒤의 일이 안 밀린다(고를 자리는 이미 걸을 수 있는 땅이다). 그렇다고 운반보다
+        // 뒤에 두면 짐이 흐르는 동안 정지 작업이 영영 시작 안 된다 — 건설의 앞자리를 준비하는
+        // 일이라 **제작보다는 먼저**다.
+        JobCategory.Leveling,
         JobCategory.Crafting,
+        // **도축은 제작 뒤, 운반 앞이다.** 시체는 삭으므로(신선 2일 → 썩음 4일 → 뼈) 늦으면
+        // 나올 것이 줄어든다 — 운반보다는 급하고, 사람이 걸어 둔 제작 주문보다는 덜하다.
+        //
+        // 한동안 **큐를 안 탔다**: 자동으로 돌리면 시키지도 않았는데 동료 시신을 손질하기
+        // 때문이었다. 그 걱정을 없앤 것은 자동화가 아니라 **도축대의 규칙**이다 —
+        // 무엇을 가를지 사람이 미리 정해 두므로, 폰이 알아서 집어가도 동의 없이 벌어지는 일이
+        // 아니다. 우클릭 `[도축한다]`는 그대로 손으로 시키는 길로 남는다.
+        JobCategory.Butcher,
         JobCategory.Research,
         JobCategory.Hauling,
         // 맨 뒤 — 남의 일감이 없을 때 자기 짐을 내린다.
         JobCategory.Unload,
     };
 
-    // 큐를 타지 않고 플레이어가 대상에 폰을 직접 붙이는 카테고리.
-    public static readonly JobCategory[] DirectAssign =
-    {
-        JobCategory.Mining,
-        JobCategory.Logging,
-        JobCategory.Guard,
-    };
-
     public static bool IsQueued(JobCategory category)
         => Array.IndexOf(QueueOrder, category) >= 0;
+
+    // **폰마다 켜고 끌 수 있는 작업인가** — `IsQueued`와 **다른 물음이다.**
+    //
+    // 오래도록 둘이 같았다(큐를 타는 것만 껐다 켰다 할 수 있었다). 채굴·벌목에 자율 배정이
+    // 생기면서 갈렸다(`ResourceNode.ClaimFreeFor`): 그 둘은 **일감을 만들지 않으므로**
+    // 큐에는 못 들어가지만, *할 일이 없을 때 빈 광맥을 잡을까*는 사람이 정해야 한다.
+    //
+    // **안 가르면 스위치가 조용히 죽는다** — `WorkSettings.IsEnabled`가 `IsQueued`로 막고
+    // 있어서 채굴은 **늘 꺼진 것으로 답했고**, 그러면 자율 배정이 한 번도 안 돈다.
+    //
+    // **경비는 빠진다** — 순찰 구역에는 자율 배정이 없어 여전히 손으로만 붙인다.
+    public static bool IsToggleable(JobCategory category)
+        => IsQueued(category)
+        || category == JobCategory.Mining
+        || category == JobCategory.Logging;
 
     // 작업 점수용 가중치 — 앞에 있을수록 크다. 큐 밖 카테고리는 0(배정 대상 아님).
     public static int Weight(JobCategory category)
@@ -62,6 +106,10 @@ public static class JobCategoryInfo
         JobCategory.Unload       => "짐내림",
         JobCategory.Medical      => "치료",
         JobCategory.Warden       => "간수",
+        JobCategory.Butcher      => "도축",
+        JobCategory.Foraging     => "채집",
+        JobCategory.Leveling     => "땅고르기",
+        JobCategory.Taming       => "조련",
         _                        => "-",
     };
 }

@@ -24,17 +24,9 @@ public class BuildModeUI : MonoBehaviour
              "돈이 없는 것과 아직 못 배운 것은 할 일이 다르다.")]
     [SerializeField] Color colItemLocked   = new(0.16f, 0.16f, 0.20f, 1f);
 
-    static readonly BuildCategory[] AllCategories =
-    {
-        BuildCategory.Resource,
-        BuildCategory.Defense,
-        BuildCategory.Building,
-        BuildCategory.Misc,
-    };
-
     readonly List<(Image bg, BuildCategory cat)>  _catBtns  = new();
     readonly List<(BuildingItemUI item, int idx)> _itemBtns = new();
-    BuildCategory _selectedCat = BuildCategory.Building;
+    BuildCategory _selectedCat = BuildCategory.Floor;
 
     void Awake()
     {
@@ -46,23 +38,36 @@ public class BuildModeUI : MonoBehaviour
         ResearchManager.OnResearchCompleted += OnResearchDone;
     }
 
-    void Start() => WireCategories();
-
     void OnDestroy()
     {
         BuildModeManager.OnActiveChanged    -= OnActiveChanged;
         ResearchManager.OnResearchCompleted -= OnResearchDone;
     }
 
-    void OnResearchDone(ResearchData _)
+    void OnResearchDone(ResearchData _) => Rebuild();
+
+    void Rebuild()
     {
-        if (panel != null && panel.activeSelf) ShowCategory(_selectedCat);
+        if (panel == null || !panel.activeSelf) return;
+
+        // **갈래까지 다시 짓는다**(2026-09-02). 잠긴 것을 안 띄우게 된 뒤로 **연구 하나가
+        // 갈래를 통째로 열 수 있다** — 목록만 다시 지으면 그 갈래 버튼이 안 나타나서,
+        // 방금 연구한 건물을 **고를 길이 없다.**
+        _catBtns.Clear();
+        WireCategories();
+        ShowCategory(_selectedCat);
     }
 
     void OnActiveChanged(bool active)
     {
         if (panel != null) panel.SetActive(active);
-        if (active) ShowCategory(_selectedCat);
+        if (!active) return;
+
+        // **처음 열 때 짓는다 — `Start`가 아니라.** 갈래마다 건물이 있는지 물으려면
+        // `BuildModeManager`가 목록을 다 실은 뒤여야 하는데, `Start`끼리의 순서는 보장이
+        // 없어서 *"아직 안 섰다"*로 새면 **빈 갈래까지 전부 뜬다**.
+        if (_catBtns.Count == 0) WireCategories();
+        ShowCategory(_selectedCat);
     }
 
     // **자금 색은 매 프레임 다시 계산할 것이 아니다.** `CanAfford`가 건물마다
@@ -82,19 +87,121 @@ public class BuildModeUI : MonoBehaviour
 
         RefreshCatColors();
         RefreshItemColors();
+        CategoryKeys();
     }
 
+    // **`1`은 이전 갈래, `3`은 다음 갈래**(2026-09-29, 사용자: *"숫자키로 배열하니깐 너무 길어지니깐 1이 이전꺼 3이 다음꺼로"*).
+    //
+    // 전에는 갈래마다 숫자 하나였다(2026-09-28 *"바닥 1 방어 2 보관 3 제작 4"*). 갈래가 열둘이 되자 키가 모자라고
+    // 몇 번이 무엇인지 외울 수가 없었다. **화면에 뜬 버튼 순서대로 돈다** — 빈 갈래는 접혀 있으니 건너뛴다.
+    // 끝에서 다음은 처음으로 돌아간다. 건설이 켜져 있는 동안 1~4는 능동 능력이 아니다(`AbilityController`가 양보).
+    void CategoryKeys()
+    {
+        var kb = UnityEngine.InputSystem.Keyboard.current;
+        if (kb == null || InputFocus.KeysBlocked() || _catBtns.Count == 0) return;
+
+        int step = kb.digit1Key.wasPressedThisFrame ? -1
+                 : kb.digit3Key.wasPressedThisFrame ? +1 : 0;
+        if (step == 0) return;
+
+        int cur = _catBtns.FindIndex(b => b.cat == _selectedCat);
+        int n   = _catBtns.Count;
+        int next = cur < 0 ? 0 : ((cur + step) % n + n) % n;
+        ShowCategory(_catBtns[next].cat);
+    }
+
+    // **갈래 버튼은 씬의 첫 자식을 본떠 찍는다.**
+    //
+    // 전에는 씬에 미리 만들어 둔 자식을 순서대로 집어 갈래에 짝지었다 — 그러면 갈래를 하나
+    // 더할 때마다 **씬에서 버튼을 손으로 복제해야 하고**, 빠뜨리면 그 갈래의 건물이 통째로
+    // 안 보인다(코드는 `childCount`까지만 짝지었다). 목록·격자를 템플릿 복제로 짓는 이 저장소의
+    // 규약을 갈래만 안 따르고 있었다(`docs/editor_creators.md` "모양은 씬이, 코드는 데이터만").
+    //
+    // **모양은 그대로 씬이 갖는다** — 여기서 정하는 것은 몇 개를 찍고 무엇이라 적을지뿐이다.
+    //
+    // **비어 있는 갈래는 안 띄운다.** 눌러도 빈 목록만 나오는 칸은 고를 것을 가릴 뿐이다
+    // (모드가 갈래를 안 채웠을 때도 저절로 접힌다).
     void WireCategories()
     {
-        if (categoryContainer == null) return;
-        for (int i = 0; i < categoryContainer.childCount && i < AllCategories.Length; i++)
+        if (categoryContainer == null || categoryContainer.childCount == 0) return;
+
+        var template = categoryContainer.GetChild(0).gameObject;
+        template.SetActive(false);
+
+        // 옛 버튼들(씬에 남아 있는 자원·방어·건물·기타)을 걷어낸다 — 본만 남긴다.
+        for (int i = categoryContainer.childCount - 1; i >= 1; i--)
+            Destroy(categoryContainer.GetChild(i).gameObject);
+
+        foreach (var cat in BuildCategoryExt.Order)
         {
-            var child    = categoryContainer.GetChild(i).gameObject;
-            var cat      = AllCategories[i];
+            if (!HasAny(cat)) continue;
+
+            var go = Instantiate(template, categoryContainer);
+            go.name = cat.DisplayName();
+            go.SetActive(true);
+
+            var label = go.GetComponentInChildren<TMPro.TMP_Text>(includeInactive: true);
+            if (label != null) label.text = cat.DisplayName();
+
             var captured = cat;
-            child.GetComponent<Button>()?.onClick.AddListener(() => ShowCategory(captured));
-            _catBtns.Add((child.GetComponent<Image>(), cat));
+            var btn = go.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveAllListeners();   // 본에 걸려 있던 옛 연결이 딸려 온다
+                btn.onClick.AddListener(() => ShowCategory(captured));
+            }
+            _catBtns.Add((go.GetComponent<Image>(), cat));
         }
+
+        FitCategoryGrid(_catBtns.Count);
+
+        // 처음 열었을 때 **빈 칸을 보고 있지 않게** 한다.
+        if (_catBtns.Count > 0 && !HasAny(_selectedCat)) _selectedCat = _catBtns[0].cat;
+    }
+
+    // **갈래 판은 두 열 그대로, 위로 길어진다**(2026-09-29, 사용자: *"3칸으로 내리지 말고 2칸으로 위로 길게 올려"*).
+    //
+    // 판은 씬에서 **두 열 × 네 줄**(256×252)로 섰고 갈래가 열둘이 되면 여섯 줄이 든다. 칸 크기·간격·여백은 씬 값
+    // 그대로 두고 **판 높이만 줄 수에 맞춘다.** 바닥은 띠의 왼쪽 아래 모서리에 걸려 있으니 **바닥을 붙든 채 위로**
+    // 늘린다(피벗을 아래로 옮기면서 그 자리를 지킨다) — 가운데 피벗으로 키우면 아래로도 삐져나와 타일 줄을 가린다.
+    // 세로로 늘어나게 앵커된 판이면(높이를 부모가 정한다) 건드리지 않는다.
+    const int CategoryColumns = 2;
+
+    void FitCategoryGrid(int count)
+    {
+        if (count <= 0 || categoryContainer == null) return;
+        var grid = categoryContainer.GetComponent<GridLayoutGroup>();
+        var rt   = categoryContainer as RectTransform;
+        if (grid == null || rt == null) return;
+
+        grid.constraint      = GridLayoutGroup.Constraint.FixedColumnCount;
+        grid.constraintCount = CategoryColumns;
+
+        if (!Mathf.Approximately(rt.anchorMin.y, rt.anchorMax.y)) return;
+
+        int rows = Mathf.CeilToInt(count / (float)CategoryColumns);
+        float h = grid.padding.top + grid.padding.bottom + rows * grid.cellSize.y + (rows - 1) * grid.spacing.y;
+
+        // 바닥을 붙든다 — 앵커 기준 바닥 y는 `위치 - 피벗 × 높이`다.
+        float bottom = rt.anchoredPosition.y - rt.pivot.y * rt.sizeDelta.y;
+        rt.pivot            = new Vector2(rt.pivot.x, 0f);
+        rt.sizeDelta        = new Vector2(rt.sizeDelta.x, h);
+        rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, bottom);
+    }
+
+    static bool HasAny(BuildCategory cat)
+    {
+        var mgr = BuildModeManager.Instance;
+        if (mgr == null) return true;   // 아직 안 섰다 — 숨기는 쪽으로 넘겨짚지 않는다
+
+        // **잠긴 것만 있는 갈래는 빈 갈래다** — 목록이 잠긴 것을 안 띄우므로, 여기서 같은
+        // 눈으로 안 세면 **눌러도 아무것도 안 나오는 갈래 버튼**이 남는다.
+        for (int i = 0; i < mgr.TotalBuildingCount; i++)
+        {
+            var bd = mgr.GetBuilding(i);
+            if (bd != null && bd.Category == cat && bd.IsUnlocked) return true;
+        }
+        return false;
     }
 
     void ShowCategory(BuildCategory cat)
@@ -115,26 +222,66 @@ public class BuildModeUI : MonoBehaviour
             var bd = mgr.GetBuilding(i);
             if (bd == null || bd.Category != cat) continue;
 
-            // **잠긴 건물도 목록에 남긴다.** 안 보이면 "이 게임에 제재소가 있긴 한가"를 알 수 없고,
-            // 무엇을 목표로 연구할지도 정할 수 없다. 대신 **무엇을 뚫어야 하는지**를 그 자리에 적는다.
-            bool locked = !bd.IsUnlocked;
-
-            string costLabel;
-            if (locked)
-                costLabel = $"[잠김] {bd.RequiredResearch.ResearchName} 연구 필요";
-            else
-                // 비용 이름이 **한글로 나온다.** 예전엔 enum 값이 그대로 찍혀 "IronOre ×20"이 보였다.
-                costLabel = bd.CostAmount > 0 && bd.CostItem != null
-                          ? $"{bd.CostItem.ItemName} ×{bd.CostAmount}" : "";
+            // **잠긴 건물은 안 띄운다**(2026-09-02, 사용자 결정 — 림월드가 그렇다).
+            //
+            // 한동안 반대로 뒀다: *"안 보이면 이 게임에 제재소가 있긴 한가를 알 수 없고,
+            // 무엇을 목표로 연구할지도 정할 수 없다."* **그 전제가 이제 충족된다** —
+            // 연구 화면이 노드마다 `해금 —` 블록으로 열리는 건물과 레시피를 나열한다
+            // (`ResearchTableUI` · `GetUnlockedBuildings`). **물음마다 답하는 화면이 하나씩**이면
+            // 목록은 *지금 지을 수 있는 것*만 들면 된다.
+            //
+            // 55개 중 상당수가 잠겨 있어서, 남겨 두면 **고를 것을 가리는 쪽**이 더 컸다.
+            if (!bd.IsUnlocked) continue;
 
             int captured = i;
-            var item = Instantiate(buildingItemPrefab, buildingContainer);
+            var data     = bd;
+            var item     = Instantiate(buildingItemPrefab, buildingContainer);
+
             // 잠긴 것은 눌러도 아무 일도 안 일어난다 — `BuildModeManager`가 배치도 막지만,
             // 여기서 막아야 "골랐는데 고스트가 안 뜨는" 상태가 안 생긴다.
-            item.Setup(bd.BuildingName, costLabel,
-                       locked ? (System.Action)null : () => mgr.SelectBuilding(captured));
+            item.Setup(bd.BuildingName, () => Describe(data), () => mgr.SelectBuilding(captured));
             _itemBtns.Add((item, i));
         }
+    }
+
+    // 마우스를 올렸을 때 뜨는 설명. **올릴 때마다 새로 짓는다** — 가진 재료가 들어가는데
+    // 목록을 지을 때 한 번 구워 두면 창고가 바뀌어도 안 따라온다.
+    //
+    // 순서는 **무엇인가 → 얼마인가 → 왜 못 짓나**. 못 짓는 이유가 맨 아래인 것은 그것이
+    // 대개 없는 줄이기 때문이다 — 있을 때만 나타나는 줄을 가운데 끼우면 줄 위치가 흔들린다.
+    static string Describe(BuildingData bd)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        if (!string.IsNullOrWhiteSpace(bd.Description))
+            sb.AppendLine(bd.Description);
+
+        if (bd.Size.x > 0)
+            sb.AppendLine($"<color=#888>크기 {Mathf.Max(1, bd.Size.x)}×{Mathf.Max(1, bd.Size.y)}</color>");
+
+        // 비용 이름이 **한글로 나온다.** 예전엔 enum 값이 그대로 찍혀 "IronOre ×20"이 보였다.
+        // **가진 것을 같이 적는다** — 붉게 물든 타일을 보고 "얼마나 모자란가"를 물을 자리가
+        // 여기뿐이다(청사진 살펴보기 창이 같은 답을 쓴다).
+        if (bd.IsFree) sb.AppendLine("<color=#888>무료</color>");
+        else
+            foreach (var c in bd.Costs)   // **재료마다 한 줄** — 합치면 무엇이 모자란지가 안 보인다
+            {
+                if (c.Item == null || c.Amount <= 0) continue;
+                int have = MaterialPool.AvailableHere(c.Item);
+                string col = have >= c.Amount ? "#CCC" : "#F66";
+                sb.AppendLine($"<color={col}>{c.Item.ItemName} {have}/{c.Amount}</color>");
+            }
+
+        // **사유는 `BuildingData.LockReason` 하나가 답한다** — 잠그는 축이 둘이 되면서
+        // (연구 · 가져와 봤는가) 여기서 조립하면 창마다 다른 말이 뜬다.
+        if (!bd.IsUnlocked)
+        {
+            var why = bd.LockReason;
+            if (!string.IsNullOrEmpty(why))
+                sb.AppendLine($"<color=#F90>[잠김] {why}</color>");
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     void RefreshCatColors()
@@ -182,7 +329,6 @@ public class BuildModeUI : MonoBehaviour
     bool CanAfford(BuildModeManager mgr, int idx)
     {
         var bd = mgr.GetBuilding(idx);
-        return bd == null || bd.CostAmount <= 0
-            || MaterialPool.AvailableAnywhere(bd.CostItem) >= bd.CostAmount;
+        return bd == null || bd.CanAfford(MaterialPool.Focus);
     }
 }

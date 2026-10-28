@@ -74,7 +74,7 @@ public class StorageUI : MonoBehaviour
     void Open(Storage storage)
     {
         _current = storage;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         if (titleText != null) titleText.text = storage.BuildingName;
 
         if (_gridUI != null)
@@ -95,7 +95,7 @@ public class StorageUI : MonoBehaviour
             _gridUI.ReceiveFilter = null;
             _gridUI.Bind(null);
         }
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     // ── 용량 ─────────────────────────────────────────────────────────────────

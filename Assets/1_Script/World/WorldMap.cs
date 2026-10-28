@@ -9,7 +9,12 @@ public enum WorldNodeContent
     MySettlement, // 내 정착지 (코어 있음)
     Town,         // NPC 마을 (상인 등)
     EnemyLair,    // 적 소굴
-    ResourceSite, // 특수 자원 지대 (매장량이 두터운 칸)
+    // **안 쓴다**(2026-09-14). 자원 지대는 *"어디에 자원이 있나"*에 답하는 **두 번째 표**였다 —
+    // 벽 속 광맥(`RockMap.VeinAt`)과 바닥 뿌리기(`ScatterRule`)가 둘 다
+    // `BiomeContentData.ResourceNodes` 하나를 읽는데, 이것만 **손으로 놓은 자리**에 매여 있었다.
+    // **값은 안 지운다** — 정수 직렬화라 지우면 `Outpost`가 한 칸 밀려 구운 청크가 통째로 어긋난다
+    // (지상 바이옴을 `Biome` enum에 남겨 둔 것과 같은 규칙: 안 쓰면 그만이다).
+    ResourceSite,
     Outpost,      // 내 채집기지 — 매장 자원을 매일 캐서 쌓아둔다(사람은 살지 않는다)
 }
 
@@ -21,7 +26,6 @@ public static class WorldNodeContentExt
         WorldNodeContent.MySettlement => "내 정착지",
         WorldNodeContent.Town         => "마을",
         WorldNodeContent.EnemyLair    => "적 소굴",
-        WorldNodeContent.ResourceSite => "자원 지대",
         WorldNodeContent.Outpost      => "채집기지",
         _                             => c.ToString(),
     };
@@ -32,7 +36,6 @@ public static class WorldNodeContentExt
         WorldNodeContent.MySettlement => new Color(1f, 0.9f, 0.3f),
         WorldNodeContent.Town         => new Color(0.4f, 0.6f, 1f),
         WorldNodeContent.EnemyLair    => new Color(0.9f, 0.2f, 0.2f),
-        WorldNodeContent.ResourceSite => new Color(0.3f, 0.85f, 0.85f),
         WorldNodeContent.Outpost      => new Color(0.85f, 0.65f, 0.35f),
         _                             => UnityEngine.Color.white,
     };
@@ -43,7 +46,6 @@ public static class WorldNodeContentExt
         WorldNodeContent.MySettlement => "핵",
         WorldNodeContent.Town         => "마",
         WorldNodeContent.EnemyLair    => "적",
-        WorldNodeContent.ResourceSite => "자",
         WorldNodeContent.Outpost      => "굴",
         _                             => "",
     };
@@ -53,7 +55,7 @@ public static class WorldNodeContentExt
 // 안개(Discovered)는 없다 — 2026-06-20 결정으로 폐기. 지형·내용물은 처음부터 전부 보인다.
 // 발견의 긴장은 콘텐츠 은닉이 아니라 **거리 + 위험도 게이팅**("보이지만 못 감")으로 낸다.
 // 높이/생김새는 여기 없다 — 지형은 씬에 직접 만들어 붙인 Terrain이고, 격자는 그 위에 얹힌 논리 레이어다.
-// 표면 좌표가 필요하면 `WorldMapGrid.SurfacePoint(node)`가 Terrain을 샘플해 알려준다.
+// 표면 좌표가 필요하면 `TerrainHeight`가 답한다(옛 3D 월드맵 격자는 10-09에 걷어냈다).
 [Serializable]
 public struct WorldTile
 {
@@ -75,7 +77,14 @@ public class WorldMap : MonoBehaviour
     public static WorldMap Instance { get; private set; }
 
     [Header("저작 데이터 (World Map Editor로 편집)")]
+    [Tooltip("1층 지도. 층마다 한 장 — 나머지 층은 아래 `upperFloors`(각 에셋의 `Floor`로 가른다).")]
     [SerializeField] WorldMapData mapData;
+
+    // **층 지도 — 2~4층**(2026-10-01, `Floors`). 세계는 층 넷을 2×2로 나란히 놓은 한 평면이고, 지역 격자는 층 지도
+    // 넷을 그 자리대로 짜 맞춘 것이다(`LoadAuthored`). **어느 층인지는 에셋의 `Floor`가 답한다** — 목록 순서가
+    // 아니다(순서로 두면 하나를 빼는 순간 위층이 한 칸씩 내려앉는다). 비어 있는 층은 미지정 바이옴으로 뜨고 경고한다.
+    [Tooltip("2~4층 지도. 각 에셋의 `Floor`로 자리를 정한다(순서 무관). `World → 0d. Create Floor Maps`가 만든다.")]
+    [SerializeField] List<WorldMapData> upperFloors = new();
 
     [Header("데이터가 없을 때의 빈 맵 크기")]
     [SerializeField] int width = 16;
@@ -132,7 +141,6 @@ public class WorldMap : MonoBehaviour
         // 마을 시장은 칸 좌표를 열쇠로 static에 남는다 — 지도를 새로 지으면 옛 좌표의
         // 상점이 엉뚱한 마을에 붙는다(도메인 리로드를 끄면 플레이 정지 뒤에도 살아남는다).
         TownMarket.Clear();
-        TownRecruits.Clear();
         WorldLairs.Clear();
 
         if (mapData != null && mapData.IsSized) LoadAuthored();
@@ -150,24 +158,50 @@ public class WorldMap : MonoBehaviour
         }
     }
 
-    // 저작 데이터를 그대로 싣는다. 크기·시작 노드도 데이터가 정한다(인스펙터 값은 무시).
+    // 저작 데이터를 그대로 싣는다. **층 지도 넷을 2×2로 짜 맞춘다**(층 하나 = 사분면 하나, `Floors.Quadrant`).
+    // 크기는 1층 지도가 정하고(층 지도는 다 같은 크기여야 한다), 시작 노드는 1층의 것이다(1층이 남서라 그대로 세계 칸이다).
     void LoadAuthored()
     {
-        width     = mapData.Width;
-        height    = mapData.Height;
+        int fw = mapData.Width, fh = mapData.Height;
+        width     = fw * Floors.PerAxis;
+        height    = fh * Floors.PerAxis;
         startNode = mapData.StartNode;
 
         _tiles = new WorldTile[width, height];
-        for (int x = 0; x < width; x++)
-        for (int y = 0; y < height; y++)
+        for (int f = 1; f <= Floors.Count; f++)
         {
-            var n = mapData.Get(x, y);
-            _tiles[x, y] = new WorldTile { Biome = n.Biome, Content = n.Content };
+            var data = FloorData(f);
+            var q = Floors.Quadrant(f);
+            bool ok = data != null && data.IsSized && data.Width == fw && data.Height == fh;
+            if (!ok && f > 1)
+                Debug.LogWarning($"[WorldMap] {f}층 지도가 " + (data == null ? "없다" : $"크기가 다르다({data.Width}x{data.Height} — 1층은 {fw}x{fh})") +
+                                 " — 그 층은 미지정 바이옴으로 뜬다. `World → 0d. Create Floor Maps`를 돌릴 것.");
 
-            // 저작자가 찍어둔 정착지도 전부 내 거점으로 등록.
-            if (n.Content == WorldNodeContent.MySettlement)
-                _settlements.Add(new Vector2Int(x, y));
+            for (int x = 0; x < fw; x++)
+            for (int y = 0; y < fh; y++)
+            {
+                int gx = q.x * fw + x, gy = q.y * fh + y;
+                if (!ok) { _tiles[gx, gy] = new WorldTile { Biome = Biome.Unknown, Content = WorldNodeContent.Empty }; continue; }
+
+                var n = data.Get(x, y);
+                _tiles[gx, gy] = new WorldTile { Biome = n.Biome, Content = n.Content };
+
+                // 저작자가 찍어둔 정착지도 전부 내 거점으로 등록.
+                if (n.Content == WorldNodeContent.MySettlement)
+                    _settlements.Add(new Vector2Int(gx, gy));
+            }
         }
+    }
+
+    // **그 층의 지도** — 1층은 `mapData`, 나머지는 `upperFloors`에서 `Floor`가 맞는 것. 인스턴스가 없으면(에디터) 씬에서 찾는다.
+    public static WorldMapData FloorData(int floor)
+    {
+        var wm = Instance != null ? Instance : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include);
+        if (wm == null) return null;
+        if (floor <= 1) return wm.mapData;
+        foreach (var d in wm.upperFloors)
+            if (d != null && d.Floor == floor) return d;
+        return null;
     }
 
     // 저작 데이터가 없을 때의 빈 맵. **절차 생성이 아니다** — 전부 미지정으로 두고 경고를 남겨
@@ -194,14 +228,81 @@ public class WorldMap : MonoBehaviour
     public WorldTile GetTile(Vector2Int node) =>
         InBounds(node) ? _tiles[node.x, node.y] : default;
 
-    // ── 변경 ─────────────────────────────────────────────────────────────────
-
-    public void SetContent(Vector2Int node, WorldNodeContent content)
+    // **저작한 바이옴을 인스턴스 없이 읽는다** — 에디터에서 지형을 조각할 때는 `Awake`가
+    // 안 돌아 `Instance`도 `_tiles`도 없다. 그때 기본값(평원)으로 떨어지면 **도구가 게임과
+    // 다른 지형을 조각하고**, 구운 델타가 통째로 어긋난다(그 함정은 연구 재료에서 이미 겪었다).
+    // 저작한 지도의 한 변 — `TerrainGrid.RegionsPerAxis`가 이걸 읽는다.
+    // **지역의 크기는 세계가 아니라 저작한 해상도가 정한다.**
+    // 저작한 시작 칸 — 바이옴·너비와 같은 이유로 **인스턴스 없이도 읽힌다**(도구가 쓴다).
+    // 자동 배치가 *"시작 둘레는 비워 둔다"*를 지키려면 에디터에서도 이걸 알아야 한다.
+    public static Vector2Int AuthoredStart
     {
-        if (!InBounds(node)) return;
-        _tiles[node.x, node.y].Content = content;
-        OnNodeChanged?.Invoke(node);
+        get { var src = AuthoredData; return src != null ? src.StartNode : Vector2Int.zero; }
     }
+
+    // 저작 데이터 — 인스턴스가 있으면 그것, 없으면(에디터) 씬에서 찾는다.
+    // 넷이 각자 이 식을 들고 있었다(2026-09-09).
+    static WorldMapData AuthoredData
+    {
+        get
+        {
+            var inst = Instance;
+            return inst != null ? inst.mapData
+                 : UnityEngine.Object.FindFirstObjectByType<WorldMap>(FindObjectsInactive.Include)?.mapData;
+        }
+    }
+
+    // **지금 보는 층** — 카메라가 있는 사분면(`Floors.Current`). 층이 2×2로 나란히 놓인 뒤로 *"지금 층"*은 지도
+    // 에셋이 아니라 자리가 답한다.
+    public static int CurrentFloor => Floors.Current;
+
+    // 층 수 — 사용자가 정한 넷(2026-09-15, `docs/design_underworld.md` "층 구성").
+    public const int MaxFloor = Floors.Count;
+
+    // **층 지도 한 장의 폭**(2026-10-01부터 — 세계 격자는 이것의 `Floors.PerAxis`배다, `TerrainGrid.RegionsPerAxis`).
+    public static int AuthoredWidth
+    {
+        get
+        {
+            var inst = Instance;
+            if (inst != null && inst.width > 0) return inst.width / Floors.PerAxis;
+
+            var src = AuthoredData;
+            return src != null && src.Width > 0 ? src.Width : 16;
+        }
+    }
+
+
+    // **월드 좌표의 바이옴.** 장소가 칸이 아니라 좌표가 되면서 묻는 곳이 셋이 됐다
+    // (소굴·시장·모집). 각자 지역을 계산하면 반 칸 밀리는 실수가 세 번 난다.
+    // **경계는 격자보다 곱다** — `TerrainGrid.BiomeSample`이 자리를 굽힌다(근거는 거기).
+    // 바닥 텍스처·지도 색과 **같은 문**을 쓴다: 갈리면 *바닥이 바뀌는 자리*와 *광맥이
+    // 바뀌는 자리*가 어긋나 경계가 두 줄로 보인다.
+    //
+    // **주소를 묻는 것은 `TerrainGrid.RegionAt`이다** — 굽히면 지도 툴팁이 거짓말을 한다.
+    public static Biome BiomeAtWorld(Vector2 worldXZ)
+    {
+        var r = TerrainGrid.BiomeRegion(worldXZ.x, worldXZ.y);
+        return AuthoredBiome(r.x, r.y);
+    }
+
+    public static Biome AuthoredBiome(int x, int y)
+    {
+        var inst = Instance;
+        if (inst != null && inst._tiles != null && inst.InBounds(new Vector2Int(x, y)))
+            return inst._tiles[x, y].Biome;
+
+        // 에디터 — 세계 칸을 층과 층 안 칸으로 가른다(`LoadAuthored`와 같은 셈).
+        int fw = AuthoredWidth;
+        if (fw <= 0 || x < 0 || y < 0) return Biome.Plains;
+        var src = FloorData(Floors.OfQuadrant(x / fw, y / fw));
+        int lx = x % fw, ly = y % fw;
+        if (src != null && src.IsSized && src.InBounds(lx, ly)) return src.Get(lx, ly).Biome;
+
+        return Biome.Plains;
+    }
+
+    // ── 변경 ─────────────────────────────────────────────────────────────────
 
     // 코어를 박아 정착지로 승격 (step 4의 코어 배치에서 호출).
     public void RegisterSettlement(Vector2Int node)

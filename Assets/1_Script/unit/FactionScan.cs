@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // **주변에서 세력을 훑는 일 한 곳.** 탐지(`DetectNode`)·도주(`FleeNode`)·수적 보너스
@@ -24,7 +25,8 @@ using UnityEngine;
 //  · 콜라이더가 여럿인 폰을 두 번 세지 않는다(`CountNearbyEnemies`가 그랬다).
 //  · 꺼진 폰(원정)은 `OnDisable`로 레지스트리에서 빠져 있어 애초에 안 잡힌다.
 //
-// **벽 너머도 보이는 것은 예전 그대로다** — `OverlapSphere`도 시야를 안 봤다.
+// **벽 너머도 보이는 것은 예전 그대로다** — `OverlapSphere`도 시야를 안 봤다. 탐지만은 2026-10-18부터 바위에
+// 가린 것을 안 본다(`NearestSeen`) — 도주·수적 보너스·도발은 그대로다.
 public static class FactionScan
 {
     // 가장 가까운 적대 대상.
@@ -57,6 +59,148 @@ public static class FactionScan
 
             // **거리를 먼저 보고 나서 묻는다** — `IsAttackable`은 `GetComponent`를 몇 번 타므로
             // 멀리 있는 것까지 물어보면 아낀 것을 도로 쓴다.
+            if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
+
+            bestSqr = d;
+            best    = other.gameObject;
+        }
+        return best;
+    }
+
+    // **보이는 것 중 가장 가까운 적**(2026-10-18 — 탐지가 쓴다). `NearestHostile`과 같은 규칙에 둘을 더한다:
+    //  · **눈** — 사이에 바위가 있으면 안 보인다(`Vision.SightClear`). 거리로 먼저 거르고 **지금 최선보다 가까울
+    //    때만** 선을 훑는다 — 대부분은 거리에서 떨어져 선을 안 탄다.
+    //  · **원한**(`bb.Grudges`) — 나를 친 놈은 세력이 중립이어도 적이다. `hostiles`를 끄면 원한만 훑는다
+    //    (반격 성향 · 소집 — 먼저 걸지는 않지만, 이미 시작된 싸움의 상대는 본다).
+    // 도주·수적 보너스는 예전 그대로 `NearestHostile`(벽 너머도 센다)이다.
+    public static GameObject NearestSeen(UnitBlackboard bb, float range, bool hostiles)
+    {
+        var self = bb?.Self;
+        var mine = bb?.Faction;
+        if (self == null || mine == null) return null;
+        if (!hostiles && bb.Grudges.Count == 0) return null;
+        bb.Grudges.RemoveWhere(g => g == null);   // 파괴된 것은 버린다
+
+        Vector3 pos    = self.transform.position;
+        float rangeSqr = range * range;
+
+        GameObject best = null;
+        float bestSqr   = float.MaxValue;
+
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var other = all[i];
+            if (other == null || other.gameObject == self) continue;
+
+            // **같은 편이 된 놈에게는 원한이 안 걸린다** — 나를 쳤던 적을 영입하면 그놈은 이제 동료다(원한 목록은
+            // 그대로 두어도 된다 — 다시 적이 되면 다시 원한이다).
+            bool wanted = (hostiles && mine.IsHostileTo(other))
+                       || (bb.Grudges.Contains(other.gameObject) && !mine.IsAllyOf(other));
+            if (!wanted) continue;
+
+            float d = (other.transform.position - pos).sqrMagnitude;
+            if (d > rangeSqr || d >= bestSqr) continue;
+            if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
+            if (!Vision.SightClear(pos, other.transform.position)) continue;
+
+            bestSqr = d;
+            best    = other.gameObject;
+        }
+        return best;
+    }
+
+    // 범위 안 적대 **전부**. 도발처럼 여럿을 한꺼번에 잡는 능력이 쓴다.
+    //
+    // **담을 그릇을 받는다** — 새 리스트를 돌려주면 이 파일이 `OverlapSphere`를 그만둔 이유
+    // (매번 배열을 새로 만들지 않는다)를 그대로 되돌리는 셈이다. 부르는 쪽이 한 벌을 돌려 쓴다.
+    //
+    // 거르는 규칙은 `NearestHostile`과 **같다**(적대 · 범위 · 칠 수 있는 상대) — 갈라 두면
+    // "탐지에는 걸리는데 도발은 안 되는" 상대가 생긴다.
+    public static int HostilesWithin(GameObject self, Faction mine, float range,
+                                     bool theirsToMine, List<GameObject> into)
+    {
+        if (into == null) return 0;
+        into.Clear();
+        if (self == null || mine == null) return 0;
+
+        Vector3 pos    = self.transform.position;
+        float rangeSqr = range * range;
+
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var other = all[i];
+            if (other == null || other.gameObject == self) continue;
+
+            bool hostile = theirsToMine ? other.IsHostileTo(mine) : mine.IsHostileTo(other);
+            if (!hostile) continue;
+
+            if ((other.transform.position - pos).sqrMagnitude > rangeSqr) continue;
+            if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
+
+            into.Add(other.gameObject);
+        }
+        return into.Count;
+    }
+
+    // **사수 앞 부채꼴 안에 있는 사람** — 빗나간 화살이 이걸 묻는다(2026-08-26).
+    //
+    // **세력을 안 가린다**(사용자 결정 — *"오사가 아군오사뿐만 아니라 사실 그냥 다른 상대를
+    // 쏠 수도 있는거잖아"*). 빗나간 화살은 누가 거기 서 있는지를 따지지 않는다 — 동료가 맞으면
+    // 손해고 옆에 선 다른 적이 맞으면 그냥 다른 놈이 맞는 것이다. **한때 비적대만 훑었는데**,
+    // 그러면 *"적들만 있는 난전에 대고 쏘면 정밀사격이 아무 일도 안 한다"*가 되어 **겨눈 놈을
+    // 마무리하려는 순간에** 그 스탯이 사라졌다.
+    //
+    // 적대를 찾는 위 셋과 **묻는 각이 다를 뿐**이라 여기 나란히 둔다. 규칙은 같다(레지스트리를
+    // 훑는다 · 칠 수 있는 상대만 · 담을 그릇을 안 만든다).
+    //
+    // **선이 아니라 부채꼴이다**(사용자 결정) — 레이저처럼 가는 선으로 재면 동료가 그 위에
+    // 정확히 서 있어야만 걸려, 규칙은 있는데 **거의 안 난다.** 화살은 손이 흔들리면 옆으로도
+    // 벌어지므로, *"내 앞 이쯤에 우리 편이 있나"*가 물어야 할 것이다.
+    //
+    // **가장 가까운 하나** — 여럿이면 앞사람이 먼저 맞는다.
+    //
+    // **`exclude`는 겨눈 표적이다 — 반드시 넘길 것.** 안 빼면 표적 자신이 *"내 앞에 선
+    // 사람"*으로 걸려 **제 몫의 빗맞음 대상이 된다**(부채꼴의 축 위, 정확히 그 거리에 있다).
+    // 맞는 사람은 어차피 같지만 그건 빗맞은 것이 아니라 그냥 쏜 것이다.
+    public static GameObject NearestPawnInCone(GameObject self, Vector3 dir,
+                                               float range, float cosHalfAngle,
+                                               GameObject exclude = null)
+    {
+        if (self == null) return null;
+
+        float dirLen = dir.magnitude;
+        if (dirLen <= 0.001f) return null;
+        dir /= dirLen;
+
+        Vector3 pos    = self.transform.position;
+        float rangeSqr = range * range;
+
+        GameObject best = null;
+        float bestSqr   = float.MaxValue;
+
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var other = all[i];
+            if (other == null || other.gameObject == self) continue;
+            if (other.gameObject == exclude) continue;
+
+            Vector3 delta = other.transform.position - pos;
+            float d       = delta.sqrMagnitude;
+            if (d > rangeSqr || d >= bestSqr || d <= 0.0001f) continue;
+
+            // **높이는 안 본다** — 부채꼴은 수평으로 재고, 폰의 피벗이 발밑이라 위아래를
+            // 섞으면 오르막에 선 동료가 각도 밖으로 밀려난다.
+            Vector3 flat = new Vector3(delta.x, 0f, delta.z);
+            float flatLen = flat.magnitude;
+            if (flatLen <= 0.001f) continue;
+            if (Vector3.Dot(flat / flatLen, new Vector3(dir.x, 0f, dir.z).normalized) < cosHalfAngle)
+                continue;
+
+            // **쓰러진 몸은 안 맞는다** — 화살이 지나가는 높이에 없고, 무엇보다 기절이
+            // 회복 가능한 상태라는 규칙을 빗맞은 화살이 뒤로 뚫으면 안 된다(시체도 빠진다).
             if (!BTTargetUtil.IsAttackable(other.gameObject)) continue;
 
             bestSqr = d;

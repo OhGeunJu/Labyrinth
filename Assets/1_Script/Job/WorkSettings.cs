@@ -25,12 +25,51 @@ public class WorkSettings : MonoBehaviour
 
     readonly HashSet<JobCategory> _disabled = new(DefaultOff);
 
+    // ── 못 하는 일 ───────────────────────────────────────────────────────────
+    //
+    // **성장 배경이 막아 둔 것**(`BackstoryData.DisabledJobs`). 끈 것(`_disabled`)과 **다른
+    // 축이다**: 끈 것은 "지금은 시키지 말자"라 사람이 도로 켤 수 있지만, 이건 *"이 사람은
+    // 그걸 못 한다"*라 켤 수가 없다.
+    //
+    // **막는 자리를 여기 둔 이유**: 큐 배정이 이미 `IsEnabled` 하나를 지나간다
+    // (`JobManager.RequestJob`). 그러니 여기서 거짓을 돌려주면 **작업·전투 코드는 성장 배경을
+    // 몰라도 된다** — 특성이 스탯만 얹는 것과 같은 자리의 판단이다(모델 A). 배경이 늘어도
+    // 분기는 안 는다.
+    readonly HashSet<JobCategory> _blocked = new();
+
+    public bool IsBlocked(JobCategory category) => _blocked.Contains(category);
+
+    public IReadOnlyCollection<JobCategory> Blocked => _blocked;
+
+    // 배경이 얹고 뗀다(`UnitBrain.SetBackstories`). **직접 배정(채굴·벌목·경비)도 받는다** —
+    // `IsEnabled`는 큐 작업만 답하지만, 배정하는 쪽은 이 목록을 따로 묻는다
+    // (`ResourceNode.Assign`·`PatrolZone.Assign`). 여기까지 걸러 주지 않으면
+    // *"무능력인데 바위는 캔다"*가 된다.
+    public void SetBlocked(JobCategory category, bool blocked)
+    {
+        bool changed = blocked ? _blocked.Add(category) : _blocked.Remove(category);
+        if (changed) OnChanged?.Invoke();
+    }
+
+    public void ClearBlocked()
+    {
+        if (_blocked.Count == 0) return;
+        _blocked.Clear();
+        OnChanged?.Invoke();
+    }
+
+    // **`IsToggleable`이지 `IsQueued`가 아니다.** 채굴·벌목은 큐를 안 타지만(일감을 안 만든다)
+    // 자율 배정(`ResourceNode.ClaimFreeFor`)이 이 답을 본다 — `IsQueued`로 막으면 그 둘이
+    // **늘 꺼진 것으로 답해** 자율 배정이 한 번도 안 돈다.
     public bool IsEnabled(JobCategory category)
-        => JobCategoryInfo.IsQueued(category) && !_disabled.Contains(category);
+        => JobCategoryInfo.IsToggleable(category)
+        && !_blocked.Contains(category)
+        && !_disabled.Contains(category);
 
     public void SetEnabled(JobCategory category, bool enabled)
     {
-        if (!JobCategoryInfo.IsQueued(category)) return;
+        if (!JobCategoryInfo.IsToggleable(category)) return;
+        if (_blocked.Contains(category)) return;   // 못 하는 일은 켤 수 없다
 
         bool changed = enabled ? _disabled.Remove(category) : _disabled.Add(category);
         if (changed) OnChanged?.Invoke();
@@ -84,15 +123,21 @@ public class WorkSettings : MonoBehaviour
             return;
         }
 
-        bool mentionsQueue = false;
+        // **`IsToggleable`로 묻는다.** 채굴·벌목은 큐를 안 타지만 자율 배정이 이 설정을 보므로
+        // (`ResourceNode.ClaimFreeFor`) 목록에 적는 것이 이제 뜻을 갖는다 — `[채굴, 벌목]`은
+        // *"이 하수인은 캐고 벨 뿐 나르지 않는다"*라는 저작이다. 옛날엔 그 목록이 큐 작업을
+        // 통째로 꺼 버리는 사고여서 "아무 말도 안 한 것"으로 쳤는데, 끌 수 없던 시절의
+        // 이야기다. **경비만 여전히 직접 배정이라 여기 적어도 켜고 꺼지지 않는다.**
+        bool mentionsToggleable = false;
         for (int i = 0; i < allowed.Count; i++)
-            if (JobCategoryInfo.IsQueued(allowed[i])) { mentionsQueue = true; break; }
+            if (JobCategoryInfo.IsToggleable(allowed[i])) { mentionsToggleable = true; break; }
 
-        if (!mentionsQueue)
+        if (!mentionsToggleable)
         {
-            Debug.LogWarning($"[WorkSettings] {name}: 허용 작업 목록에 큐 작업이 하나도 없습니다 " +
-                             "(채굴·벌목·경비는 직접 배정이라 여기서 켜고 끄는 대상이 아닙니다). " +
-                             "전부 허용으로 둡니다 — 의도한 제한이 있다면 MinionData에 큐 작업으로 적으세요.");
+            Debug.LogWarning($"[WorkSettings] {name}: 허용 작업 목록에 켜고 끌 수 있는 작업이 " +
+                             "하나도 없습니다(경비는 직접 배정이라 대상이 아닙니다). " +
+                             "전부 허용으로 둡니다 — 의도한 제한이 있다면 MinionData에 큐 작업이나 " +
+                             "채굴·벌목으로 적으세요.");
             foreach (var c in DefaultOff) _disabled.Add(c);
             OnChanged?.Invoke();
             return;
@@ -101,6 +146,10 @@ public class WorkSettings : MonoBehaviour
         foreach (var category in JobCategoryInfo.QueueOrder)
             if (!Contains(allowed, category))
                 _disabled.Add(category);
+
+        // 채굴·벌목도 같은 규칙 — 적혔으면 켜고, 안 적혔으면 끈다.
+        if (!Contains(allowed, JobCategory.Mining))  _disabled.Add(JobCategory.Mining);
+        if (!Contains(allowed, JobCategory.Logging)) _disabled.Add(JobCategory.Logging);
 
         OnChanged?.Invoke();
     }

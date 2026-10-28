@@ -14,7 +14,10 @@ public static class Treatment
     public const float BareHandsSpeed   = 0.55f;
 
     public const float BaseSeconds  = 8f;    // 의료 0·붕대 기준 한 회차
-    public const float BasePartHeal = 12f;   // 한 회차 부위 HP 회복(배율 곱하기 전)
+    // **부위 회복만 몸의 눈금과 같이 올렸다**(부위 ×3, `BodyPartSystem`) — 안 올리면 붕대 한
+    // 번이 긁힌 자국만큼도 못 메워, 약을 쓰는 자리 자체가 사라진다. **혈액 상한은 100 그대로라
+    // 예전 값 그대로다.**
+    public const float BasePartHeal = 38f;   // 한 회차 부위 HP 회복(배율 곱하기 전)
     public const float BaseCapHeal  = 8f;    // 한 회차 혈액 상한 회복
 
     // **스스로 하는 것은 덜 듣는다.** 한 손으로, 안 보이는 곳을, 아픈 채로 싸맨다 —
@@ -94,8 +97,45 @@ public static class Treatment
         return best;
     }
 
-    // 배낭에서 한 개 뺀다. 못 빼면(그새 없어졌으면) false — 부르는 쪽은 맨손으로 친다.
-    // **`RemoveUnlocked`** — 치료는 자동이므로 잠근 뭉치는 안 건드린다(`BestInBackpack`과 짝).
-    public static bool ConsumeFromBackpack(UnitBrain pawn, MedicineData med)
-        => med != null && pawn?.Inventory != null && pawn.Inventory.RemoveUnlocked(med, 1) > 0;
+    // ── 치료한 만큼만 쓴다 (2026-10-16) ──────────────────────────────────────
+    //
+    // 사용자: *"회복 아이템도 치료한 만큼만 소모되는게 좋잖아 치료한다고 무조건 아이템 하나가 사라지는게 아니라"*.
+    // **약 한 개가 한 회차 전부다.** 회차가 채울 양 중 실제로 빈 만큼(`BodyPartSystem.TreatNeed`)만 쓰고, 남은 것은
+    // 뭉치의 열린 하나로 남는다(`ItemInstance.Left`). 다음 회차는 열린 것부터 쓴다.
+    //
+    // **지혈에도 조금은 든다**(`MinDose`) — 피만 나고 빈 곳이 거의 없는 상처를 감는 데 0을 쓰면 약이 공짜다.
+    public const float MinDose = 0.1f;
+
+    // 이 몸에 이 배율로 한 회차를 하면 약이 얼마나 드나(0.1~1).
+    public static float Dose(BodyPartSystem body, float power)
+    {
+        if (body == null) return 0f;
+        return Mathf.Clamp(body.TreatNeed(BasePartHeal * power, BaseCapHeal * power), MinDose, 1f);
+    }
+
+    // 배낭에서 그만큼 쓴다 — **실제로 쓴 양**을 돌려준다(모자라면 있는 만큼 · 없으면 0 → 맨손).
+    // **잠근 뭉치는 안 건드린다** — 치료는 자동이다(`BestInBackpack`과 짝).
+    public static float UseFromBackpack(UnitBrain pawn, MedicineData med, float dose)
+        => med != null && pawn != null && pawn.Inventory != null ? pawn.Inventory.UseUp(med, dose, skipLocked: true) : 0f;
+
+    // **한 회차를 끝낸다 — 약 고르기 · 쓰기 · 회복이 한 곳**(의사 `TreatJob`과 자가치유 `SelfTend`가 같이 부른다).
+    // 약을 쓴 만큼 회복한다(`power × 쓴 양`) — 다 쓴 약이 모자라 덜 감았으면 덜 낫고, 다음 회차가 이어 감는다.
+    // 쓴 약을 돌려준다(없으면 null — 맨손).
+    public static MedicineData Finish(UnitBrain doctor, MedicineData med, BodyPartSystem body, float skill, bool self,
+                                      out float power)
+    {
+        float full = Power(med, skill, self);
+        float used = med != null ? UseFromBackpack(doctor, med, Dose(body, full)) : 0f;
+
+        if (used <= 0f)
+        {
+            power = Power(null, skill, self);   // 약이 그새 없어졌다 — 맨손
+            Apply(body, power);
+            return null;
+        }
+
+        power = full * used;
+        Apply(body, power);
+        return med;
+    }
 }

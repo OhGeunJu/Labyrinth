@@ -114,8 +114,11 @@ public class ResearchManager : MonoBehaviour
     {
         if (research == null) return false;
         if (_completed.Contains(research)) return false;           // 이미 완료
-        if (research.Prerequisite == null) return true;            // 선행 없음
-        return _completed.Contains(research.Prerequisite);
+        // **하나라도 안 끝났으면 잠긴다.** 비어 있으면 처음부터 열린 연구다.
+        if (research.Prerequisites == null) return true;
+        foreach (var pre in research.Prerequisites)
+            if (pre != null && !_completed.Contains(pre)) return false;
+        return true;
     }
 
     public bool IsCompleted(ResearchData research) => _completed.Contains(research);
@@ -135,6 +138,22 @@ public class ResearchManager : MonoBehaviour
 
         foreach (var b in DataManager.AllBuildings)
             if (b != null && b.RequiredResearch == research) list.Add(b);
+        return list;
+    }
+
+    // **하수인도 연구로 열린다**(2026-08-25). `MinionData.RequiredResearch`가 진작 있었고
+    // 해골이 `골각 세공`을 물고 있었는데 — **화면에는 한 줄도 안 떴다.** 연구 설명에는
+    // *"던전 핵이 해골을 일으켜 세울 수 있게 된다"*고 적혀 있는데 해금 목록에는 레시피와
+    // 건물만 있어서, 그 문장이 **지켜지는지 확인할 길이 없었다.**
+    //
+    // 건물과 같은 식으로 모은다 — 따로 적어 둘 곳 없이 `RequiredResearch`에서 나온다.
+    public List<MinionData> GetUnlockedMinions(ResearchData research)
+    {
+        var list = new List<MinionData>();
+        if (research == null) return list;
+
+        foreach (var m in DataManager.AllMinions)
+            if (m != null && m.RequiredResearch == research) list.Add(m);
         return list;
     }
 

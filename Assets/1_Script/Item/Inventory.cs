@@ -103,7 +103,10 @@ public class Inventory : MonoBehaviour
             remaining -= batch;
         }
 
-        if (remaining < amount) OnChanged?.Invoke();
+        if (remaining < amount)
+        {
+            OnChanged?.Invoke();
+        }
         return amount - remaining;
     }
 
@@ -149,7 +152,7 @@ public class Inventory : MonoBehaviour
     // 새 인스턴스가 기본값(일반·안 잠김)으로 태어났다 — 희귀 철검을 창고로 드래그하면
     // 조용히 일반이 됐다. 옮기는 건 **같은 물건**이므로 딸린 것도 같이 가야 한다.
     public bool TryAddAt(ItemData data, int amount, int x, int y, bool rotated,
-                         ItemQuality quality = ItemQuality.Common, bool locked = false)
+                         ItemQuality quality = ItemQuality.Common, bool locked = false, float left = 1f)
     {
         if (data == null || amount <= 0) return false;
         quality = Normalize(data, quality);   // `TryAdd`와 같은 문이어야 한다 — 아래 참고
@@ -161,6 +164,7 @@ public class Inventory : MonoBehaviour
         var inst = new ItemInstance(data, Math.Min(amount, data.MaxStack), x, y, rotated, quality)
         {
             Locked = locked,
+            Left   = data.Depletes ? Math.Clamp(left, ItemInstance.Epsilon, 1f) : 1f,   // 열린 하나째
         };
         PlaceCells(inst);
         _items.Add(inst);
@@ -168,52 +172,69 @@ public class Inventory : MonoBehaviour
         return true;
     }
 
-    // 외부 인벤토리 출신 아이템이 이 인벤토리 특정 위치에 들어갈 수 있는지 확인
-    public bool CanPlaceExtern(ItemData data, int x, int y, bool rotated)
+    // 그 자리에 **놓는다. 하나가 걸리면 그것을 밀어낸다**(밀려난 것은 손에 들린다).
+    //
+    // 격자에서 하는 일은 결국 이것 하나다 — 빈자리면 놓고, 뭔가 걸리면 그것과 바뀐다.
+    // 예전엔 `MoveItem` 실패 → `SwapItems` 두 단계였고, 그 사이에서 규칙이 갈렸다.
+    //
+    // ── 규칙 셋 ──────────────────────────────────────────────────────────────
+    //  · 발자국이 **비었으면** 그냥 놓는다.
+    //  · 걸리는 것이 **딱 하나면** 그것을 **통에서 빼서 돌려준다**(`displaced`). 부르는 쪽이
+    //    손에 들려 준다 — 자리를 맞바꾸지 않는 이유는, 크기가 다르면 상대가 내 자리에
+    //    못 들어가는 일이 흔하고 그때마다 "왜 안 바뀌지"가 되기 때문이다. 손에 들면
+    //    **어디에 놓을지는 사람이 정한다.**
+    //  · **둘 이상이면 아무것도 안 한다** — 어느 쪽을 밀어낼지 말할 수 없고, 하나만 밀어내면
+    //    나머지와 겹친 채로 남는다.
+    //
+    // `inst`가 이 통에 **없어도 된다** — 손에 든 것·다른 통에서 건너온 것은 그대로 꽂는다.
+    //
+    // ── 예전 `SwapItems`가 물건을 겹쳐 놓던 자리 ──────────────────────────────
+    //
+    // 그쪽은 **둘을 서로 비켜 놓고 각각** 판정했다(`CanPlace(bx,by,…,a) && CanPlace(ax,ay,…,b)`).
+    // 서로의 자리를 막고 있다고 나오는 것을 피하려던 것인데, 그 바람에 **A의 새 발자국과
+    // B의 새 발자국이 겹치는지를 아무도 안 봤다** — 크기가 다른 둘(3×1 검 ↔ 2×3 옷)을 비비면
+    // 둘 다 통과해 **겹친 채로 놓였다.** 밀어내는 쪽은 통에서 아예 빠지므로 그 구멍이 없다.
+    //
+    // 그리고 상대를 **커서 칸이 아니라 발자국 전체**에서 찾는다 — 3×1로 돌린 검은 커서 칸이
+    // 비어 있어도 옆 칸에서 남의 물건에 걸친다(그게 "가끔 겹친다"의 정체였다).
+    public bool TryPlaceOverAt(ItemInstance inst, int x, int y, bool rotated,
+                               out ItemInstance displaced)
     {
-        if (data == null) return false;
-        int w = rotated ? data.Height : data.Width;
-        int h = rotated ? data.Width  : data.Height;
-        return CanPlace(x, y, w, h, null);
-    }
+        displaced = null;
+        if (inst == null || inst.Data == null) return false;
 
-    public bool CanPlaceItem(ItemInstance inst, int x, int y, bool rotated)
-    {
-        if (inst == null || !_items.Contains(inst)) return false;
         int w = rotated ? inst.Data.Height : inst.Data.Width;
         int h = rotated ? inst.Data.Width  : inst.Data.Height;
-        return CanPlace(x, y, w, h, inst);
-    }
 
-    // 두 아이템의 **자리를 맞바꾼다.** 겹치는 곳에 놓으려 할 때 그냥 실패시키면
-    // 좁은 배낭에서 배치를 바꿀 방법이 없다 — 한 칸씩 빼내 옮겨야 한다.
-    //
-    // **둘 다 서로의 자리에 들어갈 때만** 바꾼다. 크기가 다르면(2×4 ↔ 1×1) 한쪽이
-    // 안 들어갈 수 있는데, 그때 반만 옮기면 아이템이 사라지거나 겹친다.
-    public bool SwapItems(ItemInstance a, ItemInstance b)
-    {
-        if (a == null || b == null || a == b) return false;
-        if (!_items.Contains(a) || !_items.Contains(b)) return false;
+        for (int dx = 0; dx < w; dx++)
+        for (int dy = 0; dy < h; dy++)
+            if (!InBounds(x + dx, y + dy)) return false;
 
-        int ax = a.GridX, ay = a.GridY; bool ar = a.Rotated;
-        int bx = b.GridX, by = b.GridY; bool br = b.Rotated;
-
-        // 서로를 비켜 놓고 판정해야 한다 — 안 그러면 상대가 자기 자리를 막고 있다고 나온다.
-        ClearCells(a); ClearCells(b);
-
-        int aw = ar ? a.Data.Height : a.Data.Width,  ah = ar ? a.Data.Width : a.Data.Height;
-        int bw = br ? b.Data.Height : b.Data.Width,  bh = br ? b.Data.Width : b.Data.Height;
-
-        bool ok = CanPlace(bx, by, aw, ah, a) && CanPlace(ax, ay, bw, bh, b);
-        if (!ok)
+        // 발자국에 걸리는 것 — **딱 하나일 때만** 밀어낸다.
+        ItemInstance other = null;
+        for (int dx = 0; dx < w; dx++)
+        for (int dy = 0; dy < h; dy++)
         {
-            PlaceCells(a); PlaceCells(b);   // 원래대로 되돌린다
-            return false;
+            var occ = _cells[x + dx, y + dy];
+            if (occ == null || occ == inst) continue;
+            if (other == null)  other = occ;
+            else if (other != occ) return false;   // 둘 이상 — 아무것도 안 한다
         }
 
-        a.GridX = bx; a.GridY = by;
-        b.GridX = ax; b.GridY = ay;
-        PlaceCells(a); PlaceCells(b);
+        if (other != null)
+        {
+            ClearCells(other);
+            _items.Remove(other);
+            displaced = other;
+        }
+
+        bool mine = _items.Contains(inst);
+        if (mine) ClearCells(inst);
+
+        inst.GridX = x; inst.GridY = y; inst.Rotated = rotated;
+        PlaceCells(inst);
+        if (!mine) _items.Add(inst);
+
         OnChanged?.Invoke();
         return true;
     }
@@ -311,7 +332,9 @@ public class Inventory : MonoBehaviour
             if (skipLocked   && inst.Locked)          continue;
             if (matchQuality && inst.Quality != quality) continue;
 
-            int take = Math.Min(remaining, inst.Quantity);
+            // **새것만 뺀다**(`ItemInstance.FullUnits`) — 열린 하나는 개수로 옮기는 길이 못 건드린다.
+            int take = Math.Min(remaining, inst.FullUnits);
+            if (take <= 0) continue;
             inst.Quantity -= take;
             remaining -= take;
             if (inst.Quantity <= 0)
@@ -361,13 +384,51 @@ public class Inventory : MonoBehaviour
             if (inst.Data != data) continue;
             if (skipLocked   && inst.Locked)          continue;
             if (matchQuality && inst.Quality != quality) continue;
-            total += inst.Quantity;
+            total += inst.FullUnits;   // 새것만 센다 — 빼는 쪽(`RemoveCore`)과 같은 답
         }
         return total;
     }
 
     public int GetTotalQuantity(ItemData data)
         => CountCore(data, false, false, default);
+
+    // ── 재료로 세고 뺀다 — `ItemData.CountsAs`를 따른다 ─────────────────────
+    //
+    // **재료를 찾는 자리만 부른다**(창고 집계 · `MaterialPool`). 위의 보통 수량은 제 물건만 센다.
+    public int CountSatisfying(ItemData want, bool skipLocked)
+    {
+        if (want == null) return 0;
+        int total = 0;
+        foreach (var inst in _items)
+        {
+            if (inst.Data == null || !inst.Data.Satisfies(want)) continue;
+            if (skipLocked && inst.Locked) continue;
+            total += inst.FullUnits;   // 쓰다 만 것은 재료로 안 친다
+        }
+        return total;
+    }
+
+    // **제 물건을 먼저 뺀다** — 그다음 그것으로 쳐 주는 것들. 뺀 수량을 돌려준다.
+    //
+    // `taken`을 주면 **무엇을 몇 개 뺐는지** 적는다 — 되돌릴 때(`MaterialPool.Refund`) 그것을 그대로
+    // 돌려주려고. 안 적으면 늑대 고기를 넣고 취소했는데 `생고기`가 돌아온다.
+    public int RemoveSatisfying(ItemData want, int amount, bool skipLocked,
+                                List<(ItemData item, int amount)> taken = null)
+    {
+        if (want == null || amount <= 0) return 0;
+        int got = RemoveCore(want, amount, skipLocked, false, default);
+        if (got > 0) taken?.Add((want, got));
+
+        for (int i = _items.Count - 1; i >= 0 && got < amount; i--)
+        {
+            var d = _items[i].Data;
+            if (d == null || d == want || !d.Satisfies(want)) continue;
+            int n = RemoveCore(d, amount - got, skipLocked, false, default);
+            if (n > 0) { got += n; taken?.Add((d, n)); }
+            if (i > _items.Count) i = _items.Count;   // 뭉치가 지워져 목록이 줄었다
+        }
+        return got;
+    }
 
     public int GetTotalQuantity(ItemData data, ItemQuality quality)
         => CountCore(data, false, true, quality);
@@ -386,6 +447,304 @@ public class Inventory : MonoBehaviour
         foreach (var inst in _items)
             total += inst.Data.Weight * inst.Quantity;
         return total;
+    }
+
+    // 제자리에서 돌린다(1×3 ↔ 3×1). 돌렸으면 true.
+    //
+    // **격자를 벗어나면 안쪽으로 당겨서 돌린다.** 가장자리에 붙은 1×3을 3×1로 돌리면 오른쪽이
+    // 격자 밖으로 나가는데, 그때 그냥 실패시키면 **가장자리 물건은 영영 못 돌린다** — 자리가
+    // 좁아 돌리려는 것인데 좁다고 거절하는 꼴이다. 당겨도 다른 것과 겹치면 그때는 안 돌아간다.
+    //
+    // 정사각은 돌릴 것이 없다(돌려도 같은 칸을 먹는다).
+    public bool RotateItem(ItemInstance inst)
+    {
+        if (inst == null || !_items.Contains(inst)) return false;
+        if (inst.Data.Width == inst.Data.Height) return false;
+
+        bool rot = !inst.Rotated;
+        int  w   = rot ? inst.Data.Height : inst.Data.Width;
+        int  h   = rot ? inst.Data.Width  : inst.Data.Height;
+
+        int x = Mathf.Clamp(inst.GridX, 0, Mathf.Max(0, width  - w));
+        int y = Mathf.Clamp(inst.GridY, 0, Mathf.Max(0, height - h));
+
+        return MoveItem(inst, x, y, rot);   // `CanPlace`가 자기 자신은 안 막는다
+    }
+
+    // ── 정리 ──────────────────────────────────────────────────────────────────
+    //
+    // **칸을 다시 채워 넣는다** — 같은 것끼리 합치고, 큰 것부터 위에서부터 빈틈없이.
+    //
+    // 격자 인벤토리는 쓰다 보면 반드시 조각난다: 가운데 것을 팔면 그 자리가 구멍으로 남고,
+    // 칸 수로는 넉넉한데 **2×4 갑옷이 들어갈 연속된 자리가 없어** 거절당한다. 그때 손으로
+    // 물건을 하나씩 끌어 옮기는 것은 놀이가 아니라 잡일이다.
+    //
+    // **큰 것부터 놓는다**(면적 내림차순). 작은 것을 먼저 흩뿌리면 큰 것이 들어갈 연속 공간이
+    // 남지 않는다 — 같은 물건들을 한 덩어리로 모으는 효과도 곁따라 온다.
+    //
+    // **같은 물건·같은 등급은 합친다.** 30/99짜리 뭉치가 셋이면 칸을 셋 먹는데, 그건 조각남
+    // 그 자체다. 잠금은 **하나라도 잠겨 있으면 합친 뭉치가 잠긴다** — 잠금은 "이건 건드리지
+    // 마라"라서, 합치다 풀리면 자동 운반이 조용히 집어 간다.
+    //
+    // 자리를 못 찾은 것은 **그대로 둔다**(있을 수 없는 일이지만, 잃는 것보다 낫다).
+    // **다 못 넣으면 아무것도 안 바꾼다**(`false`). 첫 자리부터 큰 것부터 채우는 방식은
+    // 원래 들어가 있던 배치를 다시 만든다는 보장이 없다 — 그때 **반쯤 정리된 격자를 남기는
+    // 것이 가장 나쁘다**(물건이 겹치거나 사라진다).
+    public bool Compact()
+    {
+        if (_items.Count == 0) return true;
+
+        var items = new List<ItemInstance>(_items);
+
+        // 1) 같은 물건·같은 등급 합치기
+        for (int i = 0; i < items.Count; i++)
+        {
+            var a = items[i];
+            for (int j = items.Count - 1; j > i; j--)
+            {
+                var b = items[j];
+                if (b.Data != a.Data || b.Quality != a.Quality) continue;
+
+                int room = a.Data.MaxStack - a.Quantity;
+                if (room <= 0) continue;
+
+                int move = Math.Min(room, b.Quantity);
+                a.Quantity += move;
+                b.Quantity -= move;
+                if (move > 0 && b.Locked) a.Locked = true;
+
+                if (b.Quantity <= 0) items.RemoveAt(j);
+            }
+        }
+
+        // 2) 큰 것부터 — 같은 크기면 이름순(정리할 때마다 자리가 바뀌면 눈이 매번 다시 찾는다)
+        items.Sort((x, y) =>
+        {
+            int ax = x.Data.Width * x.Data.Height, ay = y.Data.Width * y.Data.Height;
+            if (ax != ay) return ay.CompareTo(ax);
+            return string.CompareOrdinal(x.Data.ItemName, y.Data.ItemName);
+        });
+
+        // 3) 빈 격자에 다시 놓는다 — **되돌릴 수 있게 옛 자리를 적어 둔다.**
+        var before = new List<(ItemInstance inst, int x, int y, bool rot)>(_items.Count);
+        foreach (var inst in _items) before.Add((inst, inst.GridX, inst.GridY, inst.Rotated));
+
+        Array.Clear(_cells, 0, _cells.Length);
+        _items.Clear();
+
+        foreach (var inst in items)
+        {
+            inst.Rotated = false;
+            var slot = FindEmptySlot(inst.Data.Width, inst.Data.Height, out bool rotated);
+            if (slot == null)
+            {
+                // **자리를 못 찾았다.** 한때 "원래 자리로 되돌린다(그 자리는 아직 비어 있다)"고
+                // 여기서 `PlaceCells`를 불렀는데, **그 말이 참이 아니다**: 격자를 이미 비우고
+                // (`Array.Clear`) 큰 것부터 다시 채우는 중이라 그 칸은 남이 가져갔을 수 있다.
+                // 게다가 `inst.Rotated`를 방금 꺼서 **발자국 크기가 달라졌다** — 돌려 놓았던
+                // 물건은 옛 좌표에서 범위를 넘고(`IndexOutOfRangeException`), 안 넘으면
+                // **남의 칸을 말없이 덮어써** 두 물건이 같은 칸을 갖는다.
+                //
+                // 못 넣으면 **돌려서 한 번 더 본다.** 그래도 안 되면 이 정리는 성립하지 않는
+                // 것이므로 **통째로 되돌린다**(아래) — 반쯤 정리된 격자를 남기는 것이 가장 나쁘다.
+                var slotR = FindEmptySlot(inst.Data.Height, inst.Data.Width, out _);
+                if (slotR == null) return Restore(before);
+
+                inst.GridX   = slotR.Value.x;
+                inst.GridY   = slotR.Value.y;
+                inst.Rotated = true;
+                PlaceCells(inst);
+                _items.Add(inst);
+                continue;
+            }
+
+            inst.GridX   = slot.Value.x;
+            inst.GridY   = slot.Value.y;
+            inst.Rotated = rotated;
+            PlaceCells(inst);
+            _items.Add(inst);
+        }
+
+        OnChanged?.Invoke();
+        return true;
+    }
+
+    // 정리가 실패했을 때 옛 배치로 되돌린다. **합치기(1단계)는 안 되돌린다** — 같은 물건을
+    // 한 뭉치로 모으는 것은 자리를 늘리는 일이라 실패의 원인이 아니고, 되돌리면 오히려
+    // 조각이 늘어난다. 되돌리는 것은 **자리**뿐이다.
+    bool Restore(List<(ItemInstance inst, int x, int y, bool rot)> before)
+    {
+        Array.Clear(_cells, 0, _cells.Length);
+        _items.Clear();
+
+        foreach (var (inst, x, y, rot) in before)
+        {
+            if (inst.Quantity <= 0) continue;   // 1단계에서 다른 뭉치로 합쳐졌다
+
+            inst.GridX = x; inst.GridY = y; inst.Rotated = rot;
+            PlaceCells(inst);
+            _items.Add(inst);
+        }
+
+        OnChanged?.Invoke();
+        return false;
+    }
+
+    // ── 남은 양 — 열린 하나 (2026-10-16, `ItemInstance.Left`) ─────────────────────
+
+    // **열린 것 하나를 넣는다 — 양을 보존한다.** 같은 물건·등급의 열린 뭉치가 있으면 거기에 합치고(넘치면 새것
+    // 하나가 는다), 없으면 아직 안 열린 뭉치의 하나로 얹고, 그것도 없으면 빈 칸에 새 뭉치로. 넣었으면 참.
+    public bool TryAddOpened(ItemData data, ItemQuality quality, float left)
+    {
+        if (data == null) return false;
+        quality = Normalize(data, quality);
+        if (!data.Depletes || left >= 1f - ItemInstance.Epsilon) return TryAdd(data, 1, quality) > 0;
+        if (left <= ItemInstance.Epsilon) return true;   // 다 쓴 것 — 넣을 것이 없다
+
+        foreach (var inst in _items)
+        {
+            if (inst.Data != data || inst.Quality != quality || !inst.IsPartial) continue;
+
+            float sum = inst.Left + left;
+            if (sum < 1f - ItemInstance.Epsilon) { inst.Left = sum; OnChanged?.Invoke(); return true; }
+
+            // 합쳐서 하나를 넘었다 — 새것 하나 + 나머지가 열린 것
+            float rest = sum - 1f;
+            if (rest <= ItemInstance.Epsilon) { inst.Left = 1f; OnChanged?.Invoke(); return true; }
+            if (inst.Quantity < data.MaxStack)
+            {
+                inst.Quantity++;
+                inst.Left = rest;
+                OnChanged?.Invoke();
+                return true;
+            }
+            // 뭉치가 꽉 찼다 — 이 뭉치는 새것으로 채우고 나머지는 아래로 흘린다
+            var slot0 = FindEmptySlot(data.Width, data.Height, out bool rot0);
+            if (slot0 == null) return false;
+            inst.Left = 1f;
+            Place(new ItemInstance(data, 1, slot0.Value.x, slot0.Value.y, rot0, quality) { Left = rest });
+            return true;
+        }
+
+        foreach (var inst in _items)
+        {
+            if (inst.Data != data || inst.Quality != quality || inst.Quantity >= data.MaxStack) continue;
+            inst.Quantity++;
+            inst.Left = left;
+            OnChanged?.Invoke();
+            return true;
+        }
+
+        var slot = FindEmptySlot(data.Width, data.Height, out bool rotated);
+        if (slot == null) return false;
+        Place(new ItemInstance(data, 1, slot.Value.x, slot.Value.y, rotated, quality) { Left = left });
+        return true;
+    }
+
+    void Place(ItemInstance inst)
+    {
+        PlaceCells(inst);
+        _items.Add(inst);
+        OnChanged?.Invoke();
+    }
+
+    // 뭉치에서 열린 하나를 빼낸다 — 그 남은 양을 돌려준다(열린 것이 없으면 0).
+    public float TakeOpened(ItemInstance inst)
+    {
+        if (inst == null || !inst.IsPartial || !_items.Contains(inst)) return 0f;
+        float left = inst.Left;
+        inst.Left = 1f;
+        inst.Quantity--;
+        if (inst.Quantity <= 0) { ClearCells(inst); _items.Remove(inst); }
+        OnChanged?.Invoke();
+        return left;
+    }
+
+    // **양만큼 쓴다 — 열린 것부터.** 약을 치료한 만큼만 쓰는 자리(`Treatment.UseFromBackpack`). 실제로 쓴 양을
+    // 돌려준다(모자라면 있는 만큼). 새것을 헐면 그것이 그 뭉치의 열린 하나가 된다.
+    public float UseUp(ItemData data, float amount, bool skipLocked)
+    {
+        if (data == null || amount <= ItemInstance.Epsilon) return 0f;
+        float used = 0f;
+
+        // 열린 것부터 — 새것을 헐기 전에 쓰다 만 것을 마저 쓴다
+        for (int pass = 0; pass < 2 && used < amount - ItemInstance.Epsilon; pass++)
+        {
+            for (int i = _items.Count - 1; i >= 0 && used < amount - ItemInstance.Epsilon; i--)
+            {
+                var inst = _items[i];
+                if (inst.Data != data || (skipLocked && inst.Locked)) continue;
+                if (pass == 0 && !inst.IsPartial) continue;
+
+                while (used < amount - ItemInstance.Epsilon && inst.Quantity > 0)
+                {
+                    float take = Math.Min(amount - used, inst.Left);
+                    inst.Left -= take;
+                    used      += take;
+                    if (inst.Left > ItemInstance.Epsilon) break;
+                    inst.Quantity--;          // 하나를 다 썼다 — 다음 것을 연다
+                    inst.Left = 1f;
+                }
+                if (inst.Quantity <= 0) { ClearCells(inst); _items.RemoveAt(i); }
+            }
+        }
+        if (used > 0f) OnChanged?.Invoke();
+        return used;
+    }
+
+    // **뭉치에서 몇 개를 다른 통으로 — 열린 하나도 남은 양째 간다.** 물건을 통째로 옮기는 길(끌어 놓기 ·
+    // 빠른 이동 · 루팅)은 전부 여기를 탄다. `TryAdd(inst.Data, inst.Quantity, …)`로 옮기면 열린 것이 새것이 된다.
+    // 열린 것을 먼저 보낸다 — 다 못 가면 남는 쪽이 새것이어야 원래 뭉치가 온전하다.
+    public static int Transfer(Inventory src, ItemInstance inst, Inventory dst, int amount)
+    {
+        if (inst?.Data == null || dst == null || amount <= 0) return 0;
+        amount = Math.Min(amount, inst.Quantity);
+
+        int moved = 0;
+        if (inst.IsPartial)
+        {
+            if (!dst.TryAddOpened(inst.Data, inst.Quality, inst.Left)) return 0;
+            inst.Left = 1f;
+            inst.Quantity--;
+            moved = 1;
+        }
+        if (amount > moved && inst.Quantity > 0)
+        {
+            int n = dst.TryAdd(inst.Data, Math.Min(amount - moved, inst.Quantity), inst.Quality);
+            inst.Quantity -= n;
+            moved += n;
+        }
+
+        if (src != null)
+        {
+            if (inst.Quantity <= 0) src.RemoveInstance(inst);
+            else                    src.NotifyChanged();
+        }
+        return moved;
+    }
+
+    // 통에 넣을 뭉치 하나를 그대로 — 출처가 없는 것(손에 든 것 · 벗은 장비). 넣은 개수를 돌려준다.
+    public int TryAddLike(ItemInstance inst)
+    {
+        if (inst?.Data == null || inst.Quantity <= 0) return 0;
+        int added = 0;
+        if (inst.IsPartial)
+        {
+            if (!TryAddOpened(inst.Data, inst.Quality, inst.Left)) return 0;
+            added = 1;
+        }
+        int full = inst.Quantity - added;
+        if (full > 0) added += TryAdd(inst.Data, full, inst.Quality);
+        return added;
+    }
+
+    // **이 물건·이 등급의 뭉치 하나.** 방금 넣은 것을 되돌릴 때, *어느 뭉치에 들어갔나*를
+    // 알아야 남의 뭉치를 빼지 않는다(`Shop.TrySell`의 롤백).
+    public ItemInstance FindStack(ItemData data, ItemQuality quality)
+    {
+        foreach (var inst in _items)
+            if (inst.Data == data && inst.Quality == quality && inst.Quantity > 0) return inst;
+        return null;
     }
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────

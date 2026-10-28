@@ -12,13 +12,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
   m_Name: Res_Stonecutting
   m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
   ResearchName: "\uC11D\uACF5\uC220"
-  Description: "\uB3CC\uC744 \uB2E4\uB4EC\uC5B4 \uAC74\uCD95\uC7AC\uB85C \uC4F4\uB2E4."
+  Description: "\uB3CC\uC744 \uACB0\uB300\uB85C \uCABC\uAC1C\uACE0, \uD759\uC744
+    \uB2E4\uC838 \uAD7D\uB294\uB2E4. \uB2E4\uB4EC\uC740 \uB3CC\uACFC \uBCBD\uB3CC\uC774
+    \uC5EC\uAE30\uC11C \uB098\uC628\uB2E4."
   Ingredients:
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    ItemId: 
     Amount: 15
-  ResearchTime: 300
+  ResearchTime: 400
   SkillGrowthAmount: 1
-  Prerequisite: {fileID: 0}
+  Prerequisites:
+  - {fileID: 11400000, guid: 9e91e8f878935f64c8fbc9bd398ea0e4, type: 2}
+  RequiredBenchTier: 1
+  GraphColumn: 1
+  GraphRow: 7
   UnlockedRecipes:
   - {fileID: 11400000, guid: 7f77fce65f8cee048948adfa14e0153c, type: 2}

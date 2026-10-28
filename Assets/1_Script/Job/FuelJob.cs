@@ -4,6 +4,7 @@ using UnityEngine;
 public class FuelJob : JobBase
 {
     public override JobCategory Category => JobCategory.Crafting;
+    public override Component Site => _table;   // 배치 칸이 거른다(`WorkPosts`)
 
     enum Phase { GoToStorage, GoToFurnace }
 

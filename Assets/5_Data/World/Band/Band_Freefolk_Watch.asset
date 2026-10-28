@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Freefolk_Watch
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uBCC0\uBC29 \uD30C\uC218\uAFBC"
+  tokenColor: {r: 0.55, g: 0.72, b: 0.45, a: 1}
+  faction: {fileID: 11400000, guid: 9e04dd838eda421fb1a39862c26dba2c, type: 2}
+  behavior: 2
+  members:
+  - Prefab: {fileID: 6072683599181711989, guid: 30c36172aa1949df8aa57ba671843cd6, type: 3}
+    MinCount: 2
+    MaxCount: 4
+    MinGrade: 1
+    MaxGrade: 8
+  speed: 4.6
+  ChaseRadius: 12
+  merchant: {fileID: 0}
+  loot: []
+  PowerMultiplier: 1

@@ -12,6 +12,10 @@ public class ColonyRowUI : MonoBehaviour
     static readonly Color OnColor    = new Color(0.20f, 0.50f, 0.28f, 1f);
     static readonly Color OffColor   = new Color(0.17f, 0.17f, 0.19f, 1f);
 
+    // 못 하는 일(성장 배경) — 켠 것도 끈 것도 아닌 **세 번째 상태**라 색도 따로 둔다.
+    static readonly Color BlockedColor     = new(0.20f, 0.13f, 0.13f, 1f);
+    static readonly Color BlockedMarkColor = new(0.85f, 0.40f, 0.40f, 1f);
+
     // 직접 배정(채굴·벌목·순찰)에 묶인 폰의 큐 작업 칸. 켜져 있지만 **지금은 안 한다**.
     static readonly Color OnHeldColor   = new Color(0.20f, 0.32f, 0.24f, 1f);
     static readonly Color MarkHeldColor = new Color(0.55f, 0.58f, 0.55f, 1f);
@@ -19,6 +23,9 @@ public class ColonyRowUI : MonoBehaviour
     static readonly Color FightColor = new Color(0.72f, 0.84f, 0.72f, 1f);
     static readonly Color CareColor  = new Color(0.88f, 0.80f, 0.45f, 1f);
     static readonly Color FleeColor  = new Color(0.90f, 0.55f, 0.40f, 1f);
+    // **`자동`과 색을 나눈다** — 방랑자에게는 둘이 같은 동작이지만(역할 기본값이 반격),
+    // 프로필을 든 폰은 `자동`이 교전일 수 있어 같은 회색으로 두면 구별이 안 된다.
+    static readonly Color RetaliColor = new Color(0.62f, 0.76f, 0.82f, 1f);
 
     UnitBrain _brain;
     TextMeshProUGUI _nameText;
@@ -124,25 +131,44 @@ public class ColonyRowUI : MonoBehaviour
         if (_brain != null && _brain.Work != null) _brain.Work.OnChanged -= Refresh;
     }
 
-    // 자동(프로필/역할 기본값) → 교전 → 신중 → 도주 → 자동
+    // ── 고를 수 있는 성향 셋: 반격 → 교전 → 도주 ────────────────────────
+    //
+    // **`반격`이 맨 앞이다**(사용자 결정) — 그것이 기본값이라 목록의 첫 칸과 같아야 한다.
+    // 첫 칸이 `교전`이면 성향을 한 번 만지는 것만으로 **폰이 달려 나간다.**
+    //
+    // **`신중`은 뺐다**(2026-08-26, 사용자 결정 — *"신중이 40%가 남았을 때 도망가게 한다는 걸
+    // 알려주지도 않고 체력 제한을 내가 정하지도 않고"*). 갈리는 순간이 **다칠 때 하나뿐**인데
+    // 그 문턱(`FleeBloodRatio`)이 **화면 어디에도 없고 손잡이도 없다** — 그러면 고르는 일이
+    // 아니라 짐작하는 일이 된다. **프로필로는 그대로 쓴다**(NPC·용병이 저작으로 든다).
+    //
+    // **`자동`도 뺐다 — 프로필이 없는 폰에 한해서.** 방랑자 프리팹은 `aiProfile`이 비어 있어
+    // `자동`이 곧 역할 기본값(`반격`)이라, **화면에 두 칸인데 동작은 하나**였다. 프로필을 든
+    // 폰(용병·회유한 NPC)에서만 `자동`이 실제로 다른 답을 주므로 거기서는 남긴다.
+    static readonly CombatStance[] Choices =
+        { CombatStance.Retaliate, CombatStance.Fight, CombatStance.Flee };
+
+    // 프로필이 있으면 맨 앞에 **`자동`**(오버라이드 해제)이 한 칸 더 있다.
+    bool HasAuto => _brain != null && _brain.AiProfile != null;
+
     void CycleStance()
     {
         if (_brain == null) return;
 
-        if (!_brain.HasStanceOverride)
-            _brain.SetStanceOverride(CombatStance.Fight);
-        else
+        // 지금이 목록의 몇 번째인가 — `자동`은 −1로 둔다(있을 때만 순환에 낀다).
+        int at = _brain.HasStanceOverride
+            ? System.Array.IndexOf(Choices, _brain.EffectiveStance)
+            : -1;
+
+        // 목록에 없는 성향(프로필이 준 `신중`을 오버라이드로 들고 있는 옛 폰)은 맨 앞으로.
+        int next = at < 0 ? 0 : at + 1;
+
+        if (next >= Choices.Length)
         {
-            switch (_brain.EffectiveStance)
-            {
-                case CombatStance.Fight:
-                    _brain.SetStanceOverride(CombatStance.FightWhileHealthy); break;
-                case CombatStance.FightWhileHealthy:
-                    _brain.SetStanceOverride(CombatStance.Flee); break;
-                default:
-                    _brain.ClearStanceOverride(); break;
-            }
+            // 끝에 닿으면 — 프로필이 있으면 `자동`으로, 없으면 처음으로 되돌아간다.
+            if (HasAuto) _brain.ClearStanceOverride();
+            else         _brain.SetStanceOverride(Choices[0]);
         }
+        else _brain.SetStanceOverride(Choices[next]);
 
         Refresh();
     }
@@ -194,13 +220,18 @@ public class ColonyRowUI : MonoBehaviour
         var work = _brain.Work;
         foreach (var category in ColonyColumns.WorkColumns)
         {
-            bool on = work != null && work.IsEnabled(category);
+            bool on      = work != null && work.IsEnabled(category);
+            bool blocked = work != null && work.IsBlocked(category);
+
             if (_boxImages.TryGetValue(category, out var img))
-                img.color = on ? (held ? OnHeldColor : OnColor) : OffColor;
+                img.color = blocked ? BlockedColor : on ? (held ? OnHeldColor : OnColor) : OffColor;
+
             if (_boxMarks.TryGetValue(category, out var mark))
             {
-                mark.text  = on ? "V" : "";
-                mark.color = held ? MarkHeldColor : Color.white;
+                // **못 하는 일은 빈 칸이 아니라 `×`다**(성장 배경의 무능력). 빈 칸으로 두면
+                // *"안 켠 것"*과 구별이 안 돼, 눌러 보고 나서야 안 켜진다는 것을 알게 된다.
+                mark.text  = blocked ? "×" : on ? "V" : "";
+                mark.color = blocked ? BlockedMarkColor : held ? MarkHeldColor : Color.white;
             }
         }
 
@@ -251,7 +282,10 @@ public class ColonyRowUI : MonoBehaviour
         }
 
         // 전투 성향
-        if (!_brain.HasStanceOverride)
+        //
+        // **오버라이드가 없어도 실제 성향을 띄운다 — 프로필이 없을 때는.** `자동`이라고만
+        // 적으면 그게 무슨 동작인지 창 어디에도 안 남는다(방랑자에게는 `반격`이다).
+        if (!_brain.HasStanceOverride && HasAuto)
         {
             _stanceLabel.text  = "자동";
             _stanceLabel.color = AutoColor;
@@ -264,6 +298,8 @@ public class ColonyRowUI : MonoBehaviour
                     _stanceLabel.text = "도주"; _stanceLabel.color = FleeColor; break;
                 case CombatStance.FightWhileHealthy:
                     _stanceLabel.text = "신중"; _stanceLabel.color = CareColor; break;
+                case CombatStance.Retaliate:
+                    _stanceLabel.text = "반격"; _stanceLabel.color = RetaliColor; break;
                 default:
                     _stanceLabel.text = "교전"; _stanceLabel.color = FightColor; break;
             }
@@ -293,17 +329,37 @@ public static class ColonyColumns
     public const float JobW      = 52f;
     public const float JobGap    = 4f;
 
-    // **작업 열은 `짐내림`을 뺀 것들이다.** 짐내림은 큐를 타긴 하지만 플레이어에게는
-    // "무슨 일을 시킬까"가 아니라 "이 폰이 짐을 지고 다니게 둘까"에 가깝다 —
-    // 작업 체크 사이에 끼면 남이 시킨 일과 같은 무게로 읽힌다. 그래서 성향 옆에 따로 세운다.
+    // **작업 열은 `짐내림`을 뺀 것들 + 채굴·벌목이다.**
+    //
+    // 짐내림은 큐를 타긴 하지만 플레이어에게는 "무슨 일을 시킬까"가 아니라 "이 폰이 짐을 지고
+    // 다니게 둘까"에 가깝다 — 작업 체크 사이에 끼면 남이 시킨 일과 같은 무게로 읽힌다.
+    // 그래서 성향 옆에 따로 세운다.
+    //
+    // **채굴·벌목은 반대다 — 큐에는 없는데 여기에는 있어야 한다.** 그 둘은 일감을 만들지
+    // 않으므로(`WorkNode.TickAssigned`가 노드를 직접 캔다) `QueueOrder`에 넣을 수 없지만,
+    // 자율 배정(`ResourceNode.ClaimFreeFor`)이 이 스위치를 본다. **칸이 없으면 끌 수가 없고,
+    // 그러면 자율 배정이 강제가 된다.** 그래서 이 배열과 `QueueOrder`는 이제 다른 물음에
+    // 답한다: 저쪽은 *큐 배정 순서*, 이쪽은 *무슨 일을 시킬까*.
+    //
+    // **경비는 안 넣는다** — 순찰 구역은 자율 배정이 없어 여전히 손으로만 붙인다.
     public static readonly JobCategory[] WorkColumns = BuildWorkColumns();
 
     static JobCategory[] BuildWorkColumns()
     {
         var src = JobCategoryInfo.QueueOrder;
-        var list = new List<JobCategory>(src.Length);
+        var list = new List<JobCategory>(src.Length + 2);
         foreach (var c in src)
             if (c != JobCategory.Unload) list.Add(c);
+
+        // 맨 뒤 — 자율 배정이 큐를 다 비운 뒤에 돌므로 우선순위도 실제로 여기다.
+        //
+        // **큐에 이미 있으면 안 더한다**(2026-08-29). 채굴이 지하로 오면서 **큐에도 들어갔는데**
+        // (칸을 찍어 파는 `MineJob`) 여기서 무조건 더하고 있어서 **열이 두 개**가 됐다 —
+        // 하나를 끄면 다른 하나가 켜져 보이는, 설명할 수 없는 화면이었다.
+        //
+        // 자율 배정만 하는 것(벌목)은 그대로 뒤에 붙는다.
+        if (!JobCategoryInfo.IsQueued(JobCategory.Mining))  list.Add(JobCategory.Mining);
+        if (!JobCategoryInfo.IsQueued(JobCategory.Logging)) list.Add(JobCategory.Logging);
         return list.ToArray();
     }
 

@@ -20,11 +20,22 @@ MonoBehaviour:
   Category: 1
   SortOrder: 13
   Size: {x: 1, y: 1}
-  CostItem: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
-  CostAmount: 8
+  Costs:
+  - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
+    Amount: 4
+  MaxHealth: 0
+  CostItem: {fileID: 0}
+  CostAmount: 0
   DragBuild: 1
+  AreaDrag: 0
   RequiredResearch: {fileID: 0}
   Prefab: {fileID: 5169809222589410032, guid: 331bb4da25993a648938e4fa3a6d8c2c, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  IsBridge: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 1
+  BlockMask: []
+  EdgeWall: 0

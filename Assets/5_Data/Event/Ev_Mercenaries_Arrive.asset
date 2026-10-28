@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c178bbde4e3a7d94e906402dd581da19, type: 3}
+  m_Name: Ev_Mercenaries_Arrive
+  m_EditorClassIdentifier: Assembly-CSharp::GameEventData
+  EventName: "\uC6A9\uBCD1\uB300 \uD569\uB958"
+  Description: "\uC790\uC720 \uC6A9\uBCD1\uB2E8\uC774 \uAC70\uC810\uC5D0 \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4.
+    \uBA85\uB839\uC740 \uB4E3\uC9C0 \uC54A\uC9C0\uB9CC \uACC1\uC5D0\uC11C \uC2F8\uC6C1\uB2C8\uB2E4."
+  Icon: {fileID: 0}
+  Weight: 1.0
+  MinGameTime: 1800
+  NightWeight: 0.6
+  EventType: 2
+  EnemyPrefabs: []
+  EnemyCount: 5
+  MerchantPrefabs: []
+  MerchantVariants: []
+  ReinforcementPrefabs:
+  - {fileID: 6894885055828391614, guid: e3225de9d8a2f804096776faadeed740, type: 3}
+  - {fileID: 6894885055828391614, guid: f6495a3246c01ed459b4974f6c2a5ae6, type: 3}
+  ReinforcementCount: 3
+  RescueOnRaid: 1
+  RescueChance: 0.4
+  RescueDelay: 25
+  DiscoveryItems: []
+  DiscoveryMinAmount: 3
+  DiscoveryMaxAmount: 12

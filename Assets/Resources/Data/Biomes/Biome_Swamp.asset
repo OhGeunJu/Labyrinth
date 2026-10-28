@@ -13,10 +13,23 @@ MonoBehaviour:
   m_Name: Biome_Swamp
   m_EditorClassIdentifier: Assembly-CSharp::BiomeContentData
   Biome: 7
+  Tier: 2
+  MapDirection: 0
   ResourceNodes:
-  - {fileID: 11400000, guid: 91bca65f0b1a0c04d927d40f3716b4bc, type: 2}
+  - {fileID: 11400000, guid: 39a8731ba5d24bc459fe9082bf24c0b1, type: 2}
   - {fileID: 11400000, guid: 754faaa069edfe34485eb4c172d41d54, type: 2}
-  - {fileID: 11400000, guid: cf5f6be69c3e7bf48ba6ed7e579aa02c, type: 2}
+  - {fileID: 11400000, guid: 27a84ee90742b0b41b010fe3bf898a2f, type: 2}
+  VeinRichness: 1
+  WallLights:
+  - Light: {fileID: 11400000, guid: 60fed12e174ab3246a06290c5ce9db4c, type: 2}
+    Chance: 0.03
+  WildSpawns:
+  - Band: {fileID: 11400000, guid: 26b9c3f49c4fb7244aef80e34df362e8, type: 2}
+    ChancePerChunk: 0.1
+    RespawnDays: 3
+  - Band: {fileID: 11400000, guid: 8477440d5a975cd4198012906ea160a6, type: 2}
+    ChancePerChunk: 0.06
+    RespawnDays: 3
   Deposits:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
     Chance: 0.6
@@ -37,6 +50,7 @@ MonoBehaviour:
   TownMerchants:
   - {fileID: 11400000, guid: 9d6a3f52c14e48b7a90d2e8317f4b6c0, type: 2}
   - {fileID: 11400000, guid: c58d1a06e7b34f9182ad3c6e5f10b729, type: 2}
+  TownFaction: {fileID: 11400000, guid: 9e04dd838eda421fb1a39862c26dba2c, type: 2}
   TownRecruits:
   - Prefab: {fileID: 8065809389404098821, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
     MinGrade: 0
@@ -48,10 +62,38 @@ MonoBehaviour:
     MinStrength: 8
     MaxStrength: 18
     SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
+    RegenPerDay: 1
+    Weight: 1
+  - Band: {fileID: 11400000, guid: d004e868f64c9324a88177bf1525ed64, type: 2}
+    LairName: "\uC78A\uD78C \uBB34\uB364"
+    MinStrength: 8
+    MaxStrength: 18
+    SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
+    RegenPerDay: 1
+    Weight: 1
+  - Band: {fileID: 11400000, guid: 844a740eb559dc046abc5d0d748bd999, type: 2}
+    LairName: "\uAC80\uC740 \uC81C\uB2E8"
+    MinStrength: 8
+    MaxStrength: 18
+    SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
     RegenPerDay: 1
     Weight: 1
   TownBands:
+  - {fileID: 11400000, guid: f4f08f5fc9004c67bc6eae94656f9f4e, type: 2}
   - {fileID: 11400000, guid: ae7b0493238026a45a70e3489c718cc3, type: 2}
   - {fileID: 11400000, guid: 9efcc9bfb4442984fa40685e81f42570, type: 2}
+  - {fileID: 11400000, guid: 71211cf3d1956c4479c6861bd57927e8, type: 2}
   SummonableMinions: []
   UnlockableResearch: []

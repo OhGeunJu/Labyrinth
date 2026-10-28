@@ -13,10 +13,17 @@ using UnityEngine;
 public class ConstructionJob : JobBase
 {
     public override JobCategory Category => JobCategory.Construction;
+    // **바닥을 깔 때는 발밑을 두들긴다** — 벽 망치질로 바닥을 깔면 허공을 친다.
+    // 가르는 것은 `LevelFloor`(바닥·기단·계단이 그 축이다) 하나다.
+    // **무슨 동작인가는 자리가 답한다**(`IConstructionSite.BuildAnim`) — 자재를 받는 자리가
+    // 청사진 말고도 있게 된 뒤로(작업대 업그레이드) 여기서 `BuildingData`를 물으면 답이 없다.
+    public override WorkAnim Anim =>
+        _phase == Phase.Fetch ? WorkAnim.None
+                              : (_site != null ? _site.BuildAnim : WorkAnim.HammerWall);
 
     enum Phase { Fetch, Deliver }
 
-    readonly BuildingBlueprint _blueprint;
+    readonly IConstructionSite _site;
     readonly ItemData          _material;
     readonly int               _amount;
 
@@ -24,9 +31,9 @@ public class ConstructionJob : JobBase
     int     _carried;
     Phase   _phase = Phase.Deliver;
 
-    public ConstructionJob(BuildingBlueprint blueprint, ItemData material, int amount)
+    public ConstructionJob(IConstructionSite site, ItemData material, int amount)
     {
-        _blueprint = blueprint;
+        _site      = site;
         _material  = material;
         _amount    = amount;
         Priority   = 3;
@@ -34,7 +41,7 @@ public class ConstructionJob : JobBase
         // **건물 자리가 아니라 폰이 서는 자리다.** 전에는 청사진 중심 칸을 그대로 목표로 삼았는데,
         // 청사진은 칸을 안 막으므로 그 칸에 설 수 있었다 — 폰이 3×2 건물 **한복판**에 서서 짓고,
         // 완성되는 순간 발밑이 통행 불가가 되어 그대로 갇혔다.
-        SetSite(blueprint);
+        SetSite(site as Component);
     }
 
     // **단계마다 다르다.** 창고에서 자재를 챙길 때는 손만 닿으면 되지만, 청사진 앞에서는
@@ -42,7 +49,7 @@ public class ConstructionJob : JobBase
     public override float Reach => _phase == Phase.Fetch ? HandReach : StandReach;
 
     // 일감이 준비됐나 — 등록 시점엔 누가 할지 모르므로 넓게 본다(`MaterialPool` 규약).
-    public override bool IsReady => MaterialPool.AvailableAnywhere(_material) > 0;
+    public override bool IsReady => MaterialPool.AvailableNear(_material, new Vector3(TileCoord.x + 0.5f, 0f, TileCoord.y + 0.5f)) > 0;
 
     // 이 폰이 할 수 있나 — 창고 + **그 폰의** 배낭. 게이트가 없으면 자재에 닿지 못하는 폰이
     // 일감을 집어 `OnStart`에서 `Done`으로 끝내 버려, 예약 자체가 조용히 사라진다.
@@ -50,7 +57,7 @@ public class ConstructionJob : JobBase
 
     protected override void OnStart()
     {
-        if (_blueprint == null || _material == null) { Fail(); return; }
+        if (_site == null || _material == null) { Fail(); return; }
 
         // **배낭에 있으면 그대로 지고 간다** — 손에 든 목재를 두고 창고에 들를 이유가 없다
         // (`TreatJob`이 약을 다루는 것과 같은 규약).
@@ -66,7 +73,7 @@ public class ConstructionJob : JobBase
 
         // **짓는 사람 기준으로 가장 가까운 창고.** 청사진 기준이 아니다 — 걷는 것은 폰이고,
         // 지금 서 있는 자리에서 재야 왕복이 줄어든다(못 물으면 청사진 옆에서 잰다).
-        var origin = builder != null ? builder.transform.position : _blueprint.transform.position;
+        var origin = builder != null ? builder.transform.position : _site.transform.position;
         _source = Storage.FindStorageWithItem(_material, origin);
         if (_source == null)
         {
@@ -85,12 +92,12 @@ public class ConstructionJob : JobBase
     void BeginDeliver()
     {
         _phase    = Phase.Deliver;
-        TileCoord = WorkSpot.TileFor(_blueprint);   // 발자국 밖 — 다 지어져도 갇히지 않는다
+        TileCoord = WorkSpot.TileFor(_site as Component);   // 발자국 밖 — 다 지어져도 갇히지 않는다
     }
 
     protected override void Execute(UnitBrain unit)
     {
-        if (_blueprint == null) { Fail(); return; }
+        if (_site == null) { Fail(); return; }
 
         if (_phase == Phase.Fetch)
         {
@@ -113,17 +120,17 @@ public class ConstructionJob : JobBase
         // **실제로 빠진 만큼만 입고한다.** 배낭에서 곧장 지고 온 경우, 여기 닿기까지 폰이
         // 그것을 내려놓았을 수 있다(짐내림·플레이어 조작). 반환값을 안 보면 없는 자재가 입고된다.
         int delivered = unit.Inventory.RemoveUnlocked(_material, _carried);
-        if (delivered > 0) _blueprint.Deliver(_material, delivered);
+        if (delivered > 0) _site.Deliver(_material, delivered);
 
-        _blueprint.OnJobEnded();
+        _site.OnJobEnded();
         Status = JobStatus.Done;
     }
 
-    protected override void OnCancelled() => _blueprint?.OnJobEnded();
+    protected override void OnCancelled() => _site?.OnJobEnded();
 
     void Fail()
     {
-        _blueprint?.OnJobEnded();
+        _site?.OnJobEnded();
         Status = JobStatus.Done;
     }
 }

@@ -14,14 +14,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: 
   BuildingName: "\uBB34\uAE30 \uC81C\uC791\uB300"
-  Description: "\uAE08\uC18D\uACFC \uBAA9\uC7AC\uB85C \uBB34\uAE30\uB97C \uBCBC\uB9B0\uB2E4. \uAC80\u00B7\uB3C4\uB07C\u00B7\uCC3D\u00B7\uC11D\uAD81\u00B7\uC9C0\uD321\uC774."
-  Category: 2
+  Description: "\uAE08\uC18D\uACFC \uBAA9\uC7AC\uB85C \uBB34\uAE30\uB97C \uBCBC\uB9B0\uB2E4.
+    \uAC80\xB7\uB3C4\uB07C\xB7\uCC3D\xB7\uC11D\uAD81\xB7\uC9C0\uD321\uC774."
+  Category: 6
   SortOrder: 80
   Size: {x: 2, y: 1}
-  CostItem: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
-  CostAmount: 25
+  Costs:
+  - Item: {fileID: 11400000, guid: d5110da4aaf3118469617092dbad6ce1, type: 2}
+    Amount: 10
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Amount: 20
+  MaxHealth: 0
+  CostItem: {fileID: 0}
+  CostAmount: 0
+  DragBuild: 0
+  AreaDrag: 0
   RequiredResearch: {fileID: 11400000, guid: 19019a91ad18dcc4c9ab8cc428b9fec4, type: 2}
   Prefab: {fileID: 6753682983592273416, guid: bca5bbc2759b5144098d3e62ed44efe1, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  IsBridge: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 1
+  BlockMask: []
+  EdgeWall: 0

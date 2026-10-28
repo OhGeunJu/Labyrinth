@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 591cc0dc5a2a15c419240fcf4f8bdcb6, type: 3}
+  m_Name: WallLight_Glowstone
+  m_EditorClassIdentifier: Assembly-CSharp::WallLightData
+  DisplayName: "\uC57C\uAD11\uC11D"
+  Prefab: {fileID: 892060484988544725, guid: dbace6e8e853fa3429ec7f5ebb0201b0, type: 3}
+  DropItem: {fileID: 11400000, guid: 9f2d9e905cace6a4194cab7d293625c8, type: 2}
+  DropMin: 1
+  DropMax: 2
+  HeightMin: 0.6
+  HeightMax: 2
+  Jitter: 0.3
+  Variants:
+  - {fileID: 887589229604405947, guid: 295b2bcee335afc4d8926357a6385766, type: 3}
+  - {fileID: 892060484988544725, guid: dbace6e8e853fa3429ec7f5ebb0201b0, type: 3}
+  - {fileID: 6019868064041719736, guid: 3837b10f25a413b4d89f7403b0576f72, type: 3}
+  - {fileID: 7815290416121064112, guid: 9db3368c5a5e74046aa2fb982e0c13ed, type: 3}
+  - {fileID: 6680531452996767808, guid: 32b3b70b3c6f85841b58b89de8b54cc2, type: 3}
+  - {fileID: 2995047664874631394, guid: 0648705f62806e44098872114b1617f9, type: 3}
+  - {fileID: 8537303106712709748, guid: 41f7e38e12f401b4ba66a92be20eb5c9, type: 3}
+  ScaleRange: {x: 0.7, y: 1.3}
+  Roll: 50
+  Tilt: 15
+  HueJitter: 0.06
+  ClusterMin: 1
+  ClusterMax: 4
+  ClusterSpread: 0.35
+  MemberScale: {x: 0.45, y: 0.85}

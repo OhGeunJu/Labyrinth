@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class ResearchJob : JobBase
@@ -8,6 +9,7 @@ public class ResearchJob : JobBase
     float _startTime;
     float _carriedSeconds;   // 이번에 붙기 전까지 이미 해 둔 몫
     bool  _consumed;
+    readonly List<(ItemData item, int amount)> _taken = new();   // 실제로 뺀 것 — 환불은 이것을 돌려준다
     bool  _timerStarted;
     bool  _requeueOnCancel = true;
 
@@ -18,6 +20,8 @@ public class ResearchJob : JobBase
     public void SuppressRequeue() => _requeueOnCancel = false;
 
     public override JobCategory Category => JobCategory.Research;
+
+    public override Component Site => _table;   // 배치 칸이 거른다(`WorkPosts`)
 
     // 이어서 하는 연구인가 — 재료는 처음 착수할 때 한 번만 들어간다.
     bool Resuming => _data != null && ResearchManager.Instance != null
@@ -37,7 +41,7 @@ public class ResearchJob : JobBase
     {
         if (_data == null || Resuming) return true;
         foreach (var ing in _data.Ingredients)
-            if (MaterialPool.Available(ing.Item, unit) < ing.Amount) return false;
+            if (MaterialPool.Available(ing.Resolve(), unit) < ing.Amount) return false;
         return true;
     }
 
@@ -47,8 +51,12 @@ public class ResearchJob : JobBase
     // 폰이 연구대에 붙어 타이머가 도는 동안에만 true. 걸어오는 중엔 false.
     public bool IsRunning => _timerStarted && Status == JobStatus.InProgress;
 
-    // 이번에 붙어서 진행한 시간(초). 저장할 때와 게이지를 그릴 때 같은 값을 쓴다.
-    float ElapsedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) : 0f;
+    // **흐른 시간이 아니라 진척시킨 몫이다**(2026-09-17 — 연구대에 등급이 생겼다).
+    // 개량 연구대는 같은 1초에 1.5초어치를 한다. **표준 초로 환산해** 돌려주므로 게이지도
+    // 이어 하기도(`SetProgressSeconds`) 한 줄도 안 바뀐다 — `CraftJob`과 같은 규칙이다.
+    float BenchSpeed => _table != null ? _table.Speed : 1f;
+
+    float WorkedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) * BenchSpeed : 0f;
 
     // 0~1. **이전에 해 둔 몫(`_carriedSeconds`)을 포함한다** — 이어서 하는 것이므로
     // 게이지가 0부터 다시 차오르면 안 된다.
@@ -58,7 +66,7 @@ public class ResearchJob : JobBase
         {
             if (_data == null) return 0f;
             float total = Mathf.Max(0.01f, _data.ResearchTime);
-            return Mathf.Clamp01((_carriedSeconds + ElapsedThisSession) / total);
+            return Mathf.Clamp01((_carriedSeconds + WorkedThisSession) / total);
         }
     }
 
@@ -81,9 +89,9 @@ public class ResearchJob : JobBase
             // 재료는 **창고 + 이 폰의 배낭**에서 센다(`MaterialPool`).
             foreach (var ing in _data.Ingredients)
             {
-                if (MaterialPool.Available(ing.Item, ReservedBy) < ing.Amount)
+                if (MaterialPool.Available(ing.Resolve(), ReservedBy) < ing.Amount)
                 {
-                    Debug.Log($"[ResearchJob] 재료 부족 — {ing.Item.ItemName} ×{ing.Amount} 필요");
+                    Debug.Log($"[ResearchJob] 재료 부족 — {ing.DisplayName} ×{ing.Amount} 필요");
                     // **예약은 잃지 않는다.** 그냥 끝내면 눌러 둔 연구가 조용히 사라진다 —
                     // 큐에 되돌리면 `IsReady`가 재료가 들어올 때까지 배정을 미뤄 준다.
                     _table?.QueueResearch(_data);
@@ -92,8 +100,9 @@ public class ResearchJob : JobBase
                 }
             }
 
+            _taken.Clear();
             foreach (var ing in _data.Ingredients)
-                MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy);   // 배낭 먼저
+                MaterialPool.Consume(ing.Resolve(), ing.Amount, ReservedBy, _taken);   // 배낭 먼저
             _consumed = true;
         }
 
@@ -110,18 +119,17 @@ public class ResearchJob : JobBase
         if (_data == null) return;
 
         // **한 만큼을 저장한다** — 이게 이 클래스의 핵심 변경이다.
-        float done = _carriedSeconds + ElapsedThisSession;
+        float done = _carriedSeconds + WorkedThisSession;
         ResearchManager.Instance?.SetProgressSeconds(_data, done);
 
         // 진행이 있었으면 재료는 **돌려주지 않는다.** 이미 연구에 들어간 것이고,
         // 돌려주면서 진행도까지 남기면 중단·재개를 반복해 재료를 복사할 수 있다.
         // 폰이 도착도 못 한 채 취소됐을 때만 환불한다.
-        if (_consumed && ElapsedThisSession <= 0f)
+        if (_consumed && WorkedThisSession <= 0f)
         {
             _consumed = false;
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
-            foreach (var ing in _data.Ingredients)
-                MaterialPool.Refund(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+            MaterialPool.Refund(_taken, pos + Vector3.up * 0.3f);   // 실제로 뺀 것 그대로(`CraftJob`과 같다)
         }
 
         if (_requeueOnCancel) _table?.QueueResearch(_data);
@@ -141,7 +149,8 @@ public class ResearchJob : JobBase
 
             // **남은 만큼만** 잰다. 매 틱 누적하지 않는 이유는 BT가 `tickInterval`마다 돌아
             // 프레임 델타를 더하면 시간이 6배 이상 느려지기 때문이다(`docs` 알려진 이슈).
-            float remaining = Mathf.Max(0.01f, _data.ResearchTime - _carriedSeconds);
+            // **남은 표준 초를 연구대 속도로 나눈다** — 개량 연구대는 그만큼 일찍 끝난다.
+            float remaining = Mathf.Max(0.01f, (_data.ResearchTime - _carriedSeconds) / BenchSpeed);
             _endTime = Time.time + remaining;
 
             _table.SetActiveJob(this);

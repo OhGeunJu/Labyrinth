@@ -6,14 +6,19 @@ using UnityEngine;
 // **청사진은 칸을 막지 않는다** — 짓는 동안 폰이 지나다녀야 하고, 자재를 지고 오는 폰도
 // 통과한다. 대신 자기가 앞으로 깔고 앉을 칸을 `Footprint`로 알려 준다: 그래야 건설 자리가
 // 발자국 밖으로 잡히고(`WorkSpot.TileFor`), 완성되는 순간 지은 폰이 벽 안에 갇히지 않는다.
-public class BuildingBlueprint : MonoBehaviour, IFootprintSite
+public class BuildingBlueprint : MonoBehaviour, IFootprintSite, IConstructionSite
 {
     public static readonly List<BuildingBlueprint> All = new();
 
     BuildingData _data;
-    ItemData     _costItem;
-    int          _costRequired;
-    int          _costDelivered;
+
+    // **재료마다 필요량과 납품량을 따로 든다**(2026-09-17 — 전에는 한 칸이었다).
+    //
+    // 합계 하나로 세면 안 된다 — *돌 20 · 나무 10*짜리 건물에 돌 30을 부어도 합계는 차므로
+    // **나무 없이 완성된다.** 세는 축이 곧 *무엇이 아직 모자란가*라, 거기서 다음 일감이 나온다.
+    readonly List<RecipeData.Ingredient> _costs     = new();
+    readonly List<int>                   _delivered = new();
+
     bool         _jobPending;
     bool         _cancelled;
 
@@ -22,18 +27,71 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
     Renderer[]      _renderers;
     bool            _highlighted;
 
-    public bool         IsComplete   => _costDelivered >= _costRequired;
-    public int          Remaining    => Mathf.Max(0, _costRequired - _costDelivered);
-    public ItemData     CostItem     => _costItem;
-    public BuildingData Data         => _data;
-    public int          Delivered    => _costDelivered;
-    public int          CostRequired => _costRequired;
+    public BuildingData Data => _data;
+
+    // **바닥을 깔 때는 발밑을 두들긴다** — 벽 망치질로 바닥을 깔면 허공을 친다.
+    // 가르는 것은 `LevelFloor`(바닥·기단·계단이 그 축이다) 하나다.
+    public WorkAnim BuildAnim =>
+        _data != null && _data.LevelFloor ? WorkAnim.HammerGround : WorkAnim.HammerWall;
+
+    // **하나라도 모자라면 미완이다.**
+    public bool IsComplete
+    {
+        get
+        {
+            for (int i = 0; i < _costs.Count; i++)
+                if (_delivered[i] < _costs[i].Amount) return false;
+            return true;
+        }
+    }
+
+    // 아직 더 받아야 하는 양 — 화면(`InspectPanelUI`)이 진행도를 그린다. **합으로 잰다**:
+    // 여기서 물어보는 것은 *얼마나 남았나*이지 *무엇이 남았나*가 아니다(뒤엣것은 `NextMissing`).
+    public int Remaining
+    {
+        get
+        {
+            int n = 0;
+            for (int i = 0; i < _costs.Count; i++) n += Mathf.Max(0, _costs[i].Amount - _delivered[i]);
+            return n;
+        }
+    }
+
+    public int CostRequired
+    {
+        get
+        {
+            int n = 0;
+            foreach (var c in _costs) n += c.Amount;
+            return n;
+        }
+    }
+
+    public int Delivered
+    {
+        get
+        {
+            int n = 0;
+            foreach (int d in _delivered) n += d;
+            return n;
+        }
+    }
+
+    // 무엇이 얼마나 더 필요한가 — 화면이 줄마다 적는다(`item {받음}/{필요}`).
+    public IEnumerable<(ItemData Item, int Delivered, int Required)> Progress
+    {
+        get
+        {
+            for (int i = 0; i < _costs.Count; i++)
+                yield return (_costs[i].Item, _delivered[i], _costs[i].Amount);
+        }
+    }
 
     // 완성되면 막을 칸들 — 계산은 `PlacedBuilding`과 같은 것을 쓴다(답이 두 벌이면 어긋난다).
     // 칸을 안 막는 건물(`OccupiesTile` false)은 발자국도 비운다 — 그 위에 서도 갇히지 않는다.
     public IEnumerable<Vector2Int> Footprint =>
-        _data != null && _data.OccupiesTile
-            ? PlacedBuilding.FootprintAt(transform.position, _data.Size, transform.rotation)
+        _data != null
+            ? PlacedBuilding.BlockingAt(transform.position, _data, transform.rotation)
             : System.Array.Empty<Vector2Int>();
 
     // **커서로 집을 수 있는 칸들 — `Footprint`와 다른 축이다.** 발자국은 "완성되면 막을 칸"이라
@@ -45,11 +103,26 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
 
     public void Init(BuildingData data)
     {
-        _data         = data;
-        _costItem     = data.CostItem;
-        _costRequired = data.CostAmount;
+        _data = data;
+
+        // **값이 없는 줄은 여기서 거른다** — 그래야 아래 셈 전부가 *실제로 드는 것*만 본다.
+        foreach (var c in data.Costs)
+        {
+            if (c.Item == null || c.Amount <= 0) continue;
+            _costs.Add(c);
+            _delivered.Add(0);
+        }
+
         BuildGhostVisual();
-        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.BuildingName} ({_costItem?.ItemName} ×{_costRequired} 필요)");
+        Debug.Log($"[Blueprint] 예비 설계 배치 — {data.BuildingName} ({CostLine()} 필요)");
+    }
+
+    string CostLine()
+    {
+        if (_costs.Count == 0) return "무료";
+        var parts = new string[_costs.Count];
+        for (int i = 0; i < _costs.Count; i++) parts[i] = $"{_costs[i].Item.ItemName} ×{_costs[i].Amount}";
+        return string.Join(" · ", parts);
     }
 
     void BuildGhostVisual()
@@ -72,51 +145,58 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
         ghost.transform.localPosition = new Vector3(0f, hover, 0f);
         ghost.transform.localRotation = Quaternion.identity;
 
+        // **자리를 잡은 뒤에 모습을 다시 고른다**(2026-09-30, 사용자: *"나무가 그냥 한 종류만 나오는 거 같은데"*).
+        // `PropVariant`는 `Awake`에서 자리 해시로 고르는데, 위 `Instantiate`는 **원점에서** 깨어나므로 청사진이
+        // 전부 원점의 모습(같은 나무)으로 섰다. 완성품은 `Instantiate(prefab, pos, rot)`라 제자리에서 깨어나
+        // 이미 갈렸다 — **청사진만 완성품과 다른 나무**였다.
+        foreach (var v in ghost.GetComponentsInChildren<PropVariant>(true)) v.Apply();
+
         // 완성 후 모습과 같은 높이로 — 부양 프리팹이 아니면 렌더러 바닥면을 표면에 맞춘다.
         if (MapManager.Instance != null && hover <= 0f)
             BuildModeManager.SnapOnSurface(
                 ghost, MapManager.Instance.SurfaceHeight(MapManager.Instance.WorldToTile(transform.position)));
 
-        foreach (var c in ghost.GetComponentsInChildren<Collider>())     c.enabled = false;
-        foreach (var b in ghost.GetComponentsInChildren<MonoBehaviour>()) b.enabled = false;
+        // **꺼진 자식까지 훑는다 — 그리고 모양을 정하기 *전*에 끈다**(2026-09-05).
+        //
+        // `GetComponentsInChildren`은 기본으로 **켜진 것만** 본다. 그런데 바로 아래
+        // `PoseAt`이 **꺼져 있던 쪽 모형을 켠다**(`WallTorch`의 선 것/걸린 것 중 하나) —
+        // 그 밑에 붙은 스크립트는 **한 번도 안 꺼진 채로 살아난다.** 아직 짓지도 않은
+        // 청사진에서 `OnEnable`/`Update`가 도는 것이 `EnsureGhost`가 막으려던 바로 그것이다.
+        foreach (var c in ghost.GetComponentsInChildren<Collider>(true))     c.enabled = false;
+        foreach (var b in ghost.GetComponentsInChildren<MonoBehaviour>(true)) b.enabled = false;
+
+        // **놓일 자리에 따라 모양이 갈리는 건물은 청사진도 그 모양이어야 한다**(2026-09-04).
+        //
+        // 미리보기에서 벽에 걸린 것을 보고 눌렀는데 청사진이 바닥에 서 있으면, 완성될 때까지
+        // *어느 쪽이 맞는지*를 알 방법이 없다 — 지우고 다시 놓게 된다.
+        //
+        // **꺼 놓고 부른다.** 위에서 `enabled = false`를 걸었으므로 `Start`도 `Update`도 안
+        // 돌고, `Instantiate`가 활성으로 만드는 바람에 `OnEnable`이 한 번 돌긴 했지만 그때는
+        // **아직 원점에 있어** 엉뚱한 답을 냈다. 자리를 잡은 지금 다시 묻는 것이 진짜 답이다.
+        if (MapManager.Instance != null)
+        {
+            var tile = MapManager.Instance.WorldToTile(transform.position);
+            foreach (var pose in ghost.GetComponentsInChildren<IPlacementPose>(true))
+                pose.PoseAt(tile);
+        }
 
         _ghostMat = CreateBlueprintMaterial();
         foreach (var r in ghost.GetComponentsInChildren<Renderer>())
             r.material = _ghostMat;
     }
 
-    Material CreateBlueprintMaterial()
-    {
-        // URP → Standard 순으로 시도
-        var shader = Shader.Find("Universal Render Pipeline/Lit")
-                  ?? Shader.Find("Standard");
-        var mat = new Material(shader) { color = new Color(0.3f, 0.6f, 1f, 0.4f) };
-
-        // URP Lit
-        if (mat.HasProperty("_Surface"))
-        {
-            mat.SetFloat("_Surface", 1f);
-            mat.SetFloat("_Blend",   0f);
-            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        }
-        // Built-in Standard
-        if (mat.HasProperty("_Mode"))
-        {
-            mat.SetFloat("_Mode", 3f);
-            mat.EnableKeyword("_ALPHABLEND_ON");
-        }
-
-        mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        mat.SetInt("_ZWrite", 0);
-        mat.renderQueue = 3000;
-        return mat;
-    }
+    // **투명으로 만드는 식은 `FadeMaterial` 하나가 든다** — 지붕 페이드와 같은 답이다.
+    //
+    // 여기가 안 비치던 원인은 색이었다: `new Material(sh) { color = ... }`의 `Material.color`는
+    // **`_Color`**를 짚는데 URP Lit이 읽는 것은 **`_BaseColor`**라, 알파 0.4를 넣어 놓고도
+    // 셰이더는 기본값(흰색, 알파 1)을 읽었다. `FadeMaterial.SetColor`가 둘 다 넣는다.
+    Material CreateBlueprintMaterial() =>
+        FadeMaterial.Create(new Color(0.3f, 0.6f, 1f, 0.4f));
 
     void Start()
     {
         All.Add(this);
-        if (_costRequired <= 0) { Complete(); return; }
+        if (_costs.Count == 0) { Complete(); return; }
         Storage.OnChanged += OnStorageChanged;
         TryRegisterJob();
     }
@@ -153,17 +233,30 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
         // **취소된 뒤에도 불린다.** 일감을 거두면 `OnCancelled`가 `OnJobEnded`로 돌아오는데,
         // `IsComplete`는 미완이라 그대로 두면 사라지는 청사진이 새 일감을 또 등록한다.
         if (_cancelled) return;
-        if (_jobPending || IsComplete || JobManager.Instance == null || _costItem == null) return;
+        if (_jobPending || IsComplete || JobManager.Instance == null) return;
 
-        // **창고만 세면 손에 든 자재가 없는 것이 된다.** `MaterialPool`이 답하는 것과 같은
-        // 축으로 본다 — 창고 + 플레이어 폰들의 배낭. 등록 시점엔 누가 지을지 모르므로
-        // 넓게 보고, 폰별 판정은 `ConstructionJob.CanAssignTo`가 다시 한다.
-        int available = MaterialPool.AvailableAnywhere(_costItem);
-        if (available <= 0) return;
+        // **모자란 재료 중 지금 구할 수 있는 것 하나를 고른다**(2026-09-17).
+        //
+        // 한 번에 하나씩 거는 것은 전과 같다 — `_job` 하나가 취소 경로를 든다. 다만 **못
+        // 구하는 것에서 멈추면 안 된다**: 돌은 창고에 있는데 나무가 없다고 여기서 돌아가면
+        // **구할 수 있는 절반조차 안 들어오고** 화면에는 *"아무도 안 온다"*로만 보인다.
+        // 그래서 걸리는 것이 나올 때까지 훑는다.
+        for (int i = 0; i < _costs.Count; i++)
+        {
+            int need = _costs[i].Amount - _delivered[i];
+            if (need <= 0) continue;
 
-        _jobPending = true;
-        _job        = new ConstructionJob(this, _costItem, Mathf.Min(Remaining, available));
-        JobManager.Instance.RegisterJob(_job);
+            // **창고만 세면 손에 든 자재가 없는 것이 된다.** `MaterialPool`이 답하는 것과 같은
+            // 축으로 본다 — 창고 + 플레이어 폰들의 배낭. 등록 시점엔 누가 지을지 모르므로
+            // 넓게 보고, 폰별 판정은 `ConstructionJob.CanAssignTo`가 다시 한다.
+            int available = MaterialPool.AvailableNear(_costs[i].Item, transform.position);
+            if (available <= 0) continue;
+
+            _jobPending = true;
+            _job        = new ConstructionJob(this, _costs[i].Item, Mathf.Min(need, available));
+            JobManager.Instance.RegisterJob(_job);
+            return;
+        }
     }
 
     public void OnJobEnded()
@@ -187,12 +280,13 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
 
         DropJob();
 
-        if (_costItem != null && _costDelivered > 0)
+        for (int i = 0; i < _costs.Count; i++)
         {
-            MaterialPool.Refund(_costItem, _costDelivered, transform.position);
-            Debug.Log($"[Blueprint] 취소 — {_costItem.ItemName} ×{_costDelivered} 환불");
+            if (_delivered[i] <= 0) continue;
+            MaterialPool.Refund(_costs[i].Item, _delivered[i], transform.position);
+            Debug.Log($"[Blueprint] 취소 — {_costs[i].Item.ItemName} ×{_delivered[i]} 환불");
+            _delivered[i] = 0;
         }
-        _costDelivered = 0;
 
         Destroy(gameObject);
     }
@@ -238,12 +332,21 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
         PlacedBuilding.ApplyTint(_renderers, on, PendingColor);
     }
 
+    // **어느 칸에 넣을지는 아이템이 정한다.** 합계 하나에 더하면 *돌 20 · 나무 10*짜리
+    // 건물이 **돌 30으로 완성된다**(합계는 차는데 나무가 한 개도 안 들어왔다).
     public void Deliver(ItemData item, int amount)
     {
-        if (item != _costItem || amount <= 0) return;
-        _costDelivered = Mathf.Min(_costRequired, _costDelivered + amount);
-        Debug.Log($"[Blueprint] 자재 입고 — {item?.ItemName} {_costDelivered}/{_costRequired}");
-        if (IsComplete) Complete();
+        if (item == null || amount <= 0) return;
+
+        for (int i = 0; i < _costs.Count; i++)
+        {
+            if (_costs[i].Item != item) continue;
+
+            _delivered[i] = Mathf.Min(_costs[i].Amount, _delivered[i] + amount);
+            Debug.Log($"[Blueprint] 자재 입고 — {item.ItemName} {_delivered[i]}/{_costs[i].Amount}");
+            if (IsComplete) Complete();
+            return;
+        }
     }
 
     void Complete()
@@ -270,7 +373,7 @@ public class BuildingBlueprint : MonoBehaviour, IFootprintSite
             placed.OccupyFootprint();
         }
 
-        // 벽 등 장애물이면 메소 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
+        // 벽 등 장애물이면 코스 격자에 반영 (CheckBox가 Wall 콜라이더 감지)
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(transform.position);
 
         Destroy(gameObject);

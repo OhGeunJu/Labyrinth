@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 06d60a33507dccc4bafeeda88f8b8c7c, type: 3}
+  m_Name: Faction_Bandit
+  m_EditorClassIdentifier: Assembly-CSharp::FactionData
+  factionName: "\uC0B0\uC801"
+  playerControlled: 0
+  startingFavor: -55
+  acceptsRansom: 1
+  defaultStance: 1
+  backstoryGroup: bandit
+  relations:
+  - Other: {fileID: 11400000, guid: 755a211fce1c88c4fac273b9b59b67a3, type: 2}
+    Stance: 2
+  - Other: {fileID: 11400000, guid: 64b225562e9254c45bd4a247c3316b9a, type: 2}
+    Stance: 2
+  - Other: {fileID: 11400000, guid: 64d38eece6c87804ab2125e728525b45, type: 2}
+    Stance: 2

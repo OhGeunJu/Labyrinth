@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 06d60a33507dccc4bafeeda88f8b8c7c, type: 3}
+  m_Name: Faction_Cult
+  m_EditorClassIdentifier: Assembly-CSharp::FactionData
+  factionName: "\uAC80\uC740 \uAD50\uB2E8"
+  playerControlled: 0
+  startingFavor: -80
+  acceptsRansom: 0
+  defaultStance: 1
+  backstoryGroup: cult
+  raisesDead: 1
+  exhumesGraves: 1
+  risenBones: {fileID: 6894885055828391614, guid: 5671e81eeb996f945a446dde1026f49c, type: 3}
+  relations:
+  - Other: {fileID: 11400000, guid: 755a211fce1c88c4fac273b9b59b67a3, type: 2}
+    Stance: 2
+  - Other: {fileID: 11400000, guid: 64b225562e9254c45bd4a247c3316b9a, type: 2}
+    Stance: 2
+  - Other: {fileID: 11400000, guid: d74c8f6cfbca0174caf307041b87b0aa, type: 2}
+    Stance: 0

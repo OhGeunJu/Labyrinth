@@ -49,8 +49,24 @@ public class JobManager : MonoBehaviour
     // 작업 요청 — 방랑자·하수인 공통.
     // 폰이 그 작업을 하는지 여부는 개체별 WorkSettings(on/off), 무엇을 먼저 할지는
     // JobCategoryInfo.QueueOrder(전역 고정 순서)가 정한다.
-    public JobBase RequestJob(UnitBrain unit)
+    // 직선이 막혔을 때 거리에 곱하는 벌점(제곱거리라 1.5² = 2.25 = 실제 1.5배).
+    const float DetourPenalty = 2.25f;
+
+    // 그 직선을 몇 칸까지 훑나. 이보다 먼 것은 안 본다 — 거리로 이미 갈리고,
+    // 요청마다 도는 것이라 **한도가 없으면 그것이 곧 값이다.**
+    const int DetourProbe = 24;
+
+    // `only` — **배치 칸이 거르는 조건**(`WorkPosts`). 주면 그것에 맞는 일감만 보고, 켜고 끄기(`IsEnabled`) 대신
+    // **못 하는 일**(`IsBlocked`)만 막는다 — 배치는 명령이라 손으로 붙인 노드 배정과 같은 규칙이다.
+    public JobBase RequestJob(UnitBrain unit, System.Predicate<JobBase> only = null)
     {
+        // **용병은 싸우러 온 것이지 일하러 온 것이 아니다.**
+        //
+        // 지금은 여기까지 오지도 않는다 — 고용해도 세력이 `Faction_Mercenary` 그대로라
+        // 애초에 일감을 요청하는 폰이 아니다. **그래도 남긴다**: 한때 세력을 플레이어로 바꿨다가
+        // 명부에 뜨고 조종까지 됐던 자리라(2026-08-14), 그 실수를 다시 하면 여기서 걸린다.
+        if (Hireling.IsHired(unit)) return null;
+
         var settings = unit != null ? unit.Work : null;
 
         // **손으로 맡긴 일감이 먼저다.** 플레이어가 우클릭으로 "저 사람을 치료해라"라고 하면
@@ -80,17 +96,44 @@ public class JobManager : MonoBehaviour
             if (!job.IsReady) continue;   // 재료 부족 등 미준비 작업은 큐에 두고 배정 보류
             if (!job.IsSiteUsable) continue; // 휴면(핵 영역 밖) 건물의 일감도 대기 — 영역 복구 시 재개
 
+            // **너무 먼 일감은 안 준다**(2026-08-26). 아래 점수가 거리보다 먼저라, 컷오프가
+            // 없으면 **지도 반대편 일감을 집으러 29km를 걷는다** — 200m 맵에서는 그 차이가
+            // 안 보였다. 절차 지형이 꺼진 씬에서는 안 걸린다(`SimLocality.Active`).
+            //
+            // 일감의 자리는 **폰이 서는 칸**(`TileCoord`)이다 — 건물 자기 칸이 아니라.
+            //
+            // **칸을 월드로 옮기는 일은 `TileToWorld`가 한다** — 손으로 `+0.5`를 더하면
+            // 격자 위상(08-27)이 빠져 한 칸 어긋난다. 여기서는 거리 컷오프라 티가 안 나지만,
+            // 같은 계산이 네 곳에서 조용히 틀렸던 자리다.
+            var map = MapManager.Instance;
+            var jobPos = map != null ? map.TileToWorld(job.TileCoord)
+                                     : new Vector3(job.TileCoord.x + 0.5f, 0f, job.TileCoord.y + 0.5f);
+            jobPos.y = from.y;
+            if (SimLocality.JobTooFar(from, jobPos)) continue;
+
             // 큐 밖 카테고리(채굴·벌목 등 직접 배정)는 애초에 여기서 배정되지 않는다.
             int weight = JobCategoryInfo.Weight(job.Category);
             if (weight <= 0) continue;
 
-            if (settings != null && !settings.IsEnabled(job.Category)) continue;
+            if (only != null)
+            {
+                if (!only(job)) continue;
+                if (settings != null && settings.IsBlocked(job.Category)) continue;
+            }
+            else if (settings != null && !settings.IsEnabled(job.Category)) continue;
             if (!job.CanAssignTo(unit)) continue;   // 지정 제작자 / 만들던 사람만 이어받는 장비
 
             int   score = weight * 100 + job.Priority;
-            float dist  = MapManager.Instance != null
-                        ? Vector3.SqrMagnitude(MapManager.Instance.TileToWorld(job.TileCoord) - from)
-                        : 0f;
+            float dist  = map != null ? Vector3.SqrMagnitude(map.TileToWorld(job.TileCoord) - from) : 0f;
+
+            // **벽 뒤의 일감은 보이는 것보다 멀다.** 직선거리만 보면 벽 하나 너머 3m가
+            // 돌아서 40m인데도 *가장 가까운 일감*으로 뽑힌다 — 멀리 가는 것은 아니지만
+            // 같은 점수의 더 나은 후보를 진다.
+            //
+            // **경로를 재지는 않는다**(후보마다 A*를 굴리면 값이 너무 크다). 직선이
+            // 막혔는지만 보고 벌점을 준다 — 어림값이지만 이 물음에는 그만큼이면 된다.
+            if (map != null && !map.LineIsClear(map.WorldToTile(from), job.TileCoord, DetourProbe))
+                dist *= DetourPenalty;
 
             if (score > bestScore || (score == bestScore && dist < bestDist))
             {
@@ -103,7 +146,50 @@ public class JobManager : MonoBehaviour
         if (best != null && best.Reserve(unit))
             return best;
 
+        if (only == null) DiagnoseNoJob(unit, settings, from);
         return null;
+    }
+
+    // ── 일감이 있는데 못 받은 까닭 (2026-09-28) ─────────────────────────────
+    //
+    // 사용자: *"자동운반 껐다 켰다 하니깐 한명만 운반해"*. 셋 중 둘이 바닥 물건이 수백 개 널린 곳에서
+    // **대기**로 섰다. 배경은 운반을 막지 않았다(에셋을 훑었다). 남는 것은 작업 설정 · 적재 · 거리인데
+    // 화면으로는 가릴 수 없어, **이 폰에게 운반 일감이 있었는데 왜 못 받았나**를 까닭별로 센다.
+    // 폰마다 10초에 한 번. **이 줄이 안 뜨는 폰은 여기까지 묻지도 않은 것이다**(행동 트리가 그 앞에서 멈췄다).
+    readonly Dictionary<UnitBrain, float> _diagAt = new();
+    const float DiagEvery = 10f;
+
+    void DiagnoseNoJob(UnitBrain unit, WorkSettings settings, Vector3 from)
+    {
+        if (unit == null || settings == null) return;   // 일꾼이 아니다
+        if (_diagAt.TryGetValue(unit, out float at) && Time.unscaledTime < at) return;
+
+        int total = 0, off = 0, cannot = 0, far = 0, notReady = 0, taken = 0;
+        JobBase firstCannot = null;
+        var map = MapManager.Instance;
+
+        foreach (var job in _jobs)
+        {
+            if (job.Category != JobCategory.Hauling) continue;
+            total++;
+            if (job.Status != JobStatus.Available)          { taken++;    continue; }
+            if (!job.IsReady || !job.IsSiteUsable)           { notReady++; continue; }
+            var p = map != null ? map.TileToWorld(job.TileCoord) : from; p.y = from.y;
+            if (SimLocality.JobTooFar(from, p))              { far++;      continue; }
+            if (!settings.IsEnabled(job.Category))           { off++;      continue; }
+            if (!job.CanAssignTo(unit))                      { cannot++; firstCannot ??= job; continue; }
+        }
+        if (total == 0 || total == taken) return;           // 줄 것이 없었다 — 소식이 아니다
+
+        _diagAt[unit] = Time.unscaledTime + DiagEvery;
+
+        string carry = "";
+        if (firstCannot is GroundHaulJob || firstCannot is HaulJob)
+            carry = $" · 배낭에 {unit.Inventory?.Items.Count ?? 0}묶음 들고 있음";
+
+        Debug.Log($"[일감] {unit.name} — 운반 일감 {total}개 중 받은 것 없음: " +
+                  $"남이 잡음 {taken} · 준비 안 됨 {notReady} · 너무 멂 {far} · " +
+                  $"**작업 설정 꺼짐 {off}** · **못 짐(적재) {cannot}**{carry}");
     }
 
     // **환자가 사라진 치료 일감을 걷어낸다.** `IsReady`가 false라 배정은 안 되지만, 그대로 두면
@@ -140,6 +226,21 @@ public class JobManager : MonoBehaviour
             if (job is TreatJob t && t.Patient == patient) return true;
         return false;
     }
+
+    // **한 몸에 도축 일감은 하나다.** 문이 둘이라(우클릭 · 도축대 규칙) 같은 시체에 각자
+    // 하나씩 걸릴 수 있고, 그러면 **두 폰이 같은 시체로 걸어가** 하나는 헛걸음한다(먼저
+    // 도착한 쪽이 가르고 나면 나머지는 `_target == null`로 끝난다). 치료가 똑같이 겪은
+    // 모양이라(`HasTreatJobFor`) 막는 방법도 같다.
+    public ButcherJob FindButcherJobFor(GameObject target)
+    {
+        if (target == null) return null;
+
+        foreach (var job in _jobs)
+            if (job is ButcherJob b && b.Target == target) return b;
+        return null;
+    }
+
+    public bool HasButcherJobFor(GameObject target) => FindButcherJobFor(target) != null;
 
     // **폰을 콕 집어 맡긴다.** 우클릭 명령이 쓰는 길 — 등록과 예약을 한 번에 한다.
     // 큐에 올려 두는 이유는 그 폰이 죽거나 그만두면 `ReleaseReservation`으로 남에게

@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 264124504a13cf24fb13f7056c4416b9, type: 3}
+  m_Name: Hut
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingData
+  Id: hut
+  BuildingName: 7x6
+  Description: "7\xD76 \xB7 \uC548\uCABD 5\xD74\uCE78. \uCE68\uB300 \uBA87\uACFC
+    \uC791\uC5C5\uB300\uAC00 \uAC19\uC774 \uB4E4\uC5B4\uAC00\uB294 \uC9D1."
+  Category: 2
+  SortOrder: 42
+  Size: {x: 7, y: 6}
+  Costs:
+  - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
+    Amount: 25
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Amount: 15
+  MaxHealth: 0
+  CostItem: {fileID: 0}
+  CostAmount: 0
+  DragBuild: 0
+  AreaDrag: 0
+  RequiredResearch: {fileID: 0}
+  Prefab: {fileID: 2869154845387577715, guid: fb61728fd7847b24698534b37a3d5776, type: 3}
+  UsesBlueprint: 1
+  IsFloor: 0
+  IsBridge: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
+  OccupiesTile: 1
+  BlockMask:
+  - '#######'
+  - '#.....#'
+  - '#.....#'
+  - '#.....#'
+  - '#.....#'
+  - '###.###'
+  EdgeWall: 0

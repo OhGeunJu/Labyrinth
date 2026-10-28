@@ -92,6 +92,52 @@ static void EnsureFolder(string path)
 | 좌측 하단 | (0, 0) | (0, 0) | (0, 0) |
 | 전체 스트레치 | (0, 0) | (1, 1) | — |
 
+### 뿌리는 화면 전체, 자리는 판이 든다 (2026-09-08 사용자 결정)
+
+`Xxx_UI`(뿌리)는 **캔버스 전체로 늘린다**(anchorMin (0,0) ~ anchorMax (1,1), offset 0).
+**자리와 크기는 자식 `Xxx_Panel`이 든다.**
+
+```
+Canvas
+ └ Xxx_UI      ← 스크립트만. 전체 스트레치. 늘 켜져 있다
+    └ Xxx_Panel ← 앵커·자리·크기·바탕색. 보였다 사라지는 것은 이쪽
+```
+
+씬의 창 서른둘 중 **스물하나가 이미 그 모양**이었다(2026-09-08에 셌다). 나머지는
+뿌리에 자리가 박혀 있었는데, 그것이 곧 이 규칙이 필요한 이유다:
+
+- **만지는 자리가 하나여야 한다.** 뿌리에도 자리가 있고 판에도 있으면 *어느 쪽을 옮겨야
+  하나*가 창마다 달라진다 — 지금 씬이 정확히 그 상태다.
+- **해상도가 바뀌어도 안 밀린다.** 뿌리가 점 하나로 앵커되면 그 점만 앵커를 따라가고
+  안쪽은 절대 좌표라, 다른 해상도에서 판이 화면 모서리를 놓친다.
+- **커서를 따라다니는 창**(`ItemInfo_UI`·`HoverTooltip_UI`)은 뿌리가 캔버스와 같은 크기여야
+  좌표가 맞는다. 그 둘만 예외로 두는 대신 **전부 그렇게 둔다** — 예외가 있으면 새 창을 지을
+  때마다 *이건 어느 쪽이더라*를 다시 재게 된다.
+
+**2026-09-09에 남은 것을 도구로 옮겼다**(`DungeonColony/UI: 뿌리 규격 맞추기`) — 세어 보니
+**열하나가 아니라 열셋**이었다(그 뒤에 둘이 더 어긋났다. **문서에 적은 개수는 센 날의
+것이라 곧 뒤처진다** — 세는 일은 도구가 한다).
+
+- **자식의 앵커와 피벗은 안 건드리고 오프셋만 다시 낸다.** 오늘 화면이 한 픽셀도 안 바뀌고
+  (앵커까지 바꾸면 그건 이사가 아니라 재배치이고, 창 열셋을 하나씩 열어 봐야 확인된다),
+  **판의 앵커가 그제야 뜻을 갖는다** — 지금까지는 *뿌리 안에서 어디*였는데 뿌리가 화면만
+  해지면 그것이 곧 *화면 어디*다.
+- 그래서 **저작한 사람이 적어 둔 것이 살아난다**: `BuildMode_Panel`은 폭 0짜리 뿌리 안에서
+  1920px로 늘어나 있었는데 옮기고 나면 `offset (0,0)~(0,234)` — **해상도와 무관하게 화면
+  폭을 채우는 하단 바**다. `Storage_Panel`은 화면 중앙 기준 절대좌표 `(944,-524)`였던 것이
+  **우측 하단 16px 여백**이 된다.
+- **고쳐 주지는 않는다.** 앵커가 애초에 어긋난 판(`ModeToolBar_UI`는 화면 아래에 있으면서
+  좌상단에 앵커돼 있다)은 **그대로 옮겨진다** — 다만 뿌리가 치워진 뒤라 인스펙터에서
+  그 사실이 처음으로 눈에 보인다.
+- **뿌리 안에 또 뿌리가 있을 수 있다**(`ModeToolBar_UI` ⊂ `BuildMode_UI`) — 얕은 것부터
+  손댄다.
+- **일회성 이사 도구다** — 씬이 규격에 맞고 나면 지운다("생성기의 수명").
+
+**생성기가 물려주는 것도 판의 자리다.** 뿌리는 늘 같은 값이라 물려줘 봐야 소용이 없고,
+정작 사람이 옮긴 것은 판이다 — 뿌리만 지키면 **다시 돌릴 때마다 손으로 맞춘 자리가 날아간다**
+(`ModeBarSetup`·`FormationBarSetup`이 2026-09-08에 그렇게 고쳐졌다). **크기는 여전히 안
+물려준다** — 그건 버튼 수에서 나오는 값이지 손으로 정하는 값이 아니다.
+
 ### 헤더 바 (상단 고정 N px)
 
 ```csharp
@@ -274,7 +320,6 @@ Content
 - 이후 수정은 **인스펙터에서** 한다. 그러라고 헤더·스크롤·행 템플릿까지 씬 오브젝트로 만들어 두는 것이다.
 - 다시 지어야 하면 git 이력에서 꺼내거나, 없으면 다시 쓴다. 산출물(씬·에셋)이 정본이므로 생성기가 사라져도 잃는 건 없다.
 - **같은 대상을 다루는 생성기를 둘 두지 말 것.** 어느 쪽을 돌려야 하는지 알 수 없고, 섞어 돌리면 산출물이 깨진다(실제로 연구 패널이 그랬다).
-- 2026-08-06에 15개를 지웠다. 경위는 `docs/worklog.md`.
 - 아래 "지어진 UI" 표는 **무엇이 어떤 컴포넌트로 씬에 있는지의 기록**이지, 지금 쓸 수 있는 메뉴 목록이 아니다.
 
 ### 지어진 UI (기록)
@@ -282,17 +327,26 @@ Content
 | 씬 오브젝트 | 컴포넌트 | 비고 |
 |---|---|---|
 | `Storage_UI` | `StorageUI` | 창고 필터/그리드 |
+| `WorkPosts_UI` | `WorkPostsUI` · `WorkPostRowUI` | 배치 1~3순위(2026-09-29). **`H`키 · 모드 바 [지휘소]**로 연다(2026-10-01 — 핵은 포탈이 됐다). 생성기 `UI/Create Work Posts Window`는 자리를 잡으면 지운다 |
+| `OutpostBar_UI` | `OutpostBarUI` | 좌상단 띠(2026-10-01) — 핵이 둘 이상일 때만 `N 거점` 칸(누르면 카메라 + 조작 거점). 칸은 `SlotTemplate` 복제. 생성기 `UI/Create Outpost Bar`. [지휘소 (H)] · [상단 (T)]은 10-09에 모드 바 끝으로 옮겼다(`UI/Setup Command Bar`) |
+| `Caravan_UI` | `CaravanUI` · `CaravanRuleRowUI` | 상단 창(`T`, 2026-10-01). 목록 줄 · 일행 토글 · 규칙 줄 셋(판매·구매·우선)이 전부 씬 템플릿 복제. **드롭다운은 고를 때만 다시 짓는다**(박자마다 지으면 펼친 목록이 닫힌다). 생성기 `UI/Create Caravan Window` |
+| 지도 창 `FloorTabs` | `WorldMapPanel.floorTabs` · `floorNote` | 지도 그림 왼쪽 위에 겹친 층 탭 넷(2026-10-01). 생성기 `UI/Add Map Floor Tabs` |
+| `CharacterCreation_UI` | `CharacterCreationUI` · `ChoiceRowUI` | 새 게임의 첫 방랑자(2026-09-20). **닫기 버튼이 없다** — `시작`으로만 나간다. 줄 여덟은 `ChoiceRowUI.Key`로 가른다. 생성기 `UI/Create Character Creation`은 자리를 잡으면 지운다 |
 | ~~`Bed_UI`~~ | ~~`BedUI`~~ | **없앴다**(2026-08-12). 배정/해제는 우클릭으로, 정보는 `UnitHP_Panel`로 — 문이 둘인데 한쪽만 죄수 침대 규칙을 알고 있었다 |
 | `Farm_UI` | `FarmUI` | 농장 관리(씨앗 선택·성장·수분) |
 | `PatrolZone_UI` | `PatrolZoneUI` | 순찰 구역 |
 | `EventNotification_UI` | `EventNotificationUI` | 이벤트 알림 + **조작 거절 알림**(`Notify(title, message)`) |
 | `Merchant_UI` | `MerchantUI` | 상인 재고(구매), `InventoryUI` 연동. 목록↔격자 전환 |
 | `Inventory_UI` | `InventoryUI` | 인벤토리+장착슬롯+액션바(판매/옮기기)+`CarryBar`(무게·짐내림·잠금) |
-| `CorpseInventory_UI` | `CorpseInventoryUI` | 시체 루팅(+EquipRow 6슬롯), `InventoryUI` 연동 |
+| `Grave_UI` | `GraveUI` | 무덤 — 묻힌 사람·멈춘 단계·[파낸다] |
+| `Pyre_UI` | `PyreUI` | 화장터 — 진행 게이지·연료 부족 사유·[내린다] |
+| `ButcherTable_UI` | `ButcherTableUI` | 도축대 — 규칙 셋(순환 버튼)·산출물 격자·운반/정리 |
+| `CorpseInventory_UI` | `CorpseInventoryUI` | 시체 루팅(+장비칸 여덟), `InventoryUI` 연동. **장비칸(두 창 공통)은 이름표 달린 상자를 줄로 쌓는다**(2026-10-18 일회성 `EquipSlotLayout` — 지웠다): 무기 둘 4×1 · 머리|손 2×2 · 몸통|다리 2×3 · 허리|신발 2×1, 눈금은 배낭 격자와 한 벌(`InventoryGridUI.BuildCells`) |
 | `ItemInfo_UI` | `ItemInfoUI` | 아이템 툴팁. **커서를 따라다니므로 부모가 캔버스와 같은 크기여야 한다** |
 | `CraftingTable_UI` | `CraftingTableUI` | 마스터-디테일 + 연료 게이지·산출물 그리드·수량 주문 |
 | `ResearchTable_UI` | `ResearchTableUI` | 마스터-디테일. [연구] 버튼과 진행 게이지가 **같은 칸을 번갈아 쓴다** |
 | `ResourceNode_UI` | `ResourceNodeUI` | 우측 패널, 상단 #0D0D0D 헤더+CloseButton, 재고/배정/이송/운반임계값 |
+| `FormationBar_UI` | `FormationBarUI` | 진형 넷(방진·횡대·종대·쐐기). **소집한 폰을 고르고 있을 때만 뜬다** — 진형이 실제로 먹는 조건과 같다. 상태를 안 들고 매 프레임 `Formation.Current`를 읽는다(키 `F1~F4`와 같은 상태) |
 | `PawnRoster_UI` | `PawnRosterUI` | 우측 하단 세로 명부(340×760). 행은 씬의 **`RowTemplate`을 복제** |
 | `Colony_UI` | `ColonyUI` · `ColonyRowUI` | 중앙 표 패널(P키). **행·열 라벨은 런타임 생성**(작업 카테고리에서 파생) |
 | `UnitStats_UI` · GradeUpNotification | `UnitStatsUI` · `GradeUpNotificationUI` | 스탯 패널(C키) / 등급 승급 알림 |
@@ -300,12 +354,10 @@ Content
 | `DungeonCore_UI` | `DungeonCoreUI` | 코어 정보/소환/[핵 이전] |
 | `BuildMode_UI` | `BuildModeUI` | 하단 건설 바 |
 | `PawnContextMenu_UI` | `PawnContextMenuUI` | 우클릭 선택지 팝업. 줄은 씬의 `OptionTemplate` 복제 |
-| `Expedition_UI` | `ExpeditionUI` · `ExpeditionRowUI` | 원정대 편성(G키). 행은 씬의 `RowTemplate` 복제 |
-| `Canvas/WorldUI/WorldMenu_UI` | `WorldMenuUI` | 월드맵 도착 메뉴(M&B식, 화면 왼쪽 고정). **`WorldUI`는 창이 아니라 월드 전용 UI 묶음** — `GameModeManager`가 이것만 반대로 켠다. 머리표는 글자가 아니라 색 막대 `Image`인 `Marker` 자식 |
 | `Time_UI/TimeBar` | `TimeHUD` | 상단 가운데 `일차 / 시각 / 낮·밤` + 배속 버튼 4개 |
 | MerchantStockTile | `MerchantStockEntryUI` | 격자 보기 항목(96×112). 목록 행과 **같은 컴포넌트**, 배치만 다름 |
 | Settlement_0 | (루트 GameObject) | 필드 오브젝트 전체의 부모. `SettlementManager.settlements[0]`(WorldNode 8,8) |
-| 3_Prefab/CraftingTable_{Weapon,Smelt,Cook} · ResearchTable | — | **작업대는 `tableType` 때문에 종류마다 프리팹이 하나씩** 필요하다 |
+| 3_Prefab/Building/CraftingTable_{Weapon,Smelt,Cook} · ResearchTable | — | **작업대는 `tableType` 때문에 종류마다 프리팹이 하나씩** 필요하다 |
 
 **창 오브젝트 이름 규약(2026-08-04 확정)** — 이름은 **컴포넌트에서 유도한다.**
 
@@ -321,37 +373,61 @@ Content
 전에는 세 갈래가 섞여 있었다: 자식에 밑줄이 있는 것(`UnitStats_Panel`), 없는 것(`BedPanel`),
 루트에 밑줄이 없는 것(`DungeonCoreUI`), 짝 이름이 아예 다른 것(`Storage_UI`↔`StorageBuildingPanel`).
 마지막 것 때문에 **이름으로는 짝을 짐작할 수 없다** — `panel` 필드가 짝을 정확히 알고 있으므로
-거기서 읽는다. 도구는 `DungeonColony → Rename UI Objects (Preview / Apply)`.
+거기서 읽는다. 개명은 `Rename UI Objects` 도구가 한 번에 했고, 다 쓰고 지웠다(2026-08-06).
 
 이름은 `fileID` 참조에 영향을 주지 않고, 이 프로젝트에는 **창을 문자열로 찾는 코드가 없다**
 (2026-08-04 전수 확인 — `transform.Find`는 전부 창 안쪽 부품용이고 `GameObject.Find`는 0건).
+
+> **뿌리에 `Image`를 붙이지 말 것**(2026-09-02에 두 번 어겼다 — 모드 바·밭 구역 바). `UIHelper.MakePanel`이 뿌리에 `Image`를 붙여 주므로, 창 규약을 따르려면 **떼어서 자식 `<기준>_Panel`로 옮겨야** 한다. 규약이 뿌리와 창을 가른 이유는 이름 맞추기가 아니라 **스크립트가 제 오브젝트를 끄면 `Update`가 안 돌아 다시 못 켜기 때문**이다 — 그걸 `CanvasGroup`으로 우회하면 규약만 어기고 문제는 그대로 남는다(어긴 두 곳이 정확히 그랬다).
 
 **UI 이름 규약(2026-07-31 일괄 정리)**: 제목 바는 전부 **`TitleBar`**(옛 `TopBar`·`Header` 통일), 닫기 버튼은 **`CloseButton`**(옛 `CloseBtn`). 제목 바에는 `DraggablePanel`(target=패널), 닫기 버튼에는 공용 `CloseButton` 스크립트(target=패널)가 붙어 있다. 단, `ItemInfoUI/Header`는 툴팁 안의 **섹션 헤더**라 제외했다 — 제목 바 판정은 이름이 아니라 **깊이**(`Canvas > *_UI > *Panel > 바`)로 한다.
 
 ## 남아 있는 도구
 
-**2026-08-06에 13개를 지웠다.** 산출물이 씬·에셋에 전부 자리를 잡아서다 — 아래 "생성기의 수명" 참조.
-남은 넷은 일회성 생성기가 아니다.
+**끝난 일회성 도구는 지운다** — 산출물(씬·에셋)이 정본이고 수정은 인스펙터에서 한다. *"언젠가 또 필요할지도"*는 남길 이유가 아니다(필요해지면 git 이력에서 꺼내거나 다시 쓴다). **남기는 것은 데이터가 바뀌면 또 도는 것**(만든다 · 굽는다)과 디버그뿐이다. UI 규격 도구(`Setup …`)는 원칙적으로 안 남긴다 — 줄 수가 안 맞는 것은 런타임이 콘솔에 알린다(`StatColumns` ↔ `UnitStatsUI`).
+
+**이 표는 실제 메뉴 목록이어야 한다** — 도구를 지우거나 더하면 여기서 같이 고칠 것(없는 메뉴를 가리키면 표가 아니라 거짓말이다).
 
 | 메뉴 | 하는 일 | 왜 남겼나 |
 |---|---|---|
 | `World Map Editor` | 월드맵(`WorldMapData`)을 격자에 칠해 저작하는 `EditorWindow`. 브러시 3종(바이옴/내용물/시작 노드), 드래그 페인트 1회 = Undo 1덩어리, 크기 변경 시 내용 보존, [새로 만들기]/[씬에 연결]. 여기서 칠하는 건 **논리 정보뿐** — 지형은 씬에 직접 만들어 붙인다. **절차 생성 없음** | 지도를 그릴 때마다 쓰는 **상시 저작 도구** |
 | `Build Mod AssetBundle` | 프로젝트 창에서 고른 모델·프리팹·텍스처를 에셋 번들로 구워 모드 폴더에 넣는다. 번들 이름 = **모드 폴더 이름**. 읽는 쪽은 `ModAssets` | **유니티가 런타임에 .fbx를 못 읽어서**, 모드가 프리팹·뼈대·애니메이션을 넣으려면 번들이 유일한 길이다. 지우면 모딩 기능이 함께 사라진다 |
-| `Debug: Give All Items` / `Complete All Research` | 전 아이템을 **디버그 상자**(핵 옆 20×14, 모자라면 한 줄로 더 만든다·최대 12개)에 지급 — **장비는 등급 6종 각 1개, 그 밖은 일반 등급으로 최대 스택** / 연구 전부 완료 | Play Mode 검증용. **등급은 장비에만** — `StatMultiplier`가 실제로 바꾸는 건 무기 피해·갑옷 감소·값 셋뿐이고 앞의 둘이 장비 전용이라, **광석·음식은 등급이 달라도 값만 오르고 하는 일이 같다**(여섯 벌씩 주면 상자만 불고 정작 비교할 장비가 묻힌다). 상자를 **키우지 않고 늘리는** 이유: 격자가 화면보다 커지면 열어 봐도 못 본다 |
-| `Debug: Add Gold` | 지갑에 5000 G(`Wallet.Add`) | `Give All Items`는 상자에 **동전을** 넣어 주는데 그건 더블클릭해야 잔고가 된다. **몸값·시장은 상자가 아니라 `Wallet.Balance`를 본다** — 월드맵에서 흥정을 시험하려는데 배낭 창을 열어 동전을 눌러야 하는 건 시험이 아니라 준비 작업이다 |
-| `Debug: Arm Selected Pawn` | 하이어라키에서 고른 폰에 **무기·방패·갑옷 4부위 + 소지품 6종 + 동전 25**를 채운다. 인벤토리에 넣고 `Equipment.Equip*`을 태운다(손으로 차는 것과 같은 경로) | 적이 실제로 지니는 것은 이제 **데이터**가 정한다(`UnitData.Loot`/`Loadout`). 이건 **데이터에 없는 조합을 즉석에서 시험**하는 자리 — `Give All Items`가 내 창고를 채우고 이건 저 폰을 채운다 |
-| `Setup Pawn Loadouts` | `LoadoutData` 첫 벌(`Loadout_GoblinRaider`)을 만들고 `Enemy_Goblin` 프리팹에 물린다. **없는 것만 만들고 비어 있을 때만 채운다** | `ItemId`를 인스펙터에 손으로 치면 오타가 나는데, **오타는 조용히 아무것도 안 나오는 것으로 나타난다**(`Resolve()`가 null이면 그 항목은 건너뛰어진다). 도구에 적으면 목록이 정본이라 오타가 로그에 뜬다. **역할이 몇 개 서면 지울 일회성 도구** |
-| `Fix: Zero Prefab Root Offsets` | `3_Prefab`의 프리팹 루트 `localPosition`을 **XZ만 0으로**(자식은 안 건드림, 제자리 수정). **`y`가 양수면 남긴다** — `AuthoredHover`가 읽는 저작 부양 높이다(서브코어 2) | 씬에서 끌어내 만든 프리팹은 **씬 좌표가 루트에 박힌다**(작업대·연구대 26m대, 침대 z 0.5). `Instantiate(prefab, pos, rot)`는 덮어써 무해하지만 `SetParent(t, false)`는 물려받아 **청사진 고스트가 어긋났다**. 코드는 고쳤어도 값이 남으면 프리팹 편집 화면이 엉뚱하고 다음 사람이 또 걸린다 |
-| `Fix: Swap Scene Enemies To Enemy_Goblin` | 씬에 손으로 놓은 `enemy`를 `Enemy_Goblin` 프리팹 인스턴스로 교체(자리·방향·크기·활성 상태 유지, `Undo` 지원, 이미 프리팹이면 건너뜀) | 씬의 `enemy`가 `Faction_Goblin` + **`Human` 데이터**였다. 종족과 세력은 서로를 모르는 축이라 어긋나도 아무도 불평하지 않는다 — 조합은 프리팹 한 곳에서 관리해야 한다. **다 갈아 끼우면 지울 일회성 도구** |
-| `Fix: Attach PlacedBuilding To Prefabs` | 건물 프리팹에 `PlacedBuilding` + `data`를 붙인다. **레지스트리에서 거꾸로** 찾는다(`BuildingData.Prefab`의 짝을 뒤집는다 — 손으로 짝지으면 반드시 어긋난다). 제자리 수정(`LoadPrefabContents`) | **없으면 씬에 손으로 놓은 건물이 "건물"로 인식되지 않는다.** 배치로 지은 것만 `Attach`가 불리므로, 에디터에서 끌어다 놓은 것은 ① 발자국 등록이 안 돌아 **모델 한복판을 가로지르는 경로**가 나오고(2026-08-08 연구대 사건), ② 좌클릭해도 어느 건물인지 몰라 정보 패널이 안 뜬다. CLAUDE.md가 "미리 붙여 둘 것"이라 적어 둔 그것을 실제로 붙인다. **일회성이 아니다 — 건물 프리팹을 새로 만들 때마다 돌린다.** 없는 것만 붙이고 이미 된 것은 건드리지 않으므로 몇 번을 돌려도 안전하다 |
-| `Create UnitHP Action Row` | `UnitHP_Panel` 아래에 **동작 버튼 줄** + 복제용 `ActionTemplate`을 만들고 `UnitHPUI`에 배선한다. 글자 칸도 그만큼 비켜 준다 | 이 패널은 이제 폰만 보여주는 곳이 아니다 — 청사진이면 [건설을 취소한다], 건물이면 [이동한다]·[분해한다]가 뜬다. **앵커 함정 주의**: 한때 건설 하단 바에 붙인 버튼이 안 보였는데, 그 바가 **가로 스트레치인데 `sizeDelta.x`가 1920**이라 폭이 화면+1920이었다(오른쪽 끝이 960px 밖). 이 패널은 코너 앵커 300×400이라 안전하고, 줄은 스트레치로 붙이되 `sizeDelta.x`를 **음수 여백**으로 준다. **한 번 돌리면 지울 일회성 도구** |
-| `Create Prison Cage` | **우리** 프리팹(기둥 넷 + 바닥, 기본 도형) + `BuildingData`를 만든다. **없는 것만 만든다** | 붙잡아 온 사람을 가두는 자리. 모델은 나중에 갈아 끼울 자리지만 없으면 기능을 시험할 수가 없다. **콜라이더는 루트에 하나**(자식에 있으면 `hit.collider.GetComponent<IWorldClickable>()`가 못 찾아 눌러도 아무 일도 안 일어난다), **기둥에는 없다**(막으면 문 없는 상자가 된다) |
-| `Create Prison Bed` | **침대 프리팹을 복제해** `forPrisoners`만 켜고 `BuildingData`를 만든다(값·크기는 침대와 같게). `PlacedBuilding.data`를 제 것으로 다시 건다. **산출물은 이미 저장소에 있다**(`PrisonBed.prefab`/`.asset`) — 이건 없을 때 다시 만드는 복구용 | 우클릭 전환은 그대로 두고 **처음부터 죄수용으로 지어지는 침대**를 더한다 — 잡아 오고 나서 방을 돌리는 것과 애초에 감옥을 짓는 것은 다른 일이다. **복제하는 이유**: 모양·자는 자리(`sleepAnchor`)·작업 자리(`WorkSpot`)가 같아야 하는데 새로 만들면 반드시 어긋난다. **값을 더 안 받는다** — 자물쇠가 아니라 용도라서 |
-| `Fix: Remove Bed UI` | 씬에서 `Bed_UI`를 지운다. **이름으로 찾는다**(`BedUI` 스크립트는 이미 지워 타입으로 못 묻는다) | 침대 전용 패널을 없앴다 — 하던 일이 전부 우클릭으로 갔고 정보는 `UnitHP_Panel`이 띄운다. **남겨 두니 나쁜 쪽으로 갈렸다**: 죄수 침대에 [선택 유닛 배정]을 누르면 갇힌 사람이 밀려나 **갇힘만 남았다**. 스크립트 빠진 컴포넌트 경고도 이걸로 사라진다. **한 번 돌리면 지울 일회성 도구** |
-| `Toggle Movement Diagnostics` | 이동 계측 on/off | 이동 개편 검증이 아직 안 끝났다 |
-| `Snap Placed Buildings To Grid` | 씬의 `PlacedBuilding`을 발자국 격자에 맞춘다(**홀수 크기 축은 `.5`, 짝수 축은 `.0`**). 회전 반영, `Undo` 지원, 씬 직접 저장 | 에디터에서 끌어다 놓으면 아무 좌표에나 서고, 그러면 모델이 반 칸씩 밀려 **폰이 서야 할 작업 자리를 먹는다**. 손으로 배치할 때마다 필요하다 |
-| `Fit Building Colliders To Size` | `BuildingData.Size`에 맞춰 프리팹 `BoxCollider`를 조정(발자국보다 0.2 작게, 높이는 그대로). **바닥만 건너뛴다** | 옛 리사이즈 도구가 모델만 키우고 콜라이더는 두고 갔다(연구대: 모델 3×2 / 콜라이더 1×1). **반드시 정렬을 먼저 돌릴 것** — 어긋난 채로 키우면 작업 자리를 문다. **2026-08-12에 `OccupiesTile` 게이트를 걷어냈다** — 그건 "길을 막나"이고 콜라이더는 "어디를 눌러야 잡히나"라 다른 축인데, 그 게이트 때문에 **창고가 2×2인데 콜라이더 1×1로 남아 상자 바깥 절반이 클릭에 안 잡혔다.** 바닥을 빼는 이유는 서로 맞닿아야 해서다(0.2를 깎으면 틈으로 커서 레이가 빠진다) |
-| `Rebuild Corpse Inventory Panel` | `CorpseInventory_Panel`을 **`Inventory_Panel`을 복제해** 다시 짓는다. 액션 바·적재 바만 걷어내고(내 배낭의 것), 아래를 채운 뒤 `CorpseInventoryUI`를 재배선. 배낭 창 오른쪽에 세운다 | **베끼면 그 순간에만 같다.** 치수를 손으로 옮겨 적으면 나중에 배낭 창을 인스펙터에서 손볼 때 둘이 다시 갈라진다 — 갈라지면 다시 돌리라고 남긴다 |
+| `Debug/Give All Items` · `Complete All Research` | 전 아이템을 **디버그 상자**(핵 옆 20×14, 모자라면 한 줄로 더 만든다·최대 12개)에 지급 — **장비는 등급 6종 각 1개, 그 밖은 일반 등급으로 최대 스택** / 연구 전부 완료 | Play Mode 검증용. **등급은 장비에만** — `StatMultiplier`가 실제로 바꾸는 건 무기 피해·갑옷 감소·값 셋뿐이고 앞의 둘이 장비 전용이라, **광석·음식은 등급이 달라도 값만 오르고 하는 일이 같다**(여섯 벌씩 주면 상자만 불고 정작 비교할 장비가 묻힌다). 상자를 **키우지 않고 늘리는** 이유: 격자가 화면보다 커지면 열어 봐도 못 본다 |
+| `Debug/Add Gold` | 지갑에 5000 G(`Wallet.Add`) | `Give All Items`는 상자에 **동전을** 넣어 주는데 그건 더블클릭해야 잔고가 된다. **몸값·시장은 상자가 아니라 `Wallet.Balance`를 본다** — 월드맵에서 흥정을 시험하려는데 배낭 창을 열어 동전을 눌러야 하는 건 시험이 아니라 준비 작업이다 |
+| `Debug/Arm Selected Pawn` | 하이어라키에서 고른 폰에 **무기·방패·갑옷 4부위 + 소지품 6종 + 동전 25**를 채운다. 인벤토리에 넣고 `Equipment.Equip*`을 태운다(손으로 차는 것과 같은 경로) | 적이 실제로 지니는 것은 이제 **데이터**가 정한다(`UnitData.Loot`/`Loadout`). 이건 **데이터에 없는 조합을 즉석에서 시험**하는 자리 — `Give All Items`가 내 창고를 채우고 이건 저 폰을 채운다 |
+| `Debug/Raise the Dead (검은 교단)` · `(망자)` · `Age Corpses → 썩음` · `→ 뼈` | 맵의 시체를 그 자리에서 일으킨다(세력별) · 시체 나이를 옮긴다(`Corpse.SetAge`) | 부패가 신선 1일 → 썩음 3일 → 뼈라 **실기로 기다리면 한 시간이 넘는다.** 단계별로 무엇이 일어나는지(살점=그 몸 / 뼈=해골)를 보려면 나이를 옮기는 문이 있어야 한다 |
+| `Pawn/0. Rebuild Pawn Rigs And Animations` (= `1. Bake Pawn Animations` → `2. Build Pawn Rigs`) | 폰 프리팹의 `Model` 아래에 **관절**(`PawnRig` 규격)을 세우고 살을 그 아래로 옮긴다(월드 자세 유지 — 생김새는 그대로). **두발은 사람 뼈 열다섯**(팔·다리 큐브를 반으로 갈라 팔꿈치·무릎을 둔다)이고 그 위에 `AvatarBuilder`로 **휴머노이드 아바타**(`Controller/Avatars/<프리팹>.asset`)를 세워 **받은 휴머노이드 클립**(`assetsss/Kevin Iglesias`, `HumanoidClipSet` → `Controller/Humanoid.controller`: Idle01·Walk01·Run01 블렌드 / 휘두르기 = `TreeChopping01` / Lying = 얼린 Idle)을 그대로 쓴다. 네발은 관절 회전 곡선을 직접 굽는다(`Quadruped.*`). `Animator`·`PawnAnimator`를 붙인다. **다시 돌려도 된다**(살을 되돌리고 가른 큐브를 합친 뒤 다시 세운다 · 컨트롤러·아바타는 guid 유지) | **상시** — 관절 자리 규칙이나 클립을 바꾸면 다시 돌린다. 팩에 공격 클립이 없어 나무 찍기를 쓴다(`HumanoidClipSet.AttackClip` 한 줄). 걷기 문턱(`WalkAt`·`RunAt`)은 눈으로 맞춘 값. 골렘(스킨 메시)은 건너뛴다. **팩은 git 밖**(`assetsss/`)이라 경로가 그 폴더 이름에 기댄다 |
+| `Pawn/6. Create Hand Props` | 손에 드는 프롭 여덟(곡괭이·도끼·망치·칼·물뿌리개 = KI 데모 도구 / 검·활·방패 = DoubleL)을 `3_Prefab/Prop/`에 짓고(루트 `HandProp` = 쥐는 자리, 콜라이더 없음), 재질을 URP Lit로 옮기고(`2_Material/Prop/`), `Resources/Data/HandPropSet.asset`(무기 종류·일 동작 → 프리팹)을 채운다. **다시 돌려도 된다** — 다만 `HandProp`의 쥐는 값은 있으면 그대로 둔다(손으로 맞추는 값) | **상시** — 프롭을 더하면 `Props`·`Weapons`·`Tools` 표에 적고 다시 돌린다. 쥐는 회전(`GripEuler`)은 **눈으로 맞춰야 한다** |
+| `Pawn/3. Create Chibi Pawns` · `4. Build Face Atlases` · `5. Chibi Face Layout` | 치비 몸(체형 여섯 · 방랑자 · 고블린 넷)을 짓는다 — 몸은 스킨 메시 하나이고 **관절까지 여기서 선다**(`Pawn/2`는 건너뛴다) · 눈·입 아틀라스 · 머리마다 눈·입 자리 | **상시** — 체형·머리형·얼굴이 바뀌면 다시 돈다 |
+| `Pawn/7. Create Proportion Proto` · `8. Pose Sheet` | 비율 시제품(`Proto_Chibi`) · 고른 폰을 클립마다 찍어 `Temp/PoseSheet/sheet.png` 한 장으로 | **상시** — 화면을 못 보는 쪽이 자세를 확인하는 문 |
+| `UI/…`(생성기 일곱) | 거점 바 · 상단 창 · 지도 층 탭 · 캐릭터 생성 · 살펴보기 · 배치 창을 씬에 세운다 · `Setup Command Bar`는 모드 바·도구 바를 고친다 | 다 돌고 씬이 자리를 잡으면 지운다(위 원칙) |
+| `Authoring/…` · `Debug/Snap Selected Prefabs` | 저작 씬에서 지형 보이기·장소 저장 · 고른 프리팹을 한 장으로 찍기 | 저작·검증용 |
+| `Debug/Movement Diagnostics` | 이동 계측 on/off. `(Events Only)` 변형이 따로 있다 | 이동 개편 검증이 아직 안 끝났다 |
+| `Bake Research Graph` | 연구 노드·선을 씬에 굽는다 | **상시** — 연구가 늘면 다시 돈다. **옮긴 자리는 안 없어진다**(있던 노드를 다시 쓴다) |
+| `Debug/습격 부르기` | 습격을 지금 부르고 `RaidLord`의 상태·갈래·지휘관을 본다 | 습격은 하루 두 번 남짓이라 **기다려서는 못 본다** |
+| `Building/0~D` | 건물에 모델을 입히고(`0. Dress All`이 전부 차례로) 되돌린다(`2. Undress`) · 작업대 등급 모델 · 조립 도구들 | **되돌리는 문이 있어야 입힐 수 있다** |
+| `World/B. Create Metal Ladder` | 광석·주괴 값 전부(구리 8 · 주석 10 · 철 20 · 티타늄 45 · 미스릴 90 / 청동 70 · 강철 130 · 티타늄 250 · 미스릴 470) · 티타늄/미스릴 광맥 데이터 · **지하 여덟 층의 광맥 풀** · 명장 단조 재료 | **상시** — 값이나 배선을 고치면 다시 돌린다. 광맥 풀은 **통째로 다시 쓴다**(더하면 지상 시절 잔재가 남는다) |
+| `World/D. Rebuild Vein Art` | 광맥 열다섯 + 돌 + 바닥 돌의 **모양**을 다시 굽는다. 금속은 **깎아 만든 바위에 광석 서른 개가 찔끔 박힌 것**, 보석은 **기둥 다발**. 메시(`Vein_Boulder`·`Vein_Shard`·`Vein_Nugget`)와 재질도 같이 굽고 **안 쓰는 옛 색 재질을 치운다** | **상시** — 색·모양을 고치면 다시 돌린다. **처음부터 다시 짓지 않고 자식만 갈아 끼운다**(`PlacedBuilding`·`PowerUser`를 떨어뜨려 광맥이 통째로 안 보인 적이 있다) |
+| `Terrain/…` · `World/…` (스물넷) | 지하 세계를 짓는 파이프라인 — 바이옴·팔레트·장소 배치·굽기·저작 씬·버섯·전력·야생 매장량·이력 | **상시** — 세계를 다시 세우는 문이 `World → 1. Rebuild Underworld`이고 나머지는 그 단계들이다(`CLAUDE.md`에 순서가 적혀 있다). **번호에 빈 자리가 있다**(`Terrain/4`·`Terrain/6`·`Terrain/B`·`Terrain/C`·`Terrain/D`·`Terrain/E`·`Building/1`) — 지운 도구의 자리이고, **번호는 문서가 인용하므로 다시 매기지 않는다**. `B`(침식 높이맵)·`C`(세계 색조)·`D`(산·분지)·`E`(세계 미리보기)는 **지상 시절의 것이라 2026-09-12에 지웠다** |
+
+### 메뉴는 겹치지 않고, 디버그는 한자리에 (2026-09-09)
+
+도구를 지우고 나서 남은 쉰둘의 메뉴 경로를 정리했다. **같은 번호가 여덟 자리에서 겹치고
+있었다** — 겹친 번호는 *어느 것을 먼저 돌리나*에 답하지 않으므로 번호가 아니라 장식이다.
+
+- **디버그는 하위 메뉴로 묶었다** — `Debug: X` 여덟 개가 최상위에 흩어져 있던 것을
+  **`Debug/X`** 아래로. 이동 계측 둘(`Toggle Movement Diagnostics`)도 디버그라 같이 넣었다.
+- **저작 씬에서 손으로 짓는 일은 갈라 냈다** — `Authoring/`(터레인 보이기·감추기·선택을
+  장소로 저장·저작 씬 터레인). **굽기 파이프라인과 다른 활동**이고, `Terrain/B`·`C`의
+  충돌이 이 하나로 같이 풀렸다.
+- **옛 이사·점검은 번호 밖으로** — `World/Legacy/`(사이트 이사 · 콘텐츠 점검).
+- **같은 단계의 갈래는 글자로 가른다** — `World/0a~0e`(지하 준비 다섯) ·
+  `Terrain/7a·7b`(지도 ×2·×4).
+- **빈 번호는 그대로 둔다** — `Terrain/4`·`6`·`A`는 지운 도구의 자리다. **번호를 당기면
+  그것을 인용한 문서가 조용히 틀린다**(`CLAUDE.md`가 `Terrain → 5. Populate World` 식으로
+  단계를 인용한다). **빈 자리는 흔적이지 결함이 아니다.**
+- 옮긴 메뉴를 가리키던 글은 같이 고쳤다(`CLAUDE.md`·`docs/design_world_editor.md`·
+  `docs/combat.md`).
 
 **씬을 건드리는 생성기는 씬을 직접 저장해야 한다.** `AssetDatabase.SaveAssets()`는 **에셋만** 저장한다 — 씬 컴포넌트를 고치고 `EditorUtility.SetDirty`만 부르면 씬이 더티로 표시되지 않아 저장 대상에서 빠지고, Unity를 닫는 순간 작업이 통째로 날아간다. 2026-07-31에 건설 목록 등록 15건과 연구 게이지 배선이 이렇게 사라졌다.
 ```csharp

@@ -261,7 +261,7 @@ public static class ObjModel
     {
         if (_shader == null)
         {
-            _shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            _shader = RuntimeShaders.Find(RuntimeShaders.Lit, RuntimeShaders.Standard);
 
             // 마지막 수단: 기본 도형의 셰이더를 빌려 온다. `Shader.Find`는 **빌드에 포함된 것만**
             // 찾으므로 이름을 믿고 null을 그대로 두면 분홍 덩어리가 된다.

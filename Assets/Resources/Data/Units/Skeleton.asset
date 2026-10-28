@@ -1,0 +1,82 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2dfb15221461804ea86578b96004b13, type: 3}
+  m_Name: Skeleton
+  m_EditorClassIdentifier: Assembly-CSharp::MinionData
+  Id: 
+  RaceName: "\uD574\uACE8"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uC774\uB984 \uC5C6\uB294 \uBF08"
+  - "\uBD80\uC11C\uC9C4 \uD22C\uAD6C"
+  - "\uBB3B\uD788\uC9C0 \uBABB\uD55C \uAC83"
+  - "\uB0A1\uC740 \uBCD1\uC0AC"
+  - "\uD131 \uC5C6\uB294 \uAC83"
+  - "\uC78A\uD78C \uC190"
+  - "\uBB34\uB364\uC9C0\uAE30"
+  - "\uC7AC\uAC00 \uB41C \uC790"
+  - "\uAD7D\uC740 \uB4F1\uBF08"
+  MaxHP: 70
+  MoveSpeed: 3.6
+  AttackDamage: 11
+  AttackRange: 1.5
+  DetectRange: 12
+  NightVision: 1
+  IsUndead: 1
+  Resistances:
+  - Type: 0
+    Amount: 0.4
+  - Type: 2
+    Amount: -0.35
+  - Type: 8
+    Amount: 0.75
+  - Type: 3
+    Amount: 0.2
+  DefaultMinGrade: 2
+  DefaultMaxGrade: 7
+  StatGrades:
+  - Stat: 1
+    Min: 11
+    Max: 12
+  - Stat: 4
+    Min: 6
+    Max: 10
+  - Stat: 14
+    Min: 6
+    Max: 9
+  - Stat: 25
+    Min: 0
+    Max: 2
+  - Stat: 26
+    Min: 0
+    Max: 1
+  - Stat: 3
+    Min: 0
+    Max: 0
+  - Stat: 34
+    Min: 0
+    Max: 0
+  StatGrowthRates: []
+  Prefab: {fileID: 6894885055828391614, guid: 5671e81eeb996f945a446dde1026f49d, type: 3}
+  SortOrder: 10
+  SummonCostItem: {fileID: 11400000, guid: d72a41f0b8e35c34ea9017c6d5b28401, type: 2}
+  SummonCostAmount: 25
+  AllowedJobs:
+  CanProvideWater: 0
+  RequiredResearch: {fileID: 11400000, guid: e83b52a1c9f46d34fb1028d7e6c39512, type: 2}
+  ButcherYield: []
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 2
+    MaxCount: 4

@@ -61,7 +61,7 @@ public class WorldBandData : ScriptableObject
     [SerializeField] List<MemberEntry> members = new();
 
     [Header("이동")]
-    [Tooltip("월드유닛/초. 플레이어 원정대(`WorldMapView.partySpeed`, 기본 5)와 견줘서 정한다 — " +
+    [Tooltip("월드유닛/초. 옛 원정대 속도(기본 5)와 견줘서 정했다 — " +
              "**이 값이 곧 '뿌리칠 수 있는가'다.** 느린 무리는 피할 수 있고 빠른 무리는 못 피한다.")]
     [SerializeField] float speed = 4.5f;
 
@@ -76,6 +76,12 @@ public class WorldBandData : ScriptableObject
     public class LootEntry
     {
         public ItemData Item;
+
+        [Tooltip("JSON 아이템을 가리킬 때(에셋이 없다) — `Item`이 비어 있으면 이 식별자로 찾는다.")]
+        public string ItemId;
+
+        // **`Item`을 직접 읽지 말 것** — JSON 아이템(종족별 고기 · 갑각)이 조용히 null이 된다(`LootEntry`와 같은 규약).
+        public ItemData Resolve() => Item != null ? Item : DataManager.GetItem(ItemId);
 
         [Tooltip("쓰러뜨린 **한 명당** 이만큼 나온다.")]
         [Min(0)] public int MinPerKill;

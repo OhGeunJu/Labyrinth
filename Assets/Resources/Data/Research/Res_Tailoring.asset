@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Tailoring
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uC7AC\uBD09"
+  Description: "\uCC9C\uC744 \uACB9\uCCD0 \uB204\uBE44\uACE0 \uAC00\uC8FD\uC744 \uB20C\uB7EC
+    \uAD73\uD78C\uB2E4. \uC2E4\uACFC \uBC14\uB298\uC774 \uB2FF\uB294 \uAC83\uC740
+    \uC804\uBD80 \uC5EC\uAE30\uC11C \uB098\uC628\uB2E4."
+  Ingredients:
+  - Item: {fileID: 0}
+    ItemId: cloth
+    Amount: 16
+  - Item: {fileID: 0}
+    ItemId: leather
+    Amount: 8
+  ResearchTime: 500
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: b412e02a7f86a3248929c43eb2cac7e9, type: 2}
+  RequiredBenchTier: 1
+  GraphColumn: 1
+  GraphRow: 9
+  UnlockedRecipes: []

@@ -96,7 +96,8 @@ public class BuildingRelocator : MonoBehaviour
 
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
         Vector3 point;
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f))
+        // 짚는 문은 한 벌(`VisiblePick`) — 잘려서 안 보이는 벽 윗부분에 먼저 맞지 않게.
+        if (VisiblePick.First(ray, out var hit, 500f))
             point = hit.point;
         // 공허(던전 씬): 콜라이더가 없어도 y=0 평면 교차 — `BuildModeManager`와 같은 폴백.
         else if (new Plane(Vector3.up, 0f).Raycast(ray, out float enter) && enter <= 500f)
@@ -154,9 +155,11 @@ public class BuildingRelocator : MonoBehaviour
 
         // 자기 칸을 잠시 비워 놓고 묻는다 — `IsBuildable`은 점유를 보는데, 안 비우면 제자리
         // 근처로는 한 칸도 못 옮긴다.
+        // **비워 놓는 것은 실제로 내가 막고 있는 칸이다** — 발자국 전부로 잡으면 걸어
+        // 들어가는 건물의 트인 안쪽까지 "내 것"이 되어, 거기 놓인 남의 것을 못 본다.
         var mine = new HashSet<Vector2Int>();
-        foreach (var t in PlacedBuilding.FootprintAt(_target.transform.position, _target.Data.Size,
-                                                     _target.transform.rotation))
+        foreach (var t in PlacedBuilding.BlockingAt(_target.transform.position, _target.Data,
+                                                    _target.transform.rotation))
             mine.Add(t);
 
         bool ok = true;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [System.Serializable]
@@ -12,9 +13,12 @@ public class UnitStats
 
     [Header("전투 기술 (0-130)")]
     public float MeleeAttack       = 1f;
-    public float MeleeDefense      = 1f;
-    public float RangedDefense     = 1f;
+    public float Defense      = 1f;
     public float PrecisionShooting = 1f;
+
+    // **방패**. `Defense`(막나)와 다른 축 — 이건 *방패가 얼마나 일하나*라
+    // `BlockBonus`에 곱해진다. 방패를 안 들면 0이 곱해지므로 아무것도 안 한다.
+    public float Shield            = 1f;
 
     [Header("근접 무기 (0-130)")]
     public float OneHandSword = 1f;
@@ -30,24 +34,14 @@ public class UnitStats
     public float Crossbow  = 1f;
     public float Javelin   = 1f;
 
-    [Header("마법 (0-130)")]
-    public float ElementalMagic = 1f;
+    [Header("마법 원소 (0-130)")]
+    public float FireMagic      = 1f;
+    public float WaterMagic     = 1f;
+    public float EarthMagic     = 1f;
+    public float LightningMagic = 1f;
+    public float ArcaneMagic    = 1f;
     public float DarkMagic      = 1f;
     public float HolyMagic      = 1f;
-
-    [Header("마법 원소 (0-130)")]
-    public float ElementalFire      = 1f;
-    public float ElementalIce       = 1f;
-    public float ElementalLightning = 1f;
-    public float ElementalPoison    = 1f;
-    public float DarkFire           = 1f;
-    public float DarkIce            = 1f;
-    public float DarkLightning      = 1f;
-    public float DarkPoison         = 1f;
-    public float HolyFire           = 1f;
-    public float HolyIce            = 1f;
-    public float HolyLightning      = 1f;
-    public float HolyPoison         = 1f;
 
     [Header("신체 기술 (0-130)")]
     public float MartialArts = 1f;
@@ -64,7 +58,7 @@ public class UnitStats
     public float Cooking       = 1f;
     public float Medicine      = 1f;
     public float Research      = 1f;
-    public float Warden        = 1f;
+    public float Social        = 1f;
     public float WeaponCrafting = 1f;
     public float ArmorCrafting  = 1f;
     public float Alchemy        = 1f;
@@ -74,23 +68,20 @@ public class UnitStats
     public float Gemcutting     = 1f;
 
     public float GetAttackCombatSkill(bool unarmed)  => unarmed ? MartialArts : MeleeAttack;
-    public float GetDefenseCombatSkill(bool unarmed) => unarmed ? MartialArts : MeleeDefense;
+    public float GetDefenseCombatSkill(bool unarmed) => unarmed ? MartialArts : Defense;
 
-    public float GetSkillForWeapon(WeaponType type) => GetStat(WeaponToStat(type));
+    // **무기가 어느 스탯을 쓰나 — 여기 하나가 답한다**(2026-08-23).
+    //
+    // 지팡이는 `WeaponType`만 봐서는 못 가른다(전부 `Staff`다) — 무엇을 쏘느냐(`DamageType`)가
+    // 스탯을 정한다. 부르는 쪽이 `Type`으로 물으면 불 지팡이든 암흑 지팡이든 **같은 스탯이
+    // 자란다.** 그래서 무기 자체를 받는다.
+    public static StatName StatFor(WeaponData weapon)
+        => weapon == null                      ? StatName.MartialArts
+         : weapon.Type == WeaponType.Staff     ? MagicStatFor(weapon.DamageType)
+         :                                       WeaponToStat(weapon.Type);
 
-    public float GetMagicCategorySkill(WeaponType type) => type switch
-    {
-        WeaponType.ElementalFire or WeaponType.ElementalIce
-        or WeaponType.ElementalLightning or WeaponType.ElementalPoison => ElementalMagic,
-        WeaponType.DarkFire or WeaponType.DarkIce
-        or WeaponType.DarkLightning or WeaponType.DarkPoison           => DarkMagic,
-        WeaponType.HolyFire or WeaponType.HolyIce
-        or WeaponType.HolyLightning or WeaponType.HolyPoison           => HolyMagic,
-        _ => 0f,
-    };
-
-    public void GrowSkillForWeapon(WeaponType type, float amount)
-        => GrowStat(WeaponToStat(type), amount);
+    public float GetSkillFor(WeaponData weapon) => GetStat(StatFor(weapon));
+    public void  GrowSkillFor(WeaponData weapon, float amount) => GrowStat(StatFor(weapon), amount);
 
     public float GetCraftSkill(CraftSkill type) => GetStat(CraftToStat(type));
 
@@ -109,19 +100,25 @@ public class UnitStats
         WeaponType.Bow                => StatName.Bow,
         WeaponType.Crossbow           => StatName.Crossbow,
         WeaponType.Javelin            => StatName.Javelin,
-        WeaponType.ElementalFire      => StatName.ElementalFire,
-        WeaponType.ElementalIce       => StatName.ElementalIce,
-        WeaponType.ElementalLightning => StatName.ElementalLightning,
-        WeaponType.ElementalPoison    => StatName.ElementalPoison,
-        WeaponType.DarkFire           => StatName.DarkFire,
-        WeaponType.DarkIce            => StatName.DarkIce,
-        WeaponType.DarkLightning      => StatName.DarkLightning,
-        WeaponType.DarkPoison         => StatName.DarkPoison,
-        WeaponType.HolyFire           => StatName.HolyFire,
-        WeaponType.HolyIce            => StatName.HolyIce,
-        WeaponType.HolyLightning      => StatName.HolyLightning,
-        WeaponType.HolyPoison         => StatName.HolyPoison,
+        // **방패를 폴백에 두지 않는다** — 남겨 두면 방패를 주손에 든 폰이 조용히 무술로
+        // 계산된다(2026-08-23까지 실제로 그랬고, 그래서 방패가 자라지 않았다).
+        WeaponType.Shield             => StatName.Shield,
         _                             => StatName.MartialArts,
+    };
+
+    // **지팡이의 스탯은 무기 종류가 아니라 피해 원소가 정한다**(2026-08-23).
+    // 지팡이는 `WeaponType.Staff` 하나뿐이고 무엇을 쏘느냐는 `DamageType`이 든다 —
+    // 종류마다 지팡이를 만들면 원소를 하나 더할 때마다 `WeaponType`이 같이 늘어난다.
+    public static StatName MagicStatFor(DamageType type) => type switch
+    {
+        DamageType.Fire      => StatName.FireMagic,
+        DamageType.Water     => StatName.WaterMagic,
+        DamageType.Earth     => StatName.EarthMagic,
+        DamageType.Lightning => StatName.LightningMagic,
+        DamageType.Arcane    => StatName.ArcaneMagic,
+        DamageType.Dark      => StatName.DarkMagic,
+        DamageType.Holy      => StatName.HolyMagic,
+        _                    => StatName.ArcaneMagic,
     };
 
     static StatName CraftToStat(CraftSkill type) => type switch
@@ -135,6 +132,12 @@ public class UnitStats
         CraftSkill.Stonecutting   => StatName.Stonecutting,
         CraftSkill.Woodworking    => StatName.Woodworking,
         CraftSkill.Gemcutting     => StatName.Gemcutting,
+        // **재봉대도 방어구 솜씨를 쓴다**(2026-08-25). 작업대를 갈랐다고 스탯까지 가르면
+        // *가죽 갑옷만 잘 만드는 사람*이 생기고, 온전한 갑옷장이가 되려면 두 스탯을 따로
+        // 키워야 한다 — 갈래를 늘린 값이 결정이 아니라 잡일로 돌아온다.
+        // **안 적으면 `Labor`로 조용히 떨어진다** — 재봉대의 속도·품질이 노동 스탯을 타고,
+        // 완성해도 `ArmorCrafting`이 안 자란다(실제로 그랬다).
+        CraftSkill.Tailoring      => StatName.ArmorCrafting,
         _                         => StatName.Labor,
     };
 
@@ -145,8 +148,7 @@ public class UnitStats
         StatName.Dexterity         => Dexterity,
         StatName.Cognition         => Cognition,
         StatName.MeleeAttack       => MeleeAttack,
-        StatName.MeleeDefense      => MeleeDefense,
-        StatName.RangedDefense     => RangedDefense,
+        StatName.Defense           => Defense,
         StatName.PrecisionShooting => PrecisionShooting,
         StatName.OneHandSword      => OneHandSword,
         StatName.OneHandAxe        => OneHandAxe,
@@ -158,21 +160,14 @@ public class UnitStats
         StatName.Bow               => Bow,
         StatName.Crossbow          => Crossbow,
         StatName.Javelin           => Javelin,
-        StatName.ElementalMagic    => ElementalMagic,
+        StatName.Shield            => Shield,
+        StatName.FireMagic         => FireMagic,
+        StatName.WaterMagic        => WaterMagic,
+        StatName.EarthMagic        => EarthMagic,
+        StatName.LightningMagic    => LightningMagic,
+        StatName.ArcaneMagic       => ArcaneMagic,
         StatName.DarkMagic         => DarkMagic,
         StatName.HolyMagic         => HolyMagic,
-        StatName.ElementalFire     => ElementalFire,
-        StatName.ElementalIce      => ElementalIce,
-        StatName.ElementalLightning=> ElementalLightning,
-        StatName.ElementalPoison   => ElementalPoison,
-        StatName.DarkFire          => DarkFire,
-        StatName.DarkIce           => DarkIce,
-        StatName.DarkLightning     => DarkLightning,
-        StatName.DarkPoison        => DarkPoison,
-        StatName.HolyFire          => HolyFire,
-        StatName.HolyIce           => HolyIce,
-        StatName.HolyLightning     => HolyLightning,
-        StatName.HolyPoison        => HolyPoison,
         StatName.MartialArts       => MartialArts,
         StatName.Evasion           => Evasion,
         StatName.Athletics         => Athletics,
@@ -185,7 +180,7 @@ public class UnitStats
         StatName.Cooking           => Cooking,
         StatName.Medicine          => Medicine,
         StatName.Research          => Research,
-        StatName.Warden            => Warden,
+        StatName.Social            => Social,
         StatName.WeaponCrafting    => WeaponCrafting,
         StatName.ArmorCrafting     => ArmorCrafting,
         StatName.Alchemy           => Alchemy,
@@ -206,8 +201,7 @@ public class UnitStats
             case StatName.Dexterity:         Dexterity = value; break;
             case StatName.Cognition:         Cognition = value; break;
             case StatName.MeleeAttack:       MeleeAttack = value; break;
-            case StatName.MeleeDefense:      MeleeDefense = value; break;
-            case StatName.RangedDefense:     RangedDefense = value; break;
+            case StatName.Defense:           Defense = value; break;
             case StatName.PrecisionShooting: PrecisionShooting = value; break;
             case StatName.OneHandSword:      OneHandSword = value; break;
             case StatName.OneHandAxe:        OneHandAxe = value; break;
@@ -219,21 +213,14 @@ public class UnitStats
             case StatName.Bow:               Bow = value; break;
             case StatName.Crossbow:          Crossbow = value; break;
             case StatName.Javelin:           Javelin = value; break;
-            case StatName.ElementalMagic:    ElementalMagic = value; break;
+            case StatName.Shield:            Shield = value; break;
+            case StatName.FireMagic:         FireMagic = value; break;
+            case StatName.WaterMagic:        WaterMagic = value; break;
+            case StatName.EarthMagic:        EarthMagic = value; break;
+            case StatName.LightningMagic:    LightningMagic = value; break;
+            case StatName.ArcaneMagic:       ArcaneMagic = value; break;
             case StatName.DarkMagic:         DarkMagic = value; break;
             case StatName.HolyMagic:         HolyMagic = value; break;
-            case StatName.ElementalFire:     ElementalFire = value; break;
-            case StatName.ElementalIce:      ElementalIce = value; break;
-            case StatName.ElementalLightning:ElementalLightning = value; break;
-            case StatName.ElementalPoison:   ElementalPoison = value; break;
-            case StatName.DarkFire:          DarkFire = value; break;
-            case StatName.DarkIce:           DarkIce = value; break;
-            case StatName.DarkLightning:     DarkLightning = value; break;
-            case StatName.DarkPoison:        DarkPoison = value; break;
-            case StatName.HolyFire:          HolyFire = value; break;
-            case StatName.HolyIce:           HolyIce = value; break;
-            case StatName.HolyLightning:     HolyLightning = value; break;
-            case StatName.HolyPoison:        HolyPoison = value; break;
             case StatName.MartialArts:       MartialArts = value; break;
             case StatName.Evasion:           Evasion = value; break;
             case StatName.Athletics:         Athletics = value; break;
@@ -246,7 +233,7 @@ public class UnitStats
             case StatName.Cooking:           Cooking = value; break;
             case StatName.Medicine:          Medicine = value; break;
             case StatName.Research:          Research = value; break;
-            case StatName.Warden:            Warden = value; break;
+            case StatName.Social:            Social = value; break;
             case StatName.WeaponCrafting:    WeaponCrafting = value; break;
             case StatName.ArmorCrafting:     ArmorCrafting = value; break;
             case StatName.Alchemy:           Alchemy = value; break;
@@ -261,12 +248,27 @@ public class UnitStats
     [System.NonSerialized] public System.Action<UnitStats, StatName, StatGrade> OnGradeUp;
     [System.NonSerialized] public GameObject Owner;
     [System.NonSerialized] public UnitData SourceData;
+
+    // **열정 — 스탯마다**(`Passions`). 성장 배율을 여기서 곱하므로 **성장하는 길이 전부 따라온다**(`GrowStat` 하나를
+    // 지난다). 비어 있으면 전부 1배다 — 늑대·골렘·블록 인형은 그대로다.
+    [System.NonSerialized] public readonly Dictionary<StatName, Passion> PassionByStat = new();
+
+    public Passion PassionOf(StatName stat)
+        => PassionByStat.TryGetValue(stat, out var p) ? p : Passion.None;
+
+    public void SetPassions(IReadOnlyDictionary<StatName, Passion> passions)
+    {
+        PassionByStat.Clear();
+        if (passions == null) return;
+        foreach (var kv in passions) if (kv.Value != Passion.None) PassionByStat[kv.Key] = kv.Value;
+    }
     public static event System.Action<UnitStats, StatName, StatGrade> OnAnyGradeUp;
 
     public void GrowStat(StatName stat, float amount)
     {
         if (IsLocked || amount <= 0f) return;
         if (SourceData != null) amount *= SourceData.GetGrowthRate(stat);
+        amount *= Passions.Rate(PassionOf(stat));   // 열정 — 없음 1 · 작은 1.5 · 큰 2
         if (amount <= 0f) return;
         float oldVal = GetStat(stat);
         StatGrade oldGrade = StatGradeExt.FromValue(oldVal);

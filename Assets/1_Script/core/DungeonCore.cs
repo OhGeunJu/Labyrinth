@@ -9,12 +9,10 @@ public class DungeonCore : MonoBehaviour
 
     [SerializeField] DungeonCoreData data;
     [SerializeField] Color rangeColor = new Color(0.4f, 0.8f, 1f, 0.6f);
-    [SerializeField] int rangeSegments = 64;
 
     public DungeonCoreData Data => data;
     public bool IsSelected { get; private set; }
 
-    public static event Action<DungeonCore> OnSelected;
 
     // 영역(핵 union) 변경 시 발동 — 핵 이동/서브코어 등록·해제. 건물 휴면 재평가 트리거.
     public static event Action OnTerritoryChanged;
@@ -40,7 +38,7 @@ public class DungeonCore : MonoBehaviour
             {
                 var f = all[i];
                 if (f == null || !f.IsPlayer) continue;
-                if (f.GetComponent<UnitBrain>()?.Data is MinionData) n++;
+                if (f.TryGetComponent(out UnitBrain member) && member.Data is MinionData) n++;
             }
             return n;
         }
@@ -58,27 +56,37 @@ public class DungeonCore : MonoBehaviour
     public void RegisterSubCore(SubCore sc)   { if (!_subCores.Contains(sc)) { _subCores.Add(sc); RaiseTerritoryChanged(); } }
     public void UnregisterSubCore(SubCore sc) { if (_subCores.Remove(sc)) RaiseTerritoryChanged(); }
 
-    public IReadOnlyList<SubCore> SubCores => _subCores;
-
     [SerializeField] Color selectedColor = new Color(1f, 0.9f, 0.2f, 0.8f);
 
-    Material _mat;
+    RangeCircle _circle;
+
+    // **핵이 여럿이면 영역도 여럿이다**(2026-08-26). 세계가 29km로 이어지면서 거점이
+    // **동시에** 살아 있게 됐다 — `Instance` 하나로는 *"어느 거점의 창고인가"*에 답할 수가
+    // 없다. `Storage.All`·`Faction.All`과 같은 자리의 레지스트리를 낸다.
+    //
+    // **`Instance`는 남긴다** — *"지금 조작 중인 거점"*이라는 뜻으로 여전히 쓰이고
+    // (`SettlementManager.SetAsActive`가 갈아 끼운다), 부르는 곳이 수십이다.
+    public static readonly List<DungeonCore> All = new();
+
+    // **핵이 내는 힘**(2026-09-06). 이 값이 곧 **기지의 크기**다 — 이식 광맥·충전대·제단이
+    // 여기서 나눠 받고, 모자라면 나중에 지은 것부터 멈춘다(`PowerGrid`).
+    //
+    // **늘리는 길은 부핵뿐이다** — 그리고 부핵을 세우려면 밖에 나가 재료를 캐 와야 한다.
+    // 그것이 *탐험이 본류*라는 축을 기지 쪽에서 붙잡는 자리다: 힘이 무한하면 굴에 나갈 이유가
+    // 초반 한 번으로 끝난다.
+    [Header("전력")]
+    [Tooltip("이 핵이 내는 힘의 총량. 영역 안의 건물들이 나눠 받는다.")]
+    [Min(0)] [SerializeField] int energyOutput = 10;
+
+    public int EnergyOutput => Mathf.Max(0, energyOutput);
 
     void Awake()
     {
         Instance = this;
-        _mat = new Material(Shader.Find("Hidden/Internal-Colored"))
-        {
-            hideFlags = HideFlags.HideAndDontSave
-        };
-        _mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-        _mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-        _mat.SetInt("_Cull",    (int)CullMode.Off);
-        _mat.SetInt("_ZWrite", 0);
+        if (!All.Contains(this)) All.Add(this);
     }
 
-    void OnEnable()  => RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
-    void OnDisable() => RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
+
 
     // ── 갇힌 하수인 종족을 지배한다 ──────────────────────────────────────────
     //
@@ -92,6 +100,9 @@ public class DungeonCore : MonoBehaviour
 
     void Update()
     {
+        // 원은 메시라 **매 프레임 다시 짓지 않는다** — 자리·반경·색이 그대로면 그냥 돌아온다.
+        DrawRange();
+
         if (Time.time < _nextDominate) return;
         float dt = Time.time - _nextDominate + DominateInterval;
         _nextDominate = Time.time + DominateInterval;
@@ -102,8 +113,7 @@ public class DungeonCore : MonoBehaviour
             var f = all[i];
             if (f == null || f.IsPlayer) continue;                 // 이미 우리 편이면 볼 것 없다
 
-            var brain = f.GetComponent<UnitBrain>();
-            if (brain?.Blackboard == null || !brain.Blackboard.IsPrisoner) continue;
+            if (!f.TryGetComponent(out UnitBrain brain) || brain.Blackboard == null || !brain.Blackboard.IsPrisoner) continue;
 
             Conversion.TickCore(brain, dt);
         }
@@ -111,8 +121,13 @@ public class DungeonCore : MonoBehaviour
 
     void OnDestroy()
     {
-        Destroy(_mat);
+        _circle?.Dispose();
         Release();   // 막아 두었던 칸을 돌려준다 — 안 풀면 핵이 사라진 자리가 영영 막힌다
+
+        // 레지스트리에서 빠진다. **`Instance`도 넘긴다** — 안 넘기면 파괴된 참조가 남아
+        // `MaterialPool.Focus`가 널을 물고, 화면의 재료 집계가 통째로 0이 된다.
+        All.Remove(this);
+        if (Instance == this) Instance = All.Count > 0 ? All[0] : null;
     }
 
     // 씬에 저작된 부양 높이(표면 위로 얼마나 떠 있는가). 핵 이전 시 이 높이를 유지한다.
@@ -152,7 +167,7 @@ public class DungeonCore : MonoBehaviour
         if (_occupiedTile == tile) return;
 
         Release();
-        map.SetTile(tile, TileData.MakeImpassable());
+        map.SetOccupied(tile, true);
         _occupiedTile = tile;
     }
 
@@ -160,7 +175,7 @@ public class DungeonCore : MonoBehaviour
     {
         var map = MapManager.Instance;
         if (map != null && _occupiedTile.HasValue)
-            map.SetTile(_occupiedTile.Value, TileData.MakePassable());
+            map.SetOccupied(_occupiedTile.Value, false);
         _occupiedTile = null;
     }
 
@@ -212,13 +227,22 @@ public class DungeonCore : MonoBehaviour
         RaiseTerritoryChanged();
     }
 
+    // **고르는 것은 영역 원을 밝히는 일뿐이다**(2026-10-06). 예전에는 배치 창이 `OnSelected`를 듣고 열렸는데,
+    // 10-01에 핵이 포탈이 되며 창이 `H`로 옮겨 가 듣는 쪽이 하나도 안 남았다 — 이벤트는 걷어냈다.
+    // **고르면 다른 핵은 놓는다** — 핵이 둘 이상이면 푸는 쪽(`DeselectAll`)이 `Instance`만 보던 시절에
+    // 조작 중이 아닌 핵의 원이 영영 밝게 남았다.
     public void Select()
     {
+        DeselectAll();
         IsSelected = true;
-        OnSelected?.Invoke(this);
     }
 
     public void Deselect() { IsSelected = false; }
+
+    public static void DeselectAll()
+    {
+        foreach (var c in All) if (c != null) c.IsSelected = false;
+    }
 
     [System.Serializable]
     public struct MinionEntry
@@ -236,15 +260,24 @@ public class DungeonCore : MonoBehaviour
     // 씬에 사는 목록은 저장을 빠뜨리면 조용히 날아가고, 무엇보다 **모드가 종족을 추가할 진입점이 없다.**
     readonly List<MinionData> _minionCache = new();
 
+    // **연구로 잠긴 것은 목록에서 빠진다**(`MinionData.RequiredResearch`). 회색으로 남기지
+    // 않는 이유: 소환 메뉴는 "지금 부를 수 있는 것"의 목록이고, 못 부르는 이유가 자원인지
+    // 연구인지를 그 좁은 줄에 적기 시작하면 건설 목록의 규칙과 갈린다.
     public IReadOnlyList<MinionData> Minions
     {
         get
         {
-            if (minionEntries == null || minionEntries.Length == 0) return DataManager.AllMinions;
-
             _minionCache.Clear();
+
+            if (minionEntries == null || minionEntries.Length == 0)
+            {
+                foreach (var data in DataManager.AllMinions)
+                    if (data != null && data.IsUnlocked) _minionCache.Add(data);
+                return _minionCache;
+            }
+
             foreach (var entry in minionEntries)
-                if (entry.Data != null) _minionCache.Add(entry.Data);
+                if (entry.Data != null && entry.Data.IsUnlocked) _minionCache.Add(entry.Data);
             return _minionCache;
         }
     }
@@ -290,7 +323,7 @@ public class DungeonCore : MonoBehaviour
         }
 
         if (minionData.SummonCostAmount > 0 &&
-            !Storage.ConsumeByItem(minionData.SummonCostItem, minionData.SummonCostAmount))
+            !Storage.ConsumeByItem(minionData.SummonCostItem, minionData.SummonCostAmount, transform.position))
         {
             Debug.Log($"[DungeonCore] 자원 부족 — {minionData.SummonCostItem?.ItemName} ×{minionData.SummonCostAmount} 필요");
             return false;
@@ -299,19 +332,18 @@ public class DungeonCore : MonoBehaviour
         // **반드시 켜서 내보낸다.** `Instantiate`는 원본의 활성 상태를 그대로 복제하는데,
         // 씬에 꺼진 채로 둔 템플릿(또는 모드가 꺼진 채로 구운 프리팹)을 원본으로 쓰면
         // 소환된 하수인이 꺼진 채 나와 `Awake`조차 안 돈다 — 아무 일도 안 일어난 것처럼 보인다.
-        var spawned = Instantiate(prefab, spawnPosition, Quaternion.identity);
+        var spawned = PawnSpawn.Instantiate(prefab, spawnPosition, Quaternion.identity);
         spawned.SetActive(true);
 
         Debug.Log($"[DungeonCore] {minionData.RaceName} 소환 ({CurrentMinionCount}/{TotalMinionCap})");
         return true;
     }
 
-    // 메인 코어 또는 서브 코어 범위 내 여부
-    public bool IsWithinAnyRange(Vector2Int tile)
+    // **우리 거점 안인가 — 어느 핵의 영역이든.** 수리·추적·수레·도축대가 저마다 같은 세 줄을 들고 있었다.
+    public static bool AnyCovers(Vector3 worldPos)
     {
-        if (IsWithinRange(tile)) return true;
-        foreach (var sc in _subCores)
-            if (sc != null && sc.IsWithinRange(tile)) return true;
+        foreach (var c in All)
+            if (c != null && c.IsWithinAnyRangeWorld(worldPos)) return true;
         return false;
     }
 
@@ -361,39 +393,15 @@ public class DungeonCore : MonoBehaviour
         return dx * dx + dz * dz <= data.BaseRadius * data.BaseRadius;
     }
 
-    void OnEndCameraRendering(ScriptableRenderContext ctx, Camera cam)
-    {
-        if (cam != Camera.main) return;
-        DrawRange();
-    }
-
-    void OnRenderObject()
-    {
-        if (GraphicsSettings.currentRenderPipeline != null) return;
-        DrawRange();
-    }
-
+    // **원은 메시로 그린다**(`RangeCircle`) — 즉시 모드(`GL`)로 카메라 렌더 끝에 그리면
+    // **오버레이 UI 위에 얹힌다**(스탯 창을 열어 두면 그 위로 원이 지나갔다).
     void DrawRange()
     {
-        if (data == null) return;
+        if (data == null) { _circle?.Hide(); return; }
 
-        float radius = data.BaseRadius;
-        Vector3 center = new Vector3(transform.position.x, 0.02f, transform.position.z);
-
-        _mat.SetPass(0);
-        GL.PushMatrix();
-        GL.Begin(GL.LINE_STRIP);
-        GL.Color(IsSelected ? selectedColor : rangeColor);
-
-        for (int i = 0; i <= rangeSegments; i++)
-        {
-            float angle = i * Mathf.PI * 2f / rangeSegments;
-            GL.Vertex3(center.x + Mathf.Cos(angle) * radius,
-                       center.y,
-                       center.z + Mathf.Sin(angle) * radius);
-        }
-
-        GL.End();
-        GL.PopMatrix();
+        _circle ??= new RangeCircle(transform, "RangeCircle");
+        _circle.Draw(new Vector3(transform.position.x, RangeCircle.Lift, transform.position.z),
+                     data.BaseRadius, IsSelected ? selectedColor : rangeColor);
     }
+
 }

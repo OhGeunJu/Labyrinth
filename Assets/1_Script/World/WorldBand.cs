@@ -25,24 +25,24 @@ public class WorldBand
     public WorldBandData Data;
     public readonly List<BandMember> Members = new();
 
-    // 어디서 나왔나. 순찰대가 도는 중심이자, 약탈대가 소굴을 잃으면 갈 곳을 잃는 근거.
-    public Vector2Int Home;
+    // 어디서 나왔나 — **월드 좌표와 신원 둘 다**(2026-08-27).
+    // 자리는 순찰대가 도는 중심이고, 신원은 *"그 소굴"*을 다시 찾을 때 쓴다
+    // (`WorldLairs.At(HomeId)`). 칸 좌표로 두면 소굴을 옮긴 순간 집을 잃는다.
+    public Vector2 Home;
+    public string  HomeId;
 
-    // 지금 향하는 칸. 도착하면 행동별로 다음 일이 벌어진다.
-    public Vector2Int Goal;
+    // 지금 향하는 자리(월드). 닿으면 행동별로 다음 일이 벌어진다.
+    public Vector3 Goal;
 
     // 지도 위 위치(월드 좌표). 격자에 매이지 않는다 — 플레이어 원정대와 같은 규칙이다.
     public Vector3    Position;
-    public Vector2Int Node;
+
+    // **칸은 자리에서 나온다 — 따로 들지 않는다.**
+    public Vector2Int Node => TerrainGrid.RegionAt(Position.x, Position.z);
 
     // 쫓는 중이면 그 지점. 목적지(`Goal`)와 별개다 — 추격을 접으면 원래 가던 곳으로 돌아간다.
     public Vector3 ChaseAt;
     public bool    Chasing;
-
-    // **다가오는 원정대를 기다리는 중.** 적대가 아닌 무리는 도망칠 이유가 없으므로 멈춰 선다.
-    // 없으면 상단·순찰대는 원정대와 속도가 비슷해 **영영 따라잡을 수 없고**, 그러면 지도 위의
-    // 중립 무리는 말을 걸 수 없는 그림이 된다.
-    public bool Waiting;
 
     // **떠돌이 무리는 언제까지 밖에 있나**(게임 초). 지나면 근거지로 돌아가고, 닿으면 병력이
     // 소굴로 복귀한다. 무한정 떠돌게 두면 지도가 무리로 차서 새 무리가 못 나오고
@@ -50,19 +50,9 @@ public class WorldBand
     public float ExpiresAt;
     public bool  Returning;
 
-    // **끌고 다니는 포로.** 싸움에 진 원정대가 여기 실린다 — 진 것이 끝이 아니라 붙잡혀
-    // 어딘가로 끌려가는 것이고, 되찾을 길이 남는다(탈출 · 그 무리를 이겨 구출 · 소굴을 침).
-    //
-    // 폰은 꺼진 채로 산다(원정 나간 멤버와 같은 상태) — 필드맵에 서 있으면 안 되고,
-    // 그렇다고 지워 버리면 이름·스탯·특성이 통째로 사라진다.
-    public readonly List<UnitBrain> Captives = new();
-
     // 상단이 지고 다니는 것. **무리마다 따로 돈다** — 같은 `MerchantData`를 쓰는 상단이
     // 둘이어도 한쪽에서 산 물건이 다른 쪽에서 사라지면 안 된다(`Shop`의 규약 그대로).
     public Shop Shop;
-
-    // 조우 메뉴를 이미 한 번 띄운 상대. 도망친 뒤 같은 프레임에 또 뜨는 것을 막는다.
-    public float NoContactUntil;
 
     public bool IsAlive => Members.Count > 0;
     public int  Count   => Members.Count;
@@ -85,7 +75,14 @@ public class WorldBand
         {
             float sum = 0f;
             foreach (var m in Members) sum += WorldBattle.PowerOf(m);
-            return sum * (Data != null ? Data.PowerMultiplier : 1f);
+            sum *= Data != null ? Data.PowerMultiplier : 1f;
+
+            // **어디서 나온 무리인가가 전력을 가른다**(2026-08-23) — 같은 고블린이라도
+            // 용암지대에서 나온 것은 다르다. 근거지(`Home`)의 바이옴 티어를 곱한다.
+            // 무리 에셋을 티어마다 복제하면 바이옴 × 무리의 곱셈이 된다.
+            sum *= BiomeTier.PowerMultOf(WorldMap.BiomeAtWorld(Home));
+
+            return sum;
         }
     }
 
@@ -94,11 +91,22 @@ public class WorldBand
     // 명세에서 무리 하나를 뽑는다. **시드 하나에서 전부 나온다** — 같은 시드면 같은 무리다
     // (마을 후보·매장 자원과 같은 규칙). 무리는 지도에 오래 남지 않으므로 결정성이 화면에
     // 드러날 일은 적지만, 이 저장소의 굴림은 전부 시드에서 나온다는 규약을 깨지 않는다.
+    // 칸(지역)으로 굴린다 — 소굴이 무리를 내보낼 때(`WorldBandManager`). 지역 가운데를 쓴다.
     public static WorldBand Roll(WorldBandData data, Vector2Int home, int seed)
+    {
+        var c = TerrainGrid.RegionCenter(home);
+        return Roll(data, new Vector2(c.x, c.z), null, seed);
+    }
+
+    public static WorldBand Roll(WorldBandData data, Vector2 home, string homeId, int seed)
     {
         if (data == null || !data.IsUsable) return null;
 
-        var band = new WorldBand { Data = data, Home = home, Goal = home };
+        var band = new WorldBand
+        {
+            Data = data, Home = home, HomeId = homeId,
+            Goal = new Vector3(home.x, 0f, home.y),
+        };
         var rng  = new System.Random(seed);
 
         int i = 0;
@@ -114,16 +122,21 @@ public class WorldBand
             for (int k = 0; k < n; k++, i++)
             {
                 // 개체 시드는 무리 시드에서 갈라 나온다 — 멤버마다 다른 사람이 되게.
+                // **무리는 제 세력의 이력을 갖는다**(`FactionData.BackstoryGroup`) — 산적
+                // 무리에서 나온 사람은 산적의 성년기를 지고 온다(회유하면 그대로 남는다).
                 var spec = PawnSpec.Roll(unit, unchecked(seed * 31 + i * 7919),
-                                         entry.MinGrade, entry.MaxGrade);
+                                         entry.MinGrade, entry.MaxGrade,
+                                         storyGroup: data != null && data.Faction != null
+                                                   ? data.Faction.BackstoryGroup : null);
                 band.Members.Add(new BandMember { Prefab = entry.Prefab, Unit = unit, Spec = spec });
             }
         }
 
         if (band.Members.Count == 0) return null;
 
+        // 상단의 세력이 곧 가게의 세력이다 — 우호도가 값에 얹힌다(`Shop.Faction`).
         if (data.Behavior == WorldBandBehavior.Caravan && data.Merchant != null)
-            band.Shop = new Shop(data.Merchant);
+            band.Shop = new Shop(data.Merchant, data.Faction);
 
         return band;
     }

@@ -12,14 +12,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
   m_Name: Res_Cooking
   m_EditorClassIdentifier: Assembly-CSharp::ResearchData
-  ResearchName: "\uC870\uB9AC\uBC95"
-  Description: "\uACE1\uBB3C\uACFC \uACE0\uAE30\uB97C \uC81C\uB300\uB85C \uC775\uD78C\uB2E4."
+  Id: 
+  ResearchName: "\uBD88 \uB2E4\uB8E8\uAE30"
+  Description: "\uBD88\uC744 \uC9C0\uD53C\uACE0 \uB2E4\uC2A4\uB9B0\uB2E4. \uB053\uC774\uACE0
+    \uAD7D\uACE0 \uC878\uC774\uB294 \uAC83\uC774 \uC804\uBD80 \uC5EC\uAE30\uC11C
+    \uC2DC\uC791\uD55C\uB2E4."
   Ingredients:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
+    ItemId: 
     Amount: 10
   ResearchTime: 250
   SkillGrowthAmount: 1
-  Prerequisite: {fileID: 0}
+  Prerequisites: []
+  RequiredBenchTier: 1
+  GraphColumn: 0
+  GraphRow: 10
   UnlockedRecipes:
   - {fileID: 11400000, guid: c852013511c2f044fa65953ada98526e, type: 2}
   - {fileID: 11400000, guid: eda1562d5f7893d458c8b8d9af36486a, type: 2}

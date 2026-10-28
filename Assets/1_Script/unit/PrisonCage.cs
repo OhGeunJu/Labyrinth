@@ -10,7 +10,7 @@ using UnityEngine;
 // 침대는 회복·치료가 붙는 대신 자리를 더 먹는다 — 살려서 회유할 사람은 침대에, 그냥
 // 붙잡아 둘 사람은 우리에. 어느 쪽이든 **갇힌 상태는 하나**(`UnitBlackboard.IsPrisoner`)라
 // BT 정지·자동 표적 제외 규칙이 둘로 갈리지 않는다.
-public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
+public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite, ICarrySite
 {
     public static readonly List<PrisonCage> All = new();
     public static event System.Action<PrisonCage> OnSelected;
@@ -31,6 +31,9 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
     void Awake()
     {
         _persuadeSlot = new SiteJobSlot(w => new PersuadeJob(Prisoner, w),
+                                        () => Conversion.PersuadeReady(Prisoner));
+        // 짐승은 설득이 아니라 조련이다 — 같은 쉬는 시간을 쓴다(`Conversion.TameRound`).
+        _tameSlot     = new SiteJobSlot(w => new TameJob(Prisoner, w),
                                         () => Conversion.PersuadeReady(Prisoner));
         FeedSlot      = PrisonFeeding.NewSlot(this);
     }
@@ -62,6 +65,7 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
     const float CheckInterval = 1f;
 
     SiteJobSlot _persuadeSlot;   // `Awake`에서 묶는다
+    SiteJobSlot _tameSlot;
     float _nextCheck;
 
     void Update()
@@ -78,6 +82,17 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
         // **쿨타임 동안은 일감을 안 낸다.** 내 놓고 `IsReady`로 막으면 폰이 우리 앞에 서서
         // 20초를 기다린다 — 쿨타임을 둔 이유가 그 사이에 다른 일을 하라는 것이다.
         _persuadeSlot?.Tick(Conversion.CanPersuade(Prisoner));
+        _tameSlot?.Tick(Conversion.CanTame(Prisoner));
+    }
+
+    // **이 폰에게 맡긴다**(우클릭 [길들인다]).
+    public bool RequestTameBy(UnitBrain tamer)
+    {
+        if (tamer == null || tamer == Prisoner) return false;
+        if (!Conversion.CanTame(Prisoner)) return false;
+        if (!Conversion.PersuadeReady(Prisoner)) return false;
+
+        return _tameSlot != null && _tameSlot.RequestBy(tamer);
     }
 
     // **이 폰에게 맡긴다**(우클릭 [설득한다]).
@@ -90,22 +105,10 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
         return _persuadeSlot != null && _persuadeSlot.RequestBy(speaker);
     }
 
-    void DropPersuadeJob() => _persuadeSlot?.Drop();
+    void DropPersuadeJob() { _persuadeSlot?.Drop(); _tameSlot?.Drop(); }
 
     // 빈 우리 중 가장 가까운 것.
-    public static PrisonCage FindNearestFree(Vector3 from)
-    {
-        PrisonCage best = null;
-        float bestDist = float.MaxValue;
-
-        foreach (var cage in All)
-        {
-            if (cage == null || cage.IsOccupied) continue;
-            float d = (cage.transform.position - from).sqrMagnitude;
-            if (d < bestDist) { bestDist = d; best = cage; }
-        }
-        return best;
-    }
+    public static PrisonCage FindNearestFree(Vector3 from) => CarrySites.NearestFree(All, from);
 
     public static PrisonCage HolderOf(UnitBrain brain)
     {
@@ -115,13 +118,22 @@ public class PrisonCage : MonoBehaviour, IWorldClickable, IPrisonSite
         return null;
     }
 
+    // ── `ICarrySite` — 업은 것을 받는 자리 ──────────────────────────────────
+    //
+    // **죽은 사람은 안 가둔다** — 가둘 이유가 없고, 넣어 두면 그 우리를 산 사람이 못 쓴다
+    // (`Bed.Accepts`와 같은 규칙). 시체가 갈 자리는 무덤이다.
+    public bool Accepts(UnitBrain brain) => brain != null && !PawnCarry.IsCorpse(brain);
+
+    Vector3     ICarrySite.PutPosition => HoldPosition;
+    Quaternion? ICarrySite.PutRotation => null;   // 서 있는 자세 그대로
+    bool        ICarrySite.IsFull      => IsOccupied;
+    void        ICarrySite.Put(UnitBrain brain) => TryPut(brain);
+    string      ICarrySite.SiteName    => "우리";
+
     public bool TryPut(UnitBrain brain)
     {
         if (brain == null || IsOccupied) return false;
-
-        // **죽은 사람은 안 가둔다** — 가둘 이유가 없고, 넣어 두면 그 우리를 산 사람이 못 쓴다
-        // (`Bed.Accepts`와 같은 규칙). 시체는 옮겨서 아무 데나 내려놓는 것이 전부다.
-        if (PawnCarry.IsCorpse(brain)) return false;
+        if (!Accepts(brain)) return false;
 
         Prisoner = brain;
         Imprisonment.Bind(brain, HoldPosition);
@@ -166,8 +178,8 @@ public static class Imprisonment
         // 하던 것을 전부 끊는다 — 깨어나서 이어서 하면 안 된다.
         brain.Blackboard.Target      = null;
         brain.Blackboard.FollowTarget = null;
-        brain.GetComponent<CombatHandler>()?.ExitCombat();
-        brain.GetComponent<PawnMover>()?.StopMovement();
+        if (brain.TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
+        if (brain.TryGetComponent(out PawnMover brainMover)) brainMover.StopMovement();
     }
 
     // **게이지는 여기서 안 지운다.** `Unbind`는 "자리에서 뗀다"이지 "풀려났다"가 아니다 —
@@ -205,7 +217,11 @@ public static class Imprisonment
     // `reason`은 **로그 문구일 뿐이다** — 하는 일은 같다(자리를 비우고, 갇힘을 풀고,
     // 도주 성향을 씌워 내보낸다). 손으로 놓아 준 것과 제 발로 나간 것이 로그에서 구별되지
     // 않으면, "왜 없어졌지"를 되짚을 때 그 둘을 가릴 수가 없다.
-    public static void Release(UnitBrain brain, string reason = "놓아 줬다")
+    // 손으로 놓아 준 것의 기본 문구. **우호도가 이 값을 본다** — 몸값·회유처럼 제 몫을 이미
+    // 얹은 경로는 다른 `reason`을 넘기므로, 여기서 또 더해 두 번 값을 받는 일이 없다.
+    public const string DefaultReleaseReason = "놓아 줬다";
+
+    public static void Release(UnitBrain brain, string reason = DefaultReleaseReason)
     {
         if (brain == null) return;
 
@@ -224,6 +240,15 @@ public static class Imprisonment
         var faction = brain.GetComponent<Faction>();
         if (faction == null || !faction.IsPlayer)
         {
+            // **값을 안 받고 놓아 준 것은 더 산다**(`RansomBonus`보다 크다) — 몸값은 거래지만
+            // 이건 베푼 것이다. 그래야 "돈이냐 관계냐"가 고르는 일이 된다.
+            //
+            // **몸값으로 넘긴 경우는 여기 안 걸린다** — 그쪽은 `WorldRansom.Sell`이 제 몫을
+            // 이미 얹었고, 여기서 또 더하면 한 번 놓아 준 것이 두 번 값을 받는다.
+            if (faction != null && faction.Data != null && reason == DefaultReleaseReason)
+                FactionRelations.Add(faction.Data, FactionRelations.ReleaseBonus,
+                                     $"{brain.UnitName}을(를) 그냥 놓아 줬다");
+
             brain.SetStanceOverride(CombatStance.Flee);
             if (EventManager.TryFindExit(brain.transform.position, out var exit))
             {
@@ -241,7 +266,8 @@ public static class Imprisonment
     }
 
     // 갇힌 사람은 제자리를 지킨다. 깨어나도 마찬가지다 — 벗어나는 길은 풀려나는 것뿐이다.
-    // (탈출은 아직 없다. 월드맵 포로가 하루마다 굴리는 것과 짝을 맞출 자리다.)
+    // (도망치는 길은 `PrisonBreak`가 든다 — 게이지가 차면 여기서 놓여난다. 그 눈금은
+    //  월드맵 포로가 하루마다 굴리는 것과 짝이다.)
     public static void Hold(UnitBrain brain)
     {
         if (brain?.Blackboard == null || !brain.Blackboard.IsPrisoner) return;
@@ -257,13 +283,29 @@ public static class Imprisonment
 
         // 우리에 선 포로는 여기가 붙든다. 기절에서 깨어날 때 `BodyPartSystem`이 기절 직전
         // 자세로 되돌리므로(`_preKoRotation`) 자세도 같이 본다.
-        if (Quaternion.Angle(brain.transform.rotation, bb.PrisonPose) > 1f)
+        //
+        // **기절해 있는 동안은 자세를 안 건드린다** — 쓰러진 것을 억지로 세우면 우리 안에서
+        // 곰이 벌떡 선다. 깨어나면 그때 `PrisonPose`로 돌아간다.
+        if (!bb.IsKnockedOut && Quaternion.Angle(brain.transform.rotation, bb.PrisonPose) > 1f)
             brain.transform.rotation = bb.PrisonPose;
 
+        // **누운 폰은 몸통으로 잰다 — 피벗은 발밑이다.**
+        //
+        // 서 있을 땐 몸 한가운데가 발 바로 위라 수평으로는 차이가 없지만, 누우면 그 한가운데가
+        // **옆으로 뻗는다.** 그대로 놓으면 발만 우리 한가운데에 오고 몸은 밖으로 삐져나온다 —
+        // 곰처럼 큰 짐승일수록 눈에 띄었다(`PawnMover.SetSleeping`이 침대에서 하는 보정과
+        // 같은 것인데 우리에만 빠져 있었다). 거리 판정도 같은 기준이라야 한 번 어긋난 것이
+        // 그대로 굳지 않는다.
+        Vector3 lean = brain.transform.rotation * Vector3.up
+                     * PawnPlacement.CenterOffset(brain.gameObject);
+        var body = new Vector2(pos.x + lean.x, pos.z + lean.z);
+
         var spot = bb.PrisonSpot;
-        if ((new Vector2(pos.x, pos.z) - new Vector2(spot.x, spot.z)).sqrMagnitude < 0.25f) return;
+        if ((body - new Vector2(spot.x, spot.z)).sqrMagnitude < 0.25f) return;
 
         // 파묻힘·되밀림 보정은 `PawnPlacement`가 한 곳에서 다룬다.
-        PawnPlacement.PlaceOnGround(brain.gameObject, spot, bb.PrisonPose);
+        // 자세는 지금 것을 그대로 둔다(위에서 정했다) — 여기서 또 넘기면 기절한 폰을 세운다.
+        PawnPlacement.PlaceOnGround(brain.gameObject,
+                                    spot - new Vector3(lean.x, 0f, lean.z));
     }
 }

@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Mercenaries
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uC790\uC720 \uC6A9\uBCD1\uB300"
+  tokenColor: {r: 0.3, g: 0.48, b: 0.68, a: 1}
+  faction: {fileID: 11400000, guid: 14a6d91e8ac24954bbfb5cb376bf652b, type: 2}
+  behavior: 2
+  members:
+  - Prefab: {fileID: 6894885055828391614, guid: e3225de9d8a2f804096776faadeed740, type: 3}
+    MinCount: 2
+    MaxCount: 3
+    MinGrade: 4
+    MaxGrade: 9
+  - Prefab: {fileID: 6894885055828391614, guid: f6495a3246c01ed459b4974f6c2a5ae6, type: 3}
+    MinCount: 1
+    MaxCount: 2
+    MinGrade: 4
+    MaxGrade: 8
+  speed: 5
+  ChaseRadius: 14
+  merchant: {fileID: 0}
+  loot:
+  - Item: {fileID: 11400000, guid: c16db23994cf9e04e9b0c69516cdcdcb, type: 2}
+    MinPerKill: 4
+    MaxPerKill: 12
+    Chance: 0.5
+  PowerMultiplier: 1.25

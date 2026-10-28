@@ -9,6 +9,21 @@ public enum MerchantType { General, Weapon, Armor, Material, Food }
 
 public static class MerchantTypeExt
 {
+    // **무엇을 파느냐가 곧 무엇을 하며 살았느냐다**(2026-09-08, 사용자 결정 — 상인의 성년기는
+    // 상인이어야 하고, 무엇을 파는지에 따라 갈려야 한다).
+    //
+    // **여기 한 벌이다** — 만드는 쪽(에디터 도구)과 굴리는 쪽(`Merchant`)이 문자열을 각자
+    // 적으면 **오타 하나로 갈려** 조용히 `civilian` 폴백을 받는다(그러면 무기 상인이
+    // *"사원의 시동"*으로 산 사람이 된다).
+    public static string StoryGroup(this MerchantType t) => t switch
+    {
+        MerchantType.Weapon   => "merchant_weapon",
+        MerchantType.Armor    => "merchant_armor",
+        MerchantType.Material => "merchant_material",
+        MerchantType.Food     => "merchant_food",
+        _                     => "merchant_general",
+    };
+
     public static string DisplayName(this MerchantType t) => t switch
     {
         MerchantType.Weapon   => "무기 상인",
@@ -55,7 +70,19 @@ public class ItemPriceOverride
 public class MerchantStockEntry
 {
     public ItemData     Item;
+
+    // 실제로 치르는 값 — **화면도 결제도 이 하나를 본다.** 세력 우호도가 얹힌 뒤의 값이다.
     public int         Price;
+
+    // **플레이어가 판 물건인가.** 상인의 제 물건은 하루마다 갈리지만 이건 기한까지 남는다
+    // (`MerchantData.PlayerStockDays`) — 안 그러면 좌판이 매일 비어 자리 한도가 뜻을 잃는다.
+    public bool        FromPlayer;
+    public int         ExpireDay;   // 이 날이 되면 좌판에서 내린다(팔린 것으로 친다)
+
+    // 우호도를 빼고 상인이 매긴 값. `Shop.Reprice`가 여기서 `Price`를 다시 낸다 —
+    // `Price`에 배율을 거듭 곱하면 창을 열 때마다 값이 굴러간다.
+    public int         ListPrice;
+
     public int         Stock;
     public ItemQuality Quality;
 }
@@ -110,6 +137,48 @@ public class MerchantData : ScriptableObject
     [Tooltip("플레이어 판매가 배율. 0.5 = 기준가의 50%로 매입")]
     [Range(0.1f, 1f)] public float SellMultiplier = 0.5f;
 
+    // **상인이 가진 돈 — 이만큼만 사 준다.**
+    //
+    // 없을 때는 `GiveGold`가 늘 받아서 **상인의 지갑이 무한**이었다. 그러면 재고를 다 사고도
+    // 무제한으로 팔 수 있어, 지역 시세로 만든 교역이 "제일 비싸게 쳐주는 한 곳에 전부 붓기"로
+    // 무너진다 — 어디에 파느냐가 선택이 되려면 **한 사람이 받아 줄 수 있는 양에 끝이 있어야** 한다.
+    //
+    // 아이템 값 분포가 중앙값 94G, 비싼 장비가 1,000G대다(`Tools/GameData.xlsx`). 기본 800이면
+    // 좋은 장비 두어 점이나 자재 한 짐은 받아 주되 창고를 통째로는 못 받는다.
+    [Tooltip("상인이 가진 돈. 이만큼까지만 사 준다(하루가 지나면 회복). 0이면 무한.")]
+    [Min(0)] public int Gold = 800;
+
+    // **진열대가 몇 칸짜리인가**(칸 보기 격자의 크기).
+    //
+    // **폰 배낭 크기를 베끼지 않는다.** 한때 그렇게 했는데, 그러면 진열대 크기가 *지금 누구
+    // 배낭을 보고 있느냐*로 바뀐다 — 순환 버튼으로 폰을 넘길 때마다 상인의 좌판이 늘었다
+    // 줄었다 한다. **진열대는 상인의 것**이지 손님의 것이 아니다.
+    //
+    // 상인마다 다르게 저작할 수 있는 것이 요점이다: 봇짐장수의 좌판과 큰 마을 상단의 창고는
+    // 같을 이유가 없다. **비우면(0) 씬의 기본값**을 쓴다(`MerchantUI.defaultStockGrid`) —
+    // 안 채운 상인이 0칸짜리 좌판이 되지 않게.
+    //
+    // 다 안 들어가는 날엔 줄만 늘어난다(`MerchantUI`) — 조용히 몇 개를 삼키면 어제 있던
+    // 물건이 왜 안 보이는지 알 길이 없다.
+    [Tooltip("진열대 격자 크기. 비우면(0) 8×6.\n" +
+             "**칸이 곧 한도다** — 다 차면 이 상인에게 더 못 판다.\n" +
+             "칸 크기(픽셀)는 폰 배낭에서 베끼므로 여기서 정하는 것은 칸 수뿐이다.")]
+    public Vector2Int StockGrid;
+
+    // **내가 판 물건이 좌판에 남아 있는 날수.**
+    //
+    // 상인의 제 물건은 하루마다 통째로 갈린다(`Shop.Refresh`). 판 물건까지 그러면 **좌판이
+    // 매일 아침 비어** 자리 한도가 아무것도 막지 못하고, 어제 판 것을 되사러 갈 수도 없다.
+    //
+    // **나흘.** 처음엔 이레로 뒀는데, 그때는 *"쏟아부으면 그 주 내내 그 상인에게는 못 판다"*가
+    // 대가였다. 그런데 갱신에서 **상인의 제 물건이 자리를 먼저 갖게 되면서**(`Shop.Refresh` —
+    // 밀려난 것은 사라진다) 그 대가는 기한이 아니라 **자리 다툼**이 물게 됐다. 남은 몫은
+    // "마음이 바뀌면 되사러 갈 시간"인데 그건 나흘로 넉넉하고, 짧을수록 좌판이 자주 돈다.
+    //
+    // 기한이 지난 것은 팔린 것으로 친다 — 상인이 어딘가로 넘겼다고 보면 설명이 끝난다.
+    [Tooltip("플레이어가 판 물건이 좌판에 남는 날수. 0이면 하루(다음 갱신에 사라진다).")]
+    [Min(0)] public int PlayerStockDays = 4;
+
     [Header("취급 조건")]
     // **"고블린 방어구 상인은 고블린 방어구를 판다"를 적는 자리.** 종족과 상품을 그냥 곱하면
     // 인간이 고블린제 물건을 들고 오는 조합이 나온다. 그렇다고 조합마다 프리팹을 만들면
@@ -162,4 +231,8 @@ public class MerchantData : ScriptableObject
         float value = item.BaseValue * quality.StatMultiplier() * GetItemMultiplier(item);
         return Mathf.Max(1, Mathf.RoundToInt(value * SellMultiplier * item.ResaleFactor));
     }
+
+    // **내가 판 물건의 되사기 값은 여기서 안 낸다** — `Shop.AddPlayerStock`이 **판 순간에 받은
+    // 액수를 그대로 얼려 둔다.** 한때 여기 `CalcResalePrice`(기준가 × 등급 × 지역 배율)를 뒀는데,
+    // 그러면 방금 판 검을 도로 사는 데 네 배 가까이 들어 **잘못 판 것을 무를 길이 없었다.**
 }

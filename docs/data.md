@@ -71,7 +71,7 @@
 - `resourceGroup`: `Stone`, `Ore`, `Gem`, `Ingot`, `Wood`, `Currency` (옛 `resourceType`도 받아 묶음으로 옮기고 경고)
 - `requiredSkillType`: `Labor`, `WeaponCrafting`, `ArmorCrafting`, `Cooking`, `Alchemy`, `Research`, `Smelting`, `Stonecutting`, `Woodworking`, `Gemcutting`
 
-**미구현 JSON 타입** (향후 추가 예정): UnitData/MinionData, SubCoreData (프리팹 참조 문제), ResearchData
+**JSON으로 못 넣는 것**: UnitData/MinionData · SubCoreData(프리팹 참조) · ResearchData — 지금 JSON은 아이템·레시피뿐이다.
 
 ## 모드가 그림·모델을 들고 온다 (`ModAssets`, 2026-08-01)
 
@@ -136,7 +136,7 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 | `UnitData` | `DungeonColony/UnitData` | RaceName, NamePool, MaxHP, MoveSpeed, AttackDamage, AttackRange, DetectRange, DefaultMin/MaxGrade, StatGrades, StatGrowthRates |
 | `MinionData` | `DungeonColony/MinionData` | (UnitData) + SummonCostItem, SummonCostAmount, AllowedJobs, CanProvideWater, Prefab, SortOrder |
 | `NpcData` | `DungeonColony/NpcData` | **역할 전용**(종족 상속 아님) — NpcType, WanderRadius, FleeDetectRange, StayDuration, ArrivalOffset, MerchantData |
-| `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged, BlockBonus, RangedBlockBonus, DamageCategory, PhysicalType, DamageElement, EffectChance |
+| `WeaponData` | `DungeonColony/WeaponData` | WeaponType, BaseDamage, BaseAttackInterval, AttackRange, IsLargeWeapon, IsBladed, IsRanged, BlockBonus, RangedBlockBonus, **DamageType**, EffectChance |
 | `ArmorData` | `DungeonColony/ArmorData` | ArmorSlot, DamageReduction |
 | `BuildingData` | `DungeonColony/BuildingData` | BuildingName, Category, SortOrder, **Size**, CostItem, CostAmount, Prefab, UsesBlueprint, IsFloor, **OccupiesTile**, RequiredResearch |
 | `DungeonCoreData` | `DungeonColony/DungeonCoreData` | CoreType, BaseRadius, MaxGrade, BaseMinionCap, HungerRateModifier, per-frame modifiers |
@@ -168,6 +168,19 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 **표는 저작물이 아니라 에셋의 그림자다** — 에셋과 코드를 직접 읽어 만든다. 값을 바꿨으면 다시 돌릴 것. 제작 배수(산출값 ÷ 재료비)가 1 미만이면 붉게 칠해진다.
 
 ---
+
+# 쓰다 만 물건 — 남은 양은 물건이 든다 (2026-10-16)
+
+사용자: *"B가 나을 거 같다"*(아이템마다 남은 양 — 다른 폰이 집어도 반쯤 탄 횃불) · *"회복 아이템도 치료한 만큼만 소모되는게 좋잖아"*.
+
+- **닳는 물건만**(`ItemData.Depletes` — `BurnDays > 0`인 횃불 · 모든 `MedicineData`). 나머지는 늘 1이다.
+- **뭉치마다 열린 하나**(`ItemInstance.Left` 0~1) — 붕대 25 = 새것 24 + 70% 남은 것 하나. 쓰다 만 것이 칸을 따로 먹지 않는다.
+- **개수로 세고 빼는 길은 새것만**(`FullUnits` — `Inventory.RemoveCore`·`CountCore`·`CountSatisfying`). 창고 챙기기·운반·상단·재료가 다 이 길이라, 빼는 것도 넣는 것도 새것이어서 **양이 저절로 보존된다.** 쓰다 만 것은 재료로 안 친다.
+- **열린 것을 넣는 문은 `Inventory.TryAddOpened` 하나** — 같은 물건의 열린 것과 합친다(0.3 + 0.8 → 새것 하나 + 0.1).
+- **뭉치를 통째로 옮기는 길은 `Inventory.Transfer`(출처가 있을 때) · `TryAddLike`(손에 든 것 · 벗은 장비)** — `TryAdd(inst.Data, inst.Quantity, …)`로 옮기면 열린 것이 새것이 된다. 바닥은 `DroppedItem.Left`, 시체·끌기·장비칸·짐내림(`UnloadJob`)이 남은 양째 옮긴다.
+- **쓰는 문**: 약은 `Inventory.UseUp`(열린 것부터 · `Treatment.Finish`) · 횃불은 찬 인스턴스의 `Left`를 게임 시각으로 깎는다(`Equipment.Update`).
+- **상인은 쓰다 만 것을 안 산다**(`Shop.TrySell` — 새것만). 끌어 합치기(`DraggableItem.TryMerge`)는 열린 것을 안 받는다.
+- 화면: 격자 칸 오른쪽 위 `70%` · 툴팁 등급줄에 `n시간 남음`/`n% 남음`.
 
 # 식별자는 `Id`다 — 표시명이 아니다 (2026-08-01)
 
@@ -253,7 +266,7 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 
 이제 `Assets/Resources/Data/Buildings/`에 에셋을 두기만 하면 목록에 오른다. 메뉴 순서는 **`Category` → `BuildingData.SortOrder` → 이름** — `Resources.LoadAll`이 순서를 보장하지 않으므로 `SortOrder`가 순서의 유일한 근거다.
 
-**`availableResearch`는 큐레이션용 오버라이드다** — 채우면 그게 이기고, 비우면 전체를 쓴다. "데이터가 없으면 기본 동작"이라는 이 프로젝트의 관례(`BiomeContentData` · `WorldTileVisualData`와 같은 규칙)를 따른다.
+**`availableResearch`는 큐레이션용 오버라이드다** — 채우면 그게 이기고, 비우면 전체를 쓴다. "데이터가 없으면 기본 동작"이라는 이 프로젝트의 관례(`BiomeContentData`와 같은 규칙)를 따른다.
 
 > 2026-07-31 이전에는 `ResearchTable`이 **인스턴스 목록만** 봤다. 씬에 놓인 연구대에만 데이터가 들어가고 나중에 건설하는 연구대는 빈다는 지적으로 고쳤다. 새 작업대/테이블을 만들 때도 같은 규칙을 따를 것 — **인스턴스에는 "무엇을 다루는 테이블인가"만 두고, 목록은 레지스트리에서 끌어온다.**
 
@@ -261,8 +274,8 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 
 # 생성한 콘텐츠 데이터 (2026-07-31)
 
-`DungeonColony → Create Missing Data` (`Assets/Editor/DataScaffoldCreator.cs`)로 한 번에 만든다.
-**없는 것만 만들고 이미 있는 에셋은 손대지 않는다** — 여러 번 실행해도 안전하다.
+옛 `Create Missing Data` 생성기가 **없는 것만** 한 번에 만들었다(2026-08-06에 지웠다 —
+산출물이 에셋으로 자리를 잡았다). 지금 콘텐츠를 더할 때는 에셋·JSON을 직접 만든다.
 
 > 최초 생성 시 숫자는 "시스템이 굴러가는 걸 눈으로 보려고" 채운 임시 초안이었다.
 > **2026-07-31 밸런스 패스에서 전부 재산정했다** — 기준은 아래 "시간 축"과 "가치 사슬" 절이 정본이다.
@@ -421,3 +434,63 @@ JSON:   "modelPath": "<번들 안의 에셋 이름>"
 ```
 
 시작 시 제작 가능한 레시피는 **0개**다. 연구 재료(돌·목재·석탄·철광석·은광석)는 전부 채굴로만 얻을 수 있어 교착은 없다.
+
+---
+
+# CLAUDE.md에서 내려온 상세 (2026-08-27)
+
+## 게임 데이터 표 뽑기
+
+## 데이터 현황표
+
+`python Tools/export_gamedata.py` → `Tools/GameData.xlsx`(Items·Recipes·Buildings·**Traits·Backstories**·Enums, 시트마다 자동 필터) + `Tools/Items.csv`·`Tools/Recipes.csv`·**`Tools/Traits.csv`·`Tools/Backstories.csv`**(git diff용).
+
+**Items에는 `설명`이 맨 끝 칸으로 딸려 온다**(SO `Description` ∥ JSON `description`). 유일하게 긴 칸이라 가운데 두면 숫자 칸들이 화면 밖으로 밀린다. **Unity는 긴 문자열을 여러 줄로 접어 쓰므로** 뽑는 쪽이 이어 붙여야 한다 — 안 그러면 설명이 **말 중간에서 잘린다**(`text()`가 따옴표가 닫힐 때까지 잇는다. 들여쓰기 깊이로 세면 `Loot:` 같은 목록의 자식 줄까지 삼킨다).
+
+**특성·성장 배경의 표시명은 코드에서 읽는다** — 에셋이 `StatName`·`JobCategory`를 **정수로** 직렬화하므로 표에 한글을 손으로 적으면 스탯 하나 더하는 순간 조용히 어긋난다. 함정 둘: **enum 선언과 표시명이 다른 파일에 있을 수 있고**(`JobCategory` ↔ `JobCategoryInfo`, 한쪽만 보면 영어로 나온다), **원시 타입 리스트는 YAML 목록이 아니라 16진 덩어리다**(`DisabledJobs: 0200000006000000` — 네 바이트씩 리틀엔디언. 구조체 리스트인 `StatOffsets`는 평범한 목록이라 둘을 같은 방법으로 읽으면 한쪽이 빈다).
+
+**표는 저작물이 아니라 에셋의 그림자다** — 에셋과 코드를 직접 읽어 만든다. 값을 바꿨으면 다시 돌릴 것. **손으로 적은 표는 반드시 뒤처진다** — 적을 때만 맞고 그 뒤로는 아무도 고치지 않는다.
+
+제작 배수(산출값 ÷ 재료비)가 **1 미만이면 붉게** 칠해진다 — 만들수록 손해인 레시피가 표에서 가장 먼저 눈에 띈다.
+
+## SO냐 JSON이냐 · 모드 자산
+
+**SO냐 JSON이냐 — 기준은 "다른 에셋이 GUID로 가리켜야 하는가"다.** JSON 아이템은 런타임 생성이라 프리팹·SO가 **가리킬 방법이 없다**(그래서 상인 재고에 `ItemId` 문자열 경로를 따로 뒀다).
+- **SO여야 하는 것**: `ResourceNodeData.DropItem` · `BuildingData.CostItem` · `MinionData.SummonCostItem` · `SeedData.HarvestItem` · SO 레시피의 재료/결과처럼 **에셋이 가리키는** 아이템.
+- **`ItemId` 문자열 경로를 낸 곳**(에셋 참조와 나란히 두고 `Resolve()`가 고른다): `MerchantPoolEntry` · `LoadoutData`(장비·주머니) · **`ResearchData.Ingredient`**(2026-08-24). **읽는 쪽은 반드시 `Resolve()`를 쓸 것** — `Item`을 직접 읽으면 JSON 재료가 조용히 null이다. 실제로 공방 연구 다섯이 천·약초·붕대·두꺼운 가죽을 요구하는데 전부 JSON이라, 도구가 `DataManager.GetItem`으로 넣으려다 **에디터에서는 레지스트리가 안 서 있어 재료가 통째로 비었다** — 화면에는 *"재료 없음"*으로 떠서 틀린 줄도 몰랐다. **에디터 도구는 `AssetDatabase`로 먼저 찾고 없으면 `ItemId`를 적는다.**
+- **JSON이 나은 것**: 레시피로만 만들고 쓰는 것(무기·방어구 대부분). 모드가 고치거나 덮어쓸 수 있다. 2026-08-02에 옛 장비 16종을 이 기준으로 JSON에 옮겼다(참조 0건 실측 후).
+- **모드 자산(`ModAssets`)**: JSON의 `iconPath`/`modelPath`를 **그 콘텐츠 폴더 → 에셋 번들 → Resources** 순으로 찾는다. **1번이 본체** — 그림은 PNG/JPG, 모델은 **`.obj`(+`.mtl`+텍스처)** 를 폴더에 넣기만 하면 실린다(`ObjModel`이 직접 파싱). `.fbx`는 런타임 해석 불가 → 그렇게 알려 준다. 번들은 OBJ로 표현 못 하는 것(프리팹·뼈대·애니메이션)용 보조 경로(`DungeonColony → Build Mod AssetBundle`). 폴더 밖(`../`) 경로는 무시. 예시는 `StreamingAssets/Mods/ExampleMod/`. 상세 `docs/data.md`.
+
+
+# 자원 묶음 · CraftSkill · ItemQuality — CLAUDE.md에서 내려온 원문 (2026-09-25)
+
+CLAUDE.md를 절반 아래로 줄이며 옮겼다(사용자). **원문 그대로다** — CLAUDE.md에는 절마다 몇 줄과 포인터만 남았다.
+
+### 자원 — 종류는 아이템, 묶음만 enum (`ResourceGroup`)
+
+**`ResourceType` enum은 없다**(2026-08-02 삭제). 그 22개 값은 `ResourceItemData` 에셋과 정확히 1:1이라 한 자원에 이름이 셋(에셋 Id · enum 값 · 표시명) 있는 꼴이었고, 표시명 테이블도 두 벌이었다.
+
+- **무슨 자원인가** = `ItemData` 참조. `BuildingData.CostItem` / `MinionData.SummonCostItem` / `ResourceNodeData.DropItem` / `SettlementManager.OfflineYieldEntry.Item`.
+- **어느 묶음인가** = `ResourceGroup { Stone, Ore, Gem, Ingot, Wood, Currency, Bone, Hide, Cloth }` — `ResourceItemData.Group`이 직접 들고 있다. **값은 꼬리에 붙인다**(정수 직렬화). `Hide`·`Cloth`는 2026-09-06에 붙였다: 그전에는 생가죽·가죽·두꺼운가죽·천·두꺼운천 **여섯이 전부 `Wood`**여서 **창고를 "목재"로 걸어 두면 생가죽이 들어갔다.** 저작 실수가 아니라 **자리가 없던 것**이고, 묶음은 콘텐츠가 아니라 화면을 나누는 축이라 자리를 내는 편이 싸다. 딸린 이득 하나: `ResourceNodeData.IsTree`가 `Wood` 묶음에서 파생되므로 **"생가죽을 떨구는 노드는 나무"가 더는 참이 아니다.** 창고 필터·UI 분류 전용이고 **콘텐츠가 아니라 화면을 나누는 축**이라 enum으로 남겼다.
+- 표시명은 `ItemName` 한 곳. `ResourceGroupExt.DisplayName()`은 묶음 이름만 답한다.
+- **노드의 범주는 `DropItem`에서 파생된다 — 저작하지 않는다**(`ResourceNode.NeededCategory` 하나가 답한다). `IsTree`(목재 묶음) → 벌목 · 나머지 → 채굴. 노드마다 손으로 적게 하면 **저작 실수 하나가 "찍히는데 아무도 안 가는" 노드**를 만들고 화면에는 아무 표시도 안 난다.
+- 모드가 새 자원을 넣는 법: 아이템 JSON에 `"type": "resource", "resourceGroup": "Ore"`. 옛 `resourceType`도 받아 묶음으로 옮기고 경고한다.
+
+
+### CraftSkill 타입
+
+Labor, WeaponCrafting, **ArmorCrafting**(갑주 제작대 — 금속 갑옷), Cooking, Alchemy, Research, Smelting, Stonecutting, Woodworking, Gemcutting, **Tailoring**(재봉대 — 가죽·천 갑옷)
+
+**갑옷 작업대가 둘인 이유**(2026-08-25): 하나였을 때는 **무엇으로 잠글지가 성립하지 않았다** — 가죽 모자부터 강철 투구까지 한 대에서 나오니 *재봉으로 열면* 실만 배운 사람이 강철 투구를 두들기고, *주조로 열면* 쇳물을 다루기 전에는 가죽옷 한 벌 못 만든다(초반이 통째로 막힌다). **스킬을 하나 내는 것으로 갈라진다** — 레시피의 `requiredSkillType`이 이미 어느 작업대에 걸릴지를 정한다(`CraftingTable.tableType`). 재봉대 ← 직조 · 갑주 제작대 ← 주조.
+
+### ItemQuality
+
+Common(일반) / Uncommon(고급) / Rare(희귀) / Unique(유니크) / Epic(에픽) / Legendary(전설)
+
+`StatMultiplier()`: 1.0 / 1.2 / 1.5 / 2.0 / 2.5 / 3.0. 같은 등급끼리만 스택.
+`ItemInstance.DisplayName` — `[희귀] 철검` 형태 표시명
+
+**등급은 장비만 갖는다 — `ItemData.HasQuality`**(`WeaponData`·`ArmorData`만 참). "같은 물건이 얼마나 잘 만들어졌나"가 성립하는 것은 무기·방어구뿐이다 — 잘 만든 빵이나 잘 만든 붕대는 없고, **약의 효능 차이는 등급이 아니라 별개 아이템**이다(넝마 ↔ 구급낭). `CraftJob`이 장비에만 등급을 굴리는 것도 같은 규칙이고, 이제 그 물음에 `is WeaponData`가 아니라 **물건이 답한다**(`TypeName`과 같은 자리 — 밖에서 갈라 쓰면 종류가 늘 때 분기를 전부 찾아야 하고 하나 빠뜨리면 조용히 틀린다).
+
+**`Inventory.TryAdd`/`CanFit`이 강제한다** — 등급 없는 물건의 등급은 `Common`으로 눌린다. 안 그러면 저작 실수 하나(상인 목록에 "희귀 붕대", 전리품 표에 "고급 빵")로 **같은 물건이 두 뭉치로 갈라진다**(스택은 같은 등급끼리만 합쳐진다) — 창고가 조각나고, 등급을 안 넘기고 꺼내는 코드에게 그 뭉치는 없는 것이 된다. **들어오는 문에서 한 번 누른다**: 읽는 쪽마다 묻게 하면 반드시 한 곳이 빠진다.
+

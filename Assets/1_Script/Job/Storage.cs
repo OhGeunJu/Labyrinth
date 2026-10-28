@@ -20,8 +20,6 @@ public class Storage : MonoBehaviour, IWorldClickable
     [SerializeField] List<ItemData> allowedItems = new();
 
     public Inventory Inventory { get; private set; }
-    public IReadOnlyList<ResourceGroup> AllowedGroups => allowedGroups;
-    public IReadOnlyList<ItemData>      AllowedItems  => allowedItems;
 
     // 필터가 하나도 없으면 "전부 허용"이다. 이 정규형이 여러 곳에서 쓰이므로 한 곳에서 답한다.
     public bool AllowsEverything => allowedGroups.Count == 0 && allowedItems.Count == 0;
@@ -33,7 +31,7 @@ public class Storage : MonoBehaviour, IWorldClickable
 
     void Awake()
     {
-        Inventory = GetComponent<Inventory>() ?? gameObject.AddComponent<Inventory>();
+        Inventory = TryGetComponent(out Inventory inv) ? inv : gameObject.AddComponent<Inventory>();
         Inventory.OnChanged += () => OnChanged?.Invoke();
     }
 
@@ -60,9 +58,6 @@ public class Storage : MonoBehaviour, IWorldClickable
     public void RemoveFilter(ResourceGroup g) => allowedGroups.Remove(g);
     public bool HasFilter(ResourceGroup g)    => allowedGroups.Contains(g);
 
-    public void AddItemFilter(ItemData item)    { if (item != null && !allowedItems.Contains(item)) allowedItems.Add(item); }
-    public void RemoveItemFilter(ItemData item) => allowedItems.Remove(item);
-
     // ── 입고 필터 ─────────────────────────────────────────────────────
     public bool CanAccept(ItemData item)
     {
@@ -71,6 +66,8 @@ public class Storage : MonoBehaviour, IWorldClickable
 
         // 콕 집어 허용한 것이 먼저다 — 묶음에 없는 자원(또는 자원이 아닌 것)도 이걸로 받을 수 있다.
         if (allowedItems.Contains(item)) return true;
+        // `생고기`를 받는 창고는 늑대 고기도 받는다 — 같은 자리에 쓰이는 물건이다(`ItemData.CountsAs`).
+        if (item.CountsAs != null && allowedItems.Contains(item.CountsAs)) return true;
 
         // 자원 아이템만 묶음으로 걸러진다. 무기·방어구는 필터가 비어 있을 때만 들어온다.
         return item is ResourceItemData r && allowedGroups.Contains(r.Group);
@@ -105,29 +102,47 @@ public class Storage : MonoBehaviour, IWorldClickable
         return Inventory.TryAdd(item, amount, quality);
     }
 
+    // **열린 하나를 남은 양째 넣는다**(`Inventory.TryAddOpened`) — 필터는 같은 문이 본다. 짐내림이 쓰다 만 붕대·
+    // 반쯤 탄 횃불을 부릴 때(`UnloadJob`).
+    public bool TryAddOpened(ItemData item, ItemQuality quality, float left)
+        => CanAccept(item) && Inventory.TryAddOpened(item, quality, left);
+
     // ── 집계는 **아이템 기준 하나뿐**이다 ─────────────────────────────
     // 예전엔 `GetTotal(ResourceType)`과 `GetTotalByItem(ItemData)`가 같은 일을 두 벌로 했다.
     // 종류가 아이템으로 흡수되면서 앞엣것은 뒤엣것과 완전히 같은 뜻이 됐다 — 그래서 지웠다.
-    public static int GetTotalByItem(ItemData item)
+    //
+    // **`near`는 선택 인자가 아니다**(2026-08-26). 세계가 29km로 이어지면서 거점이 동시에
+    // 살아 있게 됐는데, 전부 더하면 **29km 밖 창고의 목재로 여기서 집을 짓는다.** 기본값을
+    // 두면 부르는 쪽이 조용히 빠뜨리고, 그 증상은 *"분명히 없는데 지어진다"*라 잡기 어렵다
+    // (`Storage.FindNearest`의 `from`을 필수로 둔 것과 같은 이유).
+    //
+    // 가르는 것은 **핵 영역**이다(`Territory`) — 거리로 자르면 *"얼마나 멀면 다른 거점인가"*라는
+    // 새 숫자가 생기는데, 핵은 이미 영역을 갖고 있고 `BuildingDormancy`가 그 답을 쓰고 있다.
+    // **핵이 하나뿐인 판에서는 전부 같은 영역**이라 예전과 똑같이 돈다.
+    public static int GetTotalByItem(ItemData item, Vector3 near)
     {
         int total = 0;
         foreach (var sb in All)
         {
             if (!sb.IsActive) continue;
-            total += sb.Inventory.GetTotalQuantity(item);
+            if (!Territory.Same(sb.transform.position, near)) continue;
+            total += sb.Inventory.CountSatisfying(item, false);   // 늑대 고기도 생고기로 센다(`ItemData.CountsAs`)
         }
         return total;
     }
 
-    public static bool ConsumeByItem(ItemData item, int amount)
+    // `taken`을 주면 실제로 뺀 물건을 적는다(쳐 주는 고기 등 — `Inventory.RemoveSatisfying`).
+    public static bool ConsumeByItem(ItemData item, int amount, Vector3 near,
+                                     List<(ItemData item, int amount)> taken = null)
     {
-        if (GetTotalByItem(item) < amount) return false;
+        if (GetTotalByItem(item, near) < amount) return false;
         int remaining = amount;
         foreach (var sb in All)
         {
             if (remaining <= 0) break;
             if (!sb.IsActive) continue;
-            remaining -= sb.Inventory.Remove(item, remaining);
+            if (!Territory.Same(sb.transform.position, near)) continue;
+            remaining -= sb.Inventory.RemoveSatisfying(item, remaining, false, taken);
         }
         return remaining <= 0;
     }

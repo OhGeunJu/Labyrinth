@@ -25,6 +25,15 @@ public class PawnSpec
     // 여기 값이 있다는 것 자체가 "생김새는 명세가 든다"는 규약을 세운다.
     public float BodyScale = 1f;
 
+    // **성별 — 아직 몸이 없을 때 몸을 고르는 값이다**(`PawnSpawn`). 몸이 선 뒤에는 몸(`PawnBody`)이 답한다.
+    // 사람만 갖는다(`UsesBackstory`) — 늑대에게 굴려 적지 않는다.
+    public Gender? Gender;
+
+    // 씨앗에서 성별을 뽑는다 — **스탯 굴림과 다른 열**이다. 같은 열(`rng`)에서 한 번 더 뽑으면 뒤가 통째로
+    // 밀려 **같은 시드가 다른 사람을 낳는다**("굴리는 순서가 곧 호환성이다"). 그래서 씨앗을 섞어 따로 뽑는다.
+    public static Gender GenderFor(int seed)
+        => new System.Random(unchecked(seed * 977 + 13)).Next(2) == 0 ? global::Gender.Male : global::Gender.Female;
+
     // **기본 폰이 못 갖는 모습.** 굴려서는 안 나오고 저작해야만 붙는다(`PawnSpecData`) —
     // 이름 있는 동료가 남들과 똑같이 생기면 이름을 붙인 뜻이 절반 사라진다.
     public Material   MaterialOverride;
@@ -37,11 +46,24 @@ public class PawnSpec
     // 합류한 폰의 특성이 같다 — 스탯·이름과 같은 이유로 여기 든다.
     public readonly List<TraitData> Traits = new();
 
+    // **성장 배경도 태어나기 전에 정해진다** — 특성과 같은 이유로 여기 든다(마을 후보 메뉴에
+    // 뜬 배경과 합류한 폰의 배경이 같아야 한다). 칸이 둘이라 목록이 아니라 필드 둘이다.
+    public BackstoryData Childhood;
+    public BackstoryData Adulthood;
+
+    // **열정도 태어나기 전에 정해진다**(`Passions`) — 배경과 같은 이유로 여기 든다(보고 데려온 사람의 열정이 같아야 한다).
+    public readonly Dictionary<StatName, Passion> Passions = new();
+
     // 이 사람이 얼마나 쓸 만한가 — 등급 평균(0 = F-). 값 매김·표시의 단일 기준.
     public float GradeAverage { get; private set; }
 
     public StatGrade AverageGrade =>
         (StatGrade)Mathf.Clamp(Mathf.RoundToInt(GradeAverage), 0, (int)StatGrade.SSSPlus);
+
+    // **소환물의 이력 묶음.** 이름을 문자열로 흩어 두면 만드는 쪽(에디터 도구)과 굴리는
+    // 쪽(`UnitBrain`)이 **오타 하나로 갈리고**, 그러면 조용히 `civilian` 폴백으로 떨어져
+    // 골렘이 *"사원의 시동"*이 된다. 답은 여기 한 벌이다.
+    public const string SummonedStoryGroup = "summoned";
 
     // ── 굴리기 ────────────────────────────────────────────────────────────────
 
@@ -50,8 +72,9 @@ public class PawnSpec
     //
     // 몸 크기는 좁게 흔든다. 크게 흔들면 같은 종족이 아니라 다른 종족처럼 보인다.
     public static PawnSpec Roll(UnitData data, int seed, StatGrade min, StatGrade max,
-                                IReadOnlyList<string> nameCandidates = null)
-        => RollCore(data, seed, nameCandidates, min, max, _ => (min, max));
+                                IReadOnlyList<string> nameCandidates = null,
+                                string storyGroup = null, Gender? gender = null)
+        => RollCore(data, seed, nameCandidates, min, max, _ => (min, max), storyGroup, gender);
 
     // **종족이 스탯별로 정한 범위를 그대로 쓰는 굴리기** — 저작한 고정 개체용.
     //
@@ -59,20 +82,25 @@ public class PawnSpec
     // 이름 있는 동료는 "그 종족다움"이 남아야 한다 — 엘프가 손재주만 좋게 저작돼 있으면
     // 고정 개체도 그래야지, 전 스탯이 같은 범위로 뭉개지면 종족을 저작한 뜻이 사라진다.
     public static PawnSpec Roll(UnitData data, int seed,
-                                IReadOnlyList<string> nameCandidates = null)
+                                IReadOnlyList<string> nameCandidates = null,
+                                string storyGroup = null, Gender? gender = null)
     {
         var min = data != null ? data.DefaultMinGrade : StatGrade.D;
         var max = data != null ? data.DefaultMaxGrade : StatGrade.D;
         return RollCore(data, seed, nameCandidates, min, max,
-                        stat => data != null ? data.GetGradeRange(stat) : (min, max));
+                        stat => data != null ? data.GetGradeRange(stat) : (min, max), storyGroup, gender);
     }
 
     // `tierMin/tierMax` = 이 사람의 **수준**을 뽑는 범위, `rangeOf` = 스탯마다 조일 범위.
     static PawnSpec RollCore(UnitData data, int seed, IReadOnlyList<string> nameCandidates,
                              StatGrade tierMin, StatGrade tierMax,
-                             Func<StatName, (StatGrade min, StatGrade max)> rangeOf)
+                             Func<StatName, (StatGrade min, StatGrade max)> rangeOf,
+                             string storyGroup = null, Gender? gender = null)
     {
         var spec = new PawnSpec { Seed = seed };
+        // 성별은 **이름보다 먼저** 정한다(이름이 성별을 따른다) — 다만 `rng`를 안 쓴다(`GenderFor`).
+        // 몸이 이미 정해진 폰은 부르는 쪽이 그 성별을 넘긴다(`gender`) — 몸이 이긴다.
+        spec.Gender = gender ?? (OfGender(data) ? GenderFor(seed) : (Gender?)null);
         var rng  = new System.Random(seed);
 
         int lo = Mathf.Min((int)tierMin, (int)tierMax);
@@ -100,7 +128,7 @@ public class PawnSpec
         // 앞의 것들은 물론 **기존 스탯의 굴림까지 그대로**다 — 새 스탯이 뽑는 것은 꼬리에
         // 하나 붙는 것뿐이다.
         spec.BodyScale = 0.94f + (float)rng.NextDouble() * 0.12f;   // 0.94 ~ 1.06
-        spec.Name      = PickName(data, rng, nameCandidates);
+        spec.Name      = PickName(data, rng, nameCandidates, spec.Gender);
         spec.Traits.AddRange(TraitPool.RollForPawn(rng));            // 개수(0~3)도 여기서
 
         int sum = 0, count = 0;
@@ -115,6 +143,25 @@ public class PawnSpec
             sum += g;
             count++;
         }
+        // ── 배경은 **맨 끝에서** 굴린다 ──────────────────────────────────────
+        //
+        // 난수열은 부르는 횟수로 자리가 정해진다(위 "굴리는 순서가 곧 호환성이다"). 특성
+        // 뒤·스탯 앞에 끼우면 **스탯 굴림이 통째로 밀려** 같은 시드가 다른 사람을 낳는다 —
+        // 저작해 둔 고정 개체와 마을 후보가 한꺼번에 바뀐다. 꼬리에 붙이면 앞의 것이 그대로다.
+        //
+        // **사람만 받는다**(`UnitData.UsesBackstory`). 늑대에게 유년기를 굴려 주면 스탯 창에
+        // *"거리에서 자랐다"*가 뜬다.
+        if (data != null && data.UsesBackstory)
+        {
+            spec.Childhood = BackstoryPool.Roll(BackstorySlot.Childhood, rng, storyGroup);
+            spec.Adulthood = BackstoryPool.Roll(BackstorySlot.Adulthood, rng, storyGroup);
+
+            // **열정은 배경 다음 — 꼬리의 꼬리다**(배경이 어느 갈래에 잘 붙을지를 정하므로 뒤여야 하고,
+            // 꼬리라 앞의 굴림이 안 밀린다). 사람만 갖는다 — 배경과 같은 스위치다.
+            foreach (var kv in global::Passions.Roll(rng, spec.Childhood, spec.Adulthood))
+                spec.Passions[kv.Key] = kv.Value;
+        }
+
         spec.GradeAverage = count > 0 ? sum / (float)count : 0f;
 
         return spec;
@@ -131,11 +178,14 @@ public class PawnSpec
         GradeAverage = sum / (float)Grades.Count;
     }
 
-    static string PickName(UnitData data, System.Random rng, IReadOnlyList<string> candidates)
+    // 성별이 있는 종족인가 — 사람 이력을 갖는 종족이다(`UsesBackstory`). 늑대·골렘은 없다.
+    public static bool OfGender(UnitData data) => data != null && data.UsesBackstory;
+
+    static string PickName(UnitData data, System.Random rng, IReadOnlyList<string> candidates, Gender? gender)
     {
         var pool = candidates != null && candidates.Count > 0
                  ? candidates
-                 : (data != null ? data.NamePool : null);
+                 : (data != null ? data.NamesFor(gender) : null);
 
         if (pool != null && pool.Count > 0) return pool[rng.Next(pool.Count)];
         if (data != null && !string.IsNullOrEmpty(data.RaceName)) return data.RaceName;
@@ -161,6 +211,41 @@ public class PawnSpec
     // 흔들림도 시드에서 나오므로 **다시 계산해도 같은 값**이다(메뉴를 여닫는다고 값이 바뀌면
     // 원하는 값이 나올 때까지 여닫게 된다). 시드를 한 번 더 섞어 스탯 추첨과 **다른 열**을 쓴다 —
     // 같은 열이면 "스탯이 좋으면 흔들림도 크다"는 상관이 생긴다.
+    // ── 살아 있는 폰의 값 ─────────────────────────────────────────────────────
+    //
+    // **명세는 있을 수도 없을 수도 있다.** `PawnSpecData`를 저작한 폰만 `UnitBrain.Spec`을
+    // 갖고, 굴려서 태어난 폰(적·하수인·이벤트로 온 사람)은 **null**이다. 그래서 값을 물을 때
+    // `Spec`을 그냥 읽으면 그런 폰은 값이 0이 되어 **선택지가 통째로 사라진다**
+    // (2026-08-14: 떠돌이 합류·용병 계약이 정확히 그래서 안 떴다).
+    //
+    // `WorldRansom`이 같은 문제를 먼저 겪고 **실제 스탯에서 등급 평균을 내는** 것으로 풀었다.
+    // 답이 두 벌이 되지 않게 그 계산을 여기로 올린다 — 값을 묻는 곳은 여기 하나다.
+
+    // 실제 스탯에서 낸 등급 평균. **명세가 아니라 지금 값을 본다** — 자란 만큼도 값에 실린다.
+    public static float GradeAverageOf(UnitBrain u)
+    {
+        if (u == null || u.Stats == null) return 0f;
+
+        int sum = 0, count = 0;
+        foreach (StatName stat in Enum.GetValues(typeof(StatName)))
+        {
+            sum += (int)StatGradeExt.FromValue(u.Stats.GetStat(stat));
+            count++;
+        }
+        return count > 0 ? sum / (float)count : 0f;
+    }
+
+    // 이 사람을 데려오는 값. **명세가 있으면 그 값**(흔들림까지 그대로 — 마을 후보는 메뉴에서
+    // 본 값과 같아야 한다), 없으면 실제 스탯에서 낸다(**흔들림 없음** — 흔들림은 "부르는 값"을
+    // 만들려고 시드에서 뽑는 것인데, 시드가 없는 폰에는 기댈 것이 없다).
+    public static int PriceOf(UnitBrain u)
+    {
+        if (u == null) return 0;
+        if (u.Spec != null) return u.Spec.Price;
+
+        return Mathf.Max(1, Mathf.RoundToInt(PriceBase + GradeAverageOf(u) * PricePerGrade));
+    }
+
     public int Price
     {
         get

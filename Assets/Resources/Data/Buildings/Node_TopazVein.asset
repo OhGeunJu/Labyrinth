@@ -14,14 +14,24 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: 
   BuildingName: "\uD1A0\uD30C\uC988 \uAD11\uB9E5"
-  Description: "\uCC44\uAD74\uD558\uBA74 \uD1A0\uD30C\uC988\uC774(\uAC00) \uB098\uC624\uB294 \uAD11\uB9E5. \uD3F0\uC744 \uBC30\uC815\uD574\uC57C \uCE94\uB2E4."
-  Category: 0
+  Description: "\uCC44\uAD74\uD558\uBA74 \uD1A0\uD30C\uC988\uC774(\uAC00) \uB098\uC624\uB294
+    \uAD11\uB9E5. \uD3F0\uC744 \uBC30\uC815\uD574\uC57C \uCE94\uB2E4."
+  Category: 9
   SortOrder: 142
   Size: {x: 2, y: 1}
-  CostItem: {fileID: 0}
-  CostAmount: 0
-  RequiredResearch: {fileID: 0}
+  Costs:
+  - Item: {fileID: 11400000, guid: 7cef37565858b0e44aa4f378cd54dfbb, type: 2}
+    Amount: 25
+  CostItem: {fileID: 11400000, guid: 7cef37565858b0e44aa4f378cd54dfbb, type: 2}
+  CostAmount: 25
+  DragBuild: 0
+  AreaDrag: 0
+  RequiredResearch: {fileID: 11400000, guid: c750e62395ee22247ad127f085bc8ea9, type: 2}
   Prefab: {fileID: 6542809555801234535, guid: b01014e9c96a9a34fb8a402671aed585, type: 3}
-  UsesBlueprint: 0
+  UsesBlueprint: 1
   IsFloor: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 1
+  BlockMask: []

@@ -19,10 +19,16 @@ MonoBehaviour:
     \uB41C\uB2E4."
   Ingredients:
   - Item: {fileID: 11400000, guid: 85dbd5da091957f409c79793765de787, type: 2}
+    ItemId: 
     Amount: 3
   - Item: {fileID: 11400000, guid: 30401c12ca9a5154494efdec5760d444, type: 2}
+    ItemId: 
     Amount: 2
-  ResearchTime: 900
+  ResearchTime: 550
   SkillGrowthAmount: 1.5
-  Prerequisite: {fileID: 0}
+  Prerequisites:
+  - {fileID: 11400000, guid: eb8395468e9e8144c961c1bb695c2246, type: 2}
+  RequiredBenchTier: 1
+  GraphColumn: 1
+  GraphRow: 12
   UnlockedRecipes: []

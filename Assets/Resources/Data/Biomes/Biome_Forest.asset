@@ -13,9 +13,14 @@ MonoBehaviour:
   m_Name: Biome_Forest
   m_EditorClassIdentifier: Assembly-CSharp::BiomeContentData
   Biome: 2
+  Tier: 2
+  MapDirection: 0
   ResourceNodes:
   - {fileID: 11400000, guid: 91bca65f0b1a0c04d927d40f3716b4bc, type: 2}
   - {fileID: 11400000, guid: 27a84ee90742b0b41b010fe3bf898a2f, type: 2}
+  WallLights:
+  - Light: {fileID: 11400000, guid: 60fed12e174ab3246a06290c5ce9db4c, type: 2}
+    Chance: 0.03
   Deposits:
   - Item: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
     Chance: 1
@@ -33,6 +38,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 5c92e7a41b8d4f30ae6712c9d5308b64, type: 2}
   - {fileID: 11400000, guid: a1f4c73e58b04e2d9c6f8b0d21e73a45, type: 2}
   - {fileID: 11400000, guid: c58d1a06e7b34f9182ad3c6e5f10b729, type: 2}
+  TownFaction: {fileID: 11400000, guid: 64b225562e9254c45bd4a247c3316b9a, type: 2}
   TownRecruits:
   - Prefab: {fileID: 8065809389404098821, guid: 6cd032410f67ca045951b175d005f6c6, type: 3}
     MinGrade: 0
@@ -44,10 +50,38 @@ MonoBehaviour:
     MinStrength: 8
     MaxStrength: 18
     SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
+    RegenPerDay: 1
+    Weight: 1
+  - Band: {fileID: 11400000, guid: f717a1b1181ba7647b7185186b15fd9a, type: 2}
+    LairName: "\uC9D0\uC2B9 \uAD74"
+    MinStrength: 8
+    MaxStrength: 18
+    SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
+    RegenPerDay: 1
+    Weight: 1
+  - Band: {fileID: 11400000, guid: 439f36fa1ab950548bdb2439fe3d843a, type: 2}
+    LairName: "\uC0B0\uC801 \uC18C\uAD74"
+    MinStrength: 8
+    MaxStrength: 18
+    SortieDays: 0.5
+    RoamDays: 1.5
+    RaidIntervalDays: 3
+    RaidWarningDays: 1
+    RaidPortion: 0.6
     RegenPerDay: 1
     Weight: 1
   TownBands:
+  - {fileID: 11400000, guid: f4f08f5fc9004c67bc6eae94656f9f4e, type: 2}
   - {fileID: 11400000, guid: ae7b0493238026a45a70e3489c718cc3, type: 2}
   - {fileID: 11400000, guid: 9efcc9bfb4442984fa40685e81f42570, type: 2}
+  - {fileID: 11400000, guid: 71211cf3d1956c4479c6861bd57927e8, type: 2}
   SummonableMinions: []
   UnlockableResearch: []

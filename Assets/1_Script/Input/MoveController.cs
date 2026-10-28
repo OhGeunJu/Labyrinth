@@ -11,9 +11,86 @@ public class MoveController : MonoBehaviour
 
     void Awake() => _cam = Camera.main;
 
+    // ── 소집 중 우클릭 끌기 (토탈워식 진형 배치) ────────────────────────────
+    //
+    // **진형은 소집의 것이다**(2026-09-08, 사용자 결정). 평소 이동에까지 걸면 짐을 나르러
+    // 보낼 때도 대형을 잡느라 늘어서고, 무엇보다 **우클릭이 상황에 따라 다른 조작**이 된다.
+    // 소집은 이미 *싸울 태세로 서 있어라*라는 상태라 진형이 얹힐 자리가 거기다.
+    //
+    // **짧게 누르면 예전 그대로다** — 끌지 않으면 놓을 때 평소 우클릭(창·공격·이동)으로
+    // 넘어간다. 그래서 *"우클릭하면 뭘 할 수 있는지 뜬다"*가 소집 중에도 깨지지 않는다
+    // (다만 소집 중에는 **누를 때가 아니라 놓을 때** 뜬다 — 끌 것인지를 그때 알기 때문이다).
+    List<PawnMover> _dragPawns;
+    Vector2 _dragScreen;
+    bool    _dragging;
+
+    // 이만큼 움직여야 끈 것으로 친다(픽셀). **월드 거리로 재면 안 된다** — 줌에 따라
+    // 같은 손짓이 다른 뜻이 되어, 물러나서 보고 있을 때는 살짝만 흔들려도 배치가 나간다.
+    const float DragPixels = 14f;
+
     void Update()
     {
+        if (TickDrag()) return;   // 끄는 중이면 이번 프레임은 그것이다
         HandleMove();
+    }
+
+    // 끌고 있는 동안. 돌려주는 값은 **이번 프레임을 가져갔나**.
+    bool TickDrag()
+    {
+        if (!_dragging) return false;
+
+        var screen = Mouse.current.position.ReadValue();
+        bool far    = Vector2.Distance(screen, _dragScreen) >= DragPixels;
+        var  ray    = _cam.ScreenPointToRay(screen);
+        bool ground = VisiblePick.First(ray, out PickHit hit, 500f, groundMask);
+
+        if (Mouse.current.rightButton.isPressed)
+        {
+            if (far && ground) ShowPreview(hit.point);
+            else               FormationPreview.Hide();
+            return true;
+        }
+
+        // 놓았다.
+        _dragging = false;
+        FormationPreview.Hide();
+
+        var pawns = _dragPawns;
+        _dragPawns = null;
+        if (pawns == null || pawns.Count == 0) return true;
+
+        if (far && ground)
+            ApplyMove(pawns, Formation.Drag(_dragStart, hit.point,
+                                            pawns, ShapeFor(pawns), out _));
+        else
+        {
+            // 끌지 않았다 — 평소 우클릭 그대로.
+            Resolve(ray, pawns);
+        }
+        return true;
+    }
+
+    void ShowPreview(Vector3 to)
+    {
+        var shape = ShapeFor(_dragPawns);
+        var spots = Formation.Drag(_dragStart, to, _dragPawns, shape, out var facing);
+        FormationPreview.Show(spots, facing, shape);
+    }
+
+    // **진형은 소집의 것이다** — 안 그러면 짐 나르러 보낼 때도 대형을 잡느라 늘어선다.
+    static Formation.Shape ShapeFor(List<PawnMover> pawns)
+        => AnyDrafted(pawns) ? Formation.Current : Formation.Shape.Box;
+
+    Vector3 _dragStart;
+
+    static bool AnyDrafted(List<PawnMover> pawns)
+    {
+        foreach (var p in pawns)
+        {
+            var brain = p != null ? p.GetComponent<UnitBrain>() : null;
+            if (brain != null && brain.IsDrafted) return true;
+        }
+        return false;
     }
 
     void HandleMove()
@@ -23,14 +100,19 @@ public class MoveController : MonoBehaviour
 
         // 운반 지정 모드에서 우클릭은 **지정을 지우는 것**이다 — 안 막으면 그 클릭이 월드로
         // 새어 이동 명령까지 나간다(지우려 눌렀는데 폰이 그리로 걸어간다).
-        if (HaulDesignator.IsActive) return;
+        // 지정 모드 중에는 우클릭이 **무르기**다 — 이동 명령으로 새면 찍은 것을 지우려다
+        // 폰이 벽으로 걸어간다.
+        if (HaulDesignator.IsActive || MineDesignator.IsActive) return;
 
         // **UI 위에서 누른 우클릭은 월드로 새지 않는다.** 창을 열어 둔 채 그 위를 우클릭하면
         // 뒤의 땅으로 이동 명령이 나가거나 뒤에 선 것을 겨눴다 — 배낭·상점을 다루는 내내
-        // 발밑을 조심해야 했다. 월드맵(`WorldMapView`)은 이미 `OverUI()`로 막고 있었다.
+        // 발밑을 조심해야 했다.
         //
         // 좌클릭(`SelectionManager._pressOverUI`)처럼 누름/놓음을 짝지어 붙들 필요는 없다.
         // 우클릭은 **누르는 그 프레임에 전부 끝나므로**(드래그가 없다) 누른 곳만 보면 된다.
+        // **손에 물건을 들고 있으면 우클릭은 되돌리기다**(`DraggableItem`) — 월드로 안 샌다.
+        if (DraggableItem.CarriedInstance != null) return;
+
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 
         // 선택지 창이 떠 있으면 이번 우클릭은 **창을 닫는 데만** 쓴다(창 쪽이 닫는다).
@@ -40,22 +122,47 @@ public class MoveController : MonoBehaviour
 
         // 방랑자만 명령 대상 (하수인은 정보 확인만 가능)
         var wanderers = new List<PawnMover>();
-        bool heldOut  = false;   // 갇히거나 업혀서 빠진 폰이 있었나
+        bool heldOut  = false;   // 빠진 폰이 하나라도 있었나 (창은 그래도 연다)
+        int  bound    = 0;       // 갇히거나 업혀서 빠진 수
+        int  taunted  = 0;       // 도발에 붙들려 빠진 수
         foreach (var pawn in selectionManager.Selected)
         {
             if (pawn == null) continue; // 선택 후 파괴된 유닛
             var brain = pawn.GetComponent<UnitBrain>();
-            if (brain == null || brain.Data is MinionData) continue;
+            if (brain == null || !brain.AcceptsOrders) continue;
 
             // **명령을 수행할 수 없는 폰은 명령 목록에서 뺀다.** 갇혔거나 남의 어깨에 실려
             // 있으면 이동은 `PawnMover`가 막고 나머지는 BT가 안 돌아 조용히 사라진다 —
             // 그러면 "시켰는데 아무 일도 안 일어난다"가 된다. 게다가 [치료한다]·[업는다]는
             // **가장 가까운 한 명**을 고르는데, 그 하나가 갇힌 폰이면 아무도 안 간다.
-            var bb = brain.Blackboard;
-            if (bb != null && (bb.IsPrisoner || bb.CarriedBy != null)) { heldOut = true; continue; }
+            if (!brain.CanObeyNow) { heldOut = true; bound++; continue; }
+
+            // **도발당한 폰도 여기서 빠진다**(2026-09-08). 붙들려 있는 동안은 명령을 안 듣는
+            // 것이 도발의 뜻인데(`ManualOrderNode`가 갈래를 건너뛴다), **여기서 안 빼면
+            // 클릭이 조용히 씹혀** 조작이 고장 난 것으로 보인다.
+            //
+            // **`CanObeyNow`에 안 얹은 이유**: 그건 `PawnMover.SetMoveTarget`도 보는 물음이라
+            // 거기 걸리면 **BT가 도발한 놈에게 걸어갈 수도 없어져 도발이 통째로 죽는다.**
+            if (brain.IsHeldByTaunt) { heldOut = true; taunted++; continue; }
 
             wanderers.Add(pawn);
         }
+
+        // **빠졌으면 말한다**(2026-09-08). 빼기만 하고 아무 말도 안 하면 화면에서는
+        // **클릭이 씹힌 것**과 구별되지 않는다 — 고른 넷 중 하나만 안 움직이는데 이유가
+        // 아무 데도 안 뜬다. 빼는 코드를 넣은 이유가 바로 그것이었는데 **알리는 쪽을 안
+        // 만들어서**, *"명령은 안 먹는데 왜 안 먹는지는 안 나온다"*로 남아 있었다.
+        //
+        // **이유를 가른다** — 갇힘·업힘은 *풀어 주거나 내려놓으면* 되는 일이고, 도발은
+        // *기다리거나 붙든 놈을 잡으면* 되는 일이다. 한 낱말로 뭉뚱그리면 무엇을 해야
+        // 하는지가 안 나온다.
+        if (bound > 0 || taunted > 0)
+            EventNotificationUI.Notify("명령에서 빠졌습니다",
+                bound > 0 && taunted > 0
+                    ? $"{taunted}명이 도발에 붙들렸고, {bound}명이 갇히거나 업혀 있습니다."
+                    : taunted > 0
+                        ? $"{taunted}명이 도발에 붙들려 있습니다."
+                        : $"{bound}명이 갇히거나 업혀 있습니다.");
 
         // **고른 폰이 전부 갇혀 있어도 창은 연다.** [풀어 준다]처럼 **명령 받는 폰이 필요 없는**
         // 선택지가 있는데, 여기서 막으면 마지막 한 명을 가둔 순간 풀어 줄 길이 사라진다.
@@ -63,8 +170,47 @@ public class MoveController : MonoBehaviour
         // (하수인만 고른 경우는 예전 그대로 조용히 끝낸다 — 그건 원래 명령 대상이 아니다.)
         if (wanderers.Count == 0 && !heldOut) return;
 
-        Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
+        var screenPos = Mouse.current.position.ReadValue();
+        Ray ray = _cam.ScreenPointToRay(screenPos);
 
+        // **소집 중이면 우클릭이 진형 배치다.** 누르는 순간에는 아직 모른다 — 끌 것인지
+        // 그냥 누른 것인지는 놓을 때 갈리므로, 여기서는 **붙들어만 두고** 판단을 미룬다.
+        if (AnyDrafted(wanderers) && !HasAim(ray) &&
+            VisiblePick.First(ray, out PickHit start, 500f, groundMask))
+        {
+            _dragging   = true;
+            _dragPawns  = wanderers;
+            _dragScreen = screenPos;
+            _dragStart  = start.point;
+            return;
+        }
+
+        Resolve(ray, wanderers);
+    }
+
+    // **겨눌 것이 있으면 끌기를 시작하지 않는다**(2026-09-08).
+    //
+    // 소집 중에도 **적을 우클릭하는 것은 공격이지 진형이 아니다.** 안 가르면 손이 조금만
+    // 흔들려도(14px) 치라는 명령이 **진형 이동**으로 나가고, 화면에는 *"공격이 제대로 안
+    // 된다"*로만 보인다 — 미리보기가 적 위에 뜨는 것도 뜻이 안 맞는다.
+    //
+    // **바닥을 눌렀을 때만 끈다.** `PickVisible`은 지형까지 포함해 *가장 가까운 것*을 주므로
+    // 참·거짓만으로는 못 가른다 — **무엇에 맞았는지**를 봐야 한다.
+    static bool HasAim(Ray ray)
+    {
+        if (!SelectionManager.PickVisible(ray, out var h)) return false;
+
+        var c = h.collider;
+        return c.GetComponentInParent<UnitBrain>()      != null   // 폰(적·아군·NPC)
+            || c.GetComponentInParent<Corpse>()         != null   // 시체
+            || c.GetComponentInParent<PlacedBuilding>() != null   // 건물
+            || c.GetComponentInParent<DroppedItem>()    != null   // 바닥의 물건
+            || c.GetComponentInParent<ResourceNode>()   != null;  // 자원 노드
+    }
+
+    // 평소 우클릭 — 겨눈 것에 따라 공격이거나 창이다.
+    void Resolve(Ray ray, List<PawnMover> wanderers)
+    {
         // **적을 겨눴을 때 우클릭의 뜻은 상황이 정한다 — 붙기 전에는 여럿, 붙고 나면 하나.**
         //
         // 아직 안 싸우는 중이면 물어볼 것이 있다(칠 것인가 / 쓰러진 놈을 마무리할 것인가 /
@@ -74,7 +220,7 @@ public class MoveController : MonoBehaviour
         // 쓰러진 놈은 **싸우는 중이어도 창을 띄운다** — 지금 그 자리에서 할 수 있는 건
         // 마무리뿐인데, 그건 지목해야만 되는 일이라(`FinishTarget`) 즉시 공격으로 보내면
         // 아무 일도 안 일어나는 헛클릭이 된다.
-        bool hasTarget = PickTarget(ray, wanderers, out RaycastHit first);
+        bool hasTarget = PickTarget(ray, wanderers, out PickHit first);
 
         if (hasTarget)
         {
@@ -99,14 +245,29 @@ public class MoveController : MonoBehaviour
     // **명령 받는 폰도 겨눌 수 있다.** 한때 건너뛰었는데(고른 폰을 누르면 `따라간다`(자기를
     // 따라감)가 떠서), 자기 자신을 치료하는 길이 생기면서 **겨눌 수 있어야** 하게 됐다.
     // 말이 안 되던 것은 겨냥이 아니라 **선택지**였다 — 그건 `AddUnitOptions`가 가른다.
-    static bool PickTarget(Ray ray, List<PawnMover> commanders, out RaycastHit hit)
-        => Physics.Raycast(ray, out hit, 500f);
+    //
+    // **업혀 있는 것은 건너뛴다 — 그건 겨눌 것이 아니라 짐이다.** 어깨 위에 붙어 있어서
+    // 업은 폰보다 커서에 먼저 걸리는데, 그러면 업은 폰을 누를 방법이 사라진다: 시체를 메고
+    // 있는 폰을 우클릭하면 **[내려놓는다] 대신 그 시체의 [뒤진다]·[도축한다]가 떴다.**
+    // 문서가 *"업힌 쪽을 때리면 업은 폰을 노리는 것과 구별이 안 된다 — 어깨 위라 사거리가
+    // 같다"*고 적어 둔 그것이 겨냥에서도 그대로 성립한다.
+    static bool PickTarget(Ray ray, List<PawnMover> commanders, out PickHit hit)
+        => SelectionManager.PickVisible(ray, out hit);
 
     // 실제 이동 명령. 창의 [여기로 이동]과 옛 직접 명령이 같은 코드를 쓴다.
+    // **가는 쪽을 본다**(2026-09-08). 예전 격자는 언제나 월드축 정렬이라 **어느 쪽에서
+    // 오든 같은 모양**이었고, 그래서 앞뒤가 아무 뜻도 못 가졌다. 끌지 않았을 때는 무리의
+    // 무게중심에서 찍은 자리로 향하는 방향이 곧 *앞*이다.
     void MoveTo(List<PawnMover> commanders, Vector3 point)
+        => ApplyMove(commanders,
+                     Formation.Place(point, point - Centroid(commanders),
+                                     commanders, ShapeFor(commanders)));
+
+    // 실제 이동 명령. **자리를 어떻게 냈든 여기 하나를 지난다** — 끌어서 세운 것과 그냥
+    // 찍은 것이 갈리면 한쪽만 표적을 거두거나 한쪽만 침대에서 안 일어난다.
+    void ApplyMove(List<PawnMover> commanders, Vector3[] positions)
     {
         Rouse(commanders);   // 딴 데로 가라는 명령 = 침대에서 일어난다
-        Vector3[] positions = CalcFormation(point, commanders.Count);
         for (int i = 0; i < commanders.Count; i++)
         {
             // 이동 명령 = 교전 이탈 + 하던 작업 취소.
@@ -115,21 +276,46 @@ public class MoveController : MonoBehaviour
             var brain = commanders[i].GetComponent<UnitBrain>();
             var bb    = brain.Blackboard;
 
-            bb.Target       = null;
-            bb.FinishTarget = null;   // 딴 데로 가라는 명령 = 마무리 지목도 거둔다
+            bb.Target        = null;
+            bb.OrderedTarget = null;  // 딴 데로 가라는 명령 = 표적 지목도 거둔다
+            bb.FinishTarget  = null;  // 딴 데로 가라는 명령 = 마무리 지목도 거둔다
             bb.ManualMove   = true;
             bb.FollowTarget = null;   // 다른 데로 가라는 명령 = 따라가기 그만
+
+            // **명령이 도발을 풀지 않는다**(2026-09-08에 풀게 했다가 되돌렸다 — 사용자:
+            // *"움직이면 도발이 풀리는 건 여전해"*). 한 번은 *선은 떠 있는데 폰은 걸어간다*를
+            // **표시가 거짓말하는 것**으로 읽고 표시를 지웠는데, 바란 것은 반대였다:
+            // **도발이 실제로 붙들고 있어야 한다.**
+            //
+            // 그래서 지금은 이렇다 — 명령은 여전히 이긴다(`ManualOrderNode`가 전투보다 위라
+            // 시킨 데로 걸어간다). 다만 **도발은 안 풀리므로**, 그 명령이 끝나는 순간
+            // `DetectNode`가 다시 붙든 놈을 겨눈다. **잠깐 빼낼 수는 있어도 떼어 놓지는
+            // 못한다** — 8초는 그대로 흐른다.
 
             // 업은 사람을 어디에 놓으라던 것도 거둔다. 안 거두면 시킨 자리까지 걸어간 다음
             // **저 혼자 예전 우리로 다시 걸어간다** — 명령을 덮어썼는데 옛 명령이 살아남는다.
             bb.HasPutDown   = false;
-            bb.PutDownBed   = null;
-            bb.PutDownCage  = null;
+            bb.PutDownSite  = null;
             bb.EscortTo     = EscortDest.None;   // 데려가던 것도 거둔다(간수가 켜져 있으면 다시 잡는다)
 
-            brain.AbandonWork();
+            // **이동 명령은 배정을 안 거둔다**(2026-09-17, 사용자: *"이미 캐라고 지정을
+            // 해놨는데 조금 움직였다고 아예 안 캐는건 말이 안되잖아"*).
+            //
+            // 전에는 평소 이동이 `AbandonWork`(일감 + 배정)였다. 이유는 *"안 거두면 도착하자마자
+            // 일하러 돌아가 명령이 안 먹는 것처럼 보인다"*였는데 — **그건 명령이 안 먹은 것이
+            // 아니라 먹고 끝난 것**이다. 붙들어 두고 싶으면 소집(`R`)이 그 장치이고,
+            // 거두는 쪽은 **한 번 비켜세웠다고 캐던 바위가 떨어져 나가는** 값을 치른다.
+            //
+            // 그래서 소집이든 아니든 **일감만 놓는다.** (손에 든 일감을 놓는 것은 그대로
+            // 해야 한다 — 게이트로 막기만 하면 그 일감이 예약된 채 얼어붙어 다른 폰도
+            // 못 가져간다.)
+            brain.DropCurrentJob();
 
-            commanders[i].GetComponent<CombatHandler>()?.ExitCombat();
+            // **진형이 준 자리를 기억한다** — 소집 중이면 `FightNode`가 여기서 멀어지지
+            // 않는 선까지만 다가간다(안 기억하면 첫 접촉에서 대형이 녹는다).
+            bb.FormationSpot = positions[i];
+
+            if (commanders[i].TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
             commanders[i].SetMoveTarget(positions[i]);
         }
     }
@@ -155,7 +341,7 @@ public class MoveController : MonoBehaviour
     {
         foreach (var pawn in commanders)
         {
-            var bb = pawn.GetComponent<UnitBrain>()?.Blackboard;
+            var bb = pawn.TryGetComponent(out UnitBrain pawnBrain) ? pawnBrain.Blackboard : null;
             if (bb == null) continue;
             if (bb.HasFreshAttacker) return true;
             if (bb.Target != null && BTTargetUtil.IsAttackable(bb.Target, bb)) return true;
@@ -163,30 +349,17 @@ public class MoveController : MonoBehaviour
         return false;
     }
 
-    // 창 제목 = **개체 이름 + 종족**(`그르낙 (고블린)`).
+    // 창 제목 = **`UnitBrain.DisplayTitle`**(`던컨 (떠돌이 · 변방민)`).
     //
-    // 종족만 띄우면 **어느 놈을 눌렀는지 알 수 없다** — 고블린이 셋 서 있으면 셋 다 "고블린"이고,
-    // 겨냥이 빗나가 엉뚱한 것을 눌러도 그럴듯해 보여서 드러나지 않는다.
-    // `InspectPanelUI`가 이미 개체 이름을 먼저 쓰므로 규약도 그쪽에 맞춘다(창마다 다른 이름으로
-    // 불리면 같은 폰인지 알 수 없다).
-    static string PawnTitle(UnitBrain brain, GameObject go)
-    {
-        string race = brain.Data != null ? brain.Data.RaceName : null;
-        string name = brain.UnitName;
-
-        bool hasName = !string.IsNullOrWhiteSpace(name);
-        bool hasRace = !string.IsNullOrWhiteSpace(race);
-
-        if (hasName && hasRace && name != race) return $"{name} ({race})";
-        if (hasName) return name;
-        if (hasRace) return race;
-        return go.name;
-    }
+    // 이름만 띄우면 고블린이 셋일 때 무엇인지를 모르고, 딸림말만 띄우면 셋 다 "고블린"이라
+    // 개체가 구별되지 않는다. 그리고 **대화창과 같은 것을 써야 한다** — 창마다 따로 만들면
+    // 같은 폰이 우클릭에선 `(인간)`, 대화에선 `(떠돌이)`로 불린다.
+    static string PawnTitle(UnitBrain brain, GameObject go) => brain.DisplayTitle;
 
     // 쓰러져 누운 폰인가. 여기서만 [공격한다]가 [마무리한다]로 바뀐다.
     static bool IsDown(GameObject go)
     {
-        var bb = go.GetComponent<UnitBrain>()?.Blackboard;
+        var bb = go.TryGetComponent(out UnitBrain goBrain) ? goBrain.Blackboard : null;
         return bb != null && bb.IsKnockedOut;
     }
 
@@ -196,10 +369,11 @@ public class MoveController : MonoBehaviour
         foreach (var pawn in commanders)
         {
             var bb = pawn.GetComponent<UnitBrain>().Blackboard;
-            bb.Target       = target;
-            bb.FinishTarget = null;    // 멀쩡한 놈을 치는 명령 — 지난 지목이 남아 있으면 안 된다
-            bb.ManualMove   = false;   // 공격 명령이 이동 명령을 대체
-            bb.FollowTarget = null;    // 따라가던 중이었으면 그만둔다
+            bb.Target        = target;
+            bb.OrderedTarget = target;  // **명령이다** — 소집 중이어도 자리 목줄을 안 탄다
+            bb.FinishTarget  = null;    // 멀쩡한 놈을 치는 명령 — 지난 지목이 남아 있으면 안 된다
+            bb.ManualMove    = false;   // 공격 명령이 이동 명령을 대체
+            bb.FollowTarget  = null;    // 따라가던 중이었으면 그만둔다
         }
     }
 
@@ -213,25 +387,26 @@ public class MoveController : MonoBehaviour
         foreach (var pawn in commanders)
         {
             var bb = pawn.GetComponent<UnitBrain>().Blackboard;
-            bb.Target       = target;
-            bb.FinishTarget = target;
-            bb.ManualMove   = false;
-            bb.FollowTarget = null;
+            bb.Target        = target;
+            bb.OrderedTarget = target;
+            bb.FinishTarget  = target;
+            bb.ManualMove    = false;
+            bb.FollowTarget  = null;
         }
     }
 
     // 선택지 구성은 **여기서** 정한다(`PawnContextMenuUI`는 받은 것만 그린다).
     // 대상 종류를 창 안에서 따지기 시작하면 판단이 두 곳으로 갈라진다
-    // (월드맵 도착 메뉴를 `WorldMapView.OpenMenu`가 짜는 것과 같은 규칙).
+    //
     // `hasHit`/`hit`은 `PickTarget`이 이미 고른 것 — **여기서 다시 쏘지 않는다.**
     // 따로 쏘면 "명령 받는 폰은 건너뛴다"는 규칙이 한쪽에만 걸려, 즉시 공격과 창이 서로 다른
     // 것을 겨누게 된다.
-    void OpenMenuAt(Ray ray, List<PawnMover> commanders, bool hasHit, RaycastHit hit)
+    void OpenMenuAt(Ray ray, List<PawnMover> commanders, bool hasHit, PickHit hit)
     {
         var menu = PawnContextMenuUI.Instance;
 
         // 바닥 지점은 따로 잰다 — 유닛·건물을 맞았어도 [여기로 이동]은 바닥을 가리켜야 한다.
-        bool hasGround = Physics.Raycast(ray, out RaycastHit groundHit, 500f, groundMask);
+        bool hasGround = VisiblePick.First(ray, out PickHit groundHit, 500f, groundMask);
 
         if (!hasHit)
         {
@@ -249,12 +424,14 @@ public class MoveController : MonoBehaviour
         }
 
         var go      = hit.collider.gameObject;
-        var options = new List<(string, System.Action)>();
+        var options = new List<PawnMenuOption>();
         string title = "이곳";
 
         var brain   = go.GetComponent<UnitBrain>();
         var node    = go.GetComponent<ResourceNode>();
         var drop    = go.GetComponent<DroppedItem>();
+        // 채집물은 콜라이더가 자식에 달릴 수 있다 — 부모까지 본다(`HaulDesignator.PickUnder`와 같은 규칙).
+        var forage  = go.GetComponentInParent<Forageable>();
         var corpse  = go.GetComponent<Corpse>();
         var core    = go.GetComponent<DungeonCore>();
         var clickable = go.GetComponent<IWorldClickable>();
@@ -273,7 +450,10 @@ public class MoveController : MonoBehaviour
             // (산 폰의 창 제목과 같은 규약).
             title = string.IsNullOrWhiteSpace(corpse.UnitName) ? "시체" : $"{corpse.UnitName}의 시체";
 
-            options.Add(("뒤진다", () => SelectionManager.InspectCorpse(corpse)));
+            // **얼마나 삭았는지 제목에 적는다** — 무엇이 나올지가 그것으로 갈린다.
+            title += $" ({Butchering.StageName(corpse.Stage)})";
+
+            AddCorpseOptions(corpse, go, brain, commanders, options);
 
             // **업어서 치운다.** 산 사람을 옮기는 것과 같은 동작이라 같은 길을 쓴다
             // (무게도 한 손 제약도 그대로 걸린다).
@@ -295,6 +475,18 @@ public class MoveController : MonoBehaviour
             // 풀려나 떠나는 중 — 자동 표적에서 빠져 있으므로 칠 때도 지목해야 한다.
             bool going = brain.Blackboard != null && brain.Blackboard.LeavingMap;
 
+            // **말을 건다** — 상인·중립·붙잡아 둔 자까지 **한 줄로** 받는다.
+            //
+            // 무슨 말을 할 수 있는지는 `Conversation`이 정한다(상인이면 물건을, 떠돌이면 합류를,
+            // 갇힌 자에게는 넘어오라고). 여기서 상대 종류를 따지기 시작하면 판단이 두 곳으로
+            // 갈라진다 — 우클릭 창이 늘 그래 왔듯 **구성은 여는 쪽이, 그리기는 창이** 한다.
+            //
+            // **거래 줄은 그대로 둔다**(아래). 물건을 사는 것은 가장 자주 하는 일이라 한 단계를
+            // 더 얹으면 분위기가 아니라 손해다 — 대화는 *다른 길*이지 대체가 아니다.
+            var speaker = Nearest(commanders, go.transform.position, b => b != brain);
+            if (Conversation.CanTalk(brain, speaker) && DialogueUI.Instance != null)
+                options.Add(("말을 건다", () => Conversation.Open(brain, speaker)));
+
             // 거래는 상인일 때만. `Merchant`는 상인 역할이면 자동으로 붙는다.
             // 쓰러진 상인은 선택지에서 뺀다 — 눌러 봐야 아무 일도 안 일어난다.
             var merchant = go.GetComponent<Merchant>();
@@ -311,7 +503,10 @@ public class MoveController : MonoBehaviour
             // **업고 있는 폰을 우클릭하면 내려놓는다.** 맨바닥에 두면 이동이 두 번 누르기가
             // 되므로, 짐을 진 당사자에게 묻는다. 고른 폰이 아니어도 뜬다 — 내려놓는 것은
             // 그 폰이 하는 일이라 "누구에게 시키나"가 애매할 여지가 없다.
-            AddSelfCarryOptions(brain, options);
+            AddSelfCarryOptions(brain, commanders, options);
+
+            // **가축의 수레**(2026-10-01, `PawnCart`) — 달면 사람이 끌고, 떼면 저 알아서 다닌다.
+            AddCartOptions(brain, options);
 
             // **업기.** 적이면 붙잡아 오는 것이고 아군이면 옮기는 것인데 동작은 같다.
             // 우리 편은 멀쩡해도 업고, 남은 기절해야 업는다(`PawnCarry.CanCarry`).
@@ -321,11 +516,15 @@ public class MoveController : MonoBehaviour
             // 우리 우클릭 → [여기 가둔다]로 세 번 누르게 하면, 가장 잦은 일이 가장 번거롭다.
             if (!self) AddEscortOptions(brain, commanders, options);
 
-            // **갇힌 사람에게 직접 묻는다 — 소지품과 석방.**
+            // **쓰러졌거나 갇혔으면 뒤져 볼 수 있다.** 무엇을 지녔는지가 가둘지·몸값을
+            // 부를지·그냥 죽일지를 정하는 재료라, 그 판단보다 **먼저** 볼 수 있어야 한다
+            // (예전엔 갇힌 사람에게만 떠서 일단 업어 오는 수밖에 없었다).
+            if ((down || held) && !self) AddSearchOption(brain, options);
+
+            // **갇힌 사람에게 직접 묻는다 — 먹이기와 석방.**
             //
             // 우리·침대를 눌러야만 풀어 줄 수 있으면 "누구를 푸는가"가 자리로 표현된다.
-            // 사람을 보고 정하는 일이라 사람에게 물어야 하고, 소지품도 마찬가지다 —
-            // 무엇을 지녔는지가 풀어 줄지 말지를 정한다.
+            // 사람을 보고 정하는 일이라 사람에게 물어야 한다.
             if (held) AddPrisonerOptions(brain, commanders, options);
 
             // 아군(플레이어 세력)까지 칠 이유는 없다 — 오사 사고만 난다.
@@ -342,6 +541,11 @@ public class MoveController : MonoBehaviour
                                                                : () => AttackWith(commanders, go);
                 options.Add(("공격한다", attack));
             }
+
+            // **쓰러진 것은 그 자리에서 가른다** — 때려눕히고 손질하는 것이 사냥의 정상
+            // 경로이고, 죽여 놓고 시체가 삭기를 기다릴 이유가 없다. 조건은
+            // `Butchering.CanButcherAlive`가 답한다(쓰러졌을 것 · 내 편이 아닐 것).
+            AddButcherOption(go, commanders, options);
         }
         else if (node != null)
         {
@@ -355,6 +559,10 @@ public class MoveController : MonoBehaviour
                         : "";
             string verb = tree ? "여기서 나무를 벤다" : "여기서 캔다";
 
+            // **고른 폰을 붙인다 — 야생도 지은 것도**(2026-09-19, 사용자: *"돌 우클릭으로 여기서 캔다로
+            // 누르니깐 노드 패널에서 붙은 폰에 붙어있지 않더라고"*). 09-06부터 야생은 여기서 **지정만**
+            // 했는데(배정이 야생을 거절하던 때의 규칙), 09-17에 배정이 야생도 받게 바뀐 뒤로도 이 분기만
+            // 옛 규칙으로 남아 **누른 폰이 아니라 아무나 캐러 갔다.** 우클릭은 *고른 폰에게 내리는 명령*이다.
             if (node.IsFull)
             {
                 options.Add(($"{verb}{room} - 자리 없음", () => { }));
@@ -375,7 +583,21 @@ public class MoveController : MonoBehaviour
                                   $"{rejected}명은 배정하지 못했습니다.");
                 }));
             }
+
             options.Add(("살펴본다", () => SelectionManager.InspectNode(node)));
+        }
+        else if (forage != null)
+        {
+            // **고른 폰이 따 온다**(2026-09-19, 사용자: *"양송이 버섯들에 우클릭이 안돼"*) — 그전에는 이
+            // 가지가 없어서 메뉴에 넣을 줄이 없었고, 그래서 눌러도 아무 일이 없었다.
+            title = forage.Item != null ? forage.Item.ItemName : "채집물";
+            options.Add(("딴다", () =>
+            {
+                var picker = Nearest(commanders, forage.transform.position,
+                                     b => b.Blackboard == null || !b.Blackboard.IsKnockedOut);
+                if (picker != null) forage.RequestBy(picker);
+            }));
+            options.Add(("살펴본다", () => SelectionManager.InspectForage(forage)));
         }
         else if (drop != null)
         {
@@ -408,10 +630,36 @@ public class MoveController : MonoBehaviour
                 ? ("여기 둔다",     () => drop.SetHaulAllowed(false))
                 : ("창고로 옮긴다", () => drop.SetHaulAllowed(true)));
         }
+        else if (go.GetComponentInParent<FloorPassage>() is { } passage)
+        {
+            // **층 통로**(`FloorPassage`) — 걸어서 닿으면 짝 통로 옆에 선다(포탈과 같은 문).
+            title = passage.Label;
+            string label = $"{passage.TargetFloor}층으로 {passage.Verb}";
+            var goers = PortalGoers(commanders, passage.transform, out string why);
+            options.Add(goers.Count > 0 && passage.Target != null
+                ? (label, (System.Action)(() => PortalTravel.Send(goers, passage)))
+                : PawnMenuOption.Blocked(label, why));
+        }
         else if (core != null)
         {
             title = "던전 핵";
-            options.Add(("연다", core.Select));
+            // **[연다]는 없다** — 핵에 열 창이 없다(배치 창은 `H` · 소환은 소환진). 눌러도 아무 일이 없는 줄은
+            // *"먹혔나?"*만 남긴다. 무엇인지는 좌클릭이 답한다.
+
+            // **핵은 포탈이다**(2026-10-01, `PortalTravel`) — 걸어서 이 핵에 닿으면 저 핵 옆에 선다.
+            var cores = DungeonCore.All;
+            if (cores.Count > 1)
+            {
+                var goers = PortalGoers(commanders, core.transform, out string why);
+                for (int i = 0; i < cores.Count; i++)
+                {
+                    var to = cores[i];
+                    if (to == null || to == core) continue;
+                    options.Add(goers.Count > 0
+                        ? ($"포탈 - {i + 1} 거점으로", (System.Action)(() => PortalTravel.Send(goers, core, to)))
+                        : PawnMenuOption.Blocked($"포탈 - {i + 1} 거점으로", why));
+                }
+            }
         }
         else if (clickable != null)
         {
@@ -427,7 +675,10 @@ public class MoveController : MonoBehaviour
             // **침대도 뺀다.** `Bed.OnWorldClick`은 일부러 비어 있다(전용 패널을 없앴고, 침대로
             // 하는 일은 전부 아래 [여기 눕는다]·[치료한다]…에 있다). 눌러도 아무 일이 안
             // 일어나는 줄은 "먹혔나?"를 남길 뿐이고, 침대가 무엇인지는 좌클릭이 답한다.
-            bool opensSomething = go.GetComponent<Bed>() == null;
+            // **화톳불도 뺀다** — `Campfire.OnWorldClick`은 침대와 같은 이유로 비어 있다
+            // (조작은 아래 [불을 끈다] 한 줄뿐이고, 무엇이 얼마나 남았는지는 좌클릭이 답한다).
+            bool opensSomething = go.GetComponent<Bed>() == null
+                                  && go.GetComponentInParent<Campfire>() == null;
             if (opensSomething && !BuildingDormancy.IsDormantAt(hit.collider))
                 options.Add((verb, clickable.OnWorldClick));
 
@@ -438,6 +689,36 @@ public class MoveController : MonoBehaviour
 
             var cage = go.GetComponentInParent<PrisonCage>();
             if (cage != null) AddCageOptions(cage, commanders, options);
+
+            var butcher = go.GetComponentInParent<ButcherTable>();
+            if (butcher != null) AddButcherTableOptions(butcher, commanders, options);
+
+            var grave = go.GetComponentInParent<Grave>();
+            if (grave != null) AddGraveOptions(grave, commanders, options);
+
+            var pyre = go.GetComponentInParent<Pyre>();
+            if (pyre != null) AddPyreOptions(pyre, commanders, options);
+
+            var fire = go.GetComponentInParent<Campfire>();
+            if (fire != null) AddCampfireOptions(fire, options);
+        }
+
+        // **건물은 부술 수 있다**(2026-09-30, `BuildingHealth`) — 창이 있는 건물(위 가지)에도, 벽·바리케이드처럼
+        // 창이 없는 건물에도 붙는다. **내 건물도 된다** — 잘못 지은 벽을 뚫거나 적의 방벽을 치우는 것이 같은 동작이다
+        // (자재를 돌려받으려면 [분해한다] — 이쪽은 부서진 만큼 75%만 바닥에 떨어진다).
+        if (corpse == null && brain == null && node == null && drop == null && forage == null && core == null)
+        {
+            var hp = go.GetComponentInParent<BuildingHealth>();
+            if (hp != null)
+            {
+                if (title == "이곳")
+                {
+                    var pb = hp.Building;
+                    title = pb != null && pb.Data != null ? pb.Data.BuildingName : hp.name;
+                }
+                options.Add(($"부순다 ({Mathf.CeilToInt(hp.Current)}/{Mathf.CeilToInt(hp.Max)})",
+                             () => AttackWith(commanders, hp.gameObject)));
+            }
         }
 
         // **청사진은 콜라이더가 없어 여기까지 걸리지 않는다.**
@@ -461,7 +742,10 @@ public class MoveController : MonoBehaviour
 
         // **맨바닥에서는 내려놓기를 안 묻는다.** 사람을 업었다고 이동이 두 번 누르기가 되면
         // 안 된다 — 업고 다니는 동안 가장 잦은 명령은 여전히 이동이다.
-        // 내려놓기는 **업고 있는 그 폰을 우클릭**하면 나온다(`AddSelfCarryOptions`).
+        // 내려놓기는 **업고 있는 그 폰을 우클릭**하면 나온다(`AddSelfCarryOptions`) —
+        // 어깨 위의 것으로 할 수 있는 일도 **같은 창에** 딸려 온다(뒤진다·도축·매장…).
+        // 업힌 몸은 겨냥에서 빠지므로(`SelectionManager.PickVisible`) **어느 쪽을 눌러도
+        // 같은 창**이고, 업고 있다는 이유로 할 수 있는 일이 줄지 않는다.
         //
         // 여기까지 아무것도 안 붙었으면 **맨바닥**이다. 이때 창을 띄우면 선택지가 하나뿐인
         // 창을 매번 한 번 더 누르게 만드는 것뿐이라, 그냥 옮긴다 — 이동은 제일 잦은 명령이다.
@@ -489,7 +773,7 @@ public class MoveController : MonoBehaviour
     public static string BlueprintTitle(BuildingBlueprint bp)
     {
         string name = bp.Data != null ? bp.Data.BuildingName : "청사진";
-        return bp.CostItem != null
+        return bp.CostRequired > 0
             ? $"{name} (청사진 {bp.Delivered}/{bp.CostRequired})"
             : $"{name} (청사진)";
     }
@@ -512,7 +796,7 @@ public class MoveController : MonoBehaviour
     // 침대에 누워 있는 환자면 **침대 쪽 일감을 쓴다** — 여기서 하나 더 만들면 같은 사람에게
     // 둘이 붙고, 침대가 제 일감을 지울 때 이건 안 지워진다.
     static void AddTreatOption(UnitBrain patient, GameObject go, List<PawnMover> commanders,
-                               bool self, List<(string, System.Action)> options)
+                               bool self, List<PawnMenuOption> options)
     {
         var body = go.GetComponent<BodyPartSystem>();
         if (body == null || !body.NeedsTreatment) return;
@@ -572,15 +856,18 @@ public class MoveController : MonoBehaviour
     {
         foreach (var pawn in commanders)
         {
-            var brain = pawn != null ? pawn.GetComponent<UnitBrain>() : null;
-            if (brain?.Blackboard == null || brain.Blackboard.IsKnockedOut) continue;
+            if (pawn == null || !pawn.TryGetComponent(out UnitBrain brain)) continue;
+            if (brain.Blackboard == null || brain.Blackboard.IsKnockedOut) continue;
 
             // **갇힌 사람은 안 일으킨다.** 침대에서 놓아 주기만 하면 `IsPrisoner`가 남아
             // 자리 없이 갇힌 폰이 된다 — 죄수 침대에 [배정]을 누를 수 있던 것과 같은 누수다.
             // 풀어 주는 길은 [풀어 준다]와 [끌어낸다] 둘뿐이다.
             if (brain.Blackboard.IsPrisoner) continue;
 
-            Bed.ReleaseFrom(brain);
+            // **무엇을 거둘지는 침대가 답한다**(`Bed.RouseFrom`) — 손으로 붙인 배정만
+            // 거두고, 저 혼자 잡은 잠자리와 소집 중인 폰의 배정은 남긴다. 여기서 그냥
+            // `ReleaseFrom`을 부르면 **한 번 옮겼다는 이유로 잠자리를 잃는다.**
+            Bed.RouseFrom(brain);
             pawn.SetSleeping(false);
         }
     }
@@ -598,42 +885,138 @@ public class MoveController : MonoBehaviour
     // 명령이 조용히 거절할 일이 아니다(손으로 배낭에 넣는 것과 같은 축).
     // 업고 있는 폰 자신에게 묻는 것 — 그 자리에 내려놓는다. **걸어갈 필요가 없으므로
     // 일감을 걸지 않고 즉시 처리한다**(BT를 거치면 다음 틱까지 아무 일도 안 일어난 것처럼 보인다).
-    static void AddSelfCarryOptions(UnitBrain brain, List<(string, System.Action)> options)
+    // **시체 하나로 할 수 있는 일.** 바닥에 있든 어깨 위에 있든 **같은 목록**이다 —
+    // 그래서 함수가 하나다. 갈라 두면 업고 있는 동안에는 뒤지지도 못하게 된다.
+    static void AddCartOptions(UnitBrain beast, List<PawnMenuOption> options)
     {
-        if (brain?.Blackboard?.Carrying == null) return;
+        if (beast == null || !beast.IsTamedBeast) return;
+
+        var cart = beast.GetComponent<PawnCart>();
+        if (cart != null && cart.Data != null)
+        {
+            options.Add(($"{cart.Data.ItemName}을(를) 뗀다", (System.Action)cart.Detach));
+            return;
+        }
+
+        string why = PawnCart.WhyNot(beast);
+        options.Add(why == null
+            ? ("수레를 단다", (System.Action)(() => PawnCart.Attach(beast)))
+            : PawnMenuOption.Blocked("수레를 단다", why));
+    }
+
+    static void AddCorpseOptions(Corpse corpse, GameObject go, UnitBrain brain,
+                                 List<PawnMover> commanders, List<PawnMenuOption> options)
+    {
+        options.Add(("뒤진다", () => SelectionManager.InspectCorpse(corpse)));
+
+        AddButcherOption(go, commanders, options);
+
+        // **묻거나 태운다 — 업기와 데려가기가 한 동작.** [업는다] → 걸어가서 무덤
+        // 우클릭 → [여기 묻는다]로 세 번 누르게 하면 가장 잦은 뒷정리가 가장 번거롭다
+        // (붙잡은 사람의 [우리로 옮긴다]와 같은 판단).
+        AddFuneralOptions(brain, commanders, options);
+    }
+
+    // 업고 있는 폰을 우클릭했을 때 — **어깨 위의 것까지 같이 묻는다.**
+    //
+    // 업힌 몸은 업은 폰의 자식이라 어깨 높이에 붙어 커서에 먼저 걸리는데, 그래서 겨냥에서는
+    // 뺐다(`SelectionManager.PickVisible`). 그렇다고 **할 수 있는 일까지 사라지면 안 된다** —
+    // 업고 있는 동안 뒤지지도 묻지도 못하게 되고, 그러려고 일부러 내려놓았다 다시 업게 된다.
+    //
+    // **어느 쪽을 눌러도 같은 창이 뜬다**: 업은 폰을 누르든 어깨의 몸을 누르든 목록이 하나다.
+    static void AddSelfCarryOptions(UnitBrain brain, List<PawnMover> commanders,
+                                    List<PawnMenuOption> options)
+    {
+        var carried = brain?.Blackboard?.Carrying;
+        if (carried == null) return;
 
         var faction = brain.GetComponent<Faction>();
         if (faction == null || !faction.IsPlayer) return;
 
-        string who = brain.Blackboard.Carrying.UnitName;
-        options.Add(($"{who}을(를) 내려놓는다", () =>
+        options.Add(($"{carried.UnitName}을(를) 내려놓는다", () =>
         {
             // 걸어가서 놓으려던 명령이 남아 있으면 지운다 — 여기서 이미 내려놓았다.
             brain.Blackboard.HasPutDown  = false;
-            brain.Blackboard.PutDownBed  = null;
-            brain.Blackboard.PutDownCage = null;
+            brain.Blackboard.PutDownSite = null;
             PawnCarry.PutDown(brain);
+        }));
+
+        // 어깨 위의 것으로 할 수 있는 일 — **바닥에 있을 때와 같은 목록**이다.
+        var carriedCorpse = carried.GetComponent<Corpse>();
+        if (carriedCorpse != null)
+        {
+            AddCorpseOptions(carriedCorpse, carried.gameObject, carried, commanders, options);
+            return;
+        }
+
+        // 산 사람을 업고 있다 — 어깨 위의 사람도 뒤져 볼 수 있다(업고 걸어가는 동안
+        // 무엇을 지녔는지 보고 어디로 데려갈지 정하는 것이 실제 흐름이다).
+        AddSearchOption(carried, options);
+
+        // 붙잡아 온 사람이면 먹이고 놓아 줄 수도 있다.
+        if (carried.Blackboard != null && PrisonEscort.IsCaptive(carried))
+            AddPrisonerOptions(carried, commanders, options);
+
+        AddEscortOptions(carried, commanders, options);
+
+        // **쓰러진 것은 업고 있어도 가른다.** 바닥에 두면 `[도축한다]`가 뜨는데
+        // 어깨에 얹었다고 사라지면, 사냥한 짐승을 도축대까지 메고 와 놓고 **다시 내려놓아야**
+        // 그 줄이 돌아온다. 판정은 `Butchering.CanButcherAlive` 하나라 여기서도 같은 답이다.
+        AddButcherOption(carried.gameObject, commanders, options);
+    }
+
+    // **쓰러져 있으면 뒤질 수 있다 — 갇혀 있지 않아도.**
+    //
+    // 한때 이 줄은 갇힌 사람에게만 떴다. 그래서 **때려눕힌 적이 무엇을 지녔는지 보려면 일단
+    // 업어야 했고**(업고 있는 폰의 창에는 이 줄이 있다), 우리에 넣기 전에는 알 수가 없었다 —
+    // 그런데 *무엇을 지녔는가*는 대개 **가둘지 몸값을 부를지 그냥 죽일지**를 정하는 재료다.
+    // 판단에 쓰는 정보를 판단한 뒤에야 볼 수 있으면 순서가 뒤집힌 것이다.
+    //
+    // **뒤지는 것이 아니라 보는 것이다.** 시체는 [뒤진다]로 꺼내 오지만 산 사람의 배낭은
+    // 그 사람 것이고, 창을 열면 옮길 수 있다 — 말을 다르게 두는 편이 무슨 일이 일어나는지
+    // 정확하다. 창은 원정 나간 폰의 배낭을 여는 것과 **같은 통로**(`BindTo`)를 쓴다.
+    //
+    // **멀쩡히 서 있는 사람은 안 된다** — 그건 뒤지는 것이 아니라 소매치기이고, 저쪽이
+    // 가만히 있을 이유가 없다. 쓰러졌거나(`down`) 갇혔을 때(`held`)만이다.
+    //
+    // **남의 배낭을 여는 문은 `CorpseInventoryUI` 하나다**(2026-09-08에 바로잡았다).
+    //
+    // 여기는 `InventoryUI.BindTo`로 열고 있었는데, 그 창은 **폰 하나에 묶이는 창**이라
+    // 남의 것을 열면 **내 것이 풀린다** — 그러면 배낭 하나만 덩그러니 떠서 **물건을 옮길
+    // 데가 없다**(사용자: *"고블린의 소지품만 떠 — 내것도 떠야지 템을 옮기던가 하지"*).
+    //
+    // **그 물음은 시체에서 이미 풀려 있었다**: 저쪽 통을 제 창에 띄우고 내 배낭을
+    // `SetLootMode`로 같이 연다. 좌클릭(쓰러진 놈을 직접 누르기)도 이미 그 길을 쓰고 있었고
+    // **우클릭 메뉴만 옛 길에 남아 있었다** — 그래서 *해골은 [뒤진다]로 둘 다 뜨는데
+    // 업힌 고블린은 [소지품을 본다]로 하나만 뜬다*가 됐다. 같은 일에 문이 둘이면 반드시
+    // 한쪽이 뒤처진다.
+    static void AddSearchOption(UnitBrain pawn, List<PawnMenuOption> options)
+    {
+        if (pawn.Inventory == null) return;
+
+        var loot = CorpseInventoryUI.Instance;
+        if (loot != null)
+        {
+            options.Add(("소지품을 본다", () => loot.ShowDowned(pawn)));
+            return;
+        }
+
+        // 그 창이 씬에 없는 경우에만 옛 길로 떨어진다(창 하나만 뜬다 — 안 뜨는 것보다 낫다).
+        var inv = Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (inv == null) return;
+
+        options.Add(("소지품을 본다", () =>
+        {
+            inv.BindTo(pawn);
+            inv.ForceOpen();   // 묶기만 하면 창이 닫힌 채로 바뀌어 아무 일도 안 한 것처럼 보인다
         }));
     }
 
-    // 갇힌 사람에게 할 수 있는 일 — 뒤지고, 놓아 준다.
-    //
-    // **명령 받을 폰이 필요 없다.** 소지품을 보는 것은 창을 여는 일이고, 놓아 주는 것은
-    // 우리·침대가 하는 일이다 — 그래서 마지막 한 명을 가둔 뒤에도 둘 다 뜬다.
+    // **명령 받을 폰이 필요 없다.** 놓아 주는 것은 우리·침대가 하는 일이라, 마지막 한 명을
+    // 가둔 뒤에도 뜬다.
     static void AddPrisonerOptions(UnitBrain prisoner, List<PawnMover> commanders,
-                                   List<(string, System.Action)> options)
+                                   List<PawnMenuOption> options)
     {
-        // **뒤지는 것이 아니라 보는 것이다.** 시체는 [뒤진다]로 꺼내 오지만 산 사람의 배낭은
-        // 그 사람 것이고, 창을 열면 옮길 수 있다 — 말을 다르게 두는 편이 무슨 일이 일어나는지
-        // 정확하다. 창은 원정 나간 폰의 배낭을 여는 것과 **같은 통로**(`BindTo`)를 쓴다.
-        var inv = Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
-        if (inv != null && prisoner.Inventory != null)
-            options.Add(("소지품을 본다", () =>
-            {
-                inv.BindTo(prisoner);
-                inv.ForceOpen();   // 묶기만 하면 창이 닫힌 채로 바뀌어 아무 일도 안 한 것처럼 보인다
-            }));
-
         // **먹인다** — 갇힌 사람은 제 발로 못 먹으러 간다.
         //
         // 간수를 켜 뒀으면 자리(`PrisonFeeding.Tick`)가 저절로 일감을 내지만, 꺼 뒀거나
@@ -665,7 +1048,7 @@ public class MoveController : MonoBehaviour
         if (Conversion.CanDominateNow(prisoner))
         {
             int pct = Mathf.RoundToInt(Conversion.DominateChance() * 100f);
-            options.Add(($"지배를 시도한다 ({pct}% — 실패하면 죽는다)",
+            options.Add(($"지배를 시도한다 ({pct}%, 실패하면 죽는다)",
                          () => Conversion.TryDominate(prisoner)));
         }
 
@@ -684,7 +1067,7 @@ public class MoveController : MonoBehaviour
             float wait = Conversion.PersuadeCooldownLeft(prisoner);
 
             options.Add(wait > 0f
-                ? ($"설득한다 ({pct}% — {Mathf.CeilToInt(wait)}초 뒤)", (System.Action)null)
+                ? ($"설득한다 ({pct}% - {Mathf.CeilToInt(wait)}초 뒤)", (System.Action)null)
                 : ($"설득한다 ({pct}%)", (System.Action)(() =>
                 {
                     var cage = PrisonCage.HolderOf(prisoner);
@@ -700,11 +1083,155 @@ public class MoveController : MonoBehaviour
                 })));
         }
 
+        // **짐승은 조련이다**(2026-10-01) — 설득과 같은 모양(우리에 맡긴다 · 쉬는 중이면 흐리게).
+        if (Conversion.CanTame(prisoner))
+        {
+            int pct = Mathf.RoundToInt(prisoner.Blackboard.ConvertProgress * 100f);
+            float wait = Conversion.PersuadeCooldownLeft(prisoner);
+
+            options.Add(wait > 0f
+                ? ($"길들인다 ({pct}% - {Mathf.CeilToInt(wait)}초 뒤)", (System.Action)null)
+                : ($"길들인다 ({pct}%)", (System.Action)(() =>
+                {
+                    var cage = PrisonCage.HolderOf(prisoner);
+                    if (cage == null) return;
+
+                    var tamer = Nearest(commanders, prisoner.transform.position,
+                                        b => b != prisoner && !b.IsTamedBeast
+                                          && (b.Blackboard == null || !b.Blackboard.IsKnockedOut));
+                    if (tamer == null) return;
+
+                    tamer.AbandonWork();
+                    cage.RequestTameBy(tamer);
+                })));
+        }
+
+        // **돈을 받고 넘긴다.** 붙잡은 사람으로 할 수 있는 일이 회유·처형·풀어 주기뿐이면
+        // 말이 통하는 상대를 붙잡는 것과 안 통하는 상대를 붙잡는 것이 같은 값이 된다.
+        //
+        // **안 되는 상대에게도 줄은 남긴다 — 흐리게.** 빼 버리면 "이 세력은 원래 몸값이라는
+        // 게 없나" 와 구별이 안 되고, 그렇다고 창에 사유를 적으면 작은 팝업이 부푼다.
+        // 그래서 **못 누르는 색으로 두고 이유는 올려 봤을 때** 뜬다(`PawnMenuOption.Blocked`).
+        if (PrisonEscort.IsCaptive(prisoner))
+        {
+            // **얼마인지 적는다** — 넘길지는 액수가 정한다([업는다]에 무게를 적는 것과 같은 규약).
+            //
+            // **흥정은 그 일을 하러 간 폰이 한다**(`Trading.HagglerFor`).
+            //
+            // **대화창과 같은 사람을 고른다** — `Nearest(commanders, 대상)`는 [말을 건다]가
+            // `speaker`를 뽑는 것과 같은 식이다. 여기만 "맵 최고"로 두면 **맵 최고 ≥ 말을 건
+            // 폰**이 항상 참이라, 대화창의 `[네 쪽에 돌려보내 주지]`가 영영 고를 이유가 없는
+            // 줄이 된다(값을 받으려면 창을 닫고 우클릭하는 것이 언제나 낫다).
+            //
+            // 고른 폰이 하나도 없으면(마지막 한 명까지 가둔 경우) `HagglerFor`가 맵 최고로
+            // 떨어뜨린다. 액수를 띄울 때와 치를 때 **같은 사람을 넘긴다**.
+            // 쓰러진 폰은 뺀다 — 설득 `speaker`·`Trading.BestOf`와 같은 규칙이다.
+            var haggler = Trading.HagglerFor(
+                Nearest(commanders, prisoner.transform.position,
+                        b => b != prisoner && (b.Blackboard == null || !b.Blackboard.IsKnockedOut)));
+            int payout  = WorldRansom.PayoutFor(prisoner, haggler);
+
+            if (WorldRansom.CanSell(prisoner))
+                options.Add(($"몸값을 받고 넘긴다 ({payout:N0} G)",
+                             () => WorldRansom.Sell(prisoner, haggler)));
+            else
+            {
+                var fd  = prisoner.TryGetComponent(out Faction prisonerFaction) ? prisonerFaction.Data : null;
+                string who = fd != null ? fd.FactionName : "이쪽";
+                options.Add(PawnMenuOption.Blocked("몸값을 받고 넘긴다",
+                    $"{who}과는 말이 통하지 않는다.\n돈을 주고 데려가지 않으므로 회유하거나, " +
+                    "풀어 주거나, 처형하는 수밖에 없다."));
+            }
+        }
+
         options.Add(("풀어 준다", () => Imprisonment.Release(prisoner)));
     }
 
+    // **[도축한다]** — 시체를 갈라 쓸 것을 꺼낸다(그리고 그 자리를 치운다).
+    //
+    // 큐를 안 타는 일감이라 여기서 **그 폰 앞으로 예약해** 보낸다(`ReserveFor` — `[치료한다]`와
+    // 같은 길). 손으로 시킨 일은 작업 설정을 안 본다.
+    // 산 채로 쓰러진 것에도 붙는다 — 판정은 `Butchering.CanButcherAlive` 하나가 한다.
+    static void AddButcherOption(GameObject target, List<PawnMover> commanders,
+                                 List<PawnMenuOption> options)
+    {
+        if (target == null) return;
+
+        var corpse = target.GetComponent<Corpse>();
+        var brain  = target.GetComponent<UnitBrain>();
+
+        // 시체가 아니면 **쓰러진 것**이어야 한다(그리고 내 편이 아니어야 한다).
+        if (corpse == null && !Butchering.CanButcherAlive(brain)) return;
+
+        var race  = brain != null ? brain.Data : null;
+        var stage = corpse != null ? corpse.Stage : CorpseStage.Fresh;
+
+        // **나올 것이 없으면 줄을 흐리게 남긴다** — 빼 버리면 "이 시체는 원래 도축이 안 되나"와
+        // "지금은 안 되나"가 구별이 안 된다(몸값 줄과 같은 규약).
+        if (!Butchering.HasYield(race, stage))
+        {
+            options.Add(PawnMenuOption.Blocked("도축한다", "여기서 나올 것이 없다"));
+            return;
+        }
+
+        // **자기 자신은 못 시킨다** — 쓰러진 폰을 고른 채 그 폰을 누르는 경우.
+        var worker = Nearest(commanders, target.transform.position, b => b.gameObject != target);
+        if (worker == null) return;
+
+        var doer = worker.GetComponent<UnitBrain>();
+        if (doer == null) return;
+
+        // **문구는 하나다 — 산 것에도 `[도축한다]`.** 상태마다 낱말을 나누면 그것이 별개의
+        // 동작인 줄 알게 된다(`[공격한다]`가 쓰러진 놈에게도 같은 낱말인 것과 같은 규칙).
+        // 되돌릴 수 없다는 것은 **일이 시작되는 순간**이 말해 준다 — 산 것은 칼을 대는
+        // 그때 죽는다.
+        const string label = "도축한다";
+
+        // **도축대가 있으면 거기로 데려간다.** 손으로 시킨 것도 마찬가지다 — 도축대를 지어
+        // 놓고도 폰이 시체 옆에 쭈그려 앉아 가르면 그 건물을 지은 뜻이 없고, 산출물도
+        // 도축대에 쌓이지 않아 창고로 실려 가지 않는다(바닥·배낭으로 흩어진다).
+        //
+        // **없으면 그 자리에서 가른다** — 도축대를 짓기 전에도 사냥한 것을 손질할 수 있어야
+        // 한다(가죽이 첫 방어구의 재료다).
+        var table = ButcherTable.NearestTo(target.transform.position);
+
+        options.Add((label, () =>
+        {
+            // **있던 일감을 넘긴다 — 새로 만들지 않는다.** 도축대 규칙이 이미 같은 몸에
+            // 하나를 걸어 뒀을 수 있고, 그때 하나 더 만들면 **두 폰이 같은 시체로 걸어간다**
+            // (`[치료한다]`가 `RequestTreatBy`로 넘기는 것과 같은 규약). **하고 있으면 안
+            // 뺏는다** — 가서 보니 이미 갈라져 있는 헛걸음이 된다.
+            var mgr = JobManager.Instance;
+            if (mgr == null) return;
+
+            // **하던 일을 놓아야 이 명령이 돈다**(2026-09-11). 예약만 걸어 두면 그 폰은 하던
+            // 일감을 마칠 때까지 안 오고, 화면에는 *"눌렀는데 아무도 안 온다"*로만 보인다 —
+            // 놀고 있을 때만 되니 **가끔 되는 것**처럼 보여서 더 나쁘다. 우클릭 명령 여덟이
+            // 전부 이걸 부르는데(치료·먹이기·설득·업기·줍기·호송) 도축만 빠져 있었다.
+            //
+            // **이미 하고 있으면 안 건드린다** — 그 폰의 지금 일감이 바로 이것일 수 있고,
+            // 그때 놓으면 시킨 일을 스스로 취소하는 꼴이 된다.
+            if (mgr.FindButcherJobFor(target)?.Status == JobStatus.InProgress) return;
+
+            doer.AbandonWork();
+
+            // **놓은 뒤에 다시 찾는다** — 그 폰이 막 집어 든 참이었으면 방금 취소되면서
+            // 큐에서 빠졌다(`CancelJob`이 목록에서 지운다). 그걸 모르고 예약하면 아무도 못
+            // 찾는 일감을 들려 주는 셈이라 **화면에는 또 "아무도 안 온다"로 보인다.**
+            var existing = mgr.FindButcherJobFor(target);
+            if (existing != null)
+            {
+                existing.ReleaseReservation();
+                existing.Reserve(doer);
+                return;
+            }
+
+            mgr.ReserveFor(new ButcherJob(target, table), doer);
+        }));
+    }
+
     static void AddCarryOption(UnitBrain target, List<PawnMover> commanders,
-                               List<(string, System.Action)> options)
+                               List<PawnMenuOption> options)
     {
         if (target == null || target.Blackboard == null) return;
         if (PawnCarry.IsCarried(target)) return;
@@ -720,7 +1247,7 @@ public class MoveController : MonoBehaviour
         // 몇 kg인지 적는다 — 업을지 말지는 그 폰이 얼마나 느려지느냐가 정한다.
         float w   = PawnCarry.WeightOf(target);
         float cap = CarryCapacity.For(carrier);
-        string tail = cap > 0f && w > cap ? $" ({w:F0}kg — 버겁다)" : $" ({w:F0}kg)";
+        string tail = cap > 0f && w > cap ? $" ({w:F0}kg, 버겁다)" : $" ({w:F0}kg)";
 
         // **갇힌 사람도 업는다** — 다른 우리로 옮기거나, 회유하려고 침대로 데려가거나,
         // 그냥 끌어내거나. 가둔 것을 되돌리는 길이 [풀어 준다] 하나뿐이면 자리를 못 바꾼다.
@@ -754,7 +1281,7 @@ public class MoveController : MonoBehaviour
     // **간수 설정을 안 본다** — 손으로 시킨 일은 "이 작업을 맡길까"의 결과가 아니라 지금
     // 이 순간의 지시다(자원 노드 직접 배정·[치료한다]와 같은 규칙).
     static void AddEscortOptions(UnitBrain target, List<PawnMover> commanders,
-                                 List<(string, System.Action)> options)
+                                 List<PawnMenuOption> options)
     {
         Add("우리로 옮긴다",      EscortDest.Cage);
         Add("죄수 침대로 옮긴다", EscortDest.Bed);
@@ -766,17 +1293,35 @@ public class MoveController : MonoBehaviour
         }
     }
 
-    // 업고 있는 폰에게 "여기 내려놔"를 시킨다. 침대·우리면 그 자리에 눕히거나 가둔다.
+    // **[묻는다] · [태운다]** — 시체판 `AddEscortOptions`다.
     //
-    // `accepts`는 **업힌 사람**을 본다 — 자리마다 받는 사람이 다르다(보통 침대는 붙잡은
-    // 사람을 안 받는다). 자리를 못 받는 사람을 업고 있으면 선택지를 아예 안 띄운다.
-    static void AddPutDownOption(List<PawnMover> commanders, List<(string, System.Action)> options,
-                                 string label, Vector3 at, Bed bed = null, PrisonCage cage = null,
-                                 System.Func<UnitBrain, bool> accepts = null)
+    // 자리를 콕 집지 않는 것도, 걸어가는 사이 자리가 차면 갈아타는 것도, 자리가 없으면
+    // 선택지를 아예 안 띄우는 것도 전부 위와 **같은 규칙**이다. 시체를 옮기는 것과 붙잡은
+    // 사람을 옮기는 것은 같은 동작이라 새 규칙을 만들 이유가 없다.
+    static void AddFuneralOptions(UnitBrain target, List<PawnMover> commanders,
+                                  List<PawnMenuOption> options)
     {
+        Add("묻는다", EscortDest.Grave);
+        Add("태운다", EscortDest.Pyre);
+
+        void Add(string label, EscortDest dest)
+        {
+            if (!PrisonEscort.CanOrder(commanders, target, dest)) return;
+            options.Add((label, () => PrisonEscort.Order(commanders, target, dest)));
+        }
+    }
+
+    // 업고 있는 폰에게 "여기 내려놔"를 시킨다. 자리가 정해져 있으면 그 자리가 받아 가고
+    // (침대면 눕히고, 우리면 가두고, 무덤이면 묻는다), 맨바닥이면 그냥 내린다.
+    static void AddPutDownOption(List<PawnMover> commanders, List<PawnMenuOption> options,
+                                 string label, Vector3 at, ICarrySite site = null)
+    {
+        // 받는 자리가 정해져 있으면 **그 자리가 받아 줄 사람**을 업은 폰만 고른다 — 자리를
+        // 못 받는 사람을 업고 있으면 선택지를 아예 안 띄운다(눌러도 아무 일이 없으면 명령이
+        // 먹혔는지 알 길이 없다).
         var carrier = Nearest(commanders, at,
                               b => b.Blackboard?.Carrying != null
-                                && (accepts == null || accepts(b.Blackboard.Carrying)));
+                                && (site == null || site.Accepts(b.Blackboard.Carrying)));
         if (carrier == null) return;
 
         options.Add((label, () =>
@@ -784,14 +1329,13 @@ public class MoveController : MonoBehaviour
             var bbc = carrier.Blackboard;
             bbc.HasPutDown  = true;
             bbc.PutDownAt   = at;
-            bbc.PutDownBed  = bed;
-            bbc.PutDownCage = cage;
+            bbc.PutDownSite = site;
             carrier.AbandonWork();
         }));
     }
 
     static void AddCageOptions(PrisonCage cage, List<PawnMover> commanders,
-                               List<(string, System.Action)> options)
+                               List<PawnMenuOption> options)
     {
         // **놓아 주는 길은 하나다**(`Imprisonment.Release`) — 우리가 제 것만 풀면 도망 성향이
         // 안 붙어, 우리에서 푼 적은 그 자리에서 덤비고 사람에게서 푼 적은 도망친다.
@@ -804,12 +1348,119 @@ public class MoveController : MonoBehaviour
             // **시체를 업고 있으면 안 띄운다**(`PrisonCage.TryPut`이 거절한다 — 침대와 같은
             // 규칙). 눌러도 아무 일이 안 일어나면 명령이 먹혔는지 알 길이 없다.
             AddPutDownOption(commanders, options, "업은 사람을 여기 가둔다",
-                             cage.HoldPosition, cage: cage,
-                             accepts: b => !PawnCarry.IsCorpse(b));
+                             cage.HoldPosition, cage);
+    }
+
+    // **도축대 — 몸을 올리고 내리는 줄만.**
+    //
+    // 규칙을 손보는 것은 제 창(`ButcherTableUI`)이 한다. 여기 남는 것은 침대의
+    // `[업은 사람을 여기 눕힌다]`와 **같은 축**이다 — 업고 있는 폰에게 내리는 지시고,
+    // 조작 화면에 넣을 성질이 아니다(창을 열려고 짐을 내려놓을 수는 없다).
+    //
+    // **내리는 줄이 없으면 상판 위의 몸을 치울 길이 아예 없다** — 도축대 콜라이더가 상판을
+    // 감싸고 있어서 그 위에 누운 몸은 커서로 집히지 않는다(화장터의 `[내린다]`와 같은 자리).
+    static void AddButcherTableOptions(ButcherTable table, List<PawnMover> commanders,
+                                       List<PawnMenuOption> options)
+    {
+        var laid = table.LaidBody;
+        if (laid != null)
+        {
+            options.Add(($"{laid.UnitName}을(를) 내린다", () =>
+            {
+                // 일하러 오던 폰이 있으면 그 일감도 거둔다 — 안 그러면 내려놓자마자
+                // 도로 올려놓는다.
+                var job = JobManager.Instance?.FindButcherJobFor(laid.gameObject);
+                if (job != null) JobManager.Instance.CancelJob(job);
+
+                // **붙들어 둔 것을 먼저 푼다** — 산 채로 상판에 눕혀 뒀으면
+                // `SetSleeping`이 걸려 있어 그냥 옮기면 자리만 바뀐 채 굳는다.
+                table.ReleaseLaid();
+                PawnPlacement.PlaceOnGround(laid.gameObject, table.ApproachPosition);
+            }));
+            return;
+        }
+
+        // 업고 있으면 **여기서 손질하라**고 시킨다. 시체를 메고 도축대까지 걸어와 놓고
+        // 다시 그 시체를 우클릭해야 하는 것은 한 동작이 두 동작이 되는 일이다.
+        var carrier = Nearest(commanders, table.transform.position,
+                              b => b.Blackboard?.Carrying != null
+                                && Butchering.CanButcher(b.Blackboard.Carrying));
+        if (carrier == null) return;
+
+        var body = carrier.Blackboard.Carrying;
+        options.Add(($"{body.UnitName}을(를) 여기서 손질한다", () =>
+        {
+            var mgr = JobManager.Instance;
+            if (mgr == null) return;
+
+            var existing = mgr.FindButcherJobFor(body.gameObject);
+            if (existing != null && existing.Status == JobStatus.InProgress) return;
+
+            // 업고 있는 동안에는 일감을 안 집지만(`WorkNode` 게이트) **업기 자체가 일감일 수
+            // 있다** — 도축대 A로 메고 가는 중에 B에서 손질하라고 시키는 경우다. 안 놓으면
+            // 옛 일감이 그대로 돌아 새 예약이 영영 안 걸린다.
+            carrier.AbandonWork();
+
+            // **놓은 뒤에 다시 찾는다** — 그 옛 일감이 바로 지금 놓은 것이면 `CancelJob`이 큐에서 지웠다.
+            // 앞에서 잡아 둔 참조에 예약을 걸면 아무도 못 찾는 일감(그것도 A행)을 쥐여 주는 셈이라 화면에는
+            // *"눌렀는데 아무도 안 온다"*로만 보인다(시체 우클릭 쪽이 09-11에 겪고 고친 그 자리).
+            // 남아 있더라도 **다른 도축대로 가는 일감**이면 넘기지 않는다 — 시킨 것은 *여기서*다.
+            existing = mgr.FindButcherJobFor(body.gameObject);
+            if (existing != null && existing.Table == table)
+            {
+                existing.ReleaseReservation();
+                existing.Reserve(carrier);
+                return;
+            }
+            if (existing != null) mgr.CancelJob(existing);
+
+            mgr.ReserveFor(new ButcherJob(body.gameObject, table), carrier);
+        }));
+    }
+
+    // **무덤 — 업은 시체를 여기 묻는다.**
+    //
+    // 파내는 것은 **여기 없다** — 그건 무덤을 조작하는 일이라 제 창(`GraveUI`)이 답한다.
+    // 우클릭에 남는 것은 *업고 있는 폰에게 내리는 지시* 하나뿐이고, 그건 침대의
+    // [여기 눕힌다]와 정확히 같은 자리다.
+    static void AddGraveOptions(Grave grave, List<PawnMover> commanders,
+                                List<PawnMenuOption> options)
+    {
+        if (grave.IsOccupied) return;
+
+        AddPutDownOption(commanders, options, "업은 시체를 여기 묻는다",
+                         grave.GravePosition, grave);
+    }
+
+    // **화장터 — 업은 시체를 여기 올린다.**
+    //
+    // 내리는 것도 진행도 **여기 없다**(`PyreUI`) — 무덤과 같은 이유다.
+    static void AddPyreOptions(Pyre pyre, List<PawnMover> commanders,
+                               List<PawnMenuOption> options)
+    {
+        if (pyre.IsOccupied) return;
+
+        AddPutDownOption(commanders, options, "업은 시체를 여기서 태운다",
+                         pyre.PyrePosition, pyre);
+    }
+
+    // **화톳불 — 켜고 끄는 줄 하나.**
+    //
+    // 어두워지면 저절로 붙으므로 평소에는 누를 일이 없다. 이 줄이 있는 이유는 **목재가
+    // 아쉬운 며칠**이다 — 그때 어느 불을 죽일지가 실제 결정이 되고, 그 결정을 내릴 자리가
+    // 없으면 화톳불은 지어 두고 잊는 물건이 된다.
+    //
+    // **명령 받을 폰이 필요 없다** — 폰이 장작을 나르지 않으므로(`MaterialPool.Consume`)
+    // 이건 건물에 거는 스위치지 누구에게 시키는 일이 아니다.
+    static void AddCampfireOptions(Campfire fire, List<PawnMenuOption> options)
+    {
+        options.Add(fire.WantsFire
+            ? ("불을 끈다",   () => fire.SetWanted(false))
+            : ("불을 지핀다", () => fire.SetWanted(true)));
     }
 
     static void AddBedOptions(Bed bed, List<PawnMover> commanders,
-                              List<(string, System.Action)> options)
+                              List<PawnMenuOption> options)
     {
         // **업고 있으면 그 사람을 여기 눕히는 것이 먼저다.** 사람을 진 채로 침대 앞에 서서
         // "내가 눕는다"가 맨 위에 뜨면 순서가 뒤집힌다.
@@ -819,8 +1470,7 @@ public class MoveController : MonoBehaviour
         // 근거가 없고, 그렇다고 붙들면 보통 침대가 곧 죄수 침대가 된다.
         string verb = bed.ForPrisoners ? "여기 가둔다" : "여기 눕힌다";
         if (!bed.IsOccupied)
-            AddPutDownOption(commanders, options, $"업은 사람을 {verb}", bed.SleepPosition,
-                             bed: bed, accepts: bed.Accepts);
+            AddPutDownOption(commanders, options, $"업은 사람을 {verb}", bed.SleepPosition, bed);
 
         // 죄수 침대는 우리 폰이 자러 오는 자리가 아니다.
         //
@@ -871,6 +1521,23 @@ public class MoveController : MonoBehaviour
     // 세 벌로 적혀 있었고, 조건만 조금씩 달랐다(들 수 있나 / 업고 있나 / 무조건).
     //
     // `can`이 null이면 아무나. 못 고르면 null — 부르는 쪽이 그때 선택지를 안 내놓으면 된다.
+    // 포탈·층 통로로 보낼 폰 — **그 문과 같은 층에 선 폰만**(`PortalTravel.CanReach`). 아무도 없으면 왜인지를
+    // 돌려준다: 안 고른 것과 고른 폰이 다른 층에 있는 것은 고칠 길이 다르다.
+    static List<UnitBrain> PortalGoers(List<PawnMover> commanders, Transform door, out string why)
+    {
+        var goers = new List<UnitBrain>();
+        bool any = false;
+        foreach (var m in commanders)
+        {
+            var b = m != null ? m.GetComponent<UnitBrain>() : null;
+            if (b == null) continue;
+            any = true;
+            if (PortalTravel.CanReach(b, door)) goers.Add(b);
+        }
+        why = any ? "고른 폰이 이 층에 없다" : "보낼 폰을 먼저 고를 것";
+        return goers;
+    }
+
     static UnitBrain Nearest(List<PawnMover> commanders, Vector3 point, System.Func<UnitBrain, bool> can)
     {
         UnitBrain best = null;
@@ -936,27 +1603,22 @@ public class MoveController : MonoBehaviour
         foreach (var pawn in commanders)
         {
             var bb = pawn.GetComponent<UnitBrain>().Blackboard;
-            bb.FollowTarget = target;
-            bb.Target       = null;    // 따라가기와 교전은 같이 갈 수 없다
-            bb.FinishTarget = null;
+            bb.FollowTarget  = target;
+            bb.Target        = null;   // 따라가기와 교전은 같이 갈 수 없다
+            bb.OrderedTarget = null;
+            bb.FinishTarget  = null;
             bb.ManualMove   = false;
         }
     }
 
-    static Vector3[] CalcFormation(Vector3 center, int count)
+    // 무리가 지금 서 있는 한복판. **진형의 앞이 어디인지**를 여기서 낸다.
+    static Vector3 Centroid(List<PawnMover> pawns)
     {
-        var positions = new Vector3[count];
-        int cols = Mathf.CeilToInt(Mathf.Sqrt(count));
-        float spacing = 1.2f;
+        if (pawns == null || pawns.Count == 0) return Vector3.zero;
 
-        for (int i = 0; i < count; i++)
-        {
-            int row = i / cols;
-            int col = i % cols;
-            float ox = (col - (cols - 1) * 0.5f) * spacing;
-            float oz = (row - (Mathf.CeilToInt((float)count / cols) - 1) * 0.5f) * spacing;
-            positions[i] = center + new Vector3(ox, 0f, oz);
-        }
-        return positions;
+        Vector3 sum = Vector3.zero;
+        int n = 0;
+        foreach (var p in pawns) { if (p != null) { sum += p.transform.position; n++; } }
+        return n > 0 ? sum / n : Vector3.zero;
     }
 }

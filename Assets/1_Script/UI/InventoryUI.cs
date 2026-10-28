@@ -14,13 +14,22 @@ public class InventoryUI : MonoBehaviour
     public static void NotifyItemSelected(ItemInstance inst, InventoryGridUI sourceGrid)
         => _instance?.OnItemSelected(inst, sourceGrid);
 
-    public static void NotifyItemDoubleAction(ItemInstance inst, InventoryGridUI sourceGrid)
-        => _instance?.OnItemDoubleAction(inst, sourceGrid);
+    // **클릭이 집기가 아닌 때가 있다.** 잠금 모드에서는 한 번 누르는 것이 자물쇠를 거는
+    // 일이라, 집어 버리면 잠그려다 물건이 손에 들린다 — 집기 전에 먼저 물어본다.
+    // 참을 돌려주면 그 클릭은 여기서 끝난 것이다(`DraggableItem.BeginCarry`).
+    public static bool ClickConsumed(ItemInstance inst, InventoryGridUI sourceGrid)
+        => _instance != null && _instance.ConsumeModalClick(inst, sourceGrid);
 
-    public static void NotifyItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid)
-        => _instance?.OnItemRightClick(inst, sourceGrid);
+    // **아이콘도 같이 받는다** — 답을 그 아이콘 자리에서 돌려주려고(먹기의 잔상·거절 흔들림).
+    public static void NotifyItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid,
+                                            DraggableItem icon = null)
+        => _instance?.OnItemRightClick(inst, sourceGrid, icon);
 
     static InventoryUI _instance;
+
+    // 배낭 창 하나. **장비칸 드래그가 칸 크기를 여기서 베낀다**(`Grid.CellSize`) — 손에 든
+    // 그림이 놓일 자리와 같은 크기여야 얼마나 큰 것을 들고 있는지가 보인다.
+    public static InventoryUI Instance => _instance;
 
     [Header("씬 참조")]
     [SerializeField] GameObject      panel;
@@ -31,6 +40,10 @@ public class InventoryUI : MonoBehaviour
     [SerializeField] EquipSlotUI     chestSlot;
     [SerializeField] EquipSlotUI     handsSlot;
     [SerializeField] EquipSlotUI     legsSlot;
+    [Tooltip("허리(램프). 2026-10-15 다리 칸을 복제해 세웠다.")]
+    [SerializeField] EquipSlotUI     beltSlot;
+    [Tooltip("신발. 2026-10-18 허리 칸을 복제해 세웠다(`EquipSlotLayout`).")]
+    [SerializeField] EquipSlotUI     feetSlot;
 
     [Header("입력")]
     [SerializeField] Key toggleKey = Key.I;
@@ -61,6 +74,9 @@ public class InventoryUI : MonoBehaviour
     [SerializeField] Button          lockButton;
     [SerializeField] TextMeshProUGUI lockLabel;
 
+    [Tooltip("칸을 다시 채워 넣는다 — 같은 것끼리 합치고 큰 것부터 빈틈없이")]
+    [SerializeField] Button          tidyButton;
+
     [Tooltip("적재 바 오른쪽 끝의 폰 넘겨보기 묶음. 원정대 거래일 때만 켜진다")]
     [SerializeField] GameObject      traderGroup;
     [SerializeField] TextMeshProUGUI traderNameText;
@@ -84,6 +100,10 @@ public class InventoryUI : MonoBehaviour
 
     public bool IsPanelOpen => panel != null && panel.activeSelf;
 
+    // 폰 배낭 격자. **상점 진열이 이걸 베낀다**(칸 크기·격자 크기) — 나란히 떠 있는 두 격자가
+    // 다른 눈금을 쓰면 같은 물건이 다른 크기로 보인다.
+    public InventoryGridUI Grid => _gridUI;
+
     void Awake()
     {
         _instance = this;
@@ -97,6 +117,7 @@ public class InventoryUI : MonoBehaviour
         if (actionButton) actionButton.onClick.AddListener(OnActionClicked);
         if (unloadButton) unloadButton.onClick.AddListener(ToggleUnload);
         if (lockButton)   lockButton.onClick.AddListener(ToggleLockMode);
+        if (tidyButton)   tidyButton.onClick.AddListener(TidyGrid);
         if (traderPrevButton) traderPrevButton.onClick.AddListener(() => StepPawn(-1));
         if (traderNextButton) traderNextButton.onClick.AddListener(() => StepPawn(+1));
         if (traderGroup)  traderGroup.SetActive(false);
@@ -135,10 +156,7 @@ public class InventoryUI : MonoBehaviour
         // 수량 칸에 숫자를 치는 중이면 I(토글)가 먹으면 안 된다 — 창이 닫혀 버린다.
         if (sellQuantity != null && sellQuantity.isFocused) return;
 
-        // 월드맵에서 I를 누르면 **아무도 안 고른 빈 배낭**이 뜬다 — 거기선 선택이 팀 단위라
-        // 고른 폰이라는 게 없다. 거래로 폰이 지정돼 있을 때만 연다.
-        if (Keyboard.current[toggleKey].wasPressedThisFrame &&
-            (GameModeManager.IsField || _boundPawn != null))
+        if (Keyboard.current[toggleKey].wasPressedThisFrame && !InputFocus.KeysBlocked())
             Toggle();
 
         // 상점이 어떤 길로 닫히든 [판매] 표시가 따라 사라지게 한다.
@@ -149,7 +167,8 @@ public class InventoryUI : MonoBehaviour
     void Toggle()
     {
         bool open = !panel.activeSelf;
-        panel.SetActive(open);
+        if (open) WindowRaiser.Open(panel);
+        else      WindowRaiser.Close(panel);
 
         // **닫으면 남의 배낭에서 손을 뗀다.** 포로 소지품처럼 밖에서 지정해 연 것은
         // **한 번 보는 것**이라, 안 풀면 다음에 I를 눌렀을 때 내 폰 대신 그 포로의 배낭이
@@ -188,8 +207,14 @@ public class InventoryUI : MonoBehaviour
     // **"누구의 배낭인가"는 배낭 창의 정보다.** 상점 창에 달면 상점을 안 열었을 땐 넘겨볼
     // 수단이 없고, 무게·짐내림·잠금이 이미 "이 폰"의 것인데 폰을 고르는 자리만 딴 창에 있게 된다.
     //
-    // 월드맵에서만 쓴다 — 필드에서는 폰을 클릭해 고르는 방식이 이미 있고, 같은 일을 하는
-    // 조작이 둘이면 어느 쪽이 이기는지 헷갈린다. 그래서 목록이 없으면 줄 자체가 꺼진다.
+    // **필드에서도 쓴다**(2026-08-14). 한동안 월드맵 전용이었다 — "필드에서는 폰을 클릭해
+    // 고르는 방식이 이미 있고, 같은 일을 하는 조작이 둘이면 어느 쪽이 이기는지 헷갈린다"가
+    // 그 이유였다. 그런데 **둘은 같은 일이 아니다**: 선택은 *누구를 데리고 왔나*이고 순환은
+    // *그중 누구 배낭을 보나*다. 순환이 도는 범위가 선택의 부분집합이라 겨룰 데가 없고,
+    // 여럿을 고른 채 상점을 열면 오히려 순환이 없이는 **첫 번째로 잡힌 폰의 배낭에 갇힌다**
+    // (그 "첫 번째"는 레이캐스트 순서라 고른 사람이 정한 것도 아니다).
+    //
+    // 목록이 없으면 줄 자체가 꺼지고, 혼자면 버튼만 숨는다.
     IReadOnlyList<UnitBrain> _cycle;
     int                      _cycleIndex;
 
@@ -345,6 +370,16 @@ public class InventoryUI : MonoBehaviour
         RefreshLockToggle();
     }
 
+    // **칸을 다시 채워 넣는다**(`Inventory.Compact`).
+    //
+    // 격자 배낭은 쓰다 보면 반드시 조각난다 — 가운데 것을 꺼내면 그 자리가 구멍으로 남고,
+    // 칸 수로는 넉넉한데 **2×4 갑옷이 들어갈 연속된 자리가 없어** 거절당한다. 그때 물건을
+    // 하나씩 끌어 옮기는 것은 놀이가 아니라 잡일이다.
+    //
+    // **지금 보고 있는 통을 정리한다** — 배낭이든 창고든 시체든, 이 창이 그리고 있는 그것.
+    // 격자가 `OnChanged`를 듣고 있어 다시 그리는 것은 저절로 된다.
+    void TidyGrid() => _gridUI?.Inventory?.Compact();
+
     void RefreshLockToggle()
     {
         if (lockButton == null) return;
@@ -391,12 +426,38 @@ public class InventoryUI : MonoBehaviour
 
     void BindEquipSlots(Equipment eq)
     {
-        mainHandSlot?.Bind(eq);
-        offHandSlot?.Bind(eq);
-        headSlot?.Bind(eq);
-        chestSlot?.Bind(eq);
-        handsSlot?.Bind(eq);
-        legsSlot?.Bind(eq);
+        // **못 끼는 폰에게는 칸을 안 보여 준다**(`UnitData.CanEquip`) — 골렘·짐승.
+        //
+        // 막기만 하고 칸을 남기면 **넣어도 아무 일이 안 일어나는 칸**이 생긴다. 그건
+        // "안 되는 것"이 아니라 "고장 난 것"으로 읽힌다 — 이 저장소가 못 누르는 줄을
+        // 지우는 대신 흐리게 두고 이유를 띄우는 것과 같은 축이고, 여기서는 *"이 종족은
+        // 아예 장비를 안 쓴다"*라 칸 자체가 없는 것이 맞다.
+        bool show = eq == null || eq.CanEquip;
+
+        Show(mainHandSlot, eq, show);
+        Show(offHandSlot,  eq, show);
+        Show(headSlot,     eq, show);
+        Show(chestSlot,    eq, show);
+        Show(handsSlot,    eq, show);
+        Show(legsSlot,     eq, show);
+        Show(beltSlot,     eq, show);
+        Show(feetSlot,     eq, show);
+
+        if ((beltSlot == null || feetSlot == null) && !_warnedBelt)
+        {
+            _warnedBelt = true;
+            Debug.LogWarning($"[InventoryUI] 장비칸이 씬에 없습니다 — 허리 {beltSlot != null} · 신발 {feetSlot != null}. " +
+                             "없는 칸의 장비는 찰 곳이 안 뜬다.");
+        }
+    }
+
+    bool _warnedBelt;
+
+    static void Show(EquipSlotUI slot, Equipment eq, bool show)
+    {
+        if (slot == null) return;
+        slot.gameObject.SetActive(show);
+        if (show) slot.Bind(eq);
     }
 
     // ── 외부 진입점 ──────────────────────────────────────────────────────────
@@ -404,7 +465,7 @@ public class InventoryUI : MonoBehaviour
     public void ForceOpen()
     {
         if (panel == null || panel.activeSelf) return;
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
         BindToSelected();
     }
 
@@ -464,9 +525,8 @@ public class InventoryUI : MonoBehaviour
 
     void OnItemSelected(ItemInstance inst, InventoryGridUI sourceGrid)
     {
-        // 잠금 모드에서는 클릭이 **잠금 토글**이다. 판매·루팅 선택으로 넘기지 않는다 —
-        // 한 클릭이 두 가지를 뜻하면 어느 쪽이 일어났는지 알 수 없다.
-        if (_lockMode && ToggleItemLock(inst, sourceGrid)) return;
+        // 잠금 모드의 클릭은 **집기보다 먼저** 처리된다(`ConsumeModalClick`) — 여기까지
+        // 오지 않는다.
 
         if (_mode == ActionMode.None) return;
         _selectedItem       = inst;
@@ -474,33 +534,26 @@ public class InventoryUI : MonoBehaviour
         RefreshActionBar();
     }
 
-    void OnItemDoubleAction(ItemInstance inst, InventoryGridUI sourceGrid)
-    {
-        // 더블클릭은 단클릭 두 번으로도 온다 — 잠금 모드에서 즉시 판매/루팅이 튀어나오면
-        // 잠그려다 물건을 팔아 버린다.
-        if (_lockMode) return;
-
-        // **동전은 쓰는 물건이다.** 어느 모드든 여기서 먼저 잡는다 —
-        // 판매 모드에서 동전을 팔거나, 루팅 모드에서 동전을 배낭 칸으로 옮기는 것은
-        // 둘 다 할 이유가 없는 짓이다. 시체에서 바로 챙기는 것도 이 길로 된다.
-        if (TryClaimCoins(inst, sourceGrid)) return;
-
-        _selectedItem       = inst;
-        _selectedSourceGrid = sourceGrid;
-        if (_mode == ActionMode.Sell) ExecuteSell();
-        else if (_mode == ActionMode.Loot) ExecuteLoot();
-    }
+    // 잠금 모드의 클릭 — 집기보다 먼저 돈다(`ClickConsumed`).
+    bool ConsumeModalClick(ItemInstance inst, InventoryGridUI sourceGrid)
+        => _lockMode && ToggleItemLock(inst, sourceGrid);
 
     // ── 우클릭: 한 번에 보내기 ────────────────────────────────────────────────
     //
     // **뜻은 무엇이 열려 있느냐가 정한다.**
     //   · 반대편 통이 열려 있으면 → **그리로 옮긴다**(배낭 ↔ 창고·작업대·시체).
-    //   · 배낭만 열려 있으면 → **장비는 입는다**(이미 찬 것이 있으면 교체).
+    //   · 배낭만 열려 있으면 → **장비는 입고, 음식은 먹는다.**
     //
     // 둘을 다른 조작으로 가르지 않는 이유: 우클릭으로 하고 싶은 일은 늘 **"이걸 저기로"**
     // 하나인데, "저기"가 상황마다 다를 뿐이다. 통이 열려 있는데 옷을 입혀 버리면 옮기려던
     // 사람이 놀라고, 통이 없는데 아무 일도 안 하면 배낭에서 장비를 차는 길이 드래그뿐이 된다.
-    void OnItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid)
+    //
+    // **음식의 "저기"는 입이다**(2026-08-20) — 동전의 저기가 지갑이고 장비의 저기가 몸인 것과
+    // 같은 자리다. 그래서 새 조작을 만들지 않았다: 규칙이 하나 더 생기면 그것만 따로 외워야 한다.
+    //
+    // **통이 열려 있으면 옮기는 쪽이 이긴다** — 창고를 열어 둔 채 밥을 옮기려던 사람이
+    // 그것을 먹어 버리면 되돌릴 수가 없다(옮기기는 무를 수 있지만 먹은 것은 못 무른다).
+    void OnItemRightClick(ItemInstance inst, InventoryGridUI sourceGrid, DraggableItem icon)
     {
         // 잠금 모드에서는 누르는 일이 잠그는 것뿐이다 — 잠그려다 물건을 보내면 안 된다.
         if (_lockMode) return;
@@ -512,7 +565,128 @@ public class InventoryUI : MonoBehaviour
         var target = InventoryGridUI.FindCounterpart(sourceGrid, inst.Data);
         if (target != null) { QuickMove(inst, sourceGrid, target); return; }
 
+        if (QuickEat(inst, sourceGrid, icon)) return;
+
         QuickEquip(inst, sourceGrid);
+    }
+
+    // ── 그 자리에서 먹는다 ────────────────────────────────────────────────────
+    //
+    // **먹는 것은 원래 폰이 알아서 한다**(`EatNode`) — 임계 아래로 내려가면 배낭이든 창고든
+    // 찾아 먹는다. 그런데 그건 *배가 고파졌을 때*의 일이라, **지금 채워 두고 싶을 때**의 길이
+    // 없었다: 싸우러 나가기 전, 원정을 떠나기 전, 임계 바로 위에서 어정거릴 때.
+    //
+    // **누른 그 뭉치를 먹는다** — `Feeding.ConsumeFrom`은 같은 종류를 아무거나 빼므로 여기서는
+    // 안 쓴다(`QuickEquip`이 인스턴스 경로로 가는 것과 **같은 이유**: 누른 것과 없어지는 것이
+    // 달라 보이면 안 된다).
+    //
+    // **즉시 먹는다.** `EatTime`(2~4초)을 기다리게 하려면 BT에 상태를 하나 더 만들어야 하는데,
+    // 인벤토리에서 하는 일은 전부 즉시다(착용도, 동전 회수도) — 여기만 시간이 흐르면 그것도
+    // 따로 외울 규칙이 된다.
+    //
+    // **답은 그 아이콘 자리에서 돌려준다** — 먹으면 줄어들며 사라지는 잔상, 못 먹으면 흔들림
+    // (`DraggableItem.FlashUsed`/`FlashRefused`). 폰 머리 위에 띄워 봤더니
+    // (`GradeUpNotificationUI`) **손은 창을 보고 있는데 답은 창 밖에서 나서**, 내가 조작한
+    // 결과가 아니라 어딘가에서 일어난 일처럼 보였다. 배낭에서 하는 일의 답은 배낭에 있어야 한다.
+    //
+    // 돌려주는 값은 *"이건 먹는 일이었다"*지 *"먹었다"*가 아니다 — 거절한 경우에도 참을
+    // 돌려줘야 아래 `QuickEquip`으로 흘러가지 않는다(음식은 장비가 아니라 어차피 아무 일도
+    // 안 일어나지만, 이유를 남기고 끝내는 편이 낫다).
+    bool QuickEat(ItemInstance inst, InventoryGridUI sourceGrid, DraggableItem icon)
+    {
+        if (inst.Data is not FoodData food) return false;
+
+        // **배낭의 밥만 먹는다** — 창고·작업대의 밥을 눌러 봐야 **누가 먹는지 말할 수 없다**
+        // (창고의 검을 눌러 입지 않는 것과 같은 규칙). 폰이 먹으러 가는 것은 `EatNode` 몫이다.
+        var src   = sourceGrid.Inventory;
+        var eater = src.GetComponent<UnitBrain>();
+        var bb    = eater != null ? eater.Blackboard : null;
+        if (bb == null) return false;
+
+        // **갇힌 사람은 제 손으로 못 먹는다** — 그게 간수를 두는 이유이고(`FeedJob`), 여기서
+        // 뚫리면 포로 소지품 창을 열어 공짜로 먹이는 길이 된다. 붙잡아 두는 값이 사라진다.
+        // **죽은 사람·업힌 사람·남의 폰은 못 먹는다.** 누가 이 축을 도는지는 `Needs.Simulates`
+        // 하나가 답한다 — 여기서 따로 세면 어긋난다. 특히 **시체가 그 구멍이었다**:
+        // `BecomeCorpse`는 `UnitBrain`을 **끄기만** 하므로 `GetComponent`로는 산 사람과
+        // 구별이 안 되고, 시체 배낭에서 밥을 우클릭하면 **그 밥이 사라졌다**(시체는 배가
+        // 안 고프니 아무 일도 안 일어난 채로).
+        // **축까지 물어야 한다** — 몸이 셋이 되면서 `Simulates(brain)`은 *무엇이든 요구하는
+        // 폰인가*가 됐다. 골렘은 에너지를 요구하지 허기를 요구하지 않으므로, 축을 안 물으면
+        // **돌덩이에게 빵을 먹일 수 있다**(먹여도 안 차니 밥만 사라진다).
+        if (!Feeding.Simulates(eater))
+            return Refuse(icon, $"{eater.UnitName}은(는) 지금 먹을 수 없다");
+
+        // **밖에 나간 폰은 못 먹는다**(상단이 포탈 너머에 있는 동안). 그 폰들은 GameObject가 꺼져 있어
+        // **허기가 아예 안 돈다** — 채워 봐야 줄지 않으니 밥만 사라진다. 띄울 자리도 없다
+        // (팝업은 폰 머리 위를 따라가는데 그 폰은 지도 밖의 옛 자리에 서 있다).
+        if (!eater.gameObject.activeInHierarchy)
+        {
+            Debug.Log($"[Eat] {eater.UnitName}은(는) 원정 중이라 여기서 못 먹는다(허기가 안 돈다).");
+            return true;
+        }
+
+        if (bb.IsPrisoner)   return Refuse(icon, $"{eater.UnitName}은(는) 갇혀 있어 제 손으로 못 먹는다");
+        // 기절한 폰은 남도 자기도 못 먹인다(치료·설득과 같은 규칙).
+        if (bb.IsKnockedOut) return Refuse(icon, $"{eater.UnitName}은(는) 쓰러져 있어 못 먹는다");
+
+        // **배가 찼으면 안 먹는다** — 한 끼가 통째로 사라진다. 그 아래로는 막지 않는다:
+        // 넘치는 만큼 버려지는 것은 손으로 시킨 사람의 몫이고(`Feeding.Better`는 *자동*이
+        // 낭비하지 않게 있는 규칙이다), 싸우기 전에 채워 두는 것이 그 값을 치를 만한 일이다.
+        //
+        // **딱 100일 때만 막으면 그 순간은 한 프레임뿐이다** — 허기는 매 프레임 줄어서
+        // (`UpdateNeeds`) 먹자마자 99.99가 된다. 화면에는 `100/100`이라 적혀 있는데 계속
+        // 먹히는 것이 그래서였다. 여백을 둔다.
+        float room = Needs.Room(bb.Hunger);
+        if (room <= FullMargin)
+            return Refuse(icon, $"{eater.UnitName}은(는) 배가 불러 못 먹는다 (허기 {bb.Hunger:F0}/100)");
+
+        // **잠근 뭉치도 먹는다** — 잠금은 *자동 판단*이 조용히 축내는 것을 막으려고 있고
+        // (`Feeding.BestIn`의 규칙), 이건 그 뭉치를 콕 집어 누른 사람의 지시다.
+        float before = bb.Hunger;
+
+        // **개수를 건드리기 전에 잔상을 띄운다.** 개수가 줄면 `Inventory.OnChanged`가 돌고
+        // `InventoryGridUI.Refresh`가 아이콘을 다시 만드는데, 그때 **옛 아이콘을 그 자리에서
+        // 즉시 부모에서 뗀다**(`child.SetParent(null)` — 새 아이콘과 겹치지 않게). 그러면
+        // `GetComponentInParent<Canvas>()`가 **null**이 되어 잔상이 설 자리를 못 찾는다.
+        //
+        // `Destroy`가 프레임 끝에 도는 것만 믿고 뒤에 뒀더니 정확히 그래서 **아무것도 안
+        // 보였다** — 파괴가 늦는 것과 부모에서 떨어지는 것은 다른 시각이다.
+        icon?.FlashUsed();
+
+        inst.Quantity--;
+        if (inst.Quantity <= 0) src.RemoveInstance(inst);
+        else                    src.NotifyChanged();
+        if (_selectedItem == inst && inst.Quantity <= 0) _selectedItem = null;
+
+        Feeding.Eat(eater, food);
+
+        // **수치는 콘솔에만 적는다.** 화면에서 답하는 것은 잔상이고(*"한 개 썼다"*), 얼마나
+        // 찼는지는 살펴보기 창의 허기 바가 실시간으로 말한다 — 같은 것을 세 군데서 말할
+        // 이유가 없다. **버린 양**은 손으로 먹일 때 유일하게 손해 보는 자리라 남긴다.
+        float gain   = bb.Hunger - before;
+        float wasted = Mathf.Max(0f, food.NutritionValue - room);
+        Debug.Log($"[Eat] {eater.UnitName} — {food.ItemName} (허기 +{gain:F0}" +
+                  (wasted > 0f ? $", {wasted:F0} 버림)" : ")"));
+
+        RefreshActionBar();
+        return true;
+    }
+
+    // **딱 100일 때만 막으면 그 순간이 한 프레임뿐이라** 사실상 안 막힌다(위 주석).
+    const float FullMargin = 1f;
+
+    // 못 먹는 이유 — **아이콘을 흔들고** 콘솔에 적는다.
+    //
+    // 흔드는 것은 이 창에서 이미 *"안 된다"*를 뜻한다(`DraggableItem.EndCarry`가 못 놓은
+    // 물건을 흔든다) — 새 낱말을 만들지 않는다. 알림을 띄우기엔 너무 잦고, 아무 일도 안
+    // 일어나면 **눌리기는 한 건지**를 알 수가 없다.
+    //
+    // 돌려주는 값은 *"이건 먹는 일이었다"*지 *"먹었다"*가 아니다(위 주석).
+    static bool Refuse(DraggableItem icon, string why)
+    {
+        icon?.FlashRefused();
+        Debug.Log($"[Eat] {why}");
+        return true;
     }
 
     // 뭉치째 반대편으로. **들어간 만큼만 뺀다** — 자리가 모자라면 나머지는 그대로 남는다
@@ -522,11 +696,9 @@ public class InventoryUI : MonoBehaviour
         var src = from.Inventory;
         var dst = to.Inventory;
 
-        int moved = dst.TryAdd(inst.Data, inst.Quantity, inst.Quality);
+        // 남은 양째 옮긴다(`Inventory.Transfer` — 열린 것도 그대로 간다). 출처 정리도 거기서 한다.
+        int moved = Inventory.Transfer(src, inst, dst, inst.Quantity);
         if (moved <= 0) return;
-
-        inst.Quantity -= moved;
-        if (inst.Quantity <= 0) src.RemoveInstance(inst);
         else                    src.NotifyChanged();
 
         if (_selectedItem == inst && inst.Quantity <= 0) _selectedItem = null;
@@ -553,12 +725,12 @@ public class InventoryUI : MonoBehaviour
     void QuickEquip(ItemInstance inst, InventoryGridUI sourceGrid)
     {
         var src   = sourceGrid.Inventory;
-        var equip = src.GetComponent<UnitBrain>()?.Equipment;
+        var equip = src.TryGetComponent(out UnitBrain srcBrain) ? srcBrain.Equipment : null;
         if (equip == null) return;
 
         // 어느 칸에 차는 물건인가 — 벗을 때도 채울 때도 같은 칸이다.
         ArmorSlot? armorSlot = inst.Data is ArmorData a ? a.Slot : null;
-        bool offHand  = inst.Data is WeaponData sh && sh.Type == WeaponType.Shield;
+        bool offHand  = inst.Data is WeaponData sh && Equipment.BelongsInOffHand(sh);   // 방패 · 횃불
         bool mainHand = inst.Data is WeaponData && !offHand;
         if (armorSlot == null && !offHand && !mainHand) return;   // 장비가 아니다
 
@@ -583,15 +755,17 @@ public class InventoryUI : MonoBehaviour
         if (wholeCell) src.RemoveInstance(inst);
         else
         {
+            // 입을 하나는 열린 것부터 — 남은 것은 새것이다
+            toWear = new ItemInstance(inst.Data, 1, x, y, rotated, inst.Quality) { Locked = inst.Locked, Left = inst.Left };
             inst.Quantity--;
-            toWear = new ItemInstance(inst.Data, 1, x, y, rotated, inst.Quality) { Locked = inst.Locked };
+            inst.Left = 1f;
             src.NotifyChanged();
         }
 
         void PutBackClicked()
         {
-            if (wholeCell) src.TryAddAt(toWear.Data, 1, x, y, rotated, toWear.Quality, toWear.Locked);
-            else         { inst.Quantity++; src.NotifyChanged(); }
+            if (wholeCell) src.TryAddAt(toWear.Data, 1, x, y, rotated, toWear.Quality, toWear.Locked, toWear.Left);
+            else         { inst.Quantity++; inst.Left = toWear.Left; src.NotifyChanged(); }
         }
 
         // 차고 있던 것을 먼저 빼낸다 — `Wear*`에 맡기면 그쪽이 배낭 첫 빈 칸으로 돌려보낸다.
@@ -608,8 +782,8 @@ public class InventoryUI : MonoBehaviour
         // **벗은 것은 방금 빈 그 칸으로.** 안 되면 배낭 아무 데나.
         if (old?.Data != null)
         {
-            bool placed = src.TryAddAt(old.Data, 1, x, y, rotated, old.Quality, old.Locked)
-                       || src.TryAdd(old.Data, 1, old.Quality) > 0;
+            bool placed = src.TryAddAt(old.Data, 1, x, y, rotated, old.Quality, old.Locked, old.Left)
+                       || src.TryAddLike(old) > 0;
 
             if (!placed)
             {
@@ -696,17 +870,19 @@ public class InventoryUI : MonoBehaviour
         var srcInv = fromPlayer ? playerInv : _lootInventory;
         var dstInv = fromPlayer ? _lootInventory : playerInv;
 
-        int added = dstInv.TryAdd(_selectedItem.Data, _selectedItem.Quantity, _selectedItem.Quality);
+        // 남은 양째(`Inventory.Transfer`) — 출처 정리도 거기서 한다.
+        int added = Inventory.Transfer(srcInv, _selectedItem, dstInv, _selectedItem.Quantity);
         if (added <= 0) return;
-
-        if (added >= _selectedItem.Quantity)
-            srcInv.RemoveInstance(_selectedItem);
-        else
-            _selectedItem.Quantity -= added;
 
         _selectedItem = null;
         RefreshActionBar();
     }
+
+    // **밖에서 판매 줄을 다시 그리게 하는 문.** 상인 주머니가 줄면 같은 물건이 "1,200 G"에서
+    // "상인의 돈이 모자란다"로 바뀌어야 하는데, 그 변화는 **배낭이 아니라 상점 쪽에서** 일어난다.
+    // 드래그 판매·더블클릭 판매는 이 창을 안 거치므로(`MerchantUI.TrySellItem` 직행) 여기가
+    // 없으면 문구가 한 박자 늦는다 — 다음에 뭘 누를 때까지 옛 값이 남는다.
+    public void RefreshSellState() => RefreshActionBar();
 
     void RefreshActionBar()
     {
@@ -758,10 +934,25 @@ public class InventoryUI : MonoBehaviour
             {
                 int price = _shop?.GetSellPrice(_selectedItem) ?? 0;
                 string qc = ColorUtility.ToHtmlStringRGB(ItemInfoUI.QualityColor(_selectedItem.Quality));
+
+                // **왜 안 팔리는지 적는다.** 값은 멀쩡히 붙어 있는데 눌러도 아무 일이 없으면
+                // 그건 고장으로 보인다. 막히는 이유가 셋이고 **할 일이 다 다르다**:
+                //   · 값이 0 → 그 물건은 원래 안 팔린다
+                //   · 주머니가 빔 → 내일 다시 오거나, 그에게서 뭘 사 주면 된다
+                //   · 좌판이 참 → 다른 마을로 가거나, 내가 쌓아 둔 것이 빠지길 기다린다
+                bool broke = price > 0 && _shop != null && !_shop.HasInfiniteGold && _shop.Gold < price;
+                bool full  = price > 0 && !broke && _shop != null &&
+                             !_shop.HasRoomFor(_selectedItem.Data, 1, _selectedItem.Quality);
+
+                string tail = price <= 0 ? "<color=#888>판매 불가</color>"
+                            : broke      ? $"<color=#C88>상인의 돈이 모자란다 ({_shop.Gold:N0} G)</color>"
+                            : full       ? "<color=#C88>좌판에 자리가 없다</color>"
+                            :              $"<color=#FFD94D>{price} G</color>";
+
                 actionItemText.text =
                     $"<color=#{qc}>[{_selectedItem.Quality.DisplayName()}]</color> {_selectedItem.Data?.ItemName}" +
-                    $"  →  {(price > 0 ? $"<color=#FFD94D>{price} G</color>" : "<color=#888>판매 불가</color>")}";
-                if (actionButton) actionButton.interactable = price > 0;
+                    $"  →  {tail}";
+                if (actionButton) actionButton.interactable = price > 0 && !broke && !full;
             }
             else
             {

@@ -73,7 +73,11 @@ public class Faction : MonoBehaviour
     public FactionStance StanceTo(Faction other)
     {
         if (other == null || data == null || other.data == null) return FactionStance.Neutral;
-        return data.StanceTo(other.data);
+
+        // **판정은 `FactionRelations.StanceBetween` 하나다.** 규칙이 여기 있으면 필드와 지도가
+        // 갈린다 — 지도 위의 무리는 이 컴포넌트가 없어(논리 데이터다) 데이터로 물어야 한다.
+        // 우호도가 저작한 값을 덮는 것도, 움직이는 것이 플레이어와의 관계뿐인 것도 거기 있다.
+        return FactionRelations.StanceBetween(data, other.data);
     }
 
     // 내가 other를 먼저 공격하는가.

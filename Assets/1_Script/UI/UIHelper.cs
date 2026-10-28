@@ -36,25 +36,6 @@ public static class UIHelper
         return null;   // 못 찾으면 기본 폰트 유지(□) — TMP Settings에 한글 폰트를 지정하면 해결
     }
 
-    public static GameObject MakePanel(Transform parent, string name, Vector2 size,
-                                       Vector2 pivot, Vector2 anchoredPos)
-    {
-        var go = new GameObject(name);
-        go.transform.SetParent(parent, false);
-
-        var rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta      = size;
-        rt.pivot          = pivot;
-        rt.anchorMin      = pivot;
-        rt.anchorMax      = pivot;
-        rt.anchoredPosition = anchoredPos;
-
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0.1f, 0.1f, 0.1f, 0.92f);
-
-        return go;
-    }
-
     public static TextMeshProUGUI MakeLabel(Transform parent, string name, string text,
                                              Vector2 anchoredPos, Vector2 size,
                                              float fontSize = 13f, FontStyle style = FontStyle.Normal)

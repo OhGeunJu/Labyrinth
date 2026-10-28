@@ -79,14 +79,14 @@ public class FarmUI : MonoBehaviour
     {
         _current           = plot;
         _builtForSeedCount = -1;   // 다른 밭일 수 있으니 목록을 새로 짓게 한다
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         Refresh();
     }
 
     public void Close()
     {
         _current = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void Refresh()
@@ -94,10 +94,16 @@ public class FarmUI : MonoBehaviour
         if (_current == null) return;
 
         // 제목은 건물 표시명(`밭`)과 같은 말을 쓴다 — 같은 것을 두 이름으로 부르지 않게.
+        //
+        // **몇 칸짜리 구역인지를 같이 띄운다**(2026-09-02). 씨앗을 고르면 **이어진 밭 전부**가
+        // 바뀌는데, 화면이 그 사실을 안 말하면 *"한 칸만 바꾸려 했는데 왜 옆 밭까지"*가 된다.
+        // 조작의 범위는 조작하기 전에 보여야 한다.
+        int tiles = _current.Zone().Count;
+
         if (titleText != null)
             titleText.text = _current.SelectedSeed != null
-                ? $"밭 — {_current.SelectedSeed.ItemName}"
-                : "밭";
+                ? $"밭 구역 ({tiles}칸) — {_current.SelectedSeed.ItemName}"
+                : $"밭 구역 ({tiles}칸)";
 
         if (stateText != null)
             stateText.text = _current.State switch
@@ -110,6 +116,11 @@ public class FarmUI : MonoBehaviour
                 _                        => "",
             };
 
+        // **바꿔 둔 것이 있으면 말한다.** 자라는 중에 씨앗을 바꾸면 다 큰 작물을 안 버리고
+        // 거둔 다음에 갈아타는데, 그 사실이 화면에 없으면 *"바꿨는데 왜 아직 밀이지"*가 된다.
+        if (stateText != null && _current.NextSeed != null)
+            stateText.text += $"\n거두면 → {_current.NextSeed.ItemName}";
+
         SetGauge(growthFill, growthText, _current.GrowthProgress, $"성장 {_current.GrowthProgress * 100f:F0}%");
 
         float maxMoisture = _current.SelectedSeed != null ? _current.SelectedSeed.WaterFillAmount : 100f;
@@ -119,7 +130,7 @@ public class FarmUI : MonoBehaviour
         RefreshSeedRows();
 
         if (clearSeedButton != null)
-            clearSeedButton.interactable = _current.State == FarmState.Empty && _current.SelectedSeed != null;
+            clearSeedButton.interactable = _current.SelectedSeed != null || _current.NextSeed != null;
     }
 
     static void SetGauge(Image fill, TextMeshProUGUI label, float ratio01, string text)
@@ -135,8 +146,10 @@ public class FarmUI : MonoBehaviour
 
         var seeds = _current.AvailableSeeds;
 
-        // 심고 나면 고를 일이 없다 — 목록을 통째로 숨긴다.
-        bool show = _current.State == FarmState.Empty && seeds != null && seeds.Length > 0;
+        // **심은 뒤에도 고를 수 있다**(2026-09-02). 전에는 심고 나면 목록을 숨겼는데,
+        // 구역이 생긴 뒤로는 *"다음 사이클부터 다른 것을 심어라"*가 뜻이 있는 조작이 됐다
+        // (`FarmPlot.NextSeed`). 숨기면 밭이 다 빌 때까지 기다렸다 눌러야 한다.
+        bool show = seeds != null && seeds.Length > 0;
         seedContainer.gameObject.SetActive(show);
         if (!show) return;
 
@@ -147,7 +160,7 @@ public class FarmUI : MonoBehaviour
         foreach (var row in _rows)
         {
             // 창고 + 폰 배낭까지 센다 — 상점에서 막 사 온 씨앗은 배낭에 있다.
-            int have = MaterialPool.AvailableAnywhere(row.Seed);
+            int have = MaterialPool.AvailableHere(row.Seed);
 
             if (row.CountText != null) row.CountText.text = have.ToString();
             if (row.Bg != null)

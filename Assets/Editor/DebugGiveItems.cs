@@ -12,52 +12,58 @@ public static class DebugGiveItems
     const int MaxChests = 12;             // 안전장치 — 무한히 만들지 않는다
     const string ChestName = "[DebugChest]";
 
-    // **등급은 장비에만 준다.**
+    // **장비는 한 종에 등급 여섯 벌을 다 준다 — 일반에서 전설까지 차례로 나란히**(2026-10-23, 사용자: *"방어구마다 등급이
+    // 순서대로 있는건데 하나의 방어구가 하나의 등급이면 어떡해"*).
     //
-    // `StatMultiplier`(1.0~3.0)가 실제로 바꾸는 것은 셋뿐이다 — 무기 피해(`SyncBlackboard`),
-    // 갑옷 감소(`GetArmorQualityMult`), 값(`CalcSellPrice`·툴팁). 앞의 둘이 장비 전용이므로
-    // **광석·음식은 등급이 달라도 값만 오르고 하는 일이 같다.**
+    // 10-22에 상자 수를 줄이려고 한 종에 하나씩 등급을 돌려 가며 줬다 — 그러면 강철 투구는 희귀 하나뿐이라 같은 물건의
+    // 등급끼리 견줄 수가 없었다. 이제 한 종의 여섯 벌을 **이어서** 넣어 상자 안에서 한 줄로 읽힌다. 상자는 다시 여럿이
+    // 된다(장비 54종 × 6 — 여덟 개 남짓, 한 줄로 늘어선다).
     //
-    // 그런 것까지 여섯 벌씩 주면 상자만 여섯 배로 불고, 정작 비교해야 할 장비가 그 사이에
-    // 묻힌다. 값 확인은 장비로도 충분하다.
+    // 등급이 있는가는 물건이 답한다(`ItemData.HasQuality`) — 없는 것은 `Common`으로 눌린다.
     static readonly ItemQuality[] GearQualities =
     {
         ItemQuality.Common, ItemQuality.Uncommon, ItemQuality.Rare,
         ItemQuality.Unique, ItemQuality.Epic,     ItemQuality.Legendary,
     };
 
-    static readonly ItemQuality[] PlainQuality = { ItemQuality.Common };
-
     static readonly List<Storage> _chests = new();
 
-    [MenuItem("DungeonColony/Debug: Give All Items")]
+    [MenuItem("DungeonColony/Debug/Give All Items")]
     static void GiveAllToStorage()
     {
         if (!EnsurePlaying()) return;
 
         _chests.Clear();
         var items = CollectItems();
+
+        // **넣는 순서가 곧 상자 안의 모양이다** — 무기 → 방어구 → 나머지, 그 안에서 큰 것부터.
+        // 큰 것을 먼저 넣어야 빈칸이 덜 남고, 갈래끼리 모여 있어야 열었을 때 읽힌다.
+        items.Sort((a, b) =>
+        {
+            int c = Group(a).CompareTo(Group(b));
+            if (c != 0) return c;
+            c = (b.Width * b.Height).CompareTo(a.Width * a.Height);
+            return c != 0 ? c : string.CompareOrdinal(a.ItemName, b.ItemName);
+        });
+
         int placed = 0;
         var failed = new List<string>();
 
         foreach (var item in items)
         {
-            // 장비(스택 1)는 하나가 한 자리를 먹으므로 **등급마다 하나씩**,
-            // 그 밖은 **일반 등급으로 최대치까지 꽉** 채운다 — 재료가 모자라 제작을 끝까지
+            // 장비는 등급마다 하나씩, 그 밖은 **최대치까지 꽉** 채운다 — 재료가 모자라 제작을 끝까지
             // 못 돌려 보는 일이 없게.
-            bool gear = item is WeaponData || item is ArmorData;
-            var qualities = gear ? GearQualities : PlainQuality;
-            int want      = gear ? 1 : Mathf.Max(1, item.MaxStack);
+            int got = 0;
+            if (item.HasQuality)
+                foreach (var q in GearQualities) got += Give(item, 1, q);
+            else
+                got = Give(item, Mathf.Max(1, item.MaxStack), ItemQuality.Common);
 
-            bool any = false;
-            foreach (var q in qualities)
-                if (Give(item, want, q) > 0) any = true;
-
-            if (any) placed++;
+            if (got > 0) placed++;
             else failed.Add(item.ItemName);
         }
 
-        Debug.Log($"[Debug] {placed}/{items.Count}종 지급 (장비는 등급 6종 각 1개, 그 밖은 최대 스택). " +
+        Debug.Log($"[Debug] {placed}/{items.Count}종 지급 (장비는 한 종에 등급 여섯 벌, 그 밖은 최대 스택). " +
                   $"디버그 상자 {_chests.Count}개 — 클릭해 확인하세요.");
 
         if (failed.Count > 0)
@@ -100,7 +106,7 @@ public static class DebugGiveItems
     //
     // `Debug: Give All Items`와 다른 축이다 — 그건 **내 창고**를 채우고, 이건 **저 폰**을 채운다.
     // 상대에게 물건을 쥐여 주는 길은 그것 말고는 없다.
-    [MenuItem("DungeonColony/Debug: Arm Selected Pawn")]
+    [MenuItem("DungeonColony/Debug/Arm Selected Pawn")]
     static void ArmSelectedPawn()
     {
         if (!EnsurePlaying()) return;
@@ -180,7 +186,7 @@ public static class DebugGiveItems
     // 하는 건 시험이 아니라 준비 작업이다.
     const int DebugGold = 5000;
 
-    [MenuItem("DungeonColony/Debug: Add Gold")]
+    [MenuItem("DungeonColony/Debug/Add Gold")]
     static void AddGold()
     {
         if (!EnsurePlaying()) return;
@@ -189,7 +195,7 @@ public static class DebugGiveItems
         Debug.Log($"[Debug] 골드 +{DebugGold} → 잔고 {Wallet.Balance} G");
     }
 
-    [MenuItem("DungeonColony/Debug: Complete All Research")]
+    [MenuItem("DungeonColony/Debug/Complete All Research")]
     static void CompleteAllResearch()
     {
         if (!EnsurePlaying()) return;
@@ -223,15 +229,13 @@ public static class DebugGiveItems
         string name = index == 0 ? ChestName : $"{ChestName} {index + 1}";
 
         foreach (var st in Storage.All)
-            if (st != null && st.name == name) return st;
+            if (st != null && st.name == name) return Repair(st);
 
         var go = new GameObject(name);
 
         // 던전 핵 옆에 **한 줄로** 늘어놓는다 — 폰이 운반해 갈 수 있어야 하므로 손 닿는 곳이어야
         // 하고, 겹쳐 놓으면 어느 것을 클릭했는지 알 수 없다.
-        var core = Object.FindFirstObjectByType<DungeonCore>();
-        go.transform.position = (core != null ? core.transform.position : Vector3.zero)
-                              + new Vector3(3f + index * 2f, 0f, 3f);
+        go.transform.position = SpotNearBase(index);
 
         // 눈에 보이고 클릭도 되게 — 안 그러면 어디 생겼는지 알 수 없다.
         var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -253,9 +257,152 @@ public static class DebugGiveItems
         var storage = go.AddComponent<Storage>();
         storage.BuildingName = "디버그 상자";
 
-        Debug.Log($"[Debug] {name} 생성 ({ChestW}×{ChestH} = {ChestW * ChestH}칸). 핵 옆에 있습니다.");
+        // **진짜 건물로 세운다**(2026-09-05, 사용자: *"내가 옮길 수가 없으니깐"*).
+        //
+        // 그전에는 `Storage`만 붙인 맨 오브젝트라 **`PlacedBuilding`이 없었다.** 그러면
+        // `BuildingRelocator.Begin(pb)`에 넘길 것이 없어 살펴보기 창에 **[이동한다]가 아예
+        // 안 뜨고**, 발자국도 등록이 안 돼 길찾기는 상자를 **없는 것으로 본다**(몸은 부딪히는데
+        // 지도는 빈 칸 — 폰이 처박히는 그 자리다).
+        //
+        // 창고 데이터를 그대로 물린다 — 테스트 상자라고 **다른 규칙으로 살 이유가 없다**.
+        // 고르기·살펴보기·옮기기·철거가 전부 평소 길로 돌아온다.
+        var data = Resources.Load<BuildingData>("Data/Buildings/Storage");
+        if (data != null) PlacedBuilding.Attach(go, data);
+        else Debug.LogWarning("[Debug] `Data/Buildings/Storage`를 못 찾았습니다 — 상자를 옮길 수 없습니다.");
+
+        Debug.Log($"[Debug] {name} 생성 ({ChestW}×{ChestH} = {ChestW * ChestH}칸) — {go.transform.position}");
         return storage;
     }
+
+    // **이미 있는 상자도 고친다**(2026-09-05). 한 번 파묻힌 상자는 다시 눌러도 `EnsureDebugChest`가
+    // *"있으면 그걸 쓴다"*로 그대로 돌려줘서 **영원히 파묻힌 채**였다 — 사람이 못 고르니 지울
+    // 수도 없다(하이어라키에서 손으로 지우는 수밖에).
+    //
+    // **손으로 옮겨 둔 상자는 안 건드린다** — 파묻혔을 때만 끌어올린다. 다시 돌릴 때마다
+    // 제자리로 되돌리면 *"옮겨 놨는데 왜 돌아오지"*가 된다.
+    static Storage Repair(Storage st)
+    {
+        var map = MapManager.Instance;
+        if (map != null)
+        {
+            var pos  = st.transform.position;
+            float top = map.TileToGround(map.WorldToTile(pos)).y;
+
+            if (pos.y < top - 0.1f)
+            {
+                st.transform.position = new Vector3(pos.x, top, pos.z);
+                Debug.Log($"[Debug] {st.name}이(가) 파묻혀 있어 지면 위로 올렸습니다 — y {pos.y:F2} → {top:F2}");
+            }
+        }
+
+        // 옛 상자에는 `PlacedBuilding`이 없다 — 그래서 [이동한다]가 안 떴다.
+        if (st.GetComponent<PlacedBuilding>() == null)
+        {
+            var data = Resources.Load<BuildingData>("Data/Buildings/Storage");
+            if (data != null)
+            {
+                PlacedBuilding.Attach(st.gameObject, data);
+                Debug.Log($"[Debug] {st.name}에 건물 정보를 물렸습니다 — 이제 고르고 옮길 수 있습니다.");
+            }
+        }
+
+        return st;
+    }
+
+    // **기준은 내 폰이다 — 핵이 아니다**(2026-09-12).
+    //
+    // 전에는 `DungeonCore`를 찾아 그 자리에 놓았다. 그런데 **판이 열릴 때 핵을 안 준다**
+    // (2026-08-27 결정 — 어디에 거점을 세울까가 첫 결정이어야 하므로). 그래서 아직 안 꽂았으면
+    // `FindFirstObjectByType`이 **null**이고 기준이 조용히 `Vector3.zero`로 떨어져,
+    // 상자가 **세계 원점 옆**에 선다. `Scene1`의 방랑자들이 (21.5, 25.6)에서 시작하므로
+    // **30m쯤 떨어진 곳**이다 — 화면에는 *"상자가 폰들이 있는 데랑 좀 다른 데 뜬다"*로만 보이고,
+    // 원인이 *"핵이 없다"*라는 표시가 어디에도 없다(폰은 좌표만 보므로 운반은 멀쩡히 된다).
+    //
+    // **`RockRenderer.Start`가 이미 같은 물음에 답해 두었다** — 판이 열릴 때 굴을 어디에 뚫을지를
+    // 정하면서 **내 폰 둘레**를 열고, 아무도 없으면 카메라 앞을 연다. 기준을 거기에 맞춘다:
+    // **(10-22부터 시작 자리가 맨 앞) → 내 폰 → (없으면) 핵 → (그것도 없으면) 원점.**
+    //
+    // **무게중심이 아니라 거기서 가장 가까운 폰의 자리를 쓴다** — 무리가 흩어져 있으면
+    // 무게중심이 바위 한복판에 떨어질 수 있고, 그러면 `FindWorkableNear`가 8칸 안에서
+    // 아무것도 못 찾아 **center를 그대로 돌려줘 상자가 바위에 박힌다.** 폰이 선 자리는
+    // 설 수 있는 자리임이 이미 증명돼 있다.
+    //
+    // **시작 자리가 있으면 그것이 먼저다**(2026-10-22, 사용자: *"지금 스폰 되는쪽에 생성되게"*).
+    // 폰은 흩어져 돌아다니지만 `StartSpot`은 판이 열릴 때 굴이 뚫린 자리라 늘 서 있을 수 있고,
+    // 만든 폰이 처음 서는 곳이기도 하다 — 상자가 어디 생겼는지 찾으러 다닐 일이 없다.
+    static Vector3 Anchor()
+    {
+        if (StartSpot.Current != null) return StartSpot.Current.transform.position;
+
+        var all = UnitBrain.All;
+
+        var  sum = Vector3.zero;
+        int  n   = 0;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var brain = all[i];
+            if (brain == null) continue;
+            var f = brain.GetComponent<Faction>();
+            if (f == null || !f.IsPlayer) continue;
+
+            sum += brain.transform.position;
+            n++;
+        }
+
+        if (n > 0)
+        {
+            var center = sum / n;
+            var best   = center;
+            float bestSqr = float.MaxValue;
+
+            for (int i = 0; i < all.Count; i++)
+            {
+                var brain = all[i];
+                if (brain == null) continue;
+                var f = brain.GetComponent<Faction>();
+                if (f == null || !f.IsPlayer) continue;
+
+                float d = (brain.transform.position - center).sqrMagnitude;
+                if (d < bestSqr) { bestSqr = d; best = brain.transform.position; }
+            }
+            return best;
+        }
+
+        // 폰이 하나도 없는 판(전멸했거나 아직 합류 전) — 그때는 핵이라도 있으면 그것.
+        var core = Object.FindFirstObjectByType<DungeonCore>();
+        if (core != null) return core.transform.position;
+
+        Debug.LogWarning("[Debug] 내 폰도 핵도 없어 상자를 세계 원점 옆에 놓습니다.");
+        return Vector3.zero;
+    }
+
+    // **바닥 위에 놓는다 — 핵의 Y를 베끼지 않는다**(2026-09-05).
+    //
+    // 전에는 핵의 자리에 `(3 + index*2, 0, 3)`을 더했다. 그러면 **높이가 핵의 것**이라, 세 칸
+    // 옆 지면이 조금만 낮아도 상자가 **땅에 파묻힌다** — 폰은 좌표만 보므로 운반은 멀쩡히
+    // 되는데(사용자: *"그래도 아이템을 갖고오긴 하던데"*) **커서 레이가 지면에 먼저 맞아
+    // 사람이 못 고른다.** 보이지도 잡히지도 않는 상자가 되는 것이다.
+    //
+    // 그래서 **설 수 있는 칸을 찾아 그 윗면에 앉힌다**(`TileToGround` — 기단을 깔았으면
+    // 슬래브 윗면이다). 지하에서는 세 칸 옆이 바위일 수도 있으므로 `FindWorkableNear`가
+    // 답하게 두고, **이미 놓인 상자 칸은 뺀다**(겹쳐 놓으면 어느 것을 눌렀는지 모른다).
+    static Vector3 SpotNearBase(int index)
+    {
+        var want = Anchor() + new Vector3(3f + index * 2f, 0f, 3f);
+
+        var map = MapManager.Instance;
+        if (map == null) return want;
+
+        var taken = new List<Vector2Int>();
+        foreach (var st in Storage.All)
+            if (st != null && st.name.StartsWith(ChestName))
+                taken.Add(map.WorldToTile(st.transform.position));
+
+        var tile = map.FindWorkableNear(map.WorldToTile(want), maxRadius: 8, exclude: taken);
+        return map.TileToGround(tile);
+    }
+
+    static int Group(ItemData item) => item is WeaponData ? 0 : item is ArmorData ? 1 : item.HasQuality ? 2 : 3;
 
     // 자원 아이템 + 장비 + 소비품 전부. 골드도 포함(살 것을 사 보려면 필요하다).
     static List<ItemData> CollectItems()

@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 115dbe91c61366d49b98f9804b36febe, type: 3}
+  m_Name: Biome_Mine
+  m_EditorClassIdentifier: Assembly-CSharp::BiomeContentData
+  Biome: 12
+  Tier: 1
+  MapDirection: 5
+  ResourceNodes:
+  - {fileID: 11400000, guid: 1111d1065d8094c4d8c4bfac4a6f49c2, type: 2}
+  - {fileID: 11400000, guid: 1111d1065d8094c4d8c4bfac4a6f49c2, type: 2}
+  - {fileID: 11400000, guid: 8f6173b255818e143bb960e04493266f, type: 2}
+  - {fileID: 11400000, guid: 8f6173b255818e143bb960e04493266f, type: 2}
+  - {fileID: 11400000, guid: 754faaa069edfe34485eb4c172d41d54, type: 2}
+  - {fileID: 11400000, guid: 754faaa069edfe34485eb4c172d41d54, type: 2}
+  - {fileID: 11400000, guid: 27a84ee90742b0b41b010fe3bf898a2f, type: 2}
+  VeinRichness: 1
+  WallLights:
+  - Light: {fileID: 11400000, guid: 60fed12e174ab3246a06290c5ce9db4c, type: 2}
+    Chance: 0.03
+  - Light: {fileID: 11400000, guid: 3ec31c8fd3b2bb14e8f738de5590366e, type: 2}
+    Chance: 0.05
+  WildSpawns:
+  - Band: {fileID: 11400000, guid: 439f36fa1ab950548bdb2439fe3d843a, type: 2}
+    ChancePerChunk: 0.08
+    RespawnDays: 3
+  - Band: {fileID: 11400000, guid: 8477440d5a975cd4198012906ea160a6, type: 2}
+    ChancePerChunk: 0.04
+    RespawnDays: 3
+  Deposits: []
+  TownMerchants: []
+  TownFaction: {fileID: 0}
+  TownRecruits: []
+  Lairs: []
+  TownBands: []
+  SummonableMinions: []
+  UnlockableResearch: []

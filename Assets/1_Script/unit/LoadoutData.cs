@@ -26,12 +26,13 @@ public class LoadoutData : ScriptableObject
     public List<LoadoutEntry> Loadout = new();
 
     [Header("주머니")]
-    [Tooltip("죽으면 시체에 남는 물건. 살아 있는 동안 아무 차이를 안 만들어서 죽을 때 굴린다 " +
-             "— 미리 지고 다니게 하면 적재 무게·짐내림 같은 살아 있는 폰의 규칙에 공짜로 걸린다.")]
+    [Tooltip("**평소에 지니고 다니는 것.** 태어날 때 배낭에 넣는다 — 그래야 쓰러뜨려 놓고 " +
+             "뒤졌을 때 실제로 무엇이 있고, 그것을 보고 가둘지 몸값을 부를지 정할 수 있다.\n" +
+             "**몸에서 나오는 것(고기·가죽·뼈)은 여기가 아니라 종족이다**" +
+             "(UnitData.ButcherYield/BoneYield — 도축해야 나온다). 짐승은 주머니가 비어야 한다.")]
     public List<LootEntry> Loot = new();
 
-    [Tooltip("죽으면 나오는 동전. **종족이 든 것에 더해진다**(덮어쓰지 않는다) — " +
-             "고블린 산적은 고블린이라서 지닌 것과 산적이라서 지닌 것을 둘 다 갖는다.")]
+    [Tooltip("주머니 속 동전(태어날 때 넣는다). 무게가 0이라 지고 다녀도 느려지지 않는다.")]
     [Min(0)] public int CoinDropMin;
     [Min(0)] public int CoinDropMax;
 }

@@ -17,11 +17,26 @@ public class SelectionManager : MonoBehaviour
     bool _isDragging;
     bool _pressOverUI;   // 이번 클릭이 UI 위에서 시작됐는가 — 놓을 때까지 월드 선택을 막는다
 
+    // **사각 선택 상자(`SelectionBox`)가 이걸 본다.** 그리는 쪽이 저 혼자 판단하면 답이 두
+    // 벌이 되고, 실제로 그래서 **배낭에서 물건을 끌 때 월드 선택 상자가 같이 떴다** —
+    // 선택은 안 되는데 초록 사각형만 그려지는, 설명할 수 없는 그림이었다.
+    public bool PressOverUI => _pressOverUI;
+
     readonly List<PawnMover> _selected = new();
     public IReadOnlyList<PawnMover> Selected => _selected;
 
     public Action<PawnMover, bool> OnSelectionChanged;
     public static event Action<ResourceNode> OnNodeSelected;
+
+    // **채집물도 살펴볼 수 있어야 한다**(2026-09-06) — 자원 노드와 바닥 물건은 창이 뜨는데
+    // 버섯만 눌러도 아무것도 안 나왔다. *무엇이 나오나 · 찍혔나 · 그 품목이 자동운반인가*를
+    // 볼 자리가 없으면 **초록 구슬만 보고 "왜 안 따지"를 짐작**하게 된다.
+    public static event Action<Forageable> OnForageInspected;
+
+    // **벽도 살펴볼 수 있어야 한다**(2026-09-06) — 광맥·채집물·바닥 물건은 창이 뜨는데
+    // **벽만 눌러도 아무것도 안 나왔다.** 벽은 세계에서 가장 많이 누르는 것이고, 파면
+    // 무엇이 나오는지·찍혔는지·그 돌을 자동으로 나를지가 **거기서 답해져야 한다.**
+    public static event Action<Vector2Int?> OnRockInspected;
     public static event Action<Corpse> OnCorpseSelected;
 
     // 바닥에 떨어진 물건 — 청사진·건물과 같은 **한 클릭짜리 조사**다(딴 데를 누르면 풀린다).
@@ -75,6 +90,13 @@ public class SelectionManager : MonoBehaviour
     // 부르는 쪽이 자기 이벤트를 따로 만들면 패널을 여는 길이 둘이 되어 어긋난다.
     public static void InspectNode(ResourceNode node)   => OnNodeSelected?.Invoke(node);
     public static void InspectCorpse(Corpse corpse)     => OnCorpseSelected?.Invoke(corpse);
+    // 채집물 — 좌클릭과 **같은 순서로** 연다(노드·폰 창을 닫고 살펴보기 창을 연다).
+    public static void InspectForage(Forageable forage)
+    {
+        OnNodeSelected?.Invoke(null);
+        OnPawnInspected?.Invoke(null);
+        OnForageInspected?.Invoke(forage);
+    }
 
     void Awake()
     {
@@ -90,7 +112,31 @@ public class SelectionManager : MonoBehaviour
     void Update()
     {
         PruneSelection();
+        EnsureSelection();
         HandleSelection();
+    }
+
+    // **폰이 하나라도 있으면 하나는 골라 둔다.**
+    //
+    // 선택은 "지금 누구에게 명령하고 있나"라는 **지속 상태**다(2026-08-11에 빈 곳 클릭으로도
+    // 안 풀리게 한 그 결정). 그런데 시작하는 순간과 마지막으로 고른 폰이 죽는 순간에는 여전히
+    // **아무도 안 골린 상태**가 남아 있었다 — 그때 우클릭은 조용히 아무 일도 안 하고, 상점은
+    // "거래할 폰을 고르세요"를 띄우고, 판을 시작하면 우선 명부에서 한 명을 찍는 것이 첫 조작이
+    // 된다. 그건 규칙이 아니라 빈 칸이다.
+    //
+    // **무리 첫 번째를 고른다**(`PawnOrder.FirstOfBand` — 명부·무리 관리와 같은 순서). 순서가
+    // 갈리면 "왜 저 애가 골렸지"를 설명할 수 없다.
+    //
+    // 다 죽었거나 전부 원정을 나갔으면 아무 일도 안 한다 — 그때는 고를 사람이 정말로 없다.
+    void EnsureSelection()
+    {
+        if (_selected.Count > 0) return;
+
+        var first = PawnOrder.FirstOfBand();
+        if (first == null) return;
+
+        var mover = first.GetComponent<PawnMover>();
+        if (mover != null) AddToSelection(mover);
     }
 
     // **선택에서 사라진 폰을 걷어낸다.**
@@ -106,7 +152,12 @@ public class SelectionManager : MonoBehaviour
         for (int i = _selected.Count - 1; i >= 0; i--)
         {
             var pawn = _selected[i];
-            if (pawn != null && pawn.gameObject.activeInHierarchy) continue;
+
+            // **시체는 선택에서 빠진다.** 내 폰도 죽으면 시체로 남게 되면서(`UnitBrain.Die`)
+            // 파괴되지 않으므로 `== null`로는 안 걸린다 — 안 빼면 우클릭 명령이 **송장에게**
+            // 나가고, 무리 첫 번째 자동 선택도 시체를 고를 수 있다.
+            if (pawn != null && pawn.gameObject.activeInHierarchy &&
+                pawn.GetComponent<Corpse>() == null) continue;
 
             _selected.RemoveAt(i);
             OnSelectionChanged?.Invoke(pawn, false);   // 표식 해제(파괴된 것은 구독자가 거른다)
@@ -118,7 +169,11 @@ public class SelectionManager : MonoBehaviour
         // 건설·핵 이전·운반 지정 중에는 클릭이 그쪽 전용 (선택으로 새어나가지 않게).
         // **지정 모드를 빠뜨렸었다** — 드래그로 물건을 찍으면 같은 드래그가 사각 선택으로도
         // 들어가, 찍는 도중에 선택이 갈아치워지고 정보 패널이 튀어나왔다.
-        if (BuildModeManager.IsActive || CoreRelocator.IsActive || HaulDesignator.IsActive) return;
+        // **지정 모드 중에는 사각 선택을 안 한다**(2026-08-29에 채굴을 더했다) — 안 막으면
+        // 드래그 한 번에 **초록 선택 상자와 채굴 지정이 같이 뜨고**, 무엇이 찍히는지
+        // 알 수가 없다. 모드를 하나 더 만들 때마다 여기에 더해야 한다.
+        if (BuildModeManager.IsActive || CoreRelocator.IsActive ||
+            HaulDesignator.IsActive || MineDesignator.IsActive) return;
 
         // **UI에서 시작한 클릭은 놓는 순간까지 통째로 무시한다.**
         // 예전엔 누를 때만 UI를 보고 걸렀는데, 그러면 배낭에서 바닥으로 **드래그해 물건을
@@ -127,6 +182,11 @@ public class SelectionManager : MonoBehaviour
         // 엉뚱한 사각형으로 **선택을 통째로 지웠다** — 물건 하나 버릴 때마다 무리가 풀렸다.
         if (Mouse.current.leftButton.wasPressedThisFrame)
         {
+            // **손에 물건을 들고 있으면 그 클릭은 인벤토리의 것이다.**
+            // 집고 놓는 조작으로 바뀌면서(`DraggableItem`) 창 밖을 누르는 것이 "바닥에
+            // 버린다"가 됐다 — 안 막으면 그 한 번이 **물건을 떨구면서 폰까지 움직인다.**
+            if (DraggableItem.CarriedInstance != null) { _pressOverUI = true; return; }
+
             _pressOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             if (_pressOverUI) return;
 
@@ -180,7 +240,12 @@ public class SelectionManager : MonoBehaviour
         OnCoreInspected?.Invoke(null);
         SelectItems(null);
 
-        bool hasHit = Physics.Raycast(ray, out RaycastHit hit, 500f);
+        // **업혀 있는 것은 건너뛴다 — 그건 고를 것이 아니라 짐이다.** 어깨 위에 붙어 있어
+        // 업은 폰보다 커서에 먼저 걸리는데, 그러면 **시체를 멘 내 폰을 좌클릭했을 때
+        // 그 폰이 아니라 어깨의 시체가 열린다.** 우클릭 쪽(`MoveController.PickTarget`)과
+        // **같은 규칙이어야 한다** — 같은 물음에 두 곳이 다르게 답하면 반드시 어긋난다
+        // (시체를 먼저 볼 것이냐를 두고 이미 한 번 겪었다).
+        bool hasHit = PickVisible(ray, out PickHit hit);
         if (hasHit)
         {
             var core = hit.collider.GetComponentInParent<DungeonCore>();
@@ -204,10 +269,47 @@ public class SelectionManager : MonoBehaviour
                 return;
             }
 
+            // 벽(바위) — 콜라이더가 청크 메시라 컴포넌트가 없다. **`RockRenderer`가 제
+            // 자식인지로 답한다**(`IsRockCollider`) — 레이어로 가르면 지형과 섞인다.
+            if (RockRenderer.IsRockCollider(hit.collider) && MapManager.Instance != null)
+            {
+                // **맞은 면 안쪽으로 밀어 넣는다** — 벽 옆면을 누르면 맞은 점이 정확히 칸
+                // 경계에 떨어져 **벽 앞의 빈 칸이 잡힌다**(`MineDesignator.Ground`와 같은 자리).
+                var inside = hit.point - hit.normal * 0.05f;
+                var tile   = MapManager.Instance.WorldToTile(inside);
+
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                OnRockInspected?.Invoke(tile);
+                return;
+            }
+
+            // 채집물 — **선택은 유지한다**(노드·시체·바닥 물건과 같은 이유).
+            var forage = hit.collider.GetComponentInParent<Forageable>();
+            if (forage != null) { InspectForage(forage); return; }
+
             var corpse = hit.collider.GetComponent<Corpse>();
             if (corpse != null)
             {
                 OnCorpseSelected?.Invoke(corpse);
+                return;
+            }
+
+            // **기절한 남의 폰은 시체와 같은 창으로 뒤진다**(2026-09-08).
+            //
+            // `InventoryUI`는 폰 하나에 묶이는 창이라 남의 것을 열면 **내 것이 풀린다** —
+            // 뒤지려면 둘이 같이 떠 있어야 한다. 시체는 이미 그렇게 풀려 있었고, 기절한
+            // 놈만 그 길에 안 걸려 있었다(`Corpse` 컴포넌트가 없다).
+            //
+            // **내 폰은 뺀다** — 내 폰의 소지품은 평소대로 `InventoryUI`가 연다. 여기 걸면
+            // 다친 동료를 누를 때마다 약탈 창이 뜬다.
+            var downed = hit.collider.GetComponentInParent<UnitBrain>();
+            if (downed != null && downed.Blackboard != null && downed.Blackboard.IsKnockedOut
+                && !(downed.Blackboard.Faction != null && downed.Blackboard.Faction.IsPlayer)
+                && CorpseInventoryUI.Instance != null)
+            {
+                OnPawnInspected?.Invoke(downed);           // 살펴보기 창은 평소대로
+                CorpseInventoryUI.Instance.ShowDowned(downed);
                 return;
             }
 
@@ -221,7 +323,7 @@ public class SelectionManager : MonoBehaviour
             var dropped = hit.collider.GetComponent<DroppedItem>();
             if (dropped != null)
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 SelectItems(new List<DroppedItem> { dropped });
@@ -233,7 +335,7 @@ public class SelectionManager : MonoBehaviour
             if (pawn != null && faction != null && faction.IsPlayer)
             {
                 ClearSelection();
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 AddToSelection(pawn);
@@ -247,7 +349,7 @@ public class SelectionManager : MonoBehaviour
             if (pawn != null && hit.collider.GetComponent<IWorldClickable>() is { } pawnClickable
                              && AcceptsClick(pawnClickable))
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 pawnClickable.OnWorldClick();
@@ -262,7 +364,7 @@ public class SelectionManager : MonoBehaviour
             // 정보 패널은 `InspectPanelUI`가 "조사 중인 것이 있으면 그쪽"으로 가려 준다.
             if (pawn != null)
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(pawn.GetComponent<UnitBrain>());
                 return;
@@ -279,7 +381,7 @@ public class SelectionManager : MonoBehaviour
             var clickable = hit.collider.GetComponent<IWorldClickable>();
             if (clickable != null && AcceptsClick(clickable))
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
 
@@ -306,7 +408,7 @@ public class SelectionManager : MonoBehaviour
             var plain = hit.collider.GetComponentInParent<PlacedBuilding>();
             if (plain != null && (plain.Data == null || !plain.Data.IsFloor))
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 OnBuildingInspected?.Invoke(plain);
@@ -324,7 +426,7 @@ public class SelectionManager : MonoBehaviour
             var bp = BuildingBlueprint.PickAt(MapManager.Instance.WorldToTile(hit.point));
             if (bp != null)
             {
-                DungeonCore.Instance?.Deselect();
+                DungeonCore.DeselectAll();
                 OnNodeSelected?.Invoke(null);
                 OnPawnInspected?.Invoke(null);
                 OnBlueprintInspected?.Invoke(bp);
@@ -340,7 +442,7 @@ public class SelectionManager : MonoBehaviour
         //
         // 그래서 **선택을 푸는 별도 조작은 두지 않는다.** 바꾸는 길(다른 폰 클릭 · 사각 선택 ·
         // 로스터)이 이미 있고, 켄시도 그렇다. "아무도 안 고른 상태"가 필요한 곳은 없다.
-        DungeonCore.Instance?.Deselect();
+        DungeonCore.DeselectAll();
         OnNodeSelected?.Invoke(null);
         OnPawnInspected?.Invoke(null);
     }
@@ -422,8 +524,6 @@ public class SelectionManager : MonoBehaviour
     // 선택 상태의 주인은 여기 하나뿐이므로 목록도 이 메서드들을 거쳐야 한다 —
     // UI가 제 목록을 따로 들면 월드 선택과 어긋난다.
 
-    public void AddPawn(PawnMover pawn) => AddToSelection(pawn);
-
     // Ctrl+클릭: 이미 있으면 빼고 없으면 더한다.
     public void TogglePawn(PawnMover pawn)
     {
@@ -440,8 +540,6 @@ public class SelectionManager : MonoBehaviour
         foreach (var p in pawns) AddToSelection(p);
     }
 
-    public void ClearPawnSelection() => ClearSelection();
-
     void ClearSelection()
     {
         foreach (var p in _selected)
@@ -452,4 +550,35 @@ public class SelectionManager : MonoBehaviour
     static Rect GetScreenRect(Vector2 a, Vector2 b) =>
         new Rect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y),
                  Mathf.Abs(a.x - b.x), Mathf.Abs(a.y - b.y));
+    // **커서가 무엇을 겨눴나 — 업힌 것은 빼고.**
+    //
+    // 업힌 폰·시체는 업은 폰의 자식이라 어깨 높이에 붙어 있고, 그래서 **업은 폰보다 먼저**
+    // 커서에 걸린다. 그대로 두면 시체를 멘 폰을 누를 방법이 사라진다 — 좌클릭하면 그 폰
+    // 대신 어깨의 시체가 열리고, 우클릭하면 [내려놓는다] 대신 시체의 [뒤진다]가 뜬다.
+    //
+    // 문서가 *"업힌 쪽을 때리면 업은 폰을 노리는 것과 구별이 안 된다 — 어깨 위라 사거리가
+    // 같다"*고 적어 둔 규칙이 겨냥에도 그대로 성립한다. **좌·우클릭이 같은 함수를 쓴다** —
+    // 같은 물음에 두 곳이 다르게 답하면 반드시 어긋난다.
+    //
+    // **보이는 것만 짚는다**(`VisiblePick`, 2026-09-19) — 잘려서 화면에 없는 벽 윗부분이 먼저 맞으면
+    // 그 뒤의 폰·광맥이 아니라 **안 보이는 벽**이 열린다.
+    public static bool PickVisible(Ray ray, out PickHit hit)
+    {
+        hit = default;
+
+        foreach (var h in VisiblePick.All(ray, 500f))
+        {
+            var brain = h.collider.GetComponentInParent<UnitBrain>();
+            if (brain?.Blackboard != null && brain.Blackboard.CarriedBy != null) continue;
+
+            // **안개가 가린 폰은 못 짚는다**(2026-09-15) — 안 막으면 커서를 훑어 적이 어디 있는지를
+            // 더듬어 찾을 수 있다. 가린 것을 누를 수 있으면 가린 것이 아니다.
+            if (FogOfWar.Hides(brain)) continue;
+
+            hit = h;
+            return true;
+        }
+        return false;
+    }
+
 }

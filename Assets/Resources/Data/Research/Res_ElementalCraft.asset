@@ -18,7 +18,11 @@ MonoBehaviour:
     \uBC95. \uC6D0\uC18C \uC9C0\uD321\uC774\uB97C \uB9CC\uB4E4 \uC218 \uC788\uAC8C
     \uB41C\uB2E4."
   Ingredients: []
-  ResearchTime: 90
+  ResearchTime: 1000
   SkillGrowthAmount: 1.5
-  Prerequisite: {fileID: 11400000, guid: dbb567b8fdcc46fdaa8c8039d40d5330, type: 2}
+  Prerequisites:
+  - {fileID: 11400000, guid: dbb567b8fdcc46fdaa8c8039d40d5330, type: 2}
+  RequiredBenchTier: 3
+  GraphColumn: 4
+  GraphRow: 7
   UnlockedRecipes: []

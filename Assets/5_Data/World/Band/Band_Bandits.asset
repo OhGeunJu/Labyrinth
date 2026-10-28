@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Bandits
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uC0B0\uC801\uB2E8"
+  tokenColor: {r: 0.62, g: 0.31, b: 0.2, a: 1}
+  faction: {fileID: 11400000, guid: 1750c8328b26bed418d398f8075567fd, type: 2}
+  behavior: 0
+  members:
+  - Prefab: {fileID: 6894885055828391614, guid: 6c673912937360744b2c48c3a0ff8136, type: 3}
+    MinCount: 2
+    MaxCount: 4
+    MinGrade: 0
+    MaxGrade: 4
+  - Prefab: {fileID: 6894885055828391614, guid: 3bc11ab156d06fd4cae301fd29979ab7, type: 3}
+    MinCount: 1
+    MaxCount: 2
+    MinGrade: 0
+    MaxGrade: 4
+  - Prefab: {fileID: 6894885055828391614, guid: bf03490984e10764fbbf5136575ff739, type: 3}
+    MinCount: 0
+    MaxCount: 1
+    MinGrade: 7
+    MaxGrade: 11
+  speed: 4.8
+  ChaseRadius: 14
+  merchant: {fileID: 0}
+  loot:
+  - Item: {fileID: 11400000, guid: c16db23994cf9e04e9b0c69516cdcdcb, type: 2}
+    MinPerKill: 2
+    MaxPerKill: 8
+    Chance: 0.7
+  - Item: {fileID: 11400000, guid: f6277019a1d7c5e4b97f93bd6234f845, type: 2}
+    MinPerKill: 0
+    MaxPerKill: 2
+    Chance: 0.3
+  PowerMultiplier: 1

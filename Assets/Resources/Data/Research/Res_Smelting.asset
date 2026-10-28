@@ -12,15 +12,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
   m_Name: Res_Smelting
   m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
   ResearchName: "\uC81C\uB828\uC220"
   Description: "\uC6D0\uC11D\uC744 \uB179\uC5EC \uC8FC\uAD34\uB85C \uB9CC\uB4E0\uB2E4."
   Ingredients:
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    ItemId: 
     Amount: 20
   - Item: {fileID: 11400000, guid: 7f78a163531853440bcf98dcb4b2a71d, type: 2}
+    ItemId: 
     Amount: 5
-  ResearchTime: 400
+  ResearchTime: 600
   SkillGrowthAmount: 1
-  Prerequisite: {fileID: 0}
+  Prerequisites:
+  - {fileID: 11400000, guid: 5d2944c82556f774395f86392b87e32e, type: 2}
+  RequiredBenchTier: 1
+  GraphColumn: 2
+  GraphRow: 8
   UnlockedRecipes:
   - {fileID: 11400000, guid: 5f01c7233d2f79842a77b8c3fee169f9, type: 2}

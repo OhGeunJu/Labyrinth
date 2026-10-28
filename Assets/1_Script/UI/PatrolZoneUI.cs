@@ -54,7 +54,7 @@ public class PatrolZoneUI : MonoBehaviour
     void Open(PatrolZone zone)
     {
         _current = zone;
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
         if (titleText != null) titleText.text = zone.ZoneName;
         RefreshUnitList();
         RefreshModeButtons();
@@ -63,7 +63,7 @@ public class PatrolZoneUI : MonoBehaviour
     public void Close()
     {
         _current = null;
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     void SetMode(PatrolMode mode)

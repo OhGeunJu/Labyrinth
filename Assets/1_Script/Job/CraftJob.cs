@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class CraftJob : JobBase
@@ -37,7 +38,8 @@ public class CraftJob : JobBase
     float _startTime;
     float _carriedSeconds;   // 이번에 붙기 전까지 이미 만들어 둔 몫
     bool  _timerStarted; // 유닛이 작업대에 도착해 실제 제작을 시작했는지
-    bool  _consumed;   // 재료 차감됨 + 아직 완성 전 → 취소 시 환불 대상
+    bool  _consumed;
+    readonly List<(ItemData item, int amount)> _taken = new();   // 실제로 뺀 것 — 환불은 이것을 돌려준다(늑대 고기가 생고기로 안 바뀌게)   // 재료 차감됨 + 아직 완성 전 → 취소 시 환불 대상
 
     // 실제로 만들고 있던 폰. **`Cancel()`이 `ReservedBy`를 먼저 비우므로** `OnCancelled`에서는
     // 예약을 읽을 수 없다 — 여기에 붙들어 둔다(`HaulJob._carrier`와 같은 이유).
@@ -48,9 +50,22 @@ public class CraftJob : JobBase
     // 갈라 쓰면 종류가 늘 때 이 분기를 찾아 고쳐야 하고, 빠뜨리면 조용히 등급이 사라진다.
     bool IsEquipment => _recipe != null && _recipe.Result != null && _recipe.Result.HasQuality;
 
-    float ElapsedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) : 0f;
+    // **흐른 시간이 아니라 진척시킨 몫이다**(2026-09-17 — 작업대에 등급이 생겼다).
+    //
+    // 개량 작업대는 같은 1초에 1.5초어치를 한다. 그래서 여기서 **표준 초로 환산해** 돌려주면
+    // 진행 게이지도(`Progress`) 이어 하기도(`SavePartial`) **한 줄도 안 바뀐다** — 그 둘이
+    // 재는 것은 *얼마나 남았나*이지 *얼마나 앉아 있었나*가 아니다.
+    //
+    // **저장하는 값이 표준 초라야 작업대를 옮겨도 이어진다** — 실제 앉은 초로 저장하면
+    // 개량 작업대에서 반쯤 만들다 기본으로 옮긴 순간 진행도가 조용히 부풀거나 줄어든다.
+    float BenchSpeed => _table != null ? _table.Speed : 1f;
+
+    float WorkedThisSession => _timerStarted ? Mathf.Max(0f, Time.time - _startTime) * BenchSpeed : 0f;
 
     public override JobCategory Category => _recipe?.Category ?? JobCategory.Crafting;
+
+    public override Component Site => _table;   // 배치 칸이 거른다(`WorkPosts`)
+    public override WorkAnim    Anim     => WorkAnim.HammerTable;
 
     // ── 진행 상황 (UI 게이지용) — `ResearchJob`과 같은 모양 ────────────────
     public RecipeData Recipe => _recipe;
@@ -65,7 +80,7 @@ public class CraftJob : JobBase
         {
             if (_recipe == null) return 0f;
             float total = Mathf.Max(0.01f, _recipe.CraftTime);
-            return Mathf.Clamp01((_carriedSeconds + ElapsedThisSession) / total);
+            return Mathf.Clamp01((_carriedSeconds + WorkedThisSession) / total);
         }
     }
 
@@ -136,8 +151,9 @@ public class CraftJob : JobBase
                 return;
             }
         }
+        _taken.Clear();
         foreach (var ing in _recipe.Ingredients)
-            MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy);   // 배낭 먼저, 그다음 창고
+            MaterialPool.Consume(ing.Item, ing.Amount, ReservedBy, _taken);   // 배낭 먼저, 그다음 창고
         _consumed = true;
 
         Debug.Log($"[CraftJob] 제작 시작 — {_recipe.RecipeName} ({_recipe.CraftTime}초)");
@@ -160,7 +176,9 @@ public class CraftJob : JobBase
 
             // **남은 만큼만** 잰다. 매 틱 누적하지 않는 이유는 BT가 `tickInterval`마다 돌아
             // 프레임 델타를 더하면 시간이 6배 이상 느려지기 때문이다(알려진 이슈).
-            _craftEndTime = Time.time + Mathf.Max(0.01f, _recipe.CraftTime - _carriedSeconds);
+            // **남은 표준 초를 작업대 속도로 나눈다** — 개량 작업대는 그만큼 일찍 끝난다.
+            _craftEndTime = Time.time
+                          + Mathf.Max(0.01f, (_recipe.CraftTime - _carriedSeconds) / BenchSpeed);
             _table.SetActiveJob(this);   // 이때부터 패널 게이지가 이 잡을 읽는다
         }
         if (Time.time < _craftEndTime) return;
@@ -243,7 +261,7 @@ public class CraftJob : JobBase
         // **만들던 것을 버리지 않는다.** 폰이 밥을 먹으러 가거나 죽거나 이동 명령을 받아도
         // 진행이 남는다 — 그러지 않으면 긴 제작은 한 번도 안 끊길 수가 없어 영영 못 끝낸다.
         // 장비는 `Owner`를 함께 저장해 **만들던 폰만 이어받게** 한다(등급이 그 폰의 솜씨이므로).
-        float done = _carriedSeconds + ElapsedThisSession;
+        float done = _carriedSeconds + WorkedThisSession;
         if (done > 0f && _table != null)
             _table.SavePartial(_recipe, done, IsEquipment ? _crafter : null);
 
@@ -255,8 +273,7 @@ public class CraftJob : JobBase
             Vector3 pos = _table != null ? _table.transform.position : Vector3.zero;
             // 창고로 되돌린다 — 바닥에 떨구면 그것이 다시 운반 일감이 되고, 나르는 동안
             // 창고 집계에서 빠져 있어 같은 주문이 "재료 부족"으로 다시 죽는다(연구와 같은 정책).
-            foreach (var ing in _recipe.Ingredients)
-                MaterialPool.Refund(ing.Item, ing.Amount, pos + Vector3.up * 0.3f);
+            MaterialPool.Refund(_taken, pos + Vector3.up * 0.3f);
         }
 
         // 주문 자체는 잃지 않는다 — 큐에 되돌려 다른 폰(또는 나중에 이 폰)이 이어받게 한다.

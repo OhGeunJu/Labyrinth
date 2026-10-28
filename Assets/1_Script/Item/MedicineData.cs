@@ -22,4 +22,8 @@ public class MedicineData : ItemData
 
     // 소모품이라 넉넉히 쌓인다. 붕대를 한 칸에 다섯 개씩 들고 다닐 수는 없다.
     public override int MaxStack => 25;
+
+    // **치료한 만큼만 닳는다**(2026-10-16, 사용자: *"치료한다고 무조건 아이템 하나가 사라지는게 아니라"*) —
+    // 한 개가 한 회차 전부이고, 긁힌 데 감으면 조금만 쓴다(`Treatment.Dose`).
+    public override bool Depletes => true;
 }

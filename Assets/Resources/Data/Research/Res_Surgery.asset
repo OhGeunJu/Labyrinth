@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Surgery
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uC218\uC220"
+  Description: "\uAC10\uB294 \uAC83\uC73C\uB85C \uC548 \uB418\uB294 \uAC83\uC774
+    \uC788\uB2E4. \uC5F4\uACE0, \uAEBC\uB0B4\uACE0, \uB2E4\uC2DC \uAFF0\uB9E8\uB2E4."
+  Ingredients:
+  - Item: {fileID: 0}
+    ItemId: res_refined_essence
+    Amount: 3
+  - Item: {fileID: 0}
+    ItemId: med_kit
+    Amount: 4
+  ResearchTime: 900
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: 6c54a1e1ad25aeb4b949a4a98bbdc92a, type: 2}
+  - {fileID: 11400000, guid: 6614929edebdad44fb6e6411a3fd5048, type: 2}
+  RequiredBenchTier: 2
+  GraphColumn: 3
+  GraphRow: 12
+  UnlockedRecipes: []

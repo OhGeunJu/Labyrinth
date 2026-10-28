@@ -14,14 +14,30 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: 
   BuildingName: "\uC5F0\uAD6C\uB300"
-  Description: "\uC5F0\uAD6C\uB97C \uC9C4\uD589\uD55C\uB2E4. \uD3F0\uC774 \uBD99\uC5B4 \uC788\uB294 \uB3D9\uC548\uB9CC \uAC8C\uC774\uC9C0\uAC00 \uC624\uB974\uACE0, \uB05D\uB098\uBA74 \uC0C8 \uB808\uC2DC\uD53C\uC640 \uAC74\uBB3C\uC774 \uC5F4\uB9B0\uB2E4."
-  Category: 2
+  Description: "\uC5F0\uAD6C\uB97C \uC9C4\uD589\uD55C\uB2E4. \uD3F0\uC774 \uBD99\uC5B4
+    \uC788\uB294 \uB3D9\uC548\uB9CC \uAC8C\uC774\uC9C0\uAC00 \uC624\uB974\uACE0,
+    \uB05D\uB098\uBA74 \uC0C8 \uB808\uC2DC\uD53C\uC640 \uAC74\uBB3C\uC774 \uC5F4\uB9B0\uB2E4."
+  Category: 6
   SortOrder: 120
   Size: {x: 3, y: 2}
-  CostItem: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
-  CostAmount: 30
+  Costs:
+  - Item: {fileID: 11400000, guid: d5110da4aaf3118469617092dbad6ce1, type: 2}
+    Amount: 15
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Amount: 10
+  MaxHealth: 0
+  CostItem: {fileID: 0}
+  CostAmount: 0
+  DragBuild: 0
+  AreaDrag: 0
   RequiredResearch: {fileID: 0}
   Prefab: {fileID: 7660382581357753710, guid: d978e4e3fe04cf64b968f1bae54e2e9a, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  IsBridge: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 1
+  BlockMask: []
+  EdgeWall: 0

@@ -19,7 +19,7 @@ public class CoreRelocator : MonoBehaviour
     DungeonCore  _core;
     GridRenderer _grid;
     Camera       _cam;
-    Material     _mat;
+    RangeCircle  _circle;
 
     readonly List<Vector2Int> _footprint = new() { Vector2Int.zero };
 
@@ -57,27 +57,17 @@ public class CoreRelocator : MonoBehaviour
         _cam  = Camera.main;
         _grid = FindFirstObjectByType<GridRenderer>();
 
-        _mat = new Material(Shader.Find("Hidden/Internal-Colored"))
-        {
-            hideFlags = HideFlags.HideAndDontSave
-        };
-        _mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-        _mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-        _mat.SetInt("_Cull",     (int)CullMode.Off);
-        _mat.SetInt("_ZWrite",   0);
 
         // 건설 모드로 들어가면 이전 모드는 종료(입력 충돌 방지)
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
-        RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
     }
 
     void OnDestroy()
     {
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
-        RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
         // `?.`가 아니라 Unity 널 비교 — 씬 언로드 시 이미 파괴된 GridRenderer를 건드리면 예외.
         if (_grid != null) _grid.HidePreview();
-        if (_mat != null) Destroy(_mat);
+        _circle?.Dispose();
         if (Instance == this) Instance = null;
     }
 
@@ -112,7 +102,8 @@ public class CoreRelocator : MonoBehaviour
 
         Ray ray = _cam.ScreenPointToRay(Mouse.current.position.ReadValue());
         Vector3 point;
-        if (Physics.Raycast(ray, out RaycastHit hit, 500f))
+        // 짚는 문은 한 벌(`VisiblePick`) — 잘려서 안 보이는 벽 윗부분에 먼저 맞지 않게.
+        if (VisiblePick.First(ray, out var hit, 500f))
             point = hit.point;
         // 공허(던전 씬): 콜라이더가 없어도 y=0 평면 교차로 조준 — BuildModeManager와 동일 폴백.
         else if (new Plane(Vector3.up, 0f).Raycast(ray, out float enter) && enter <= 500f)
@@ -201,38 +192,17 @@ public class CoreRelocator : MonoBehaviour
         GUI.color = Color.white;
     }
 
-    void OnEndCameraRendering(ScriptableRenderContext ctx, Camera cam)
-    {
-        if (cam != Camera.main) return;
-        DrawPreviewRange();
-    }
-
-    void OnRenderObject()
-    {
-        if (GraphicsSettings.currentRenderPipeline != null) return;
-        DrawPreviewRange();
-    }
-
-    // 이전 후 메인 핵 영역(반경)을 후보 위치에 미리 그린다 — 어떤 건물이 들고 나는지 눈으로 확인용.
+    // 이전 후 핵 영역을 후보 자리에 미리 그린다 — 어떤 건물이 들고 나는지 눈으로 본다.
+    //
+    // **메시로 그린다**(`RangeCircle`) — `GL`로 카메라 렌더 끝에 그리면 오버레이 UI 위에 얹힌다.
     void DrawPreviewRange()
     {
-        if (!_hasTarget || _core == null || _core.Data == null || _mat == null) return;
+        if (!_hasTarget || _core == null || _core.Data == null) { _circle?.Hide(); return; }
 
-        float radius = _core.Data.BaseRadius;
-        var   center = new Vector3(_targetPos.x, 0.03f, _targetPos.z);
-        var   color  = _valid ? new Color(0.4f, 1f, 0.5f, 0.8f) : new Color(1f, 0.4f, 0.4f, 0.8f);
-
-        _mat.SetPass(0);
-        GL.PushMatrix();
-        GL.Begin(GL.LINE_STRIP);
-        GL.Color(color);
-        const int segments = 64;
-        for (int i = 0; i <= segments; i++)
-        {
-            float angle = i * Mathf.PI * 2f / segments;
-            GL.Vertex3(center.x + Mathf.Cos(angle) * radius, center.y, center.z + Mathf.Sin(angle) * radius);
-        }
-        GL.End();
-        GL.PopMatrix();
+        _circle ??= new RangeCircle(transform, "RelocatePreview");
+        _circle.Draw(new Vector3(_targetPos.x, RangeCircle.Lift, _targetPos.z),
+                     _core.Data.BaseRadius,
+                     _valid ? new Color(0.4f, 1f, 0.5f, 0.8f) : new Color(1f, 0.4f, 0.4f, 0.8f));
     }
+
 }

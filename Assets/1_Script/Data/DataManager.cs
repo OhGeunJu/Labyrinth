@@ -41,6 +41,14 @@ public static class DataManager
     // 종족. `UnitData`로 담으므로 `MinionData`·`NpcData`까지 한 번에 들어온다
     // (`Resources.LoadAll<UnitData>`가 파생 타입을 함께 준다).
     static readonly Dictionary<string, UnitData> _units = new(StringComparer.OrdinalIgnoreCase);
+    static readonly List<FactionData> _factions = new();
+
+    // 능동 능력. 장비 JSON이 `abilityId`(= 에셋 이름)로 가리킨다.
+    static readonly Dictionary<string, AbilityData> _abilities = new();
+
+    public static IReadOnlyDictionary<string, AbilityData> AllAbilities => _abilities;
+    public static AbilityData GetAbility(string id) =>
+        !string.IsNullOrEmpty(id) && _abilities.TryGetValue(id, out var a) ? a : null;
 
     // 소환 목록도 순서가 곧 메뉴 순서라 정렬된 리스트로 따로 둔다(건설 목록과 같은 이유).
     static readonly List<MinionData> _minionOrder = new();
@@ -119,6 +127,9 @@ public static class DataManager
     // 종족 — 방랑자·하수인·NPC 전부. 적/NPC 스폰을 데이터로 옮길 때도 이 색인을 쓴다.
     public static IReadOnlyDictionary<string, UnitData> AllUnits => _units;
 
+    // 저작된 세력 전부(플레이어 세력 포함 — 거르는 것은 보는 쪽 몫이다).
+    public static IReadOnlyList<FactionData> AllFactions => _factions;
+
     public static UnitData GetUnit(string key) =>
         !string.IsNullOrEmpty(key) && _units.TryGetValue(key, out var v) ? v : null;
 
@@ -145,6 +156,21 @@ public static class DataManager
         foreach (var u in Resources.LoadAll<UnitData>("Data/Units"))
             RegisterUnit(u);
 
+        // **세력은 목록이 필요해서 여기 있다.** 다른 SO(소지·AI 성향·상인)는 프리팹이 GUID로
+        // 가리키면 그만이라 `5_Data`에 살지만, 세력은 **전부를 훑어야 하는 곳**이 생겼다
+        // (`FactionPanelUI` — 아직 안 만난 세력도 목록에 서야 한다). 배열로 들면 이 저장소가
+        // 네 번 데인 그것이 된다(런타임 생성물에서 반드시 빈다) — 폴더 스캔이 답이다.
+        _factions.Clear();
+        foreach (var f in Resources.LoadAll<FactionData>("Data/Factions"))
+            if (f != null) _factions.Add(f);
+
+        // 능동 능력 — 장비 JSON이 `abilityId`로 가리킨다. **폴더 스캔이다**(씬 배열에 두면
+        // 런타임 생성물에서 반드시 빈다 — 이 저장소가 네 번 데인 그것).
+        _abilities.Clear();
+        foreach (var a in Resources.LoadAll<AbilityData>("Data/Abilities"))
+            if (a != null) _abilities[a.name] = a;
+        _factions.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+
         SortBuildings();
         SortMinions();
 
@@ -164,6 +190,8 @@ public static class DataManager
                 LoadJsonItems(   Path.Combine(modDir, "items"), modDir);
                 LoadJsonRecipes( Path.Combine(modDir, "recipes"));
             }
+
+        ResolveCountsAs();
 
         Debug.Log($"[DataManager] 로드 완료: 아이템 {_items.Count}개, 레시피 {_recipes.Count}개, " +
                   $"연구 {_research.Count}개, 건물 {_buildings.Count}개, " +
@@ -261,6 +289,29 @@ public static class DataManager
         });
     }
 
+    // JSON의 `countsAs`를 푼다 — **아이템을 다 읽은 뒤에**(가리키는 것이 SO일 수도, 뒤에 읽힐 JSON일 수도 있다).
+    // 오타는 조용히 *아무 레시피에도 안 쓰이는 고기*가 되므로 시끄럽게 알린다.
+    static void ResolveCountsAs()
+    {
+        foreach (var item in _items.Values)
+        {
+            if (item == null) continue;
+            if (string.IsNullOrEmpty(item.CountsAsId))
+            {
+                if (item.CountsAs != null) item.CountsAs.HasStandIns = true;   // SO가 인스펙터에서 든 것
+                continue;
+            }
+            var target = GetItem(item.CountsAsId);
+            if (target == null || target == item)
+            {
+                Debug.LogWarning($"[DataManager] '{item.Id}'의 countsAs '{item.CountsAsId}'를 못 찾았습니다 — 재료로 안 쳐 줍니다.");
+                continue;
+            }
+            item.CountsAs = target;
+            target.HasStandIns = true;
+        }
+    }
+
     // ── 아이템 JSON ────────────────────────────────────────────────────────
 
     // `contentRoot` = 이 JSON이 속한 콘텐츠 폴더(모드 폴더 또는 StreamingAssets/Data).
@@ -317,6 +368,7 @@ public static class DataManager
                 recipe.ResultAmount       = schema.resultAmount;
                 recipe.RequiredSkillLevel = schema.requiredSkillLevel;
                 recipe.SkillGrowthAmount  = schema.skillGrowthAmount;
+                recipe.RequiredBenchTier  = schema.requiredBenchTier;
                 recipe.Category           = JobCategory.Crafting;
                 if (Enum.TryParse<CraftSkill>(schema.requiredSkillType, ignoreCase: true, out var skill))
                     recipe.RequiredSkillType = skill;
@@ -376,6 +428,9 @@ public static class DataManager
         item.Height      = Mathf.Max(1, s.height);
         item.BaseValue   = Mathf.Max(0, s.baseValue);
         item.Stack       = Mathf.Max(1, s.maxStack);
+        item.CountsAsId  = string.IsNullOrWhiteSpace(s.countsAs) ? null : s.countsAs.Trim();
+        item.LightRadius = Mathf.Max(0f, s.lightRadius);
+        item.BurnDays    = Mathf.Max(0f, s.burnDays);
 
         // 그림·모델은 **이 콘텐츠가 온 폴더 안에서** 먼저 찾는다(`ModAssets`).
         // 그래야 모드가 자기 PNG를 들고 올 수 있다 — 예전엔 `Resources.Load`뿐이라
@@ -410,14 +465,57 @@ public static class DataManager
         return fallback;
     }
 
+    // 옛 `damageCategory` × `damageElement` 조합을 새 `DamageType` 하나로 옮긴다.
+    // **독은 원소가 아니라 효과가 됐으므로**(`StatusEffectSystem`) 갈 자리가 없다 — 암흑으로
+    // 떨어뜨리고 그렇게 적었다고 알린다.
+    static void MigrateLegacyDamage(WeaponData w, WeaponSchema s)
+    {
+        bool hasLegacy = !string.IsNullOrEmpty(s.damageCategory)
+                      || !string.IsNullOrEmpty(s.physicalType)
+                      || !string.IsNullOrEmpty(s.damageElement);
+        if (!hasLegacy) return;
+
+        // 새 키를 이미 적었으면 손대지 않는다(저작이 이긴다).
+        if (!string.IsNullOrEmpty(s.damageType)) return;
+
+        string cat  = (s.damageCategory ?? "").ToLowerInvariant();
+        string elem = (s.damageElement  ?? "").ToLowerInvariant();
+        string phys = (s.physicalType   ?? "").ToLowerInvariant();
+
+        DamageType mapped =
+            cat == "physical" || cat == "" ? phys switch
+            {
+                "pierce" => DamageType.Pierce,
+                "blunt"  => DamageType.Blunt,
+                _        => DamageType.Slash,
+            }
+            : cat == "holy" ? DamageType.Holy
+            : cat == "dark" ? DamageType.Dark
+            : elem switch
+            {
+                "fire"      => DamageType.Fire,
+                "ice"       => DamageType.Water,       // 얼음은 물로 접혔다
+                "lightning" => DamageType.Lightning,
+                "poison"    => DamageType.Dark,        // 독은 원소가 아니게 됐다
+                _           => DamageType.Arcane,
+            };
+
+        w.DamageType = mapped;
+        Debug.LogWarning($"[DataManager] '{s.id}': 옛 피해 키(damageCategory/physicalType/" +
+                         $"damageElement)를 damageType = \"{mapped}\" 로 옮겼습니다. " +
+                         "JSON을 고쳐 두면 이 경고가 사라집니다.");
+    }
+
     static WeaponData BuildWeapon(WeaponSchema s, string root)
     {
         var w = ScriptableObject.CreateInstance<WeaponData>();
         ApplyBase(w, s, root);
-        w.Type           = ParseEnum(s.weaponType,     w.Type,           s.id, "weaponType");
-        w.DamageCategory = ParseEnum(s.damageCategory, w.DamageCategory, s.id, "damageCategory");
-        w.PhysicalType   = ParseEnum(s.physicalType,   w.PhysicalType,   s.id, "physicalType");
-        w.DamageElement  = ParseEnum(s.damageElement,  w.DamageElement,  s.id, "damageElement");
+        w.Type       = ParseEnum(s.weaponType, w.Type,       s.id, "weaponType");
+        w.DamageType = ParseEnum(s.damageType, w.DamageType, s.id, "damageType");
+
+        // **옛 세 키를 읽어 옮긴다** — 모드 JSON이 아직 그것을 들고 있을 수 있고, 조용히
+        // 기본값(베기)이 되면 불 지팡이가 칼이 된다. `damageType`을 적었으면 그쪽이 이긴다.
+        MigrateLegacyDamage(w, s);
         w.IsLargeWeapon      = s.isLargeWeapon;
         w.IsBladed           = s.isBladed;
         w.IsRanged           = s.isRanged;
@@ -427,6 +525,7 @@ public static class DataManager
         w.BlockBonus         = s.blockBonus;
         w.RangedBlockBonus   = s.rangedBlockBonus;
         w.EffectChance       = s.effectChance;
+        w.Ability            = ResolveAbility(s.abilityId, s.id);
         return w;
     }
 
@@ -436,7 +535,27 @@ public static class DataManager
         ApplyBase(a, s, root);
         a.Slot = ParseEnum(s.armorSlot, a.Slot, s.id, "armorSlot");
         a.DamageReduction = s.damageReduction;
+        a.MoveSpeedMult   = s.moveSpeedMult > 0f ? s.moveSpeedMult : 1f;
+        a.Ability         = ResolveAbility(s.abilityId, s.id);
+        // 색 오타는 조용히 기본 갈색이 된다 — 적었는데 못 읽은 것은 알린다(`ResolveAbility`와 같은 이유).
+        if (!string.IsNullOrEmpty(s.wornColor))
+        {
+            if (ColorUtility.TryParseHtmlString(s.wornColor, out var worn)) a.WornColor = worn;
+            else Debug.LogWarning($"[데이터] `{s.id}`의 wornColor `{s.wornColor}`를 못 읽었습니다 — `#RRGGBB`로 적을 것.");
+        }
         return a;
+    }
+
+    // **오타는 조용히 넘기지 않는다** — 안 적으면 능동이 없는 것이고 그건 정상이지만,
+    // 적었는데 못 찾은 것은 저작 실수라 그대로 두면 *"방패를 들었는데 칸이 안 뜬다"*가 된다.
+    static AbilityData ResolveAbility(string abilityId, string itemId)
+    {
+        if (string.IsNullOrEmpty(abilityId)) return null;
+        if (_abilities.TryGetValue(abilityId, out var a)) return a;
+
+        Debug.LogWarning($"[데이터] `{itemId}`의 abilityId `{abilityId}`를 찾을 수 없습니다 — " +
+                         "`Resources/Data/Abilities/`에 그 이름의 에셋이 있는지 보세요.");
+        return null;
     }
 
     static ResourceItemData BuildResource(ResourceItemSchema s, string root)

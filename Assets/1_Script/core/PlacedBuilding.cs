@@ -3,7 +3,7 @@ using UnityEngine;
 
 // 런타임 배치된 건물의 메타(원본 BuildingData)를 보관하고 철거를 담당.
 // 배치 시 BuildingDormancy.Ensure처럼 자동 부착(BuildModeManager.Place / BuildingBlueprint.Complete).
-// 철거: 점유 해제 + 메소 재베이크 + 건설비 75% 환불(또는 코어 아이템 드랍, step C) + 파괴.
+// 철거: 점유 해제 + 코스 재베이크 + 건설비 75% 환불(또는 코어 아이템 드랍, step C) + 파괴.
 [DisallowMultipleComponent]
 public class PlacedBuilding : MonoBehaviour, IFootprintSite
 {
@@ -43,6 +43,11 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     // 배치로 지은 건물은 이미 `OccupyTiles`가 불렸으므로 여기서 다시 하지 않는다.
     void Start()
     {
+        // **체력을 단다**(`BuildingHealth` — 핵은 빼고). 청사진 고스트는 컴포넌트를 꺼 `Start`가 안 돌아 안 붙는다.
+        if (GetComponent<BuildingHealth>() == null
+            && GetComponent<DungeonCore>() == null && GetComponent<SubCore>() == null)
+            gameObject.AddComponent<BuildingHealth>();
+
         if (_occupiedTiles.Count > 0) return;             // 배치 경로가 이미 등록했다
         OccupyFootprint();
     }
@@ -55,13 +60,67 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         if (data == null || !data.OccupiesTile) return;
         if (MapManager.Instance == null) return;
 
-        OccupyTiles(FootprintAt(transform.position, data.Size, transform.rotation));
+        OccupyTiles(BlockingAt(transform.position, data, transform.rotation));
     }
 
-    // 이 건물이 깔고 앉는 칸들 (`IFootprintSite`) — 폰이 서는 자리를 고를 때 후보에서 빠진다.
+    // ── 발자국과 "막는 칸"은 다른 물음이다 ──────────────────────────────────
+    //
+    // **발자국** = 이 건물이 깔고 앉은 칸 전부(겹쳐 짓지 못하게 하는 축).
+    // **막는 칸** = 그중 길을 막는 칸(길찾기가 보는 축).
+    //
+    // 여태 둘이 같았다 — `OccupiesTile` 하나가 사각형 전체에 걸렸으니까. 걸어 들어가는
+    // 건물에서는 갈린다: **벽은 막고 안쪽과 문간은 튼다.** 마스크가 없으면 옛날 그대로다.
+    public static IEnumerable<Vector2Int> BlockingAt(Vector3 center, BuildingData data, Quaternion rot)
+    {
+        if (data == null || !data.OccupiesTile) yield break;
+
+        int W = Mathf.Max(1, data.Size.x);
+        int H = Mathf.Max(1, data.Size.y);
+
+        int quarter = Mathf.RoundToInt(rot.eulerAngles.y / 90f) & 3;
+        int w = W, h = H;
+        if (quarter % 2 == 1) (w, h) = (h, w);
+
+        var lo = LowerLeftTile(center, w, h);
+
+        for (int x = 0; x < w; x++)
+        for (int z = 0; z < h; z++)
+        {
+            // 세계 칸 → 회전 전 칸. **90°와 270°는 서로의 역이다** — 한쪽 식을 베껴
+            // 부호만 바꾸면 문이 반대편에 뚫린다.
+            int lx, lz;
+            switch (quarter)
+            {
+                case 1:  lx = W - 1 - z; lz = x;             break;
+                case 2:  lx = W - 1 - x; lz = H - 1 - z;     break;
+                case 3:  lx = z;         lz = H - 1 - x;     break;
+                default: lx = x;         lz = z;             break;
+            }
+
+            if (data.BlocksLocal(lx, lz)) yield return new Vector2Int(lo.x + x, lo.y + z);
+        }
+    }
+
+    // 폰이 서는 자리를 고를 때 후보에서 빠지는 칸 (`IFootprintSite`).
+    //
+    // **깔고 앉은 칸이 아니라 막는 칸이다** — 걸어 들어가는 건물의 안쪽은 트여 있고,
+    // 거기가 곧 침대·작업대 앞에 서는 자리다. 발자국 전체를 빼면 **제 건물 안에서
+    // 일할 자리가 없어진다.**
     public IEnumerable<Vector2Int> Footprint =>
-        data != null ? FootprintAt(transform.position, data.Size, transform.rotation)
+        data != null ? BlockingAt(transform.position, data, transform.rotation)
                      : System.Array.Empty<Vector2Int>();
+
+    // **다른 건물과 겹치면 안 되는 칸**(2026-10-06). 보통은 발자국 전체다 — 소환진·침대·창고처럼 칸을 안 막는 건물도
+    // 그 자리를 *차지한다*(그 위에 다른 것을 지으면 둘이 겹쳐 선다). **걸어 들어가는 건물(`BlockMask`)만 막는 칸**이다 —
+    // 집 껍데기의 안쪽은 침대·작업대를 들이는 자리다.
+    //
+    // 전에는 배치 판정이 남의 **중심 칸 하나**만 봤다(`footprint.Contains(WorldToTile(bp.position))`) — 여러 칸짜리
+    // 청사진·건물의 가장자리에 걸쳐 놓으면 통과해서, 소환진 위에 침대가 겹쳐 지어졌다.
+    public static IEnumerable<Vector2Int> ClaimedAt(Vector3 center, BuildingData data, Quaternion rot)
+    {
+        if (data == null) return System.Array.Empty<Vector2Int>();
+        return data.HasBlockMask ? BlockingAt(center, data, rot) : FootprintAt(center, data.Size, rot);
+    }
 
     // 중심에서 크기만큼 펼친 칸들. `BuildModeManager.GetFootprint`가 만드는 것과 같은 칸이
     // 나오고, 격자에서 반 칸쯤 어긋나게 놓인 건물도 반올림으로 제자리를 찾는다.
@@ -74,19 +133,39 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         int quarter = Mathf.RoundToInt(rot.eulerAngles.y / 90f) & 3;
         if (quarter % 2 == 1) (w, h) = (h, w);
 
-        int x0 = Mathf.RoundToInt(center.x - w * 0.5f);
-        int z0 = Mathf.RoundToInt(center.z - h * 0.5f);
+        var lo = LowerLeftTile(center, w, h);
 
         for (int x = 0; x < w; x++)
         for (int z = 0; z < h; z++)
-            yield return new Vector2Int(x0 + x, z0 + z);
+            yield return new Vector2Int(lo.x + x, lo.y + z);
+    }
+
+    // 발자국의 좌하단 **칸**. 월드 좌표를 칸으로 바꾸는 일은 `MapManager.WorldToTile` 하나가
+    // 답한다 — **여기서 반올림으로 직접 구하면 안 된다.**
+    //
+    // 반올림은 격자가 세계 원점에 박혀 있을 때만 맞는 계산이다. 08-27에 위상이 첫 조작으로
+    // 옮겨 간 뒤로 위상이 0이 아니게 됐고, 그때부터 **발자국이 통째로 한 칸 밀렸다.**
+    // 1×1에서는 티가 안 났지만(옆 칸을 막을 뿐) 5×4 오두막에서 드러났다 — **문간이 한 칸
+    // 옆으로 등록돼 폰이 벽으로 걸어갔고**, 안쪽도 한 줄이 잘려 침대를 놓을 자리가
+    // 여섯 칸에서 두 칸으로 줄었다.
+    //
+    // 중심에서 반 칸 물러난 **좌하단 칸의 한복판**을 물어본다(모서리를 물으면 부동소수
+    // 오차로 옆 칸에 떨어진다).
+    static Vector2Int LowerLeftTile(Vector3 center, int w, int h)
+    {
+        var map = MapManager.Instance;
+        var probe = new Vector3(center.x - w * 0.5f + 0.5f, 0f, center.z - h * 0.5f + 0.5f);
+
+        return map != null
+            ? map.WorldToTile(probe)
+            : new Vector2Int(Mathf.FloorToInt(probe.x), Mathf.FloorToInt(probe.z));
     }
 
     // 배치 시 부착 + BuildingData 연결.
     public static PlacedBuilding Attach(GameObject go, BuildingData data)
     {
         if (go == null) return null;
-        var pb = go.GetComponent<PlacedBuilding>() ?? go.AddComponent<PlacedBuilding>();
+        if (!go.TryGetComponent(out PlacedBuilding pb)) pb = go.AddComponent<PlacedBuilding>();
         pb.data = data;
         return pb;
     }
@@ -99,7 +178,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         var claimed = new List<Vector2Int>();
         foreach (var t in tiles)
         {
-            MapManager.Instance.SetTile(t, TileData.MakeImpassable());
+            MapManager.Instance.SetOccupied(t, true);
             _occupiedTiles.Add(t);
             claimed.Add(t);
         }
@@ -124,14 +203,16 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
 
         var blocked = new HashSet<Vector2Int>(tiles);
 
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        var all = UnitBrain.All;
+        for (int i = 0; i < all.Count; i++)
         {
+            var brain = all[i];
             var from = map.WorldToTile(brain.transform.position);
             if (!blocked.Contains(from)) continue;
 
             // 목표만 있고 경로가 없으면 걷는 게 아니라 **막혀 선 것**이다 — 그건 내보낸다.
             var mover = brain.GetComponent<PawnMover>();
-            if (mover != null && mover.HasTarget() && mover.HasLocalPath) continue;
+            if (mover != null && mover.HasTarget() && (mover.HasLocalPath || mover.RoutePending)) continue;
 
             var to = map.FindWorkableNear(from, 4, blocked);
             if (blocked.Contains(to)) continue;   // 나갈 데가 없으면 그대로 둔다 — 옮기는 시늉만 하면 더 나쁘다
@@ -146,7 +227,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         PawnPlacement.PlaceOnGround(brain.gameObject, groundPos);
 
         // 걸어오던 경로는 여기서 쓸모없다. 목표를 지우면 BT가 다음 틱에 새 자리에서 다시 계획한다.
-        brain.GetComponent<PawnMover>()?.StopMovement();
+        if (brain.TryGetComponent(out PawnMover brainMover)) brainMover.StopMovement();
         Debug.Log($"[PlacedBuilding] {brain.name} — 건물이 들어선 칸에서 밖으로 옮김");
     }
 
@@ -155,7 +236,8 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     {
         if (cam == null) return null;
         var ray = cam.ScreenPointToRay(screenPos);
-        if (Physics.Raycast(ray, out var hit, 500f))
+        // 짚는 문은 한 벌(`VisiblePick`) — 잘려서 안 보이는 벽 윗부분에 먼저 맞지 않게.
+        if (VisiblePick.First(ray, out var hit, 500f))
             return hit.collider.GetComponentInParent<PlacedBuilding>();
         return null;
     }
@@ -169,7 +251,29 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         ReleaseTiles();
         Destroy(gameObject);
 
-        // 벽 등 철거 후 메소 격자 복구
+        // 벽 등 철거 후 코스 격자 복구
+        HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
+    }
+
+    // ── 부서짐 ──────────────────────────────────────────────────────────────
+    //
+    // **철거와 같은 길이고 갈리는 것은 자재뿐이다** — 철거는 창고로 전액(`Refund`), 부서지면 **그 자리에 `ratio`만큼
+    // 떨어진다**(`BuildingHealth.DropRatio` 75%). 창고로 안 보내는 이유: 싸우다 부서진 벽의 잔해가 저절로 창고에
+    // 들어가면 부서진 것이 아니라 철거한 것이다. 주워 오는 일(운반)이 그 값이다.
+    public void Break(float ratio)
+    {
+        var pos = transform.position;
+
+        if (data != null)
+            foreach (var c in data.Costs)
+            {
+                if (c.Item == null || c.Amount <= 0) continue;
+                int n = Mathf.FloorToInt(c.Amount * ratio);
+                if (n > 0) DroppedItem.Spawn(c.Item, n, pos + Vector3.up * 0.3f);
+            }
+
+        ReleaseTiles();
+        Destroy(gameObject);
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
     }
 
@@ -179,7 +283,7 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
     {
         if (MapManager.Instance != null)
             foreach (var t in _occupiedTiles)
-                MapManager.Instance.SetTile(t, TileData.MakePassable());
+                MapManager.Instance.SetOccupied(t, false);
         _occupiedTiles.Clear();
     }
 
@@ -198,30 +302,37 @@ public class PlacedBuilding : MonoBehaviour, IFootprintSite
         ReleaseTiles();
         transform.SetPositionAndRotation(pos, rot);
         OccupyFootprint();          // 새 칸을 막고, 거기 서 있던 폰을 밖으로 내보낸다
+        // 얇은 벽은 칸이 아니라 변을 막는다 — 그것도 옮긴다. **`GetComponent<T>()?.`가 아니다**(
+        // 에디터의 가짜 null 위에서 `Reregister`가 돌다 끊겨 아래 다시 굽기가 통째로 빠졌다).
+        if (TryGetComponent(out ThinWall thin)) thin.Reregister();
 
         // 벽처럼 장애물인 건물은 **떠난 자리와 새 자리 둘 다** 다시 구워야 한다.
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(from);
         HierarchicalPathfinder.Instance?.RebakeObstacleAt(pos);
 
         // 영역은 그대로고 건물만 움직였다 — `OnTerritoryChanged`가 안 뜨므로 스스로 다시 본다.
-        GetComponent<BuildingDormancy>()?.Reevaluate();
+        if (TryGetComponent(out BuildingDormancy dormancy)) dormancy.Reevaluate();
 
         Debug.Log($"[PlacedBuilding] {(data != null ? data.BuildingName : name)} 이전 — {from} → {pos}");
     }
 
     void Refund()
     {
-        if (data == null || data.CostAmount <= 0) return;
-        int refund = Mathf.FloorToInt(data.CostAmount * refundRatio);
-        if (refund <= 0) return;
+        if (data == null) return;
 
-        var item = data.CostItem;
-        if (item == null) return; // 비용 아이템이 없는 건물(무료) → 환불할 것도 없다
+        // **재료마다 따로 깎는다** — 합쳐서 깎으면 비율이 어느 재료에 붙는지가 정해지지 않는다.
+        foreach (var c in data.Costs)
+        {
+            if (c.Item == null || c.Amount <= 0) continue;
 
-        // **창고로 먼저, 바닥은 최후 수단**(`MaterialPool.Refund`) — 청사진 취소와 같은 길이다.
-        // 전엔 곧장 바닥에 떨궜는데, 그러면 그 짐이 다시 운반 일감이 되고 나르는 동안 창고
-        // 집계에서 빠져 있어 같은 자재를 기다리던 작업이 "재료 부족"으로 죽는다.
-        MaterialPool.Refund(item, refund, transform.position);
+            int refund = Mathf.FloorToInt(c.Amount * refundRatio);
+            if (refund <= 0) continue;
+
+            // **창고로 먼저, 바닥은 최후 수단**(`MaterialPool.Refund`) — 청사진 취소와 같은 길이다.
+            // 전엔 곧장 바닥에 떨궜는데, 그러면 그 짐이 다시 운반 일감이 되고 나르는 동안 창고
+            // 집계에서 빠져 있어 같은 자재를 기다리던 작업이 "재료 부족"으로 죽는다.
+            MaterialPool.Refund(c.Item, refund, transform.position);
+        }
     }
 
     // ── 철거 예정 빨간 표시 ─────────────────────────────────────────────────

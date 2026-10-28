@@ -34,6 +34,15 @@ public static class PawnCarry
     const float ShoulderHeight = 1.1f;
     const float ShoulderSide   = 0.25f;
 
+    // **머리가 뒤로 간다**(2026-09-08, 사용자: *"머리가 뒤로 내 폰에 등쪽에 있어야지"*).
+    //
+    // 전에는 로컬 Z로 90도 눕혀서 몸이 **좌우로** 뻗었다 — 어깨를 가로지르는 널빤지라
+    // 머리가 옆으로 튀어나왔다. 이제 로컬 X로 −90도라 몸이 **앞뒤로** 눕고, 그 방향에서
+    // 머리(피벗 반대쪽)가 **등 뒤**에 온다.
+    //
+    // 몸 한가운데를 어깨에 딱 맞추면 **발이 앞으로 그만큼 튀어나오므로** 조금 뒤로 민다.
+    const float ShoulderBack = 0.35f;
+
     // ── 무게 ────────────────────────────────────────────────────────────────
 
     // 이 폰을 업으면 몇 kg인가. **그 폰이 지고 있던 짐도 같이 온다** — 어깨에 메는 것이지
@@ -91,7 +100,15 @@ public static class PawnCarry
     public static bool IsCarried(UnitBrain brain) =>
         brain != null && brain.Blackboard != null && brain.Blackboard.CarriedBy != null;
 
-    public static bool TryPickUp(UnitBrain carrier, UnitBrain target)
+    // **`keepCurrentJob` — 업기를 시킨 것이 일감 자신일 때.**
+    //
+    // 아래에서 하던 일감을 놓는데(`AbandonWork`), **그 일감이 바로 이 업기를 시킨 것이면
+    // 스스로를 취소한다.** `ButcherJob`이 정확히 그랬다: 시체를 업으러 가서 업는 순간
+    // `bb.CurrentJob`(= 그 `ButcherJob`)이 취소되고, 폰은 **시체를 든 채 영영 서 있었다**
+    // (도축대를 지어 두면 도축이 통째로 안 됐다 — 도축대 없이 그 자리에서 가르는 길만 돌았다).
+    //
+    // 기본은 **놓는다** — 명령으로 업는 길(우클릭·간수 호송)에서는 하던 일과 업기가 남남이다.
+    public static bool TryPickUp(UnitBrain carrier, UnitBrain target, bool keepCurrentJob = false)
     {
         if (!CanCarry(carrier, target)) return false;
 
@@ -102,11 +119,43 @@ public static class PawnCarry
         Imprisonment.Unbind(target);
         Bed.ReleaseFrom(target);
 
+        // **업는 순간 하던 일을 놓는다.** 업고 있으면 일감을 안 집지만(`WorkNode`), 이미 손에
+        // 든 것은 그 게이트로 안 풀린다 — 자리로 데려가는 동안 `CarryPawnNode`가 Running을
+        // 물어 `WorkNode`가 아예 안 돌기 때문이다. 그러면 그 일감은 **예약된 채 얼어붙어
+        // 다른 폰도 못 가져간다**(한 명이 멈추는 게 아니라 일감이 통째로 죽는다).
+        //
+        // 놓는 자리를 여기 두는 이유는 `PutDownSite`를 지우는 것과 같다 — **업기가 시작되는
+        // 문은 이 함수 하나뿐**이라, 명령을 내는 쪽마다 챙기게 하면 언젠가 빠뜨린다.
+        if (keepCurrentJob) carrier.Blackboard?.AssignedNode?.Unassign(carrier);
+        else                carrier.AbandonWork();
+
         // 걷던 중이면 멈춘다 — 멀쩡한 우리 폰도 업을 수 있으므로 가던 길이 남아 있을 수 있다.
-        target.GetComponent<PawnMover>()?.StopMovement();
+        if (target.TryGetComponent(out PawnMover mover)) mover.StopMovement();
+
+        // **싸우던 중이었으면 여기서 끈다**(`BodyPartSystem.KnockOut`과 **같은 이유·같은 자리**).
+        // 업히면 BT가 통째로 멎는데(`UnitBrain.Update`) 전투 상태를 끄는 자리는 그 BT의
+        // `FightNode`뿐이라, **아무도 안 끄면 `IsInCombat`이 참인 채로 얼어붙는다.**
+        //
+        // `CombatHandler.Update`는 BT가 아니라 **매 프레임 도는 MonoBehaviour**라 그대로 살아서
+        // 둘을 한다: ① `FaceTowards`가 월드 회전을 덮어 **어깨 위에서 벌떡 선다**(업힌 자세는
+        // 로컬 90도로 눕혀 둔 것이다) ② 공격 타이머가 계속 차서 **어깨 위에서 휘두른다**
+        // (사거리 게이트도 BT에 있어 거리를 안 본다).
+        //
+        // 기절해서 업히는 쪽은 `KnockOut`이 이미 껐다 — 남는 것은 **멀쩡한 우리 편을 싸움
+        // 한복판에서 업어 나르는 길**이고, 그게 업기를 만든 이유다.
+        if (target.TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
 
         var cc = target.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;   // 켜진 채 부모에 붙이면 콜라이더가 제자리로 되민다
+
+        // **콜라이더도 같이 끈다**(2026-09-08). 컨트롤러만 껐더니 **같은 자리의
+        // `CapsuleCollider`가 어깨에 매달린 채 살아 있었다** — 트리거도 아니라서, 업힌 몸이
+        // 지름 0.7m짜리 물리 덩어리로 업은 폰을 따라다닌다(화면에서는 몸보다 훨씬 큰
+        // 초록 캡슐로 보인다). 업힌 것은 **짐이지 몸이 아니다.**
+        //
+        // 클릭 판정은 이걸로 안 바뀐다 — `SelectionManager.PickVisible`이 **업힌 폰을 이미
+        // 건너뛴다**(어깨 위라 업은 폰과 구별이 안 된다). 여기서 없애는 것은 물리 쪽이다.
+        foreach (var col in target.GetComponents<Collider>()) col.enabled = false;
 
         // **부모의 크기를 상쇄한다.** 폰마다 몸집이 다른데(`PawnSpec.BodyScale`), 그냥 자식으로
         // 붙이면 업힌 사람의 월드 크기가 **업은 사람의 크기만큼 곱해진다** — 큰 폰이 업으면
@@ -122,8 +171,21 @@ public static class PawnCarry
             parent.y != 0f ? world.y / parent.y : world.y,
             parent.z != 0f ? world.z / parent.z : world.z);
 
-        target.transform.localPosition = new Vector3(ShoulderSide, ShoulderHeight, 0f);
-        target.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);   // 기절 자세 그대로
+        // **어깨에 얹는 것은 발이 아니라 몸통이다.** 피벗이 발밑에 있으므로(`center.y = height/2`)
+        // 그대로 놓으면 업힌 사람이 어깨 **위로** 통째로 솟는다 — 몸 한가운데가 어깨에 오도록
+        // 그만큼 내린다. 값은 콜라이더에게 묻는다(높이가 종족마다 다르다).
+        //
+        // **앞뒤로 눕혔으므로 그 오프셋은 로컬 Z 방향으로 간다** — `Euler(-90,0,0)`이 로컬
+        // Y(머리 쪽)를 **−Z(등 뒤)**로 보낸다. 그래서 피벗(발밑)을 +Z로 밀어야 몸 한가운데가
+        // 어깨에 온다.
+        //
+        // **업힌 폰의 크기를 태운다**(2026-09-08). `CenterOffset`은 그 폰의 **제 단위**로
+        // 잰 값인데, 방금 `localScale`을 `world/parent`로 맞춰 놨으므로 부모 좌표에서의
+        // 실제 반높이는 그 배율만큼 다르다. 안 태우면 **몸집이 1이 아닌 폰**(고블린처럼
+        // 작은 종족)의 몸 한가운데가 어깨를 빗나가 **옆으로 붕 뜬 채 실린다.**
+        float mid = PawnPlacement.CenterOffset(target.gameObject) * target.transform.localScale.y;
+        target.transform.localPosition = new Vector3(ShoulderSide, ShoulderHeight, mid - ShoulderBack);
+        target.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);   // 머리가 등 뒤로
 
         carrier.Blackboard.Carrying = target;
         target.Blackboard.CarriedBy = carrier;
@@ -135,8 +197,7 @@ public static class PawnCarry
         // 지우는 자리를 여기 두는 이유: 업기가 시작되는 문은 이 함수 하나뿐이라, 명령을 내는
         // 쪽마다 챙기게 하면 언젠가 한 곳을 빠뜨린다.
         carrier.Blackboard.HasPutDown  = false;
-        carrier.Blackboard.PutDownBed  = null;
-        carrier.Blackboard.PutDownCage = null;
+        carrier.Blackboard.PutDownSite = null;
 
         Debug.Log($"[Carry] {carrier.UnitName}이(가) {target.UnitName}을(를) 업었다 " +
                   $"({WeightOf(target):F0}kg)");
@@ -171,6 +232,11 @@ public static class PawnCarry
         bool down = IsCorpse(target)
                  || (target.Blackboard != null && target.Blackboard.IsKnockedOut);
         var rot   = facing ?? Quaternion.Euler(0f, target.transform.eulerAngles.y, down ? 90f : 0f);
+
+        // 업을 때 꺼 둔 콜라이더를 되켠다. **컨트롤러는 `PawnPlacement`가 켠다** — 표면 위로
+        // 띄우는 보정과 한 묶음이라 그쪽이 순서를 안다.
+        foreach (var col in target.GetComponents<Collider>())
+            if (!(col is CharacterController)) col.enabled = true;
 
         // 업을 때 꺼 둔 컨트롤러를 **여기서 되켠다.** 표면 위로 띄우는 보정(파묻힘·되밀림)은
         // `PawnPlacement`가 한 곳에서 다룬다 — 스폰·건물 밀어내기와 같은 함정이다.

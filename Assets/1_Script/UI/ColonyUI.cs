@@ -25,15 +25,22 @@ public class ColonyUI : MonoBehaviour
     [Header("레퍼런스")]
     [SerializeField] SelectionManager selectionManager;
 
-    [Header("새로고침 간격 (초)")]
-    [SerializeField] float refreshInterval = 0.5f;
-
     readonly Dictionary<UnitBrain, ColonyRowUI> _rows = new();
-    float _timer;
+
+    // **박자는 세계에 하나다**(`UiRefresh`) — 세 박(0.45초)마다.
+    int _beat = -1;
+
+    // 모드 바의 `무리 (P)` 버튼이 부른다(2026-10-09) — 키와 **같은 문**을 두드려야 버튼 색이 키로 연 것도 따라간다.
+    public static ColonyUI Instance { get; private set; }
+    public bool IsOpen => panel != null && panel.activeSelf;
+    public void Toggle() { if (panel != null) panel.SetActive(!panel.activeSelf); }
+
+    void Awake() => Instance = this;
 
     void OnEnable()
     {
         UnitBrain.OnUnitSpawned          += OnSpawned;
+        UnitBrain.OnFactionChanged       += OnSpawned;
         UnitBrain.OnUnitDied             += OnDied;
         BuildModeManager.OnActiveChanged += OnBuildModeChanged;
         ResourceNode.OnAssignmentChanged += OnAssignmentChanged;
@@ -42,6 +49,7 @@ public class ColonyUI : MonoBehaviour
     void OnDisable()
     {
         UnitBrain.OnUnitSpawned          -= OnSpawned;
+        UnitBrain.OnFactionChanged       -= OnSpawned;
         UnitBrain.OnUnitDied             -= OnDied;
         BuildModeManager.OnActiveChanged -= OnBuildModeChanged;
         ResourceNode.OnAssignmentChanged -= OnAssignmentChanged;
@@ -58,7 +66,7 @@ public class ColonyUI : MonoBehaviour
         BuildHeader();
         if (panel != null) panel.SetActive(false);
 
-        foreach (var brain in FindObjectsByType<UnitBrain>(FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
             AddRow(brain);
         SortRows();
     }
@@ -70,14 +78,12 @@ public class ColonyUI : MonoBehaviour
 
     void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.pKey.wasPressedThisFrame && panel != null)
-            panel.SetActive(!panel.activeSelf);
+        if (Keyboard.current != null && Keyboard.current.pKey.wasPressedThisFrame && panel != null && !InputFocus.KeysBlocked())
+            Toggle();
 
         if (panel == null || !panel.activeSelf) return;
 
-        _timer += Time.deltaTime;
-        if (_timer < refreshInterval) return;
-        _timer = 0f;
+        if (!UiRefresh.Due(ref _beat, 3)) return;
         RefreshAll();
     }
 
@@ -116,14 +122,9 @@ public class ColonyUI : MonoBehaviour
     void SortRows()
     {
         var list = new List<ColonyRowUI>(_rows.Values);
-        list.Sort((a, b) =>
-        {
-            if (a == null || b == null || a.Brain == null || b.Brain == null) return 0;
-            bool aMinion = a.Brain.Data is MinionData;
-            bool bMinion = b.Brain.Data is MinionData;
-            if (aMinion != bMinion) return aMinion ? 1 : -1;
-            return string.CompareOrdinal(a.Brain.UnitName, b.Brain.UnitName);
-        });
+        // 순서 규칙은 `PawnOrder` 하나다 — 로스터·무리 관리·자동 선택이 갈리면
+        // **명부 맨 위인 폰과 자동으로 골리는 폰이 달라진다.**
+        list.Sort((a, b) => (a == null || b == null) ? 0 : PawnOrder.Compare(a.Brain, b.Brain));
 
         for (int i = 0; i < list.Count; i++)
             if (list[i] != null) list[i].transform.SetSiblingIndex(i);

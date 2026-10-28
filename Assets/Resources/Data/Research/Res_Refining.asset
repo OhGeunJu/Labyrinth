@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd0fbc0424f77a34899450af153b6a3e, type: 3}
+  m_Name: Res_Refining
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchData
+  Id: 
+  ResearchName: "\uC815\uC81C\uC220"
+  Description: "\uC815\uC218\uB97C \uB2E4\uC2DC \uC878\uC5EC \uB0B8\uB2E4. \uD55C
+    \uBC29\uC6B8\uC774 \uD55C \uBCD1\uC744 \uB300\uC2E0\uD55C\uB2E4."
+  Ingredients:
+  - Item: {fileID: 0}
+    ItemId: alch_essence
+    Amount: 12
+  - Item: {fileID: 0}
+    ItemId: herbs
+    Amount: 20
+  ResearchTime: 700
+  SkillGrowthAmount: 1
+  Prerequisites:
+  - {fileID: 11400000, guid: 34a3bf1fb9d9d914280439caa724beb3, type: 2}
+  RequiredBenchTier: 2
+  GraphColumn: 2
+  GraphRow: 12
+  UnlockedRecipes: []

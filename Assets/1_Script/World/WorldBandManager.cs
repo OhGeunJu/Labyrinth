@@ -9,45 +9,31 @@ using UnityEngine;
 //      출처가 없으면 무리를 만들지 않는다: 지도 아무 데서나 적이 솟으면 소굴을 칠 이유가 없다.
 //   2) **어디로 가는가** — 행동(`WorldBandBehavior`)이 목적지를 정하고, 도착하면 무슨 일이
 //      벌어진다. 목적지 없이 도는 점은 장식이지 사건이 아니다.
-//   3) **마주치면 어떻게 되는가** — 무리끼리는 여기서 조용히 결판나고,
-//      **원정대와 마주친 것은 `WorldMapView`가 메뉴로 받는다**(조작이 개입하는 것은 그쪽 몫).
+//   3) **마주치면 어떻게 되는가** — 무리끼리는 여기서 조용히 결판난다. (옛 3D 월드맵에서 원정대와 마주치던
+//      조우 메뉴는 2026-10-09에 그 화면과 함께 걷어냈다 — 가까이 오면 실체가 되어 필드에서 싸운다, `BandMaterializer`.)
 //
-// 토큰도 여기서 그린다. `WorldMapView`가 원정대 토큰을 그리는 것과 같은 방식이지만
-// 목록이 다르므로 나눠 뒀다 — 그쪽은 이미 1000줄이고, 무리는 선택·명령의 대상이 아니다.
-[DefaultExecutionOrder(-35)]   // WorldMapView(-40)가 grid를 준비한 뒤에 붙는다
+// 토큰도 여기서 그린다.
+[DefaultExecutionOrder(-35)]
 public class WorldBandManager : MonoBehaviour
 {
     public static WorldBandManager Instance { get; private set; }
 
     [Header("토큰")]
-    [Tooltip("비우면 WorldMapView의 mapRoot 아래에 붙는다.")]
+    [Tooltip("비우면 `WorldBands`를 새로 만들어 그 아래에 붙인다.")]
     [SerializeField] Transform bandRoot;
     [SerializeField] float tokenHover = 0.4f;
-    [Tooltip("칸 크기 대비 토큰 크기. 원정대 토큰(0.35~)보다 작게 둬야 내 것이 눈에 띈다.")]
+    [Tooltip("칸 크기(4) 대비 토큰 크기.")]
     [SerializeField] float tokenScale = 0.28f;
 
     [Header("조우")]
     [Tooltip("이만큼 가까워지면 맞닿은 것으로 본다(월드유닛). 칸 크기(기본 4)의 절반쯤이 " +
              "적당하다 — 너무 좁으면 옆을 스쳐 지나가도 아무 일이 안 일어난다.")]
     [SerializeField] float contactRadius = 2.4f;
-    [Tooltip("조우가 끝난 뒤 다시 붙기까지의 유예(초). 없으면 도망친 다음 프레임에 또 잡힌다.")]
-    [SerializeField] float recontactDelay = 8f;
-    [Tooltip("적대가 아닌 무리는 원정대가 이 안에 들어오면 **멈춰 기다린다**. " +
-             "속도가 비슷하면 쫓아가서 따라잡을 수가 없어, 없으면 상단에게 말을 걸 길이 없다.")]
-    [SerializeField] float waitRadius = 7f;
 
     [Header("한도")]
     [Tooltip("지도에 동시에 서 있을 수 있는 무리 수. 넘으면 새로 안 내보낸다 — " +
              "소굴이 여럿인 지도에서 토큰이 수십 개가 되면 무엇이 위험한지 안 읽힌다.")]
     [SerializeField] int maxBands = 20;
-
-    [Header("포로")]
-    [Tooltip("끌려다니는 포로가 **하루에** 스스로 빠져나올 확률. 0이면 영영 못 나온다 — " +
-             "되찾을 길이 '그 무리를 이긴다'뿐이면 인원을 다 잃은 뒤엔 막다른 길이 된다.")]
-    [Range(0f, 1f)] [SerializeField] float escapeChancePerDay = 0.2f;
-    [Tooltip("소굴에 갇힌 뒤의 하루 탈출 확률. 끌려다닐 때보다 낮게 — 소굴로 들어간 뒤에는 " +
-             "쳐들어가는 것이 정공법이어야 한다.")]
-    [Range(0f, 1f)] [SerializeField] float lairEscapeChancePerDay = 0.08f;
 
     [Header("소굴")]
     [Tooltip("떠돌이 무리가 근거지에서 벗어나는 최대 거리(칸). 넓을수록 상단·순찰대와 " +
@@ -66,16 +52,39 @@ public class WorldBandManager : MonoBehaviour
              "안 나와서, 시스템이 있는 줄도 모른 채 '안 나온다'가 된다.")]
     [Min(0f)] [SerializeField] float firstSpawnDelay = 20f;
 
+    // ── 습격 총량 ─────────────────────────────────────────────────────────────
+    //
+    // **습격이 오는 빈도는 지도 전체가 하나로 정한다.** 예전에는 소굴마다 제 시계를 들고
+    // `RaidIntervalDays`마다 따로 계획했다 — 그러면 **소굴이 늘어난 만큼 습격이 곱해진다.**
+    // 바이옴마다 소굴 종류를 얹은 순간 초반에 사방에서 동시에 몰려와 맞을 수밖에 없었다.
+    //
+    // 소굴을 늘리는 것은 **"어디에 무엇이 사는가"를 늘리는 일**이지 "얼마나 자주 맞는가"를
+    // 늘리는 일이 아니다. 그래서 시계를 하나로 올리고, 소굴은 **누가 올 차례인가**만 정한다.
+    [Header("습격 (전역)")]
+    [Tooltip("습격을 **하나** 계획하는 간격(일). 지도에 소굴이 몇이든 총량은 이 값이 정한다.")]
+    [Min(0.1f)] [SerializeField] float raidIntervalDays = 3f;
+
+    [Tooltip("첫 습격까지의 대기(일). **초반을 지켜 준다** — 아무것도 못 지은 채로 맞으면 " +
+             "대비의 결과가 아니라 그냥 재해다.")]
+    [Min(0f)] [SerializeField] float raidFirstDelayDays = 4f;
+
+    [Tooltip("동시에 예고돼 있을 수 있는 습격 수. 넘으면 시계가 돌아도 새로 잡지 않는다 — " +
+             "예고가 셋씩 쌓이면 어느 것을 막을지가 계산이 아니라 포기가 된다.")]
+    [Min(1)] [SerializeField] int maxPlannedRaids = 2;
+
+    // 다음 습격을 계획할 시각. 음수면 아직 첫 계산 전이다.
+    float _nextRaidAt = -1f;
+
     readonly List<WorldBand> _bands = new();
     readonly Dictionary<WorldBand, GameObject> _tokens = new();
-    readonly Dictionary<GameObject, WorldBand> _byGo  = new();   // 레이캐스트 → 무리
 
     // 마을별 다음 상단 출발 시각(게임 초). 순찰대는 "살아 있나"만 보면 되므로 시각이 필요 없다.
-    readonly Dictionary<Vector2Int, float> _nextCaravanAt = new();
+    // 신원을 키로 — 마을을 옮겨도 그 마을의 상단 시계는 그대로다.
+    readonly Dictionary<string, float> _nextCaravanAt = new();
 
-    readonly List<Vector2Int> _towns = new();
+    // 자리로 든다 — 칸이 아니라. 색인(`WorldSites`)이 답하므로 격자를 전수 훑지 않는다.
+    readonly List<WorldSites.Site> _towns = new();
 
-    WorldMapGrid _grid;
     Transform    _root;
     int          _spawnCounter;
 
@@ -95,16 +104,10 @@ public class WorldBandManager : MonoBehaviour
 
     void Start()
     {
-        var view = WorldMapView.Instance;
-        if (view == null || WorldMap.Instance == null)
-        {
-            Debug.LogWarning("[WorldBandManager] WorldMapView / WorldMap이 없어 무리를 세우지 않습니다.");
-            enabled = false;
-            return;
-        }
-
-        _grid = view.Grid;
-        _root = bandRoot != null ? bandRoot : view.MapRoot;
+        // **옛 3D 월드맵을 안 찾는다**(2026-08-27). 전에는 `WorldMapView`가 없으면 스스로 꺼졌다 —
+        // 그 화면의 진입로를 끊은 뒤로 **무리 체계가 통째로 죽어 있었다.** 이제 지도가 아니라
+        // 세계 좌표 위에서 도므로 그 화면이 없어도 돌아야 한다.
+        _root = bandRoot != null ? bandRoot : new GameObject("WorldBands").transform;
 
         // **소굴은 미리 다 깨워 둔다.** 가보지 않은 지역의 소굴도 저 혼자 무리를 내보내야
         // 한다 — 열어 봐야 생기는 것으로 두면 지도의 절반은 영원히 조용하다.
@@ -126,15 +129,15 @@ public class WorldBandManager : MonoBehaviour
         foreach (var lair in WorldLairs.All)
         {
             lair.NextSortieAt = GameTimeManager.Elapsed + Random.Range(0f, firstSpawnDelay);
-            // 습격도 **계획은 곧** 선다 — 도착까지는 `RaidWarningDays`가 걸리므로 예고를
-            // 일찍 받아야 그런 것이 있다는 걸 알고 대비할 수 있다.
-            lair.NextRaidAt   = GameTimeManager.Elapsed + Random.Range(0f, firstSpawnDelay);
+            // **습격은 소굴이 안 든다** — 언제 하나 오는지는 전역 시계(`raidIntervalDays`)가
+            // 정하고 소굴은 차례만 다툰다. 여기서 소굴마다 시각을 흩뿌리던 것이 곧 습격이
+            // 소굴 수만큼 곱해지던 자리였다.
             lairs++;
         }
 
         float now = GameTimeManager.Elapsed;
         foreach (var town in _towns)
-            _nextCaravanAt[town] = now + Random.Range(0f, firstSpawnDelay);
+            _nextCaravanAt[town.Id] = now + Random.Range(0f, firstSpawnDelay);
 
         Debug.Log($"[WorldBandManager] 소굴 {lairs}곳 · 마을 {_towns.Count}곳에서 무리가 나옵니다.");
 
@@ -154,53 +157,26 @@ public class WorldBandManager : MonoBehaviour
     void OnDayChanged()
     {
         WorldLairs.RegenAll();
-        RollEscapes();
+        RefreshBandShops();
     }
 
-    // **붙잡힌 사람은 스스로 빠져나올 수 있다.**
+    // **상단도 하루가 지나면 물건과 돈이 채워진다.**
     //
-    // 없으면 안 되는 안전장치다: 원정대를 통째로 잃은 뒤 되찾을 길이 "그 무리를 이긴다"뿐이면,
-    // 남은 인원이 없어서 못 이기고 사람은 영영 안 돌아온다 — 지는 것이 손실이 아니라 막다른
-    // 길이 된다. 하루마다 굴리므로 늦더라도 언젠가는 돌아온다.
-    //
-    // **소굴에 갇히면 확률이 낮다.** 끌려다니는 동안이 되찾기 제일 쉬울 때고, 소굴로 들어간
-    // 뒤에는 쳐들어가는 것이 정공법이어야 한다.
-    void RollEscapes()
+    // 필드 상인은 `Merchant.RefreshStock`이, 마을 시장은 `TownMarket.ShopsAt`이 매일 갱신하는데
+    // **지도 위의 상단만 아무도 안 불렀다** — 만들 때 한 번 뽑고 끝이었다. 재고만 있을 때는
+    // "털면 그만큼 준다"로 읽혀 넘어갔지만, 주머니(`Shop.Gold`)가 생기면서 **한 번 비운 상단은
+    // 그 판이 끝날 때까지 빈털터리**가 된다(`MerchantData.Gold` 툴팁의 "하루가 지나면 회복"과
+    // 어긋난다).
+    void RefreshBandShops()
     {
-        for (int i = _bands.Count - 1; i >= 0; i--)
-        {
-            var band = _bands[i];
-            if (band.Captives.Count == 0) continue;
-            if (Random.value > escapeChancePerDay) continue;
-
-            var freed = new List<UnitBrain>(band.Captives);
-            band.Captives.Clear();
-            WorldMapView.Instance?.RestoreParty(freed, band.Position, "탈출",
-                $"{freed.Count}명이 {band.Name}에게서 도망쳐 나왔습니다.");
-        }
-
-        var grid = WorldMapView.Instance != null ? WorldMapView.Instance.Grid : null;
-        foreach (var lair in WorldLairs.All)
-        {
-            if (lair.Captives.Count == 0) continue;
-            if (Random.value > lairEscapeChancePerDay) continue;
-
-            var freed = new List<UnitBrain>(lair.Captives);
-            lair.Captives.Clear();
-            var at = grid != null ? grid.SurfacePoint(lair.Node) : Vector3.zero;
-            WorldMapView.Instance?.RestoreParty(freed, at, "탈출",
-                $"{freed.Count}명이 {lair.Name}에서 빠져나왔습니다.");
-        }
+        foreach (var band in _bands)
+            band?.Shop?.Refresh();
     }
 
     void CollectTowns()
     {
         _towns.Clear();
-        var wm = WorldMap.Instance;
-        for (int x = 0; x < wm.Width;  x++)
-        for (int y = 0; y < wm.Height; y++)
-            if (wm.GetTile(new Vector2Int(x, y)).Content == WorldNodeContent.Town)
-                _towns.Add(new Vector2Int(x, y));
+        foreach (var t in WorldSites.Of(WorldNodeContent.Town)) _towns.Add(t);
     }
 
     // ── 매 프레임 ─────────────────────────────────────────────────────────────
@@ -211,7 +187,7 @@ public class WorldBandManager : MonoBehaviour
 
     void Update()
     {
-        if (_grid == null || WorldMap.Instance == null) return;
+        if (WorldMap.Instance == null) return;
 
         TrySorties();
         TryTownBands();
@@ -221,6 +197,30 @@ public class WorldBandManager : MonoBehaviour
     }
 
     // ── 출격 (떠돌이) ─────────────────────────────────────────────────────────
+
+    // **저작한 반지름은 지역 수다** — 이동이 미터라 바꿔 쓴다. 눈금을 상수로 안 박는 이유:
+    // 지역 크기를 바꾸면 거리감도 같이 따라와야 한다.
+    float RoamMeters   => roamRadius   * TerrainGrid.RegionSize;
+    float PatrolMeters => patrolRadius * TerrainGrid.RegionSize;
+
+    // 자리 하나를 지면에 올린다. **지형은 함수다** — 예전에는 옛 지도 격자의 메시를 짚었는데,
+    // 그러면 그 화면이 없을 때 무리가 서지를 못한다.
+    // **무리가 서는 자리는 굴 안이다**(2026-08-30).
+    //
+    // 무리는 길찾기 없이 목표를 향해 **직선으로** 걷는다. 지하에서 목표가 바위 속이면 거기
+    // 도착해 멈추고, 그 자리에서 실체화하면 **폰이 벽에 낀다**(`EscapeRock`이 매 초 경고만
+    // 찍는다 — 그 반경으로는 못 빠져나온다). 그러면 습격이 예고돼도 아무도 안 온다.
+    //
+    // **가는 길까지 굴로 잡아 주지는 못한다** — 그건 세계 규모의 길찾기이고 지금 없는 물건이다.
+    // 토큰이 바위를 가로질러 걷는 것은 지도에서 안 보이므로 **서는 자리만** 지킨다.
+    // **목표를 정하는 곳이 여섯이라** 여기 하나에서 접는다.
+    static Vector3 Surface(Vector2 xz)
+    {
+        if (RockMap.TryNearestOpen(new Vector3(xz.x, 0f, xz.y), 40f, out var open))
+            xz = new Vector2(open.x, open.z);
+
+        return new(xz.x, TerrainHeight.At(xz.x, xz.y), xz.y);
+    }
 
     void TrySorties()
     {
@@ -235,7 +235,7 @@ public class WorldBandManager : MonoBehaviour
             lair.NextSortieAt = now + lair.Entry.SortieDays * GameTimeManager.DayDuration;
             if (_bands.Count >= maxBands) continue;
 
-            var band = WorldBand.Roll(lair.Band, lair.Node, NextSeed());
+            var band = WorldBand.Roll(lair.Band, lair.Position, lair.Id, NextSeed());
             if (band == null) continue;
 
             // **소굴 병력만큼만 나간다.** 무리 명세의 정원이 소굴에 남은 것보다 많으면
@@ -247,31 +247,38 @@ public class WorldBandManager : MonoBehaviour
             // **0으로 저작되는 사고를 막는다.** 직렬화된 목록을 도구로 늘리면 C# 필드 기본값이
             // 안 들어갈 수 있는데, 0이면 나오자마자 돌아서서 문 앞을 왕복하기만 한다.
             band.ExpiresAt = now + Mathf.Max(0.1f, lair.Entry.RoamDays) * GameTimeManager.DayDuration;
-            band.Goal      = RandomNear(lair.Node, roamRadius);
-            Add(band, _grid.SurfacePoint(lair.Node));
+            band.Goal      = Surface(RandomNear(lair.Position, RoamMeters));
+            Add(band, Surface(lair.Position));
         }
     }
 
     // 습격이 노릴 곳 — 가장 가까운 내 정착지나 채집기지.
-    Vector2Int? NearestMine(Vector2Int from)
+    // 습격이 노릴 곳 — 가장 가까운 **내 거점이나 채집기지**.
+    //
+    // 전에는 저작 격자 4,096칸을 전수 훑어 `MySettlement`/`Outpost` 칸을 찾았다. 그것들은
+    // **플레이 중에 생기는 것**이라 저작물에 있을 이유가 없었고(옛 월드맵의 채집기지 짓기가
+    // 실제로 격자를 고치고 있었다), 이제 각자의 레지스트리가 답한다.
+    // **같은 층만**(2026-10-01, `Floors`) — 층 사이는 기반암이라 다른 층의 거점은 걸어서 못 간다. 소굴이 있는 층에 내
+    // 거점이 없으면 칠 곳이 없다(그 층에 거점을 세우는 것이 곧 그 층의 습격을 부르는 일이다).
+    Vector2? NearestMine(Vector2 from)
     {
-        var wm = WorldMap.Instance;
-        Vector2Int best = default;
-        int bestDist = int.MaxValue;
+        Vector2 best = default;
+        float bestSqr = float.MaxValue;
+        int floor = Floors.At(from.x, from.y);
 
-        for (int x = 0; x < wm.Width;  x++)
-        for (int y = 0; y < wm.Height; y++)
+        void Consider(Vector2 p)
         {
-            var n = new Vector2Int(x, y);
-            var c = wm.GetTile(n).Content;
-            if (c != WorldNodeContent.MySettlement && c != WorldNodeContent.Outpost) continue;
-
-            int d = WorldMap.Distance(from, n);
-            if (d >= bestDist) continue;
-            bestDist = d;
-            best     = n;
+            if (Floors.At(p.x, p.y) != floor) return;
+            float d = (p - from).sqrMagnitude;
+            if (d < bestSqr) { bestSqr = d; best = p; }
         }
-        return bestDist == int.MaxValue ? (Vector2Int?)null : best;
+
+        var cores = DungeonCore.All;
+        if (cores != null)
+            foreach (var c in cores)
+                if (c != null) Consider(new Vector2(c.transform.position.x, c.transform.position.z));
+
+        return bestSqr == float.MaxValue ? (Vector2?)null : best;
     }
 
     // ── 마을이 내보내는 무리 ──────────────────────────────────────────────────
@@ -287,48 +294,49 @@ public class WorldBandManager : MonoBehaviour
 
             // 순찰대는 **마을당 하나**를 유지한다. 죽으면 다음 점검에서 새로 선다 —
             // 마을 방비가 영영 사라지면 소굴이 지도를 독차지한다.
-            if (!HasBandFrom(town, WorldBandBehavior.Patrol))
+            if (!HasBandFrom(town.Id, WorldBandBehavior.Patrol))
                 SpawnTownBand(town, WorldBandBehavior.Patrol);
 
             // 첫 출발 시각은 `StaggerFirstSpawns`가 미리 넣어 둔다. 여기서 늦게 채우면
             // 그 마을만 한 박자 밀린다.
-            if (_nextCaravanAt.TryGetValue(town, out float due) && now < due) continue;
-            _nextCaravanAt[town] = now + caravanIntervalDays * GameTimeManager.DayDuration;
+            if (_nextCaravanAt.TryGetValue(town.Id, out float due) && now < due) continue;
+            _nextCaravanAt[town.Id] = now + caravanIntervalDays * GameTimeManager.DayDuration;
             SpawnTownBand(town, WorldBandBehavior.Caravan);
         }
     }
 
-    bool HasBandFrom(Vector2Int home, WorldBandBehavior behavior)
+    bool HasBandFrom(string homeId, WorldBandBehavior behavior)
     {
         foreach (var b in _bands)
-            if (b.Home == home && b.Behavior == behavior) return true;
+            if (b.HomeId == homeId && b.Behavior == behavior) return true;
         return false;
     }
 
-    void SpawnTownBand(Vector2Int town, WorldBandBehavior behavior)
+    void SpawnTownBand(WorldSites.Site town, WorldBandBehavior behavior)
     {
         var data = PickTownBand(town, behavior);
         if (data == null) return;
 
-        var band = WorldBand.Roll(data, town, NextSeed());
+        var band = WorldBand.Roll(data, town.Position, town.Id, NextSeed());
         if (band == null) return;
 
-        band.Goal = behavior == WorldBandBehavior.Caravan
-                  ? (CaravanDestination(town) ?? town)
-                  : RandomNear(town, patrolRadius);
+        if (behavior == WorldBandBehavior.Caravan)
+        {
+            var dest = CaravanDestination(town.Id);
+            // 갈 데가 없는 상단은 내보내지 않는다 — 제자리를 맴돌 뿐이다.
+            if (!dest.HasValue) return;
+            band.Goal = Surface(dest.Value);
+        }
+        else band.Goal = Surface(RandomNear(town.Position, PatrolMeters));
 
-        // 갈 데가 없는 상단은 내보내지 않는다 — 제자리를 맴돌 뿐이다.
-        if (behavior == WorldBandBehavior.Caravan && band.Goal == town) return;
-
-        Add(band, _grid.SurfacePoint(town));
+        Add(band, Surface(town.Position));
     }
 
     // 그 마을이 내보내는 무리 종류. **행동당 하나씩** — `TownMarket`이 상인 종류당 하나를
     // 세우는 것과 같은 규칙이다. 후보가 여럿일 때만 좌표가 고른다.
-    static WorldBandData PickTownBand(Vector2Int town, WorldBandBehavior behavior)
+    static WorldBandData PickTownBand(WorldSites.Site town, WorldBandBehavior behavior)
     {
-        var wm = WorldMap.Instance;
-        var data = BiomeContent.Get(wm.GetTile(town).Biome);
+        var data = BiomeContent.Get(WorldMap.BiomeAtWorld(town.Position));
         if (data == null || data.TownBands == null) return null;
 
         var pool = new List<WorldBandData>();
@@ -336,8 +344,10 @@ public class WorldBandManager : MonoBehaviour
             if (b != null && b.IsUsable && b.Behavior == behavior) pool.Add(b);
         if (pool.Count == 0) return null;
 
-        var rng = new System.Random(unchecked(town.x * 24571 + town.y * 51203
-                                            + wm.DepositSeed * 7919 + (int)behavior * 104729));
+        // **신원을 섬는다** — 좌표를 쓰면 마을을 옮기는 것만으로 나오는 무리가 바뀐다.
+        int h = 0;
+        if (town.Id != null) foreach (char c in town.Id) h = unchecked(h * 31 + c);
+        var rng = new System.Random(unchecked(h * 24571 + (int)behavior * 104729));
         return pool[rng.Next(pool.Count)];
     }
 
@@ -347,34 +357,51 @@ public class WorldBandManager : MonoBehaviour
     // 16×16 지도가 그랬다(마을 1곳). 그렇다고 안 내보내면 지도의 절반이 죽는데, 내 거점은
     // 상단이 갈 만한 곳이다: 사람이 살고 물건이 돈다. **교역로가 저절로 생긴다** —
     // 마을에서 오는 상단을 길에서 만나 사거나, 우리 문 앞까지 오게 두거나.
-    Vector2Int? CaravanDestination(Vector2Int from)
+    // **같은 층 안에서만 오간다**(2026-10-01) — 층 사이는 기반암이라 걷는 무리는 못 넘는다(층을 넘는 교역은 내 상단의
+    // 일이다 — `Caravan`).
+    Vector2? CaravanDestination(string fromId)
     {
+        var from = WorldSites.ById(fromId);
+        int floor = from.IsValid ? Floors.At(from.Position.x, from.Position.y) : 0;
+        bool Same(Vector2 p) => floor == 0 || Floors.At(p.x, p.y) == floor;
+
         if (_towns.Count >= 2)
         {
             for (int guard = 0; guard < 8; guard++)
             {
                 var pick = _towns[Random.Range(0, _towns.Count)];
-                if (pick != from) return pick;
+                if (pick.Id != fromId && Same(pick.Position)) return pick.Position;
             }
         }
 
-        var wm = WorldMap.Instance;
-        if (wm.Settlements.Count > 0)
+        // 마을이 하나뿐이면 **내 거점**이 갈 만한 곳이다 — 사람이 살고 물건이 돈다.
+        // 안 내보내면 지도의 절반이 죽는다.
+        var cores = DungeonCore.All;
+        if (cores != null && cores.Count > 0)
         {
-            var pick = wm.Settlements[Random.Range(0, wm.Settlements.Count)];
-            if (pick != from) return pick;
+            for (int guard = 0; guard < 8; guard++)
+            {
+                var c = cores[Random.Range(0, cores.Count)];
+                if (c == null) continue;
+                var p = new Vector2(c.transform.position.x, c.transform.position.z);
+                if (Same(p)) return p;
+            }
         }
         return null;
     }
 
-    Vector2Int RandomNear(Vector2Int center, int radius)
+    // 근방의 다음 지점(월드). **세계 밖으로는 안 나간다.**
+    static Vector2 RandomNear(Vector2 center, float radius)
     {
-        var wm = WorldMap.Instance;
+        float w = TerrainGrid.WorldSize;
         for (int guard = 0; guard < 12; guard++)
         {
-            var n = center + new Vector2Int(Random.Range(-radius, radius + 1),
-                                            Random.Range(-radius, radius + 1));
-            if (wm.InBounds(n) && n != center) return n;
+            float a = Random.value * Mathf.PI * 2f;
+            float r = Mathf.Sqrt(Random.value) * radius;
+            var p = new Vector2(center.x + Mathf.Cos(a) * r, center.y + Mathf.Sin(a) * r);
+            // **제 층 밖으로도 안 나간다** — 층 사이는 기반암이다(`Floors`).
+            if (p.x >= 0f && p.y >= 0f && p.x < w && p.y < w
+                && Floors.At(p.x, p.y) == Floors.At(center.x, center.y)) return p;
         }
         return center;
     }
@@ -383,26 +410,22 @@ public class WorldBandManager : MonoBehaviour
 
     void MoveBands()
     {
-        var view = WorldMapView.Instance;
-
         for (int i = _bands.Count - 1; i >= 0; i--)
         {
             var band = _bands[i];
             if (!band.IsAlive) { Remove(band); continue; }
 
-            UpdateChase(band, view);
-            if (band.Waiting) continue;   // 멈춰 서서 원정대를 기다리는 중
+            UpdateChase(band);
 
             var to = band.Chasing
                    ? Flat(band.ChaseAt)
-                   : Flat(_grid.SurfacePoint(band.Goal));
+                   : Flat(band.Goal);
 
             var from = Flat(band.Position);
             var next = Vector3.MoveTowards(from, to, band.Data.Speed * Time.deltaTime);
 
             band.Position = Ground(next, band);
             if (_tokens.TryGetValue(band, out var go) && go != null) go.transform.position = band.Position;
-            if (_grid.TryNodeAt(next, out var node)) band.Node = node;
 
             // 쫓는 중엔 "도착"이 없다 — 상대를 잡거나 놓치는 것뿐이다.
             if (band.Chasing) continue;
@@ -412,38 +435,16 @@ public class WorldBandManager : MonoBehaviour
         }
     }
 
-    // 쫓을 대상 고르기. **원정대가 먼저다** — 남의 싸움보다 내 일이 지도에서 읽혀야 한다.
-    void UpdateChase(WorldBand band, WorldMapView view)
+    // 쫓을 대상 고르기 — 적대하는 다른 무리. (옛 3D 월드맵의 원정대를 먼저 쫓던 갈래는 10-09에 걷어냈다.)
+    void UpdateChase(WorldBand band)
     {
         band.Chasing = false;
-        band.Waiting = false;
 
         var myFaction = band.Faction;
         if (myFaction == null) return;
 
-        var playerFaction = Faction.Player != null ? Faction.Player.Data : null;
-        bool hostileToPlayer = playerFaction != null &&
-                               (myFaction.IsHostileTo(playerFaction) || playerFaction.IsHostileTo(myFaction));
-
-        // **적대가 아니면 멈춰 기다린다.** 도망칠 이유가 없는데 계속 걸어가 버리면, 우리와
-        // 속도가 비슷한 상단·순찰대는 영영 못 만난다 — 지도에 보이는데 말은 못 거는 그림이 된다.
-        if (!hostileToPlayer && playerFaction != null && view != null &&
-            view.TryNearestParty(band.Position, waitRadius, out _))
-        {
-            band.Waiting = true;
-            return;
-        }
-
         float r = band.Data.ChaseRadius;
         if (r <= 0f) return;
-
-        if (hostileToPlayer && view != null &&
-            view.TryNearestParty(band.Position, r, out var partyPos))
-        {
-            band.ChaseAt = partyPos;
-            band.Chasing = true;
-            return;
-        }
 
         float best = r * r;
         foreach (var other in _bands)
@@ -471,11 +472,13 @@ public class WorldBandManager : MonoBehaviour
             case WorldBandBehavior.Caravan:
                 // 다음 마을로 계속 간다. 도착할 때마다 사라졌다 다시 나오면 지도 위의
                 // 토큰이 깜빡이기만 하고 "어디서 어디로 오간다"가 안 보인다.
-                band.Goal = CaravanDestination(band.Node) ?? band.Home;
+                // **제 근거지에서 출발한 상단이다** — 다음 마을을 신원으로 고른다.
+                var next = CaravanDestination(band.HomeId) ?? band.Home;
+                band.Goal = Surface(next);
                 break;
 
             case WorldBandBehavior.Patrol:
-                band.Goal = RandomNear(band.Home, patrolRadius);
+                band.Goal = Surface(RandomNear(band.Home, PatrolMeters));
                 break;
         }
     }
@@ -489,21 +492,8 @@ public class WorldBandManager : MonoBehaviour
     {
         if (band.Returning)
         {
-            var lair = WorldLairs.At(band.Home);
-            if (lair != null)
-            {
-                lair.Strength = Mathf.Min(lair.MaxStrength, lair.Strength + band.Count);
-
-                // **끌고 온 포로는 소굴에 갇힌다.** 여기부터는 지도에서 쫓아가 되찾을 수 없고
-                // 소굴을 쳐야 풀려난다 — 늦게 갈수록 되찾기 어려워진다.
-                if (band.Captives.Count > 0)
-                {
-                    lair.Captives.AddRange(band.Captives);
-                    EventNotificationUI.Notify("포로",
-                        $"붙잡힌 {band.Captives.Count}명이 {lair.Name}에 갇혔습니다.", holdWhenHidden: true);
-                    band.Captives.Clear();
-                }
-            }
+            var lair = WorldLairs.At(band.HomeId);
+            if (lair != null) lair.Strength = Mathf.Min(lair.MaxStrength, lair.Strength + band.Count);
             Remove(band);
             return;
         }
@@ -515,7 +505,7 @@ public class WorldBandManager : MonoBehaviour
             return;
         }
 
-        band.Goal = RandomNear(band.Home, roamRadius);
+        band.Goal = Surface(RandomNear(band.Home, RoamMeters));
     }
 
     // ── 예고된 습격 ───────────────────────────────────────────────────────────
@@ -530,7 +520,9 @@ public class WorldBandManager : MonoBehaviour
     class RaidPlan
     {
         public WorldLair  Lair;
-        public Vector2Int Target;
+        // **월드 좌표다** — 노릴 곳(거점·채집기지)이 격자에서 레지스트리로 내려오면서
+        // 칸으로는 가리킬 수가 없어졌다(한 지역에 둘 이상 설 수 있다).
+        public Vector2 Target;
         public int        Count;
         public float      ArrivesAt;
         public bool       Reminded;   // 하루 남았을 때 한 번 더 알렸나
@@ -589,43 +581,101 @@ public class WorldBandManager : MonoBehaviour
         }
     }
 
+    // **시계는 하나, 소굴은 차례를 다툰다.**
+    //
+    // 예전에는 소굴마다 제 시계를 돌려 각자 습격을 계획했다. 그래서 소굴이 N개면 습격도 N배였고,
+    // 바이옴마다 소굴을 얹은 순간 초반에 사방에서 동시에 몰려왔다 — **막을 수 있느냐가 아니라
+    // 맞을 수밖에 없느냐**의 문제가 됐다.
+    //
+    // 이제 전역 시계가 "언제 하나 온다"를 정하고, 소굴은 **누가 올 차례인가**만 겨룬다.
+    // 소굴을 늘리는 것은 그래서 **빈도가 아니라 다양성**을 늘린다 — 어디서 오는지, 무엇이
+    // 오는지가 달라질 뿐 맞는 횟수는 그대로다.
     void SchedulePlans()
     {
         float now = GameTimeManager.Elapsed;
 
+        // 첫 계산 — **초반을 지켜 준다.** 아무것도 못 지은 채로 맞으면 대비의 결과가 아니라 재해다.
+        if (_nextRaidAt < 0f)
+        {
+            _nextRaidAt = now + raidFirstDelayDays * GameTimeManager.DayDuration;
+            return;
+        }
+
+        if (now < _nextRaidAt) return;
+
+        // **시각은 뽑든 못 뽑든 미룬다.** 안 그러면 칠 곳이 없거나 예고가 꽉 찬 동안 밀린
+        // 습격이 조건이 풀리는 순간 한꺼번에 터진다(`TrySorties`가 한도에서 하는 것과 같은 처리).
+        _nextRaidAt = now + raidIntervalDays * GameTimeManager.DayDuration;
+
+        if (_raids.Count >= maxPlannedRaids) return;
+
+        var lair = PickRaidingLair(now);
+        if (lair == null) return;
+
+        var target = NearestMine(lair.Position);
+        if (target == null) return;   // 칠 곳이 없으면 계획도 없다
+
+        var e = lair.Entry;
+        int count = Mathf.Max(1, Mathf.RoundToInt(lair.Strength * Mathf.Clamp01(e.RaidPortion)));
+        float warnDays = Mathf.Max(0.1f, e.RaidWarningDays);
+        float lead     = warnDays * GameTimeManager.DayDuration;
+
+        _raids.Add(new RaidPlan
+        {
+            Lair      = lair,
+            Target    = target.Value,
+            Count     = count,
+            ArrivesAt = now + lead,
+        });
+
+        int days = Mathf.Max(1, Mathf.CeilToInt(warnDays));
+        EventNotificationUI.Notify("습격 예고",
+            $"{lair.Name}({lair.Node.x}, {lair.Node.y})에서 {count}명이 " +
+            $"{days}일 뒤 ({target.Value.x}, {target.Value.y})를 습격합니다.",
+            holdWhenHidden: true);
+    }
+
+    // 이번 차례는 어느 소굴인가. **`RaidIntervalDays`가 이제 가중치로 읽힌다** —
+    // 값이 작을수록(자주 오려는 소굴일수록) 잘 뽑히고, **0이면 습격을 아예 안 온다**(그대로다).
+    //
+    // 절대 주기였던 것을 상대 빈도로 바꾼 것뿐이라 저작한 값은 그대로 뜻이 통한다:
+    // "3일마다 오려는 소굴"과 "6일마다 오려는 소굴"이 있으면 앞엣것이 두 배로 자주 뽑힌다.
+    // 다만 **총량은 전역 시계가 정하므로** 둘 다 있다고 습격이 두 배가 되지는 않는다.
+    WorldLair PickRaidingLair(float now)
+    {
+        float total = 0f;
+        foreach (var lair in WorldLairs.All)
+            total += RaidWeight(lair);
+
+        if (total <= 0f) return null;
+
+        float roll = Random.value * total;
         foreach (var lair in WorldLairs.All)
         {
-            var e = lair.Entry;
-            if (e == null || e.RaidIntervalDays <= 0f) continue;
-            if (lair.Strength <= 0 || now < lair.NextRaidAt) continue;
-
-            lair.NextRaidAt = now + e.RaidIntervalDays * GameTimeManager.DayDuration;
-
-            // 이미 이 소굴의 습격이 예정돼 있으면 겹쳐 잡지 않는다 — 예고가 둘이면
-            // 어느 것이 언제 오는지 셈이 안 된다.
-            if (HasPlanFrom(lair)) continue;
-
-            var target = NearestMine(lair.Node);
-            if (target == null) continue;   // 칠 곳이 없으면 계획도 없다
-
-            int count = Mathf.Max(1, Mathf.RoundToInt(lair.Strength * Mathf.Clamp01(e.RaidPortion)));
-            float warnDays = Mathf.Max(0.1f, e.RaidWarningDays);
-            float lead     = warnDays * GameTimeManager.DayDuration;
-
-            _raids.Add(new RaidPlan
-            {
-                Lair      = lair,
-                Target    = target.Value,
-                Count     = count,
-                ArrivesAt = now + lead,
-            });
-
-            int days = Mathf.Max(1, Mathf.CeilToInt(warnDays));
-            EventNotificationUI.Notify("습격 예고",
-                $"{lair.Name}({lair.Node.x}, {lair.Node.y})에서 {count}명이 " +
-                $"{days}일 뒤 ({target.Value.x}, {target.Value.y})를 습격합니다.",
-                holdWhenHidden: true);
+            float w = RaidWeight(lair);
+            if (w <= 0f) continue;
+            roll -= w;
+            if (roll <= 0f) return lair;
         }
+        return null;
+    }
+
+    float RaidWeight(WorldLair lair)
+    {
+        var e = lair?.Entry;
+        if (e == null || e.RaidIntervalDays <= 0f) return 0f;
+        if (lair.Strength <= 0) return 0f;
+
+        // 이미 예고된 소굴은 빼 둔다 — 예고가 둘이면 어느 것이 언제 오는지 셈이 안 된다.
+        if (HasPlanFrom(lair)) return 0f;
+
+        // **미워하는 세력이 더 자주 온다**(`FactionRelations.RaidWeight`, −100이면 두 배).
+        //
+        // 우호도를 떨어뜨리는 데 값이 붙는 자리다 — 죽이고 다니는 것이 화면의 숫자만
+        // 움직이면 그 숫자를 볼 이유가 없다. **총량은 안 건드린다**: 여기서 갈리는 건
+        // 누가 올 차례인가뿐이고 습격 빈도는 전역 시계가 그대로 정한다(소굴 수만큼
+        // 곱해지던 사고를 축만 바꿔 되풀이하지 않으려고).
+        return FactionRelations.RaidWeight(lair.Band?.Faction) / e.RaidIntervalDays;
     }
 
     bool HasPlanFrom(WorldLair lair)
@@ -661,61 +711,49 @@ public class WorldBandManager : MonoBehaviour
         DeliverRaid(band, plan.Target);
     }
 
-    void DeliverRaid(WorldBand band, Vector2Int node)
+    void DeliverRaid(WorldBand band, Vector2 at)
     {
-        var wm     = WorldMap.Instance;
-        var tile   = wm.GetTile(node);
-        var active = SettlementManager.Instance?.Active;
+        var active  = SettlementManager.Instance?.Active;
+        var node    = TerrainGrid.RegionAt(at.x, at.y);
+
+        // **내 거점인가**와 **지금 그 자리가 도는가**는 다른 물음이다(2026-08-31).
+        // 전에는 앞의 것만 물어서, 카메라가 멀리 있어도 적을 실체로 세웠다 — 그러면
+        // `SimLocality.ShouldTick`이 거짓이라 **적의 BT가 안 돈다.** 내 폰은 `IsPlayer`라
+        // 거리를 안 보고 계속 도므로, 문 앞에 선 석상을 우리 폰들만 두들기게 된다.
+        bool mine    = active != null && active.WorldNode == node;
+        var  target  = new Vector3(at.x, 0f, at.y);
+        bool watched = SimLocality.IsSimulated(target);
 
         // ① **지금 보고 있는 거점** — 진짜 적이 필드맵에 선다. 여기가 이 기능의 요점이다:
         //    예고됐던 것이 실제로 문 앞에 나타난다.
-        if (active != null && active.WorldNode == node && EventManager.Instance != null &&
-            EventManager.Instance.SpawnArrivingBand(band, out var edge))
+        var edges = new List<Vector3>();
+        if (mine && watched && EventManager.Instance != null &&
+            EventManager.Instance.SpawnArrivingBand(band, edges))
         {
-            string dir  = EventManager.CompassFromCore(edge);
+            // **갈래가 여럿이면 여럿을 말한다**(2026-09-09 — 포위). 한 방향만 알리면
+            // 플레이어가 그쪽만 막고, 나머지 갈래는 알림이 거짓말을 한 것이 된다.
+            string dir  = EventManager.CompassFromCore(edges);
             string line = dir != null ? $"{dir}쪽에 들이닥쳤습니다." : "거점에 들이닥쳤습니다.";
             EventNotificationUI.Notify(band.Name, $"{band.Count}명이 {line}", holdWhenHidden: true);
         }
-        // ② **채집기지** — 사람이 살지 않으므로 싸울 것이 없다. 쌓아 둔 것을 털어간다.
-        //    "들르지 않아도 캐 준다"의 대가가 여기 있다.
-        else if (tile.Content == WorldNodeContent.Outpost)
+        // ③ **내 거점인데 아무도 안 보고 있다** — 추상으로 푼다(사용자 결정).
+        //    폰도 창고도 진짜라, 다치는 것도 털리는 것도 진짜다. 다만 **그림이 없다.**
+        //    스폰할 자리를 못 찾은 경우(사방이 바위)도 여기로 떨어진다 — 습격이 증발하는
+        //    것보다 결과가 나오는 편이 낫다.
+        else if (mine)
         {
-            RaidOutpost(band, node);
+            var r = WorldBattle.ResolveRaid(band, target);
+            EventNotificationUI.Notify(band.Name,
+                $"{band.Count + r.BandLosses}명이 거점을 덮쳤습니다.\n{r.Summary}",
+                holdWhenHidden: true);
         }
-        // ③ 지금 안 보는 다른 정착지 — 필드맵이 안 돌고 있으므로 알림만 남긴다.
+        // ④ 지금 안 보는 다른 정착지 — 필드맵이 안 돌고 있으므로 알림만 남긴다.
         //    (오프라인 정착지 피해는 별도 축이라 여기서 지어내지 않는다.)
         else
         {
             EventNotificationUI.Notify(band.Name,
                 $"({node.x}, {node.y})의 거점이 습격당했습니다.", holdWhenHidden: true);
         }
-    }
-
-    void RaidOutpost(WorldBand band, Vector2Int node)
-    {
-        var outpost = OutpostManager.Instance?.At(node);
-        if (outpost == null || outpost.Stock.Count == 0)
-        {
-            EventNotificationUI.Notify(band.Name,
-                $"채집기지 ({node.x}, {node.y})가 털렸지만 가져갈 것이 없었습니다.", holdWhenHidden: true);
-            return;
-        }
-
-        int taken = 0;
-        var keys = new List<ItemData>(outpost.Stock.Keys);
-        foreach (var item in keys)
-        {
-            int had  = outpost.Stock[item];
-            int take = Mathf.Max(1, Mathf.RoundToInt(had * Random.Range(0.5f, 1f)));
-            take = Mathf.Min(take, had);
-
-            outpost.Stock[item] = had - take;
-            if (outpost.Stock[item] <= 0) outpost.Stock.Remove(item);
-            taken += take;
-        }
-
-        EventNotificationUI.Notify(band.Name,
-            $"채집기지 ({node.x}, {node.y})에서 {taken}개를 빼앗겼습니다.", holdWhenHidden: true);
     }
 
     // ── 무리끼리의 조우 ───────────────────────────────────────────────────────
@@ -745,50 +783,15 @@ public class WorldBandManager : MonoBehaviour
         }
     }
 
-    // ── 원정대와의 조우 (판정은 `WorldMapView`가 한다) ─────────────────────────
-
-    // 그 지점에 맞닿은 무리 하나. 조우 직후의 유예(`NoContactUntil`)를 여기서 걸러 주므로
-    // 부르는 쪽은 "가까운가"만 물으면 된다.
-    //
-    // `accept`는 **관심 있는 무리만 걸러 준다.** 부르는 쪽에서 받아 놓고 버리면 안 된다 —
-    // 하나만 돌려주므로, 그냥 지나칠 중립 무리를 집어 버리면 그 뒤에 붙어 있던 적을 놓친다.
-    public WorldBand FindContact(Vector3 pos, System.Predicate<WorldBand> accept = null)
-    {
-        float r2  = contactRadius * contactRadius;
-        float now = Time.time;
-
-        foreach (var b in _bands)
-        {
-            if (!b.IsAlive || now < b.NoContactUntil) continue;
-            if ((b.Position - pos).sqrMagnitude > r2) continue;
-            if (accept != null && !accept(b)) continue;
-            return b;
-        }
-        return null;
-    }
-
-    // 조우가 끝났다 — 잠시 서로를 못 본 것으로 한다.
-    // 안 그러면 [도망친다]를 누른 다음 프레임에 같은 무리가 다시 말을 건다.
-    // `seconds`를 주면 그만큼(항복처럼 **얻을 것을 다 얻은** 무리는 한동안 우리를 안 노린다).
-    public void PushApart(WorldBand band, float seconds = -1f) =>
-        band.NoContactUntil = Time.time + (seconds > 0f ? seconds : recontactDelay);
-
-    public void RemoveIfDead(WorldBand band)
-    {
-        if (band != null && !band.IsAlive) Remove(band);
-    }
-
     // ── 살림살이 ──────────────────────────────────────────────────────────────
 
     void Add(WorldBand band, Vector3 at)
     {
         band.Position = at;
-        if (_grid.TryNodeAt(at, out var node)) band.Node = node;
 
         var token = BuildToken(band);
         _bands.Add(band);
         _tokens[band] = token;
-        _byGo[token]  = band;
 
         band.Position = Ground(Flat(at), band);
         token.transform.position = band.Position;
@@ -796,32 +799,10 @@ public class WorldBandManager : MonoBehaviour
 
     void Remove(WorldBand band)
     {
-        // **지키던 자들이 없어지면 포로는 풀린다.** 무리가 저희끼리 싸우다 전멸했을 수도 있고
-        // 우리가 친 것일 수도 있는데, 어느 쪽이든 붙잡힌 사람이 같이 증발하면 안 된다.
-        if (band.Captives.Count > 0)
-        {
-            var freed = new List<UnitBrain>(band.Captives);
-            band.Captives.Clear();
-            WorldMapView.Instance?.RestoreParty(freed, band.Position, "탈출",
-                $"{band.Name}이(가) 무너진 틈에 {freed.Count}명이 빠져나왔습니다.");
-        }
-
         _bands.Remove(band);
-        if (_tokens.TryGetValue(band, out var go) && go != null)
-        {
-            _byGo.Remove(go);
-            Destroy(go);
-        }
+        if (_tokens.TryGetValue(band, out var go) && go != null) Destroy(go);
         _tokens.Remove(band);
     }
-
-    // 아직 지도 위에 있는 무리인가. 쫓아가던 원정대가 "놓쳤다"를 아는 유일한 길이다 —
-    // 돌아가거나 죽은 무리를 계속 겨누면 사라진 자리로 걸어간다.
-    public bool Has(WorldBand band) => band != null && _bands.Contains(band);
-
-    // 그 콜라이더가 어느 무리의 토큰인가. `WorldMapView`의 클릭 라우팅이 묻는다.
-    public WorldBand BandFor(GameObject go) =>
-        go != null && _byGo.TryGetValue(go, out var b) ? b : null;
 
     GameObject BuildToken(WorldBand band)
     {
@@ -830,28 +811,26 @@ public class WorldBandManager : MonoBehaviour
         go.transform.SetParent(_root, false);
         go.transform.localScale = Vector3.one * TokenSize();
 
-        // **콜라이더는 남기되 트리거로** 둔다 — 원정대 토큰과 같은 이유다.
-        //   남기는 이유: 좌클릭으로 무리를 들여다볼 수 있어야 한다. 처음엔 지웠는데,
-        //   그러면 지도 위의 무리가 **눌러도 아무 반응이 없는 그림**이 된다.
-        //   트리거인 이유: 격자의 표면 레이캐스트는 위에서 아래로 쏘는데 솔리드면 토큰이
-        //   제 머리를 맞아 매 프레임 위로 올라가고, `WorldMapView.TryPickTerrain`이
-        //   트리거를 건너뛰므로 이동 명령도 막지 않는다.
+        // **콜라이더는 뗀다** — 누르던 화면(옛 3D 월드맵)이 없어졌고, 남기면 필드의 클릭·이동을 가로챈다.
         var col = go.GetComponent<Collider>();
-        if (col != null) col.isTrigger = true;
+        if (col != null) Destroy(col);
 
         var rend = go.GetComponent<Renderer>();
         rend.material = UnlitMat(band.Data.TokenColor);
         return go;
     }
 
-    float TokenSize() => (_grid != null ? _grid.NodeSpacing : 4f) * tokenScale;
+    float TokenSize() => 4f * tokenScale;   // 4 — 옛 3D 월드맵의 칸 간격(그 화면은 10-09에 걷어냈다 · 크기는 `tokenScale`이 든다)
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
 
+    // **지면은 함수가 답한다**(2026-08-27) — 옛 지도 격자의 메시를 짚으면 그 화면이 없을 때
+    // `NullReference`로 무리 이동이 통째로 멎는다. `TerrainHeight`는 로드 여부와 무관하게
+    // 답하므로 지도 반대편의 무리도 제 높이를 안다.
     Vector3 Ground(Vector3 worldXZ, WorldBand band)
     {
-        var surf = _grid.SurfaceAtWorld(worldXZ);
-        return new Vector3(worldXZ.x, surf.y + tokenHover + TokenSize(), worldXZ.z);
+        float y = TerrainHeight.At(worldXZ.x, worldXZ.z);
+        return new Vector3(worldXZ.x, y + tokenHover + TokenSize(), worldXZ.z);
     }
 
     // 무리마다 다른 시드. 같은 프레임에 둘이 나가도 같은 사람들이 되지 않게.
@@ -860,9 +839,8 @@ public class WorldBandManager : MonoBehaviour
 
     static Material UnlitMat(Color c)
     {
-        var sh = Shader.Find("Universal Render Pipeline/Unlit")
-                 ?? Shader.Find("Unlit/Color")
-                 ?? Shader.Find("Sprites/Default");
+        var sh = RuntimeShaders.Find(RuntimeShaders.Unlit, RuntimeShaders.UnlitColor,
+                                     RuntimeShaders.SpritesDefault);
         var m = new Material(sh);
         if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
         if (m.HasProperty("_Color"))     m.SetColor("_Color", c);

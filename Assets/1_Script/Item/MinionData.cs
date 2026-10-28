@@ -22,6 +22,23 @@ public class MinionData : UnitData
     public ItemData SummonCostItem;
     public int SummonCostAmount = 10;
 
+    // **연구로 여는 하수인.** 비우면 처음부터 열려 있다 — `RecipeData.RequiredResearch`와
+    // 같은 규약이고, 그래서 저작 방법도 같다.
+    //
+    // 왜 소환 쪽에 게이트가 필요한가: 도축이 내놓는 뼈가 **쓸 데가 있어야** 치우는 일이
+    // 값을 갖는다. 뼈 → 연구 → 해골 하수인 → 그 해골이 또 뼈를 남긴다는 고리가 닫히면,
+    // 시체를 치우는 것이 잡일이 아니라 **생산 라인의 앞단**이 된다.
+    [Header("해금")]
+    [Tooltip("이 연구를 마쳐야 소환 목록에 뜬다. 비우면 처음부터 열려 있다.")]
+    public ResearchData RequiredResearch;
+
+    // 지금 소환할 수 있나 — **`ResearchManager`가 없으면 열린 것으로 본다**(연구 체계를 안 쓰는
+    // 씬에서 소환이 통째로 막히면 안 된다. `RecipeData` 쪽과 같은 폴백).
+    public bool IsUnlocked =>
+        RequiredResearch == null
+        || ResearchManager.Instance == null
+        || ResearchManager.Instance.IsCompleted(RequiredResearch);
+
     [Header("허용 작업 (비어있으면 모두 허용)")]
     public List<JobCategory> AllowedJobs = new();
 

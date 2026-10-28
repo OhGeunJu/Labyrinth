@@ -7,7 +7,7 @@ using UnityEngine.UI;
 // 화면 상단의 시계 — **지금 몇 일차 몇 시인지, 시간이 흐르고 있는지**를 보여준다.
 //
 // 이게 없으면 "하루 뒤에 자원이 쌓인다" 같은 규칙을 확인할 방법이 없다.
-// 하루가 기본 3600초(실제 60분)라 배속 없이는 하루를 기다릴 수도 없어서 배속 버튼을 함께 둔다.
+// 하루가 1800초(실제 30분)라 배속 없이는 하루를 기다리기 어려워서 배속 버튼을 함께 둔다.
 //
 // 배속은 `GameTimeManager.SetSpeed`(= `Time.timeScale`)라 게임 전체에 똑같이 걸린다 —
 // 폰 행동·건설·채굴이 전부 deltaTime을 따르므로 시계만 빨라지는 일은 없다.
@@ -58,7 +58,7 @@ public class TimeHUD : MonoBehaviour
     void Update()
     {
         var kb = Keyboard.current;
-        if (kb == null || !kb[pauseKey].wasPressedThisFrame) return;
+        if (kb == null || !kb[pauseKey].wasPressedThisFrame || InputFocus.KeysBlocked()) return;
 
         if (GameTimeManager.IsPaused) GameTimeManager.SetSpeed(_lastRunning);
         else                          { _lastRunning = GameTimeManager.Speed; GameTimeManager.SetSpeed(0f); }
@@ -70,10 +70,12 @@ public class TimeHUD : MonoBehaviour
     {
         if (clockText == null) return;
 
+        // **때를 적는다**(새벽·아침·낮·저녁·밤). 낮/밤 두 자만 띄우면 실시간 20분 동안
+        // 글자가 한 번도 안 바뀌어 하루가 흐르는 것이 화면에 안 보인다.
         bool day = GameTimeManager.IsDay;
         clockText.text  = $"{GameTimeManager.CurrentDay + 1}일차   " +
                           $"{GameTimeManager.Hour:00}:{GameTimeManager.Minute:00}   " +
-                          (day ? "낮" : "밤") +
+                          GameTimeManager.PhaseName(GameTimeManager.Phase) +
                           (GameTimeManager.IsPaused ? "   (일시정지)" : "");
         clockText.color = day ? dayColor : nightColor;
     }

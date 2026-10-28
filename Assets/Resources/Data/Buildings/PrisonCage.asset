@@ -14,17 +14,31 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: 
   BuildingName: "\uC6B0\uB9AC"
-  Description: "\uBD99\uC7A1\uC544 \uC628 \uC0AC\uB78C\uC744 \uAC00\uB450\uB294 \uC790\uB9AC.
-    \uD55C \uBA85\uC774 \uB4E4\uC5B4\uAC04\uB2E4. \uD68C\uBCF5\uB3C4 \uCE58\uB8CC\uB3C4
-    \uC5C6\uB2E4 \u2014 \uC0B4\uB824\uC11C \uB2E4\uB8F0 \uC0AC\uB78C\uC740 \uC8C4\uC218
-    \uCE68\uB300\uC5D0 \uB215\uD78C\uB2E4."
-  Category: 3
+  Description: "\uCC3D\uC0B4\uB85C \uB450\uB978 \uAC10\uC625 \uCE78. \uBD99\uC7A1\uC544
+    \uC628 \uC0AC\uB78C \uD55C \uBA85\uC774 \uB4E4\uC5B4\uAC04\uB2E4. \uD68C\uBCF5\uB3C4
+    \uCE58\uB8CC\uB3C4 \uC5C6\uB2E4 - \uC0B4\uB824\uC11C \uB2E4\uB8F0 \uC0AC\uB78C\uC740
+    \uC8C4\uC218 \uCE68\uB300\uC5D0 \uB215\uD78C\uB2E4."
+  Category: 7
   SortOrder: 60
-  Size: {x: 1, y: 1}
-  CostItem: {fileID: 11400000, guid: 889bd169115baac4f9de284d7066cadc, type: 2}
-  CostAmount: 15
+  Size: {x: 2, y: 2}
+  Costs:
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    Amount: 10
+  - Item: {fileID: 11400000, guid: a958c72b5d727c14c9b1e996e6da83df, type: 2}
+    Amount: 4
+  MaxHealth: 0
+  CostItem: {fileID: 0}
+  CostAmount: 0
+  DragBuild: 0
+  AreaDrag: 0
   RequiredResearch: {fileID: 0}
   Prefab: {fileID: 5632012933935689584, guid: e2d71c739e2d98e43b3082a6b958d1cc, type: 3}
   UsesBlueprint: 1
   IsFloor: 0
+  IsBridge: 0
+  LevelFloor: 0
+  LevelMaxStep: 0
+  Stairs: 0
   OccupiesTile: 0
+  BlockMask: []
+  EdgeWall: 0

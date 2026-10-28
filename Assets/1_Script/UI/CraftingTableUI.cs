@@ -194,7 +194,7 @@ public class CraftingTableUI : MonoBehaviour
     {
         _currentTable   = table;
         _selectedRecipe = null;
-        if (panel != null) panel.SetActive(true);
+        WindowRaiser.Open(panel);
         if (detailPanel != null) detailPanel.SetActive(false);
         if (tableTitleText != null) tableTitleText.text = table.TableType.DisplayName();
         RebuildList();
@@ -208,7 +208,7 @@ public class CraftingTableUI : MonoBehaviour
         CloseCrafterPicker();
         _currentTable = null;
         if (_outputGrid != null) _outputGrid.Bind(null);   // 닫힌 패널이 남의 인벤토리를 붙들지 않게
-        if (panel != null) panel.SetActive(false);
+        WindowRaiser.Close(panel);
     }
 
     // ── 연료 ──────────────────────────────────────────────────────────────
@@ -274,7 +274,7 @@ public class CraftingTableUI : MonoBehaviour
     static List<UnitBrain> EligibleCrafters()
     {
         var list = new List<UnitBrain>();
-        foreach (var brain in Object.FindObjectsByType<UnitBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        foreach (var brain in UnitBrain.All)
         {
             var faction = brain.GetComponent<Faction>();
             if (faction == null || !faction.IsPlayer) continue;
@@ -311,7 +311,7 @@ public class CraftingTableUI : MonoBehaviour
                           current == pawn, pawn);
         }
 
-        crafterPickerPanel.SetActive(true);
+        WindowRaiser.Open(crafterPickerPanel);
     }
 
     void AddCrafterRow(string label, bool selected, UnitBrain pawn)
@@ -342,7 +342,7 @@ public class CraftingTableUI : MonoBehaviour
 
     void CloseCrafterPicker()
     {
-        if (crafterPickerPanel != null) crafterPickerPanel.SetActive(false);
+        WindowRaiser.Close(crafterPickerPanel);
     }
 
     void RefreshCrafter()
@@ -372,13 +372,36 @@ public class CraftingTableUI : MonoBehaviour
 
         if (_currentTable == null) return;
 
-        foreach (var recipe in _currentTable.Recipes)
+        // **지금 만들 수 있는 것이 위로 온다**(2026-08-25). 저작 순서대로 늘어놓으면 잠긴 것이
+        // 사이사이에 섞여, 목록이 길어질수록 **고를 수 있는 줄을 눈으로 골라내는 일**이 된다.
+        // 연구가 스물아홉으로 늘면서 잠긴 줄이 절반을 넘었다.
+        //
+        // **잠긴 줄을 빼지는 않는다** — 무엇을 만들 수 있게 되는지가 곧 연구할 이유이고,
+        // 눌러서 필요한 연구를 볼 수 있는 자리도 거기다(`ShowDetail`이 사유를 적는다).
+        //
+        // **묶음 안에서는 저작 순서 그대로다**(`_order`가 안정 정렬을 만든다 — 같은 값이면
+        // 원래 자리를 지킨다). 잠긴 것을 다시 이름순 따위로 흔들면 연구를 하나 끝낼 때마다
+        // 목록이 통째로 뒤바뀌어 **어디에 있던 줄인지를 다시 찾아야 한다.**
+        var ordered = new List<RecipeData>(_currentTable.Recipes);
+        var unlockedOf = new Dictionary<RecipeData, bool>();
+        var order      = new Dictionary<RecipeData, int>();
+        for (int i = 0; i < ordered.Count; i++)
         {
-            bool unlocked = ResearchManager.Instance == null
-                         || ResearchManager.Instance.IsUnlocked(recipe);
+            var r = ordered[i];
+            order[r] = i;
+            unlockedOf[r] = ResearchManager.Instance == null
+                         || ResearchManager.Instance.IsUnlocked(r);
+        }
+        ordered.Sort((a, b) =>
+        {
+            if (unlockedOf[a] != unlockedOf[b]) return unlockedOf[a] ? -1 : 1;
+            return order[a].CompareTo(order[b]);
+        });
 
+        foreach (var recipe in ordered)
+        {
             var entry = Instantiate(recipeEntryPrefab, recipeContainer);
-            entry.Setup(recipe, unlocked);
+            entry.Setup(recipe, unlockedOf[recipe]);
             entry.OnSelected += SelectRecipe;   // 잠겨도 눌러서 내용은 볼 수 있게
         }
     }
@@ -392,7 +415,7 @@ public class CraftingTableUI : MonoBehaviour
 
     void ShowDetail(RecipeData recipe)
     {
-        if (detailPanel != null) detailPanel.SetActive(true);
+        WindowRaiser.Open(detailPanel);
 
         if (resultIcon != null)
         {
@@ -438,9 +461,9 @@ public class CraftingTableUI : MonoBehaviour
         {
             // 판정(`CanCraft`)과 **같은 기준**으로 센다. 다르면 화면이 두 답을 낸다 —
             // 재료가 3/3인데 버튼은 비활성이거나, 그 반대.
-            int have   = Storage.GetTotalByItem(ing.Item);
+            int have   = MaterialPool.AvailableHere(ing.Item);
             string col = have >= ing.Amount ? "#88FF88" : "#FF6666";
-            sb.AppendLine($"<color={col}>{ing.Item?.ItemName}  {have} / {ing.Amount}</color>");
+            sb.AppendLine($"<color={col}>{ing.Item?.IngredientName}  {have} / {ing.Amount}</color>");
         }
         ingredientsText.text = sb.ToString();
     }

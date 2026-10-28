@@ -26,10 +26,10 @@ public static class PrisonFeeding
 {
     // 이 사람에게 밥이 필요한가 — **갇혀 있고, 배고프다.**
     //
-    // **기절한 포로도 먹인다.** 허기는 기절 중에도 도는데(`UnitBrain.UpdateHunger`) 그때
-    // 안 먹이면, 오래 쓰러져 있는 포로는 반드시 굶어 죽는다 — 깨어나기를 기다리는 것이
-    // 곧 죽기를 기다리는 것이 된다.
-    // (죽었나·업혀 있나는 `Feeding.Simulates`가 이미 본다 — 여기서 또 세면 두 벌이 된다.)
+    // **기절한 포로도 먹인다.** 이 축들은 기절 중에도 도는데(`UnitBrain.UpdateNeeds`) 그때
+    // 안 먹이면, 오래 쓰러져 있는 포로는 반드시 죽는다 — 깨어나기를 기다리는 것이 곧
+    // 죽기를 기다리는 것이 된다.
+    // (죽었나·업혀 있나는 `Needs.Simulates`가 이미 본다 — 여기서 또 세면 두 벌이 된다.)
     public static bool NeedsFood(UnitBrain prisoner)
     {
         var bb = prisoner != null ? prisoner.Blackboard : null;

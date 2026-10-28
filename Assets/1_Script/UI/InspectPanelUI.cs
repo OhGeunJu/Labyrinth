@@ -37,6 +37,8 @@ public class InspectPanelUI : MonoBehaviour
     // 자원 노드. **이미 있던 `OnNodeSelected`를 같이 듣는다** — 노드 패널을 여는 이벤트가
     // 이미 있는데 여기에 또 만들면 둘이 어긋난다.
     ResourceNode _node;
+    Forageable   _forage;
+    Vector2Int?  _rock;
 
     // 바닥에 떨어진 물건. **자동 운반이 켜졌는지**를 볼 자리가 여기다 — 초록 구슬만으로는
     // "왜 안 실려 가지"에 답이 안 된다(구슬이 없는 것과 창고가 없는 것이 같아 보인다).
@@ -71,6 +73,8 @@ public class InspectPanelUI : MonoBehaviour
         SelectionManager.OnBuildingInspected  += OnBuildingInspected;
         SelectionManager.OnCoreInspected      += OnCoreInspected;
         SelectionManager.OnNodeSelected       += OnNodeSelected;
+        SelectionManager.OnForageInspected    += OnForageInspected;
+        SelectionManager.OnRockInspected      += OnRockInspected;
         SelectionManager.OnItemsInspected     += OnItemsInspected;
         BuildModeManager.OnActiveChanged      += OnBuildModeChanged;
 
@@ -131,7 +135,10 @@ public class InspectPanelUI : MonoBehaviour
                                                          : new Color(0.20f, 0.20f, 0.22f);
         if (_haulLabel != null)
         {
-            _haulLabel.text  = value ? "운반 V" : "운반";
+            // **토글이 아니라 상태로 적는다**(사용자 결정) — 체크박스는 *지금 어느 쪽인지*를
+            // 눈이 한 번 더 재야 하는데, 살펴보기 창은 **읽는 창**이다. 품목 창에서는
+            // 여럿을 빠르게 켜고 끄는 자리라 거기서만 토글이다.
+            _haulLabel.text  = value ? "자동운반 켜짐" : "자동운반 꺼짐";
             _haulLabel.color = value ? new Color(0.85f, 0.98f, 0.87f) : new Color(0.80f, 0.80f, 0.82f);
         }
 
@@ -139,16 +146,23 @@ public class InspectPanelUI : MonoBehaviour
         _haulToggle.onClick.AddListener(ToggleHaulOnSelection);
     }
 
+    // **이 한 개가 아니라 그 품목을 켠다**(2026-09-06, 사용자 결정).
+    //
+    // 하나를 눌러 켜면 **세계의 그 품목 전부**가 따라온다 — 바닥에 널린 갓버섯 스무 개를
+    // 하나씩 찍는 일이 없어지고, 무엇보다 **앞으로 떨어지는 것에도 걸린다.** 개별로 찍는
+    // 길은 그대로 남는다(`H` 지정 모드·우클릭) — 둘은 *"나른다"*만 말하므로 합집합이고
+    // **어느 쪽이 이기는지를 정할 일이 없다**(`DroppedItem.Hauls`).
+    //
     // **여럿을 고르면 한 번에 뒤집는다.** 하나라도 꺼져 있으면 전부 켜고, 전부 켜져 있을 때만
     // 끈다 — 섞여 있을 때 "누르면 무엇이 되나"가 애매하면 두 번 눌러 확인하게 된다.
     void ToggleHaulOnSelection()
     {
         bool anyOff = false;
         foreach (var d in _items)
-            if (d != null && !d.HaulAllowed) { anyOff = true; break; }
+            if (d != null && !HaulPolicy.IsAuto(d.Item)) { anyOff = true; break; }
 
         foreach (var d in _items)
-            if (d != null) d.SetHaulAllowed(anyOff);
+            if (d != null) HaulPolicy.SetAuto(d.Item, anyOff);
 
         Refresh();
     }
@@ -160,12 +174,17 @@ public class InspectPanelUI : MonoBehaviour
         SelectionManager.OnBuildingInspected  -= OnBuildingInspected;
         SelectionManager.OnCoreInspected      -= OnCoreInspected;
         SelectionManager.OnNodeSelected       -= OnNodeSelected;
+        SelectionManager.OnForageInspected    -= OnForageInspected;
+        SelectionManager.OnRockInspected      -= OnRockInspected;
         SelectionManager.OnItemsInspected     -= OnItemsInspected;
         BuildModeManager.OnActiveChanged      -= OnBuildModeChanged;
     }
 
     void OnItemsInspected(IReadOnlyList<DroppedItem> items)
     {
+        _forage = null;
+        _rock   = null;
+        _itemFocus = null;   // 새로 고른 것은 전체부터 본다
         _items.Clear();
         if (items != null)
             foreach (var d in items) if (d != null) _items.Add(d);
@@ -175,18 +194,24 @@ public class InspectPanelUI : MonoBehaviour
     void OnPawnInspected(UnitBrain brain)
     {
         _inspected = brain;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
     void OnBlueprintInspected(BuildingBlueprint bp)
     {
         _blueprint = bp;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
     void OnBuildingInspected(PlacedBuilding pb)
     {
         _building = pb;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
@@ -196,9 +221,197 @@ public class InspectPanelUI : MonoBehaviour
         Refresh();
     }
 
+    // **채집물은 자원 노드가 아니다** — 한 번 따면 없어지므로 게이지도 배정도 없다.
+    // 그래서 창에 적을 것도 다르다: *무엇이 얼마나 나오나 · 찍혔나 · 그 품목이 자동운반인가*.
+    // **광맥 창과 같은 눈높이로 적는다**(2026-09-06) — 처음엔 세 줄짜리 맨 글이었는데,
+    // 같은 화면의 광맥은 이름을 색으로 세우고 갈래를 달고 무엇이 얼마나 나오는지를 적는다.
+    // **창마다 격이 다르면 어떤 물건은 덜 중요한 것처럼 보인다.**
+    void ShowForage(Forageable f)
+    {
+        Show();
+        if (infoText == null) return;
+
+        var item = f.Item;
+        var sb   = new StringBuilder();
+
+        sb.AppendLine($"<b><color=#E8C566>{(item != null ? item.ItemName : "채집물")}</color></b>  " +
+                      "<color=#888>[채집물]</color>");
+        sb.AppendLine();
+
+        if (item != null)
+        {
+            sb.AppendLine($"따면  <b>{item.ItemName}</b>  " +
+                          $"<color=#888>한 번에 {f.MinAmount}~{f.MaxAmount}개</color>");
+
+            // **한 번이면 끝난다는 것이 이 물건의 성격이다** — 광맥과 갈리는 자리라 적는다.
+            sb.AppendLine("<color=#888>한 번 따면 없어집니다  ·  기술이 필요 없습니다</color>");
+            sb.AppendLine();
+
+            if (!string.IsNullOrEmpty(item.Description))
+            {
+                sb.AppendLine($"<color=#9a9a9a>{item.Description}</color>");
+                sb.AppendLine();
+            }
+        }
+
+        // **찍혔나와 자동운반은 다른 축이다.** 앞은 *이걸 딸까*(이 한 개), 뒤는 *딴 것을
+        // 나를까*(그 품목 전부). 둘을 한 줄로 적으면 **왜 안 실려 가는지를 못 가린다.**
+        sb.AppendLine(f.Designated
+            ? "<color=#7fe08a>채집 지정됨</color>  <color=#888>— 폰이 와서 땁니다</color>"
+            : "<color=#F90>지정 안 됨</color>  <color=#888>— 아래 [채집한다] 또는 H로 찍습니다</color>");
+
+        if (item != null)
+            sb.AppendLine(HaulPolicy.IsAuto(item)
+                ? "<color=#7fe08a>자동운반 켜짐</color>  <color=#888>— 딴 것은 저절로 실려 갑니다</color>"
+                : "<color=#c9c9c9>자동운반 꺼짐</color>  <color=#888>— 딴 것은 바닥에 남습니다</color>");
+
+        infoText.text = sb.ToString();
+
+        // **버튼은 이 창에서 할 수 있는 일만 둔다** — 채집물에는 *이동한다·분해한다*가 없다
+        // (건물이 아니다). 대신 **찍는 일**과 **그 품목의 자동운반**이 여기 있어야 한다:
+        // 지정 모드를 켜러 가지 않고도 눈앞의 것 하나를 시킬 수 있어야 한다.
+        var acts = new List<(string, Action)>
+        {
+            (f.Designated ? "채집 취소" : "채집한다",
+             () => { f.SetDesignated(!f.Designated); Refresh(); }),
+        };
+        if (item != null) acts.Add(HaulSwitch(item));
+
+        SetActions(acts);
+    }
+
+    // **자동운반 스위치는 동작 줄의 버튼 하나다**(2026-09-06에 옮겼다).
+    //
+    // 그전에는 창 **오른쪽 위**의 작은 버튼이었는데 사용자가 *"자동운반 토글은 어디있는지
+    // 모르겠고"*라고 했다 — **찾을 수 없는 스위치는 없는 스위치다.** 그리고 그 자리는
+    // 바닥 물건에만 떴으므로 채집물·광맥에는 애초에 없었다.
+    //
+    // **켜는 것은 이 한 개가 아니라 그 품목이다**(`HaulPolicy`) — 그래서 바닥 물건이든
+    // 채집물이든 광맥이든 **같은 버튼이 같은 일을 한다.**
+    (string, Action) HaulSwitch(ItemData item)
+        => (HaulPolicy.Label(item), () => { HaulPolicy.Toggle(item); Refresh(); });
+
+    // **벽 한 칸.** 광맥 창과 같은 눈높이로 적되 **묻는 것이 다르다**: 노드는 *누가 붙었나*가
+    // 중심이고 벽은 *파면 무엇이 나오나 · 찍었나*가 중심이다(벽에는 배정이 없다 — 찍으면
+    // 큐에 올라가고 아무나 온다).
+    void ShowRock(Vector2Int tile)
+    {
+        Show();
+        if (infoText == null) return;
+
+        // **기반암은 파면 무엇이 나오나를 안 적는다** — 못 판다. 캐는 버튼도 안 단다
+        // (눌러도 `Mark`가 거절해 아무 일도 안 일어나는 버튼이 된다).
+        if (RockMap.IsBedrock(tile))
+        {
+            infoText.text =
+                "<b><color=#E8C566>기반암</color></b>  <color=#888>[세계의 끝]</color>\n" +
+                $"<color=#888>({tile.x}, {tile.y})</color>\n\n" +
+                "캘 수 없습니다. 이 너머로는 세계가 없습니다.";
+            SetActions(new List<(string, Action)>());
+            return;
+        }
+
+        var vein = RockMap.VeinAt(tile);
+        var data = vein != null ? vein : RockMap.PlainRock;
+        var item = data != null ? data.DropItem : null;
+        bool marked = RockMap.IsMarked(tile);
+
+        var sb = new StringBuilder();
+        sb.AppendLine(vein != null
+            ? $"<b><color=#E8C566>{(item != null ? item.ItemName : "광맥")} 광맥</color></b>  <color=#888>[벽]</color>"
+            : "<b><color=#E8C566>바위</color></b>  <color=#888>[벽]</color>");
+        sb.AppendLine($"<color=#888>({tile.x}, {tile.y})</color>");
+        sb.AppendLine();
+
+        sb.AppendLine(DurabilityLine(tile));
+
+        if (item != null)
+            sb.AppendLine($"파면  <b>{item.ItemName}</b>  " +
+                          $"<color=#888>한 번에 {data.DropMin}~{data.DropMax}개</color>");
+        else
+            sb.AppendLine("<color=#F90>파도 나오는 것이 없습니다 — " +
+                          "`World → 0. Create Rock Materials`가 맨바위 산출을 물립니다.</color>");
+
+        // 벽에 박힌 조명 — 덤으로 나오는 것이 있으면 같이 적는다(`MineJob`이 따로 떨군다).
+        var lit = RockMap.WallLightAt(tile);
+        if (lit != null && lit.DropItem != null)
+            sb.AppendLine($"덤으로  <b>{lit.DropItem.ItemName}</b>  " +
+                          $"<color=#888>{lit.DropMin}~{lit.DropMax}개</color>");
+        sb.AppendLine();
+
+        sb.AppendLine(marked
+            ? "<color=#7fe08a>채굴 지정됨</color>  <color=#888>— 채굴을 켜 둔 폰이 옵니다(P)</color>"
+            : "<color=#c9c9c9>지정 안 됨</color>  <color=#888>— 아래 [채굴한다] 또는 K로 찍습니다</color>");
+
+        if (item != null)
+            sb.AppendLine(HaulPolicy.IsAuto(item)
+                ? "<color=#7fe08a>자동운반 켜짐</color>  <color=#888>— 캔 것은 저절로 실려 갑니다</color>"
+                : "<color=#c9c9c9>자동운반 꺼짐</color>  <color=#888>— 캔 것은 바닥에 남습니다</color>");
+
+        infoText.text = sb.ToString();
+
+        var acts = new List<(string, Action)>
+        {
+            (marked ? "채굴 취소" : "채굴한다",
+             () => { RockMap.Mark(tile, !marked); Refresh(); }),
+        };
+        if (item != null) acts.Add(HaulSwitch(item));
+
+        SetActions(acts);
+    }
+
+    // **벽의 내구도 한 줄**(2026-10-15) — 살펴보기와 채굴 커서(`MineDesignator`)가 같은 줄을 쓴다.
+    // 깎인 벽은 색이 바뀐다: 다 남았으면 회색, 깎이기 시작하면 노랑, 절반 아래면 주황.
+    public static string DurabilityLine(Vector2Int tile)
+    {
+        float max  = RockMap.MaxDurability(tile);
+        float left = RockMap.Durability(tile);
+        float frac = max > 0f ? left / max : 1f;
+        string col = frac >= 0.999f ? "#c9c9c9" : frac >= 0.5f ? "#E8C566" : "#F0883E";
+        return $"내구도  <b><color={col}>{Mathf.CeilToInt(left)}</color></b> / {Mathf.CeilToInt(max)}  " +
+               $"<color=#888>({Mathf.RoundToInt(frac * 100f)}%)</color>";
+    }
+
+    // **힘을 받고 있나.** 없는 건물에는 한 줄도 안 적는다 — 이 축과 무관한 것에 전력 줄이
+    // 뜨면 *"이 침대도 전기를 먹나"*가 된다.
+    //
+    // **모자란 것과 끈 것을 가른다** — 앞은 핵을 키워야 하고 뒤는 누르면 그만이다.
+    static void AppendPower(StringBuilder sb, Component c)
+    {
+        if (!PowerUser.Has(c, out var u)) return;
+
+        if (!u.SwitchedOn)
+            sb.AppendLine($"<color=#888>전력 꺼 둠 ({u.Cost})</color>");
+        else if (u.Powered)
+            sb.AppendLine($"<color=#7fe08a>전력 {u.Cost}</color> <color=#888>— 핵이 대고 있습니다.</color>");
+        else
+            sb.AppendLine($"<color=#F44336>전력 부족 ({u.Cost} 필요)</color> " +
+                          "<color=#888>— 부핵을 세우거나 다른 건물을 끄세요.</color>");
+    }
+
+    static (string, Action) PowerSwitch(PowerUser u)
+        => (u.SwitchedOn ? "전력 끈다" : "전력 켠다", () => u.ToggleSwitch());
+
+    void OnRockInspected(Vector2Int? tile)
+    {
+        _rock   = tile;
+        _forage = null;
+        _items.Clear();
+        Refresh();
+    }
+
+    void OnForageInspected(Forageable f)
+    {
+        _forage = f;
+        _items.Clear();     // 바닥 물건이 창을 먼저 가져간다 — 눌러 본 것이 이겨야 한다
+        Refresh();
+    }
+
     void OnNodeSelected(ResourceNode node)
     {
         _node = node;
+        _forage = null;
+        _rock   = null;
         Refresh();
     }
 
@@ -210,7 +423,7 @@ public class InspectPanelUI : MonoBehaviour
         if (active)
         {
             _inspected = null; _blueprint = null; _building = null;
-            _core = null; _node = null; _items.Clear();
+            _core = null; _node = null; _forage = null; _rock = null; _items.Clear();
         }
         Refresh();
     }
@@ -220,30 +433,142 @@ public class InspectPanelUI : MonoBehaviour
     // 그건 플레이어 폰의 배낭을 전부 훑는 일이다.
     //
     // 여기 뜨는 값 중 프레임 단위로 움직이는 것은 하나도 없다(혈액이 가장 빠른데 초당 몇이다).
-    // 다른 패널들이 이미 이 방식이다 — `PawnRosterUI` 0.3초, `ColonyUI` 0.5초.
-    [SerializeField] float refreshInterval = 0.15f;
-    float _refreshTimer;
+    // **박자는 세계에 하나다**(`UiRefresh`) — 창마다 제 시계를 들면 붙어 선 판이 다른 순간에 바뀐다.
+    int _beat = -1;
+
+    // 지금 올라와 있는 링크. **창마다 제 상태다** — 스탯 창과 같이 떠 있을 수 있다.
+    string _hoveredLink;
+
+    // **모드가 갈린 프레임에는 박을 안 기다린다**(2026-09-23). 건설은 `OnActiveChanged`를 들어 즉시
+    // 돌았는데 **명령·밭 구역은 그 문이 없어** 모드를 끄고 최대 한 박 뒤에야 판이 돌아왔다.
+    bool _focus;
 
     void Update()
     {
         bool showing = selectionManager.Selected.Count > 0 || _inspected != null
                     || _blueprint != null || _building != null || _core != null || _node != null;
+
+        if (FocusMode.Active != _focus) { _focus = FocusMode.Active; UiRefresh.Now(ref _beat); }
+        ItemRowClick();
         if (!showing) return;
 
-        _refreshTimer -= Time.unscaledDeltaTime;   // 멈춰 놓고 들여다볼 때도 갱신돼야 한다
-        if (_refreshTimer > 0f) return;
-        _refreshTimer = refreshInterval;
+        // **올린 칸의 설명** — 박과 따로 돈다(마우스는 0.15초를 기다려 주지 않는다).
+        PawnStoryText.Tick(infoText, ref _hoveredLink);
 
+        if (!UiRefresh.Due(ref _beat)) return;
         Refresh();
     }
 
+    // **살펴보기 창은 앞으로 안 올린다**(2026-08-29).
+    //
+    // 08-29에 여는 자리를 `WindowRaiser.Open`으로 바꿨는데, 그건 **켜고 + 맨 앞으로 올리는**
+    // 문이다. 이 창은 사람이 여는 창이 아니라 **선택이 바뀔 때마다 저절로 갱신되는 상시
+    // HUD**라, 갱신될 때마다 형제 맨 뒤로 가서 **밑에 있는 패널(모드 바 등)을 덮었다.**
+    //
+    // **그리고 흐려지며 뜨지도 않는다**(2026-09-23, 사용자: *"그냥 바로 뜨게 하고싶어"*). 이 판은 고른 것이
+    // 바뀔 때마다·모드를 켤 때마다 꺼졌다 켜지는 **상시 HUD**라, 뜨는 0.14초가 값을 하는 것이 아니라
+    // **깜빡임**으로 읽힌다. `ShowNow`로 켜는 이유는 `SetActive`가 **도는 트윈을 안 치우기** 때문이다.
+    void Show() => UiTween.ShowNow(panel);
+
+    // **폰의 이름 줄 — 한 벌**(상태표 맨 위가 쓴다). 이름 · [유형] (세력). **시체의 소속은 `Corpse`가 든다**
+    // (`BecomeCorpse`가 `Faction`을 지운다 — 안 그러면 죽는 순간 소속이 사라진다).
+    public static (string name, string sub) PawnHeader(UnitBrain brain)
+    {
+        if (brain == null) return ("", "");
+        var faction = brain.GetComponent<Faction>();
+        var corpse  = brain.GetComponent<Corpse>();
+        var data    = faction != null ? faction.Data : corpse != null ? corpse.Faction : null;
+
+        string name = !string.IsNullOrEmpty(brain.UnitName) ? brain.UnitName
+                    : brain.Data != null ? brain.Data.RaceName : brain.gameObject.name;
+        // 성별은 몸이 답한다 — 몸이 없는 폰(늑대·골렘)은 안 적는다.
+        var    g    = brain.Gender;
+        string sub  = $"[{UnitTypeLabel(brain, faction)}]" + (g.HasValue ? $" {g.Value.DisplayName()}" : "")
+                    + (data != null ? $"  <color=#7AA>({data.FactionName})</color>" : "");
+        return (name, sub);
+    }
+
+    // **지금 이 창이 보여 주는 폰**(2026-09-19) — 상태표(`PawnSheetUI`)가 읽는다. *방금 눌러 본 것 ↔ 고른 폰*을
+    // 여기서 가르므로 상태표가 또 가르면 두 창이 다른 폰을 보여 주는 순간이 생긴다. 폰이 아니면 null.
+    public static UnitBrain ShownPawn { get; private set; }
+
+    // **오른쪽 창(체력 막대)도 여기서 갈린다 — 켜고 끄는 문이 하나다**(2026-09-23, 사용자: *"두 개가 서로
+    // 붙어있는데 켜지는 타이밍이 달라서 불편해"*).
+    //
+    // 그전에는 왼쪽 판을 **이 창이 0.15초 주기로** 켜고 오른쪽 판을 **`PawnSheetUI`가 매 프레임** 켰다 —
+    // 답하는 물음이 *"지금 폰을 보여 주나"* 하나인데 **재는 시계가 둘**이라, 붙어 선 두 판이 서로 다른
+    // 프레임에 뜨고 뜨는 방식마저 갈렸다(왼쪽은 흐려지며, 오른쪽은 즉시). 이제 **여기가 한 번 정하고
+    // 듣는 쪽이 제 판만 맞춘다**(`HaulPolicy.OnChanged`와 같은 규칙 — 이 창이 저쪽 판을 알면 판이 늘 때
+    // 여기가 는다).
+    public static event System.Action<UnitBrain> OnShownChanged;
+
     void Refresh()
     {
+        RefreshCore();
+        FitHeight();
+        OnShownChanged?.Invoke(ShownPawn);
+    }
+
+    // ── 창 높이는 내용만큼 (2026-09-28) ──────────────────────────────────────
+    //
+    // 사용자: *"창 안에 여백이 너무 많고"*. 판 높이가 씬에 고정이라 바닥 물건처럼 짧은 내용은 글 아래가
+    // 통째로 비고 버튼만 바닥에 붙었다. **씬의 높이는 천장으로 두고 그 안에서 줄인다** — 늘리지는 않는다
+    // (폰 정보처럼 긴 것은 지금 크기가 저작한 크기다). **아래 모서리를 붙든다** — 화면 아래에 선 창이라
+    // 줄어든 만큼 위가 내려와야 버튼 자리가 안 뛴다.
+    //
+    // 재는 것은 셋: 판 위에서 글 윗변까지(씬이 정한 여백) · 글이 실제로 차지하는 높이 · 버튼 줄 윗변에서
+    // 판 아래까지(버튼 줄이 없으면 글 위 여백과 같게). 셋 다 **지금 씬에서 잰다** — 상수로 적으면 씬을 손본 날 어긋난다.
+    float _fullHeight = -1f;
+    const float TextToActions = 10f;
+
+    void FitHeight()
+    {
+        if (panel == null || !panel.activeSelf || infoText == null) return;
+        if (!(panel.transform is RectTransform rt)) return;
+        if (!Mathf.Approximately(rt.anchorMin.y, rt.anchorMax.y)) return;   // 세로로 늘어난 판은 화면이 높이를 정한다
+
+        if (_fullHeight < 0f) _fullHeight = rt.rect.height;
+
+        float want = _fullHeight;
+        if (ShownPawn == null)
+        {
+            float top  = rt.rect.yMax - LocalIn(rt, infoText.rectTransform).yMax;
+            float text = infoText.GetPreferredValues(infoText.text, infoText.rectTransform.rect.width, 0f).y;
+
+            float bottom = top;
+            if (actionRow != null && actionRow.gameObject.activeSelf && actionRow is RectTransform ar)
+                bottom = LocalIn(rt, ar).yMax - rt.rect.yMin + TextToActions;
+
+            want = Mathf.Min(_fullHeight, top + text + bottom);
+        }
+        if (Mathf.Abs(rt.rect.height - want) < 0.5f) return;
+
+        // 아래 모서리를 붙든다 — 피벗이 어디든.
+        float bottomBefore = rt.rect.yMin * rt.lossyScale.y + rt.position.y;
+        rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, want);
+        float bottomAfter  = rt.rect.yMin * rt.lossyScale.y + rt.position.y;
+        rt.position += new Vector3(0f, bottomBefore - bottomAfter, 0f);
+    }
+
+    // `child`의 사각형을 `parent`의 로컬 좌표로.
+    static Rect LocalIn(RectTransform parent, RectTransform child)
+    {
+        var c = new Vector3[4];
+        child.GetWorldCorners(c);
+        Vector2 a = parent.InverseTransformPoint(c[0]);
+        Vector2 b = parent.InverseTransformPoint(c[2]);
+        return Rect.MinMaxRect(a.x, a.y, b.x, b.y);
+    }
+
+    void RefreshCore()
+    {
+        ShownPawn = null;
         // 운반 스위치는 **바닥 물건을 골랐을 때만** 뜬다 — 여기서 한 번 내리고
         // `ShowItems`만 다시 올린다(분기마다 끄면 새 분기가 하나 빠뜨린다).
         SetHaulToggle(null);
 
-        if (_buildMode) { panel?.SetActive(false); return; }
+        // 건설뿐 아니라 **명령·밭 구역에서도** 치운다(`FocusMode`).
+        if (_buildMode || FocusMode.Active) { panel?.SetActive(false); return; }
 
         // **방금 누른 것이 먼저다**(조사와 같은 규칙). 청사진이 다 지어지거나 취소되면,
         // 건물이 분해되면 `== null`이 되어 저절로 폰 쪽으로 돌아간다.
@@ -252,6 +577,8 @@ public class InspectPanelUI : MonoBehaviour
         for (int i = _items.Count - 1; i >= 0; i--)
             if (_items[i] == null) _items.RemoveAt(i);
         if (_items.Count > 0) { ShowItems();                 return; }
+        if (_rock.HasValue && RockMap.IsRock(_rock.Value)) { ShowRock(_rock.Value); return; }
+        if (_forage    != null) { ShowForage(_forage);       return; }
         if (_node      != null) { ShowNode(_node);           return; }
         if (_building  != null) { ShowBuilding(_building);   return; }
         if (_core      != null) { ShowCore(_core);           return; }
@@ -271,18 +598,13 @@ public class InspectPanelUI : MonoBehaviour
         }
 
         if (brain == null) { panel?.SetActive(false); return; }   // 선택 없음 / 파괴된 유닛
-        panel?.SetActive(true);
+        ShownPawn = brain;
+        Show();
 
         SetPawnActions(brain);
 
-        var pawn = brain.gameObject;
-        var body = brain.GetComponent<BodyPartSystem>();
-        var sfx  = brain.GetComponent<StatusEffectSystem>();
-
         var sb    = new StringBuilder();
-        var equip = brain.Equipment;
 
-        // 헤더 — 이름 [유형] (세력)
         var faction = brain.GetComponent<Faction>();
         var corpse  = brain.GetComponent<Corpse>();
 
@@ -290,77 +612,37 @@ public class InspectPanelUI : MonoBehaviour
         // 소속은 `Corpse`가 받아 뒀으므로 거기서 읽는다(안 그러면 죽는 순간 소속이 사라진다).
         var factionData = faction != null ? faction.Data : corpse != null ? corpse.Faction : null;
 
-        string raceName = !string.IsNullOrEmpty(brain.UnitName) ? brain.UnitName
-                        : brain.Data != null ? brain.Data.RaceName : pawn.name;
-        string factionName = factionData != null
-            ? $"  <color=#7AA>({factionData.FactionName})</color>" : "";
-        sb.AppendLine($"<b><color=#E8C566>{raceName}</color></b>  <color=#888>[{UnitTypeLabel(brain, faction)}]</color>{factionName}");
+        // **이름 줄은 상태표 맨 위로 옮겼다**(`PawnSheetUI` ← `PawnHeader`, 사용자: *"이름이랑 순서가 먼저 보여야해"*).
+
+        // **얼마나 삭았나** — 도축해서 무엇이 나올지가 이것으로 갈리고(`Butchering`),
+        // 나중에 붙일 "교단이 일으킨다"의 재료도 이 단계다. 산 폰에는 안 뜬다.
+        if (corpse != null)
+        {
+            var stage = corpse.Stage;
+            string tint = stage == CorpseStage.Fresh  ? "#9C9"
+                        : stage == CorpseStage.Rotten ? "#AA8" : "#CCC";
+            sb.AppendLine($"<color=#888>부패</color>  <color={tint}>{Butchering.StageName(stage)}</color>");
+        }
+
+        // **그 세력이 나를 어떻게 보는가.** 관계가 움직이는데 볼 자리가 없으면 "왜 갑자기
+        // 덤비지"에 답이 없다 — 우호도가 0(저작한 그대로)이면 적지 않는다(늘 떠 있으면 안 읽는다).
+        if (factionData != null && !factionData.PlayerControlled
+            && !Mathf.Approximately(FactionRelations.Of(factionData), 0f))
+            sb.AppendLine($"<color=#9AB>{FactionRelations.Describe(factionData)}</color>");
+
         sb.AppendLine();
 
-        // 혈액 / 보호막 / 부패
-        if (body != null)
-        {
-            sb.AppendLine($"혈액  {BloodBar(body.Blood)}");
-            if (sfx != null && sfx.ShieldPool > 0f)
-                sb.AppendLine($"보호막  <color=#4AF>{sfx.ShieldPool:F0}</color>");
-            if (sfx != null && sfx.CorruptionGauge > 0f)
-                sb.AppendLine($"부패  {BarColored(sfx.CorruptionGauge, StatusEffectSystem.MaxCorruption, "#A020F0", "#6010A0")}  {sfx.CorruptionGauge:F0}/{StatusEffectSystem.MaxCorruption:F0}");
-        }
-
-        // 허기 — **허기가 도는 유닛에만**, 그리고 **살아 있을 때만** 표시.
-        //
-        // 누가 굶는지는 `Feeding.Simulates`가 답한다(플레이어 세력 + 갇힌 사람). 여기서
-        // 따로 판정하면 반드시 어긋나는데, 그 어긋남은 **가장 나쁜 쪽으로** 나타난다:
-        // 붙잡아 둔 적은 굶는데 허기 바가 안 떠서 왜 죽는지 알 길이 없다.
-        //
-        // 시체 검사는 남는다 — `BecomeCorpse`가 `Faction`을 지우므로 세력으로는 걸러지지만
-        // (모르는 것은 플레이어가 아니다) **죽은 자는 안 배고프다**를 여기서 못 박아 둔다.
-        if (corpse == null && Feeding.Simulates(brain))
-        {
-            float hunger = brain.Blackboard.Hunger;
-            string hungerColor = hunger > 60f ? "#8BC34A" : hunger > 30f ? "#FF9800" : "#F44336";
-            sb.AppendLine($"허기  {BarColored(hunger, 100f, hungerColor, hungerColor)}  <color={hungerColor}>{hunger:F0}/100</color>");
-        }
+        // **혈액 · 욕구 · 부위 · 상태 이상은 상태표로 옮겼다**(`PawnSheetUI`, 2026-09-19 — 켄시의 그 창). 같은 값을
+        // 두 창이 그리면 하나를 고칠 때 다른 하나가 뒤처진다. 여기는 **누구이고 무엇을 지녔나**를 답한다.
 
         // **업고 있는 것과 갇힌 것은 화면에 나와야 한다.** 둘 다 그 폰이 왜 느린지·왜
         // 아무것도 안 하는지의 답인데, 모델만 봐서는 알기 어렵다.
         AppendCarryState(sb, brain);
 
-        // 활성 상태이상
-        if (sfx != null) AppendStatusEffects(sb, sfx);
+        // **배경·특성·장비는 상태표의 줄로 옮겼다**(`PawnSheetUI` — 능력치와 같은 색 규칙, 사용자 결정).
+        // 여기 남는 것은 **그때그때 생기는 사정**뿐이다(부패 · 우호도 · 업기/갇힘).
 
-        // **특성 — 이름만.** 여긴 상태를 보는 창이라 오프셋 숫자까지 늘어놓으면 혈액·허기가
-        // 밀린다. 무엇을 얼마나 얹는지는 스탯 창(C)이 답한다.
-        AppendTraits(sb, brain);
-        sb.AppendLine();
-
-        // 장착
-        if (equip != null)
-        {
-            sb.AppendLine(H("■ 장착"));
-            sb.AppendLine(Row2("주손",   equip.MainHand?.ItemName ?? "-",
-                               "보조손", equip.OffHand?.ItemName  ?? "-"));
-            sb.AppendLine(Row2("머리",   equip.GetArmor(ArmorSlot.Head)?.ItemName  ?? "-",
-                               "몸통",   equip.GetArmor(ArmorSlot.Chest)?.ItemName ?? "-"));
-            sb.AppendLine(Row2("손",     equip.GetArmor(ArmorSlot.Hands)?.ItemName ?? "-",
-                               "다리",   equip.GetArmor(ArmorSlot.Legs)?.ItemName  ?? "-"));
-            sb.AppendLine();
-        }
-
-        // 신체 부위
-        if (body != null)
-        {
-            sb.AppendLine(H("■ 신체"));
-            sb.AppendLine(Row2("머리",   FormatPart(body, BodyPartType.Head),
-                               "가슴",   FormatPart(body, BodyPartType.Chest)));
-            sb.AppendLine(Row2("복부",   FormatPart(body, BodyPartType.Abdomen),
-                               "왼팔",   FormatPart(body, BodyPartType.LeftArm)));
-            sb.AppendLine(Row2("오른팔", FormatPart(body, BodyPartType.RightArm),
-                               "왼다리", FormatPart(body, BodyPartType.LeftLeg)));
-            sb.AppendLine($"  오른다리  {FormatPart(body, BodyPartType.RightLeg)}");
-        }
-
-        if (infoText != null) infoText.text = sb.ToString();
+        if (infoText != null) infoText.text = Josa.Fix(sb.ToString());
     }
 
     // ── 청사진 ────────────────────────────────────────────────────────────
@@ -369,11 +651,10 @@ public class InspectPanelUI : MonoBehaviour
     // 것은 할 일이 다르다 — 앞은 캐 오거나 사 오는 일이고, 뒤는 작업 설정을 켜는 일이다.
     void ShowBlueprint(BuildingBlueprint bp)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
-        var sb   = new StringBuilder();
-        var item = bp.CostItem;
+        var sb = new StringBuilder();
         string name = bp.Data != null ? bp.Data.BuildingName : "청사진";
 
         sb.AppendLine($"<b><color=#E8C566>{name}</color></b>  <color=#888>[청사진]</color>");
@@ -387,26 +668,33 @@ public class InspectPanelUI : MonoBehaviour
             sb.AppendLine();
         }
 
-        if (item != null && bp.CostRequired > 0)
+        if (bp.CostRequired > 0)
         {
-            sb.AppendLine($"자재  {BarColored(bp.Delivered, bp.CostRequired, "#6C9", "#353")}  " +
-                          $"{item.ItemName} {bp.Delivered}/{bp.CostRequired}");
+            // **재료마다 한 줄이다**(2026-09-17) — 여기가 답하는 물음이 *"왜 아직 안
+            // 지어졌나"*인데, 합쳐 적으면 **무엇을 더 캐 와야 하는지**가 그 답에서 빠진다.
+            foreach (var (material, got, need) in bp.Progress)
+            {
+                if (material == null) continue;
 
-            // **창고만 세면 손에 든 것이 없는 것이 된다** — 등록 판정과 같은 축으로 본다.
-            int stock = MaterialPool.AvailableAnywhere(item);
-            string col = stock >= bp.Remaining ? "#8BC34A" : "#F44336";
-            sb.AppendLine($"남은 것  <b>{bp.Remaining}</b>   " +
-                          $"가진 것  <color={col}>{stock}</color>");
+                sb.AppendLine($"{BarColored(got, need, "#6C9", "#353")}  " +
+                              $"{material.ItemName} {got}/{need}");
 
-            if (stock < bp.Remaining)
-                sb.AppendLine($"\n<color=#F90>{item.ItemName}이(가) 모자라 짓지 못하고 있습니다.</color>");
+                int left = need - got;
+                if (left <= 0) continue;
+
+                // **창고만 세면 손에 든 것이 없는 것이 된다** — 등록 판정과 같은 축으로 본다.
+                int stock = MaterialPool.AvailableHere(material);
+                if (stock < left)
+                    sb.AppendLine($"<color=#F90>  {material.ItemName}이(가) 모자랍니다 — "
+                                + $"가진 것 {stock} / 남은 것 {left}</color>");
+            }
         }
         else
         {
             sb.AppendLine("<color=#888>자재가 필요 없습니다.</color>");
         }
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString());
 
         // **버튼과 우클릭이 같은 `Cancel()`을 부른다.** 문이 여럿이어도 하는 일이 한 곳에
         // 있으면 어긋날 데가 없다 — 갈라지는 건 판단이 여러 곳에 흩어질 때다.
@@ -420,11 +708,16 @@ public class InspectPanelUI : MonoBehaviour
     // 건물은 이것만 뜬다(전에는 눌러도 아무 일도 안 일어났다).
     void ShowBuilding(PlacedBuilding pb)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
         var data = pb.Data;
         string name = data != null ? data.BuildingName : pb.name;
+
+        // **등급이 있으면 이름에 붙는다** — `연구대 II`. 이름을 다섯 벌 저작하지 않는
+        // 이유이자(`BenchTier.NameOf`), 화면에서 등급을 읽는 **유일한 자리**다.
+        var bench = pb.GetComponent<IUpgradableBench>();
+        if (bench != null) name = BenchTier.NameOf(name, bench.Tier);
 
         var sb = new StringBuilder();
         sb.AppendLine($"<b><color=#E8C566>{name}</color></b>  <color=#888>[건물]</color>");
@@ -441,10 +734,33 @@ public class InspectPanelUI : MonoBehaviour
         if (data != null && data.Size.x > 0)
             sb.AppendLine($"<color=#888>크기 {Mathf.Max(1, data.Size.x)}×{Mathf.Max(1, data.Size.y)}</color>");
 
+        // **내구** — 부서지면 짓는 비용의 75%가 그 자리에 떨어진다(`BuildingHealth`). 상했으면 색을 바꾼다.
+        var hp = pb.GetComponent<BuildingHealth>();
+        if (hp != null)
+        {
+            string col = hp.Ratio >= 0.999f ? "#888" : hp.Ratio > 0.5f ? "#DDC060" : "#E06050";
+            sb.AppendLine($"<color={col}>내구 {Mathf.CeilToInt(hp.Current)} / {Mathf.CeilToInt(hp.Max)}</color>");
+        }
+
         // **침대는 전용 패널이 없다** — 하던 일(배정/해제)이 전부 우클릭으로 갔고, 남은 것은
         // "이게 어떤 침대이고 누가 누웠나"뿐이라 여기서 답한다.
         var bed = pb.GetComponent<Bed>();
         if (bed != null) AppendBedState(sb, bed);
+
+        // **조작은 여기 없다.** 이 창은 *고른 것을 보는 자리*고, 그 건물로 무엇을 하는지는
+        // 저마다의 창이 답한다(`GraveUI`·`PyreUI`·`ButcherTableUI`). 침대에 창이 없는 것은
+        // 배정이 곧 "누워라"라 조작이랄 게 없어서지, 살펴보기 창이 조작을 겸해서가 아니다.
+        var grave = pb.GetComponent<Grave>();
+        if (grave != null) AppendGraveState(sb, grave);
+
+        var pyre = pb.GetComponent<Pyre>();
+        if (pyre != null) AppendPyreState(sb, pyre);
+
+        var butcher = pb.GetComponent<ButcherTable>();
+        if (butcher != null) AppendButcherState(sb, butcher);
+
+        var fire = pb.GetComponent<Campfire>();
+        if (fire != null) AppendCampfireState(sb, fire);
 
         // **휴면은 여기서 말해 줘야 한다** — 그 건물의 패널은 아예 안 열리므로, 안 열리는
         // 이유를 들을 데가 없었다.
@@ -452,16 +768,182 @@ public class InspectPanelUI : MonoBehaviour
         if (dorm != null && dorm.IsDormant)
             sb.AppendLine("<color=#F90>핵 영역 밖이라 작동을 멈췄습니다.</color>");
 
-        if (data != null && data.CostAmount > 0 && data.CostItem != null)
-            sb.AppendLine($"<color=#888>분해하면 {data.CostItem.ItemName} {data.CostAmount}을(를) 전부 돌려받습니다.</color>");
+        if (bench != null) AppendBenchTier(sb, pb, bench);
 
-        infoText.text = sb.ToString();
-
-        SetActions(new List<(string, Action)>
+        if (data != null && !data.IsFree)
         {
-            ("이동한다", (Action)(() => BuildingRelocator.Begin(pb))),
-            ("분해한다", pb.Demolish),
-        });
+            var parts = new List<string>();
+            foreach (var c in data.Costs)
+                if (c.Item != null && c.Amount > 0) parts.Add($"{c.Item.ItemName} {c.Amount}");
+            if (parts.Count > 0)
+                sb.AppendLine($"<color=#888>분해하면 {string.Join(" · ", parts)}을(를) 전부 돌려받습니다.</color>");
+        }
+
+        infoText.text = Josa.Fix(sb.ToString());
+
+        var actions = new List<(string, Action)>();
+        AddBenchActions(actions, pb, bench);
+        actions.Add(("이동한다", (Action)(() => BuildingRelocator.Begin(pb))));
+        actions.Add(("분해한다", pb.Demolish));
+        SetActions(actions);
+    }
+
+    // ── 작업대 등급 ──────────────────────────────────────────────────────────
+    //
+    // 여기서 답하는 것은 **"올릴 수 있나, 올리면 뭐가 좋나, 지금 어디까지 왔나"** 셋이다.
+    // 올리는 일은 건설과 같은 길이라(폰이 자재를 지고 온다) 진행이 보여야 하고, 안 보이면
+    // *"눌렀는데 아무 일도 안 일어난다"*가 된다.
+    static void AppendBenchTier(StringBuilder sb, PlacedBuilding pb, IUpgradableBench bench)
+    {
+        sb.AppendLine();
+        sb.AppendLine($"<color=#888>등급</color> <b>{BenchTier.Roman(bench.Tier)}</b>"
+                    + $"  <color=#888>작업 속도 ×{BenchTier.SpeedOf(bench.Tier):0.##}</color>");
+
+        var up = pb.GetComponent<BenchUpgrade>();
+
+        if (up != null && up.InProgress)
+        {
+            sb.AppendLine($"<color=#6C9>{BenchTier.Roman(up.Target)} 등급으로 올리는 중</color>");
+            foreach (var (item, got, need) in up.Progress)
+            {
+                if (item == null) continue;
+                sb.AppendLine($"{BarColored(got, need, "#6C9", "#353")}  {item.ItemName} {got}/{need}");
+
+                int left = need - got;
+                if (left <= 0) continue;
+                int stock = MaterialPool.AvailableHere(item);
+                if (stock < left)
+                    sb.AppendLine($"<color=#F90>  {item.ItemName}이(가) 모자랍니다 — "
+                                + $"가진 것 {stock} / 남은 것 {left}</color>");
+            }
+            return;
+        }
+
+        if (bench.Tier >= BenchTier.Max)
+        {
+            sb.AppendLine("<color=#888>가장 높은 등급입니다.</color>");
+            return;
+        }
+
+        // **줄이 없는 등급은 아직 올릴 곳이 없다는 뜻이다**(V — 5층이 아직 없다).
+        if (!BenchTier.CanRaiseTo(bench.Tier + 1))
+        {
+            sb.AppendLine("<color=#888>더 올릴 방법이 아직 알려지지 않았다.</color>");
+            return;
+        }
+
+        // **다음 등급에 무엇이 드는지 미리 적는다** — 누르기 전에 알아야 *지금 올릴지*를
+        // 정한다(누르고 나서 알면 취소하는 수밖에 없다).
+        var cost = BenchUpgrade.CostFor(bench.Tier + 1);
+        if (cost.Count == 0) return;
+
+        var parts = new List<string>();
+        foreach (var c in cost)
+            if (c.Item != null && c.Amount > 0) parts.Add($"{c.Item.ItemName} {c.Amount}");
+        sb.AppendLine($"<color=#888>{BenchTier.Roman(bench.Tier + 1)}로 올리려면 "
+                    + $"{string.Join(" · ", parts)}</color>");
+    }
+
+    static void AddBenchActions(List<(string, Action)> actions, PlacedBuilding pb, IUpgradableBench bench)
+    {
+        if (bench == null) return;
+
+        var up = pb.GetComponent<BenchUpgrade>();
+
+        if (up != null && up.InProgress)
+        {
+            // **취소는 전액 환불이다** — 아직 아무것도 안 바뀌었으므로 깎을 손실이 없다.
+            actions.Add(($"{BenchTier.Roman(up.Target)} 등급 올리기를 그만둔다", up.Cancel));
+            return;
+        }
+
+        int next = bench.Tier + 1;
+        if (!BenchTier.CanRaiseTo(next)) return;
+
+        actions.Add(($"{BenchTier.Roman(next)} 등급으로 올린다",
+                     (Action)(() => BenchUpgrade.Ensure(pb)?.Request())));
+    }
+
+    // ── 무덤 ─────────────────────────────────────────────────────────────────
+    //
+    // 답해야 하는 것은 둘이다: **누가 묻혀 있나**, 그리고 **꺼낼 수 있나**.
+    static void AppendGraveState(StringBuilder sb, Grave grave)
+    {
+        var buried = grave.Buried;
+        if (buried == null)
+        {
+            sb.AppendLine("<color=#888>비어 있다. 시체를 업어 와 묻을 수 있다.</color>");
+            return;
+        }
+
+        sb.AppendLine($"{buried.UnitName}  <color=#888>묻혀 있다</color>");
+
+        // **묻히면 시간이 멈춘다**(`Corpse.SetBuried`) — 그 사실이 안 보이면 무덤이
+        // 그냥 감추는 자리로 읽힌다.
+        sb.AppendLine($"<color=#888>{Butchering.StageName(buried.Stage)}인 채로 멈춰 있다 " +
+                      $"({buried.AgeDays:F1}일).</color>");
+
+    }
+
+    // ── 화장터 ───────────────────────────────────────────────────────────────
+    static void AppendPyreState(StringBuilder sb, Pyre pyre)
+    {
+        var who = pyre.Burning;
+        if (who == null)
+        {
+            sb.AppendLine("<color=#888>비어 있다. 시체를 업어 와 태울 수 있다.</color>");
+            return;
+        }
+
+        sb.AppendLine($"{who.UnitName}  <color=#888>태우는 중</color>");
+        sb.AppendLine($"진행  {BarColored(pyre.Progress, 1f, "#E07E3E", "#5A3A20")}  " +
+                      $"{pyre.Progress * 100f:F0}%");
+
+        // **왜 안 타는지**는 화면에 있어야 한다 — 연료가 없으면 게이지가 멈춰 있을 뿐이라
+        // 이유가 없으면 고장으로 보인다.
+        if (pyre.BlockedReason != null)
+            sb.AppendLine($"<color=#F90>{pyre.BlockedReason}</color>");
+
+    }
+
+    // ── 화톳불 ───────────────────────────────────────────────────────────────
+    //
+    // 답해야 하는 것은 둘뿐이다: **지금 타고 있나**, 그리고 **안 타면 그게 시간 탓인가 내가
+    // 꺼 둔 탓인가.** 태우는 것이 없으니 게이지도 막힌 사유도 없다.
+    static void AppendCampfireState(StringBuilder sb, Campfire fire)
+    {
+        if (!fire.WantsFire)
+        {
+            sb.AppendLine("<color=#888>꺼 두었다. 우클릭해서 지필 수 있다.</color>");
+            return;
+        }
+
+        sb.AppendLine(fire.IsLit
+            ? "<color=#FF8C26>타는 중 — 이 둘레는 밤에도 낮처럼 보인다.</color>"
+            : "<color=#888>밝을 때는 꺼져 있다. 저녁이 되면 저절로 붙는다.</color>");
+    }
+
+    // ── 도축대 ───────────────────────────────────────────────────────────────
+    //
+    // 규칙이 지금 어떻게 걸려 있는지만 적는다 — **손보는 것은 `ButcherTableUI`**다.
+    static void AppendButcherState(StringBuilder sb, ButcherTable table)
+    {
+        var bill = table.Bill;
+
+        sb.AppendLine(bill.Suspended
+            ? "<color=#F90>멈춰 있다.</color>"
+            : table.Cutting ? "<color=#4CD95A>손질하는 중.</color>"
+                            : "<color=#888>시체를 기다린다.</color>");
+
+        sb.AppendLine($"대상  {bill.TargetName}");
+        sb.AppendLine($"상태  {bill.StageName}");
+        sb.AppendLine($"반복  {bill.RepeatName}");
+
+        int piled = table.Inventory != null ? table.Inventory.Items.Count : 0;
+        sb.AppendLine(piled > 0
+            ? $"<color=#888>쌓인 것 {piled}뭉치 — {(table.AllowHaulOut ? "창고로 나른다" : "여기 둔다")}</color>"
+            : $"<color=#888>쌓인 것 없음 — {(table.AllowHaulOut ? "창고로 나른다" : "여기 둔다")}</color>");
+
     }
 
     // ── 자원 노드 ─────────────────────────────────────────────────────────
@@ -481,74 +963,201 @@ public class InspectPanelUI : MonoBehaviour
     // 격자 위에서만 도므로, 바닥의 물건에는 볼 자리가 아예 없었다.
     void ShowItems()
     {
-        panel?.SetActive(true);
-        SetActions(null);   // 스위치는 **오른쪽 위 버튼**이다 — 아래 동작 줄은 안 쓴다
+        Show();
+
+        // ── 무엇을 보여 주나 ────────────────────────────────────────────────
+        //
+        // **종류를 골라 볼 수 있다**(2026-09-28, 사용자: *"물건들의 종류도 하나 선택해서 자유자재로
+        // 전환할 수 있게"*). 여러 종류를 한꺼번에 잡으면 목록의 줄을 눌러 **그 종류만** 보고, 다른 줄을
+        // 누르면 그리로 옮겨 가고, 같은 줄을 다시 누르면 전체로 돌아온다. 고른 것 자체는 안 바꾼다 —
+        // 바꾸면 전체로 돌아갈 길이 사라진다. 대신 **땅의 표식을 그 종류에만** 켜 어디 있는지 보인다.
+        var rows = Group(_items);
+        if (_itemFocus.HasValue && rows.FindIndex(r => r.item == _itemFocus.Value.item &&
+                                                     r.quality == _itemFocus.Value.quality) < 0)
+            _itemFocus = null;   // 그 종류가 다 실려 갔다
+
+        _shownItems.Clear();
+        foreach (var d in _items)
+            if (!_itemFocus.HasValue || (d.Item == _itemFocus.Value.item && d.Quality == _itemFocus.Value.quality))
+                _shownItems.Add(d);
+        MarkFocus();
+
+        // ── 버튼 ─────────────────────────────────────────────────────────────
+        //
+        // **스위치는 동작 줄에 있다**(2026-09-06 — 오른쪽 위의 작은 버튼은 못 찾았다). **보고 있는 종류마다
+        // 하나**이고, 여럿이면 **이름을 붙인다** — 전에는 *"자동운반 꺼짐"* 둘이 나란히 서서 어느 것이
+        // 무엇의 스위치인지 알 수 없었다(2026-09-28 스크린샷).
+        var kinds = new List<ItemData>();
+        foreach (var it in _shownItems)
+            if (it?.Item != null && !kinds.Contains(it.Item)) kinds.Add(it.Item);
+
+        var acts = new List<(string, Action)>();
+        foreach (var k in kinds)
+        {
+            var (label, act) = HaulSwitch(k);
+            acts.Add((kinds.Count > 1 ? $"{k.ItemName} {label}" : label, act));
+        }
+        SetActions(acts.Count > 0 ? acts : null);
         if (infoText == null) return;
-
-        // 켜진 것과 꺼진 것이 섞일 수 있다 — 체크는 **전부 켜졌을 때만** 찬 것으로 본다
-        // (누르면 `OnLinkClicked`가 "하나라도 꺼져 있으면 전부 켠다"로 받는다).
-        int on = 0;
-        foreach (var d in _items) if (d.HaulAllowed) on++;
-        bool allOn = on == _items.Count;
-
-        SetHaulToggle(allOn);
 
         var sb = new StringBuilder();
 
-        string head = _items.Count == 1
-                    ? OneLineName(_items[0])
-                    : $"<b>바닥의 물건</b>  <color=#888>{_items.Count}종</color>";
-
-        sb.AppendLine(head);
-
+        // ── 머리 ─────────────────────────────────────────────────────────────
         if (_items.Count == 1)
         {
             var only = _items[0];
+            sb.AppendLine(OneLineName(only));
             sb.AppendLine($"<color=#888>{only.Quality.DisplayName()} · {only.Item.TypeName}</color>");
         }
-        sb.AppendLine();
+        else if (rows.Count == 1)
+        {
+            var r = rows[0];
+            sb.AppendLine($"<b><color=#{ColorUtility.ToHtmlStringRGB(r.quality.Color())}>{r.item.ItemName}</color></b>" +
+                          $"  <color=#888>x{r.amount} · {_items.Count}더미</color>");
+        }
+        else
+        {
+            sb.AppendLine($"<b>바닥의 물건</b>  <color=#888>{rows.Count}종 · {_items.Count}더미</color>");
 
-        // ── 합계 ────────────────────────────────────────────────────────────
+            // **줄을 누르면 그 종류만** — 링크로 적는다(`ItemRowClick`). 고른 줄은 밝게, 나머지는 흐리게.
+            _rowKeys.Clear();
+            int shown = Mathf.Min(rows.Count, MaxItemRows);
+            for (int i = 0; i < shown; i++)
+            {
+                var r  = rows[i];
+                bool picked = _itemFocus.HasValue && _itemFocus.Value.item == r.item && _itemFocus.Value.quality == r.quality;
+                bool dim = _itemFocus.HasValue && !picked;
+                _rowKeys.Add((r.item, r.quality));
+
+                string name  = dim ? $"<color=#777>{r.item.ItemName}</color>"
+                                   : $"<color=#{ColorUtility.ToHtmlStringRGB(r.quality.Color())}>{r.item.ItemName}</color>";
+                if (picked) name = $"<b>{name}</b>";
+                // 등급은 장비만 갖는다(`HasQuality`) — 재료에 *"보통"*을 붙이면 줄만 길어진다.
+                string grade = r.item.HasQuality ? $" <color=#888>{r.quality.DisplayName()}</color>" : "";
+                string haul  = r.hauls ? "" : "  <color=#666>(운반 안 함)</color>";
+
+                sb.AppendLine($"<link=\"kind:{i}\">{name}{grade}  <color=#888>x{r.amount}</color>{haul}</link>");
+            }
+            if (rows.Count > shown)
+                sb.AppendLine($"<color=#888>외 {rows.Count - shown}종</color>");
+            sb.AppendLine(_itemFocus.HasValue
+                ? "<color=#666>같은 줄을 다시 누르면 전체를 봅니다.</color>"
+                : "<color=#666>줄을 누르면 그 종류만 봅니다.</color>");
+        }
+
+        // ── 합계 — 보고 있는 것만 ────────────────────────────────────────────
         int   count  = 0;
         float weight = 0f;
         int   value  = 0;
-        foreach (var d in _items)
+        foreach (var d in _shownItems)
         {
             count  += d.Amount;
             weight += d.Item.Weight    * d.Amount;
             value  += d.Item.BaseValue * d.Amount;
         }
 
-        sb.AppendLine($"수량  {count}개");
-        if (weight > 0f) sb.AppendLine($"무게  {weight:F1}kg");
-        if (value  > 0)  sb.AppendLine($"가치  {value}G");
-        sb.AppendLine();
+        // 한 줄로 — 세 줄로 세우면 창이 그만큼 길어진다(사용자: *"창 안에 여백이 너무 많고"*).
+        var total = new StringBuilder($"수량 {count}개");
+        if (weight > 0f) total.Append($"  ·  무게 {weight:F1}kg");
+        if (value  > 0)  total.Append($"  ·  가치 {value}G");
+        sb.AppendLine(total.ToString());
 
         // **왜 안 실려 가는지까지 적는다.** 찍어 놨는데 받아 줄 창고가 없으면 아무 일도
         // 안 일어나는데, 그건 찍기를 잊은 것과 화면에서 똑같이 보인다.
+        //
+        // **`Hauls`로 센다 — `HaulAllowed`가 아니다**(2026-09-06). 품목 규칙으로 켜진 것은
+        // 개별로 안 찍혀 있으므로, 옛 기준으로 세면 **자동운반이 켜진 물건을 "지정 안 됨"**
+        // 이라고 적는다(스위치를 켜 놓고 창은 아니라고 말하는 꼴이다).
+        int on = 0;
+        foreach (var d in _shownItems) if (d.Hauls) on++;
+        bool allOn = on == _shownItems.Count;
+
         if (on == 0)
         {
-            sb.AppendLine("<color=#888>운반 지정 안 됨 — 아무도 건드리지 않습니다.</color>");
+            sb.AppendLine("<color=#888>자동운반 꺼짐 · 지정 안 됨 — 아무도 건드리지 않습니다.</color>");
         }
         else
         {
             int stranded = 0;
-            foreach (var d in _items)
-                if (d.HaulAllowed &&
+            foreach (var d in _shownItems)
+                if (d.Hauls &&
                     Storage.FindNearest(d.transform.position, d.Item, d.Amount, d.Quality) == null)
                     stranded++;
 
-            string scope = allOn ? "" : $" ({on}/{_items.Count})";
+            string scope = allOn ? "" : $" ({on}/{_shownItems.Count})";
             if (stranded > 0)
             {
-                sb.AppendLine($"<color=#F44336>운반 지정됨{scope} — 그중 {stranded}종은 받아 줄 창고가 없습니다.</color>");
+                sb.AppendLine($"<color=#F44336>운반 지정됨{scope} — 그중 {stranded}더미는 받아 줄 창고가 없습니다.</color>");
                 sb.AppendLine("<color=#888>창고를 짓거나 비우면 저절로 실려 갑니다.</color>");
             }
             else
                 sb.AppendLine($"<color=#8BC34A>운반 지정됨{scope} — 폰이 창고로 옮깁니다.</color>");
         }
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString().TrimEnd());
+    }
+
+    // 고른 종류 — `null`이면 전체. 고른 것이 바뀌면 풀린다(`OnItemsInspected`).
+    (ItemData item, ItemQuality quality)? _itemFocus;
+    readonly List<DroppedItem> _shownItems = new();
+    readonly List<(ItemData item, ItemQuality quality)> _rowKeys = new();   // 링크 번호 → 종류(지난번 그린 순서)
+
+    // **땅의 표식을 보고 있는 종류에만.** 고른 것 전체는 `SelectionManager`가 들고, 여기서는 켜고 끄기만
+    // 한다 — 고른 것이 바뀌면 그쪽이 표식을 전부 끄고 새로 켠다.
+    void MarkFocus()
+    {
+        foreach (var d in _items)
+            if (d != null) d.SetSelected(!_itemFocus.HasValue || _shownItems.Contains(d));
+    }
+
+    // 목록의 줄을 눌렀나. 박을 안 기다린다(누른 것은 곧바로 바뀌어야 한다).
+    void ItemRowClick()
+    {
+        if (_items.Count < 2 || infoText == null || !infoText.gameObject.activeInHierarchy) return;
+        var mouse = UnityEngine.InputSystem.Mouse.current;
+        if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
+
+        var canvas = infoText.canvas;
+        if (canvas == null) return;
+        var cam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+
+        int idx = TMP_TextUtilities.FindIntersectingLink(infoText, mouse.position.ReadValue(), cam);
+        if (idx < 0) return;
+
+        string id = infoText.textInfo.linkInfo[idx].GetLinkID();
+        if (!id.StartsWith("kind:") || !int.TryParse(id.Substring(5), out int row)) return;
+        if (row < 0 || row >= _rowKeys.Count) return;
+
+        var key = _rowKeys[row];
+        _itemFocus = _itemFocus.HasValue && _itemFocus.Value.item == key.item && _itemFocus.Value.quality == key.quality
+                   ? null : key;
+        UiRefresh.Now(ref _beat);
+        Refresh();
+    }
+
+    // 목록이 창을 넘기지 않게 — 넘는 것은 *"외 N종"*으로 접는다.
+    const int MaxItemRows = 12;
+
+    // 품목·등급으로 합친 줄들. **많은 것부터** — 드래그로 잡은 것 중 눈에 띄어야 하는 것은 덩어리다.
+    // 하나라도 운반이 안 걸린 더미가 있으면 그 줄은 *"운반 안 함"*이다(섞여 있을 때 켜진 쪽으로 적으면
+    // 바닥에 남는 더미를 창이 숨긴다).
+    static List<(ItemData item, ItemQuality quality, int amount, bool hauls)> Group(List<DroppedItem> items)
+    {
+        var rows = new List<(ItemData item, ItemQuality quality, int amount, bool hauls)>();
+        foreach (var d in items)
+        {
+            if (d == null || d.Item == null) continue;
+            int at = rows.FindIndex(r => r.item == d.Item && r.quality == d.Quality);
+            if (at < 0) rows.Add((d.Item, d.Quality, d.Amount, d.Hauls));
+            else
+            {
+                var r = rows[at];
+                rows[at] = (r.item, r.quality, r.amount + d.Amount, r.hauls && d.Hauls);
+            }
+        }
+        rows.Sort((a, b) => b.amount != a.amount ? b.amount.CompareTo(a.amount)
+                                                 : string.CompareOrdinal(a.item.ItemName, b.item.ItemName));
+        return rows;
     }
 
     // 이름줄은 **이름만**, 아랫줄이 `등급 · 종류` — `ItemInfoUI`와 같은 규약이다
@@ -559,13 +1168,16 @@ public class InspectPanelUI : MonoBehaviour
 
     void ShowNode(ResourceNode node)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
         var d  = node.Data;
         var pb = node.GetComponentInParent<PlacedBuilding>();
 
+        // **저작한 이름이 먼저다** — 나오는 것이 정체가 아닌 물건이 있다(거대버섯은 목재를
+        // 내놓지만 *"목재 나무"*가 아니다). 비어 있으면 예전처럼 파생시킨다.
         string name = pb != null && pb.Data != null ? pb.Data.BuildingName
+                    : d != null && !string.IsNullOrEmpty(d.DisplayName) ? d.DisplayName
                     : d != null && d.DropItem != null ? $"{d.DropItem.ItemName} {(d.IsTree ? "나무" : "광맥")}"
                     : node.name;
         bool tree = d != null && d.IsTree;
@@ -581,31 +1193,88 @@ public class InspectPanelUI : MonoBehaviour
             sb.AppendLine($"<color=#888>{(tree ? "벌목" : "채굴")} 권장 {d.RequiredSkill:F0}  ·  " +
                           $"동시 {node.AssignedCount}/{(node.MaxWorkers > 0 ? node.MaxWorkers.ToString() : "제한 없음")}명</color>");
             sb.AppendLine();
+
+            if (!string.IsNullOrEmpty(d.Description))
+            {
+                sb.AppendLine($"<color=#9a9a9a>{d.Description}</color>");
+                sb.AppendLine();
+            }
         }
 
-        // **직접 배정이라 아무도 안 붙으면 영영 안 캔다** — 큐 작업이 아니라서 켜고 끄는
-        // 문제가 아니고, 여기서 말해 주지 않으면 "왜 안 캐지"의 답이 화면에 없다.
-        if (node.AssignedCount == 0)
-            sb.AppendLine("<color=#F90>배정된 폰이 없습니다. 폰을 고르고 우클릭해 시키세요.</color>");
+        // **"왜 안 캐지"의 답이 화면에 있어야 한다.** 이제 답이 자리에 따라 갈린다:
+        // 핵 영역 안이면 할 일 없는 폰이 저 혼자 붙지만(`ResourceNode.ClaimFreeFor`),
+        // **밖이면 여전히 손으로만 붙인다** — 안 그러면 폰이 맵 전체의 나무를 베러 떠난다.
+        // 안 갈라 적으면 영역 밖 광맥 앞에서 오지 않는 폰을 기다리게 된다.
+        if (node.CanDesignate)
+        {
+            // **야생에는 배정이 없다** — *"배정된 폰이 없습니다"*는 여기서 거짓말이다.
+            sb.AppendLine(node.Designated
+                ? $"<color=#7fe08a>지정됨</color>  <color=#888>— {(tree ? "벌목" : "채굴")}을 켜 둔 폰이 옵니다(P)</color>"
+                : $"<color=#F90>지정 안 됨</color>  <color=#888>— 아래 버튼 또는 H로 찍습니다</color>");
+        }
+        else if (node.AssignedCount == 0)
+        {
+            var core = DungeonCore.Instance;
+            bool inTerritory = core == null || core.IsWithinAnyRangeWorld(node.transform.position);
+
+            sb.AppendLine(inTerritory
+                ? "<color=#F90>배정된 폰이 없습니다. 할 일이 없는 폰이 곧 붙습니다 " +
+                  $"— {(tree ? "벌목" : "채굴")}을 켜 둔 폰이 있어야 합니다(P).</color>"
+                : "<color=#F90>핵 영역 밖이라 저절로 붙지 않습니다. 폰을 고르고 우클릭해 시키세요.</color>");
+        }
         else
+        {
             sb.AppendLine($"진행  {BarColored(node.GaugeProgress, 1f, "#6C9", "#353")}");
+
+            // **손으로 붙인 것과 저 혼자 간 것을 가른다** — 안 가르면 *"내가 붙였던가"*를
+            // 알 수 없고, 그러면 자율 배정을 끄는 스위치가 어디에 걸리는지도 모른다
+            // (침대의 `AutoClaimed`가 같은 물음에 답한 자리).
+            int auto = 0;
+            foreach (var p in node.AssignedPawns)
+                if (p != null && p.Blackboard != null && p.Blackboard.NodeAutoClaimed) auto++;
+
+            if (auto > 0)
+                sb.AppendLine($"<color=#888>{auto}명은 저 혼자 붙었습니다 — 작업을 끄면 놓습니다.</color>");
+        }
+
+        // **유한한 것은 얼마나 남았는지 보여야 한다** — 안 보이면 무한한 것과 화면에서
+        // 구별되지 않고, 그러면 *"왜 갑자기 사라졌지"*가 된다.
+        if (node.YieldsLeft >= 0)
+            sb.AppendLine($"<color=#F90>{node.YieldsLeft}번 더</color> " +
+                          $"<color=#888>캐면 없어집니다 — 계속 쓰려면 기지에 심습니다.</color>");
+        else if (node.IsBuilt)
+            sb.AppendLine("<color=#888>기지에 심은 것이라 마르지 않습니다.</color>");
 
         int stock = node.Inventory != null && d != null && d.DropItem != null
                   ? node.Inventory.GetTotalQuantity(d.DropItem) : 0;
         if (stock > 0)
             sb.AppendLine($"<color=#888>쌓인 것 {stock}개 — 폰이 창고로 나릅니다.</color>");
 
-        infoText.text = sb.ToString();
+        infoText.text = Josa.Fix(sb.ToString());
 
-        // 씬에 흩어진 나무·바위는 `PlacedBuilding`이 없다 — 건드릴 수 없는 지형이므로 버튼도 없다.
+        // 씬에 흩어진 나무·바위는 `PlacedBuilding`이 없다 — 옮기거나 분해할 수 없다.
+        // **그래도 버튼이 하나는 있다**: 여기서 나오는 것을 자동으로 나를지(2026-09-06,
+        // 사용자: *"이제 보니깐 벽에도 그런게 없네"*). 캔 것이 바닥에 쌓이는데 그 스위치가
+        // 이 창에 없으면, **캔 자리에서는 정할 수가 없다.**
+        AppendPower(sb, node);
+
+        var acts = new List<(string, Action)>();
         if (pb != null)
-            SetActions(new List<(string, Action)>
-            {
-                ("이동한다", (Action)(() => BuildingRelocator.Begin(pb))),
-                ("분해한다", pb.Demolish),
-            });
-        else
-            SetActions(null);
+        {
+            acts.Add(("이동한다", (Action)(() => BuildingRelocator.Begin(pb))));
+            acts.Add(("분해한다", pb.Demolish));
+        }
+
+        // **야생은 찍어서 가져온다 — 붙이는 것이 아니다**(2026-09-06). 배정 버튼이 아니라
+        // 지정 버튼이 여기 있어야 그 둘이 화면에서 갈린다.
+        if (node.CanDesignate)
+            acts.Add((node.Designated ? "지정 취소" : (tree ? "벤다" : "캔다"),
+                      () => { node.SetDesignated(!node.Designated); Refresh(); }));
+
+        if (PowerUser.Has(node, out var pu)) acts.Add(PowerSwitch(pu));
+        if (d != null && d.DropItem != null) acts.Add(HaulSwitch(d.DropItem));
+
+        SetActions(acts.Count > 0 ? acts : null);
     }
 
     // 침대가 어떤 용도이고 누가 쓰고 있나. 색 표식과 **같은 말을 글자로도** 적는다 —
@@ -637,7 +1306,7 @@ public class InspectPanelUI : MonoBehaviour
     // 환불도 없다.** 그래도 "무엇이고 무엇을 할 수 있는가"는 다른 건물과 같은 자리에서 답한다.
     void ShowCore(DungeonCore core)
     {
-        panel?.SetActive(true);
+        Show();
         if (infoText == null) return;
 
         var sb = new StringBuilder();
@@ -649,13 +1318,83 @@ public class InspectPanelUI : MonoBehaviour
         if (core.Data != null)
             sb.AppendLine($"<color=#888>영역 반경 {core.Data.BaseRadius:F0}m</color>");
 
-        infoText.text = sb.ToString();
+        AppendCorePower(sb, core);
 
-        // 소환·목록은 핵 제 패널(`DungeonCoreUI`)이 다룬다 — 여기는 **핵 자체**를 다루는 자리다.
+        infoText.text = Josa.Fix(sb.ToString());
+
+        // 소환은 소환진(`SummonCircle` → `DungeonCoreUI`), 배치는 핵을 누르면 뜨는 창(`WorkPostsUI`)이 다룬다 — 여기는 **핵 자체**를 다루는 자리다.
         SetActions(new List<(string, Action)>
         {
             ("이동한다", (Action)(() => CoreRelocator.Begin(core))),
         });
+    }
+
+    // **핵이 내는 힘과 그것을 나눠 쓰는 것들.**
+    //
+    // 총량만 적으면 *"모자란다"*까지는 알아도 **무엇을 끄면 되는지**를 모른다. 그래서 먹는
+    // 것을 줄줄이 적고 **못 받고 있는 것에 표를 단다** — 배분이 *먼저 지은 순서*라는 규칙이
+    // 목록의 차례로 그대로 보인다(그 규칙을 글로 설명할 필요가 없어진다).
+    //
+    // **끈 것은 따로 적는다** — 끄는 것이 힘을 돌려주는 유일한 길이라, 껐다는 사실이 안
+    // 보이면 *"왜 남는 힘이 안 쓰이지"*가 된다.
+    static void AppendCorePower(StringBuilder sb, DungeonCore core)
+    {
+        int cap  = PowerGrid.CapacityOf(core);
+        int used = PowerGrid.UsedOf(core);
+        int want = PowerGrid.DemandOf(core);
+
+        sb.AppendLine();
+        sb.AppendLine(want > cap
+            ? $"전력  <color=#F44336>{used}/{cap}</color>  <color=#888>— {want - cap}만큼 모자랍니다.</color>"
+            : $"전력  <color=#7fe08a>{used}/{cap}</color>  <color=#888>— {cap - used} 남았습니다.</color>");
+
+        // **부핵이 얼마를 보태는지 적는다** — 늘리는 길이 그것뿐이라, 그 값이 안 보이면
+        // *"부핵을 하나 더 세울까"*를 재 볼 근거가 없다.
+        int subs = 0, subPower = 0;
+        foreach (var sc in SubCore.All)
+            if (sc != null && Territory.Same(sc.transform.position, core))
+            { subs++; subPower += sc.EnergyOutput; }
+
+        if (subs > 0)
+            sb.AppendLine($"<color=#888>핵 {core.EnergyOutput} + 부핵 {subs}개 {subPower}</color>");
+
+        int listed = 0;
+        foreach (var u in PowerUsersIn(core))
+        {
+            if (listed++ >= 8) { sb.AppendLine("<color=#888>  …</color>"); break; }
+
+            string name = NameOfUser(u);
+            sb.AppendLine(!u.SwitchedOn
+                ? $"<color=#666>  · {name} {u.Cost} — 꺼 둠</color>"
+                : u.Powered
+                    ? $"<color=#9a9a9a>  · {name} {u.Cost}</color>"
+                    : $"<color=#F44336>  · {name} {u.Cost} — 멈춤</color>");
+        }
+
+        if (listed == 0) sb.AppendLine("<color=#888>  힘을 쓰는 건물이 없습니다.</color>");
+    }
+
+    static System.Collections.Generic.List<PowerUser> PowerUsersIn(DungeonCore core)
+    {
+        var list = new System.Collections.Generic.List<PowerUser>();
+        foreach (var u in UnityEngine.Object.FindObjectsByType<PowerUser>(FindObjectsSortMode.None))
+            if (u != null && Territory.CoreAt(u.transform.position) == core) list.Add(u);
+        return list;
+    }
+
+    // 건물 이름이 있으면 그것, 없으면 노드가 내놓는 것. **오브젝트 이름은 마지막이다** —
+    // `Node_IronVein(Clone)`은 사람이 읽으라고 만든 글자가 아니다.
+    static string NameOfUser(PowerUser u)
+    {
+        var pb = u.GetComponentInParent<PlacedBuilding>();
+        if (pb != null && pb.Data != null && !string.IsNullOrEmpty(pb.Data.BuildingName))
+            return pb.Data.BuildingName;
+
+        var node = u.GetComponent<ResourceNode>();
+        if (node != null && node.Data != null && node.Data.DropItem != null)
+            return node.Data.DropItem.ItemName;
+
+        return u.name;
     }
 
     // 폰을 볼 때의 동작 줄 — **붙잡아 갈 사람에게만 뜬다.**
@@ -722,15 +1461,6 @@ public class InspectPanelUI : MonoBehaviour
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────
 
-    static void AppendStatusEffects(StringBuilder sb, StatusEffectSystem sfx)
-    {
-        var parts = new List<string>();
-        if (sfx.AttackIntervalMult > 1.05f) parts.Add("<color=#4CF>[빙결 둔화]</color>");
-        if (sfx.MoveSpeedMult      < 0.95f) parts.Add("<color=#4CF>[이속감소]</color>");
-        if (sfx.HealMult           < 0.95f) parts.Add("<color=#F44>[힐감소]</color>");
-        if (sfx.AttackChanceMod    < 0.95f) parts.Add("<color=#F84>[약화]</color>");
-        if (parts.Count > 0) sb.AppendLine("상태  " + string.Join("  ", parts));
-    }
 
     // 유형 라벨 — 플레이어 유닛은 방랑자/하수인, NPC는 역할, 그 외는 **우리 세력과의 관계**.
     // (비플레이어를 무조건 "적"이라 부르면 중립 세력까지 적으로 표기된다)
@@ -790,6 +1520,10 @@ public class InspectPanelUI : MonoBehaviour
         if (bb.LeavingMap)
             sb.AppendLine("<color=#8BC34A>풀려나 떠나는 중이다. 건드리지 않으면 그냥 간다.</color>");
     }
+
+    // 몸값은 **여기 안 적는다.** 액수도 안 되는 이유도 우클릭 메뉴가 든다 —
+    // 넘길지 말지는 그 줄을 누를지 말지의 문제라 **고르는 자리에 붙어 있어야** 하고,
+    // 이 창에 적으면 창을 두 개 띄워 놓고 눈을 옮겨야 한다.
 
     // **왜 굶고 있는지 적는다.**
     //
@@ -874,6 +1608,17 @@ public class InspectPanelUI : MonoBehaviour
             else
                 sb.AppendLine("<color=#888>던전 핵이 지배하는 중 — 두면 저절로 찬다.</color>");
         }
+        else if (Conversion.IsBeast(brain))
+        {
+            // **짐승은 조련이다** — 같은 게이지 · 같은 쉬는 시간, 다루는 솜씨만 다르다.
+            float wait = Conversion.PersuadeCooldownLeft(brain);
+            if (!Conversion.CanTame(brain))
+                sb.AppendLine("<color=#F90>우리에 가둬야 길들일 수 있다.</color>");
+            else if (wait > 0f)
+                sb.AppendLine($"<color=#888>길들이기를 쉬는 중 — {Mathf.CeilToInt(wait)}초 뒤에 다시 붙는다.</color>");
+            else
+                sb.AppendLine("<color=#888>길들일 수 있는 짐승 — 조련을 켠 폰이 붙거나 우클릭 [길들인다].</color>");
+        }
         else if (!Conversion.CanPersuade(brain))
         {
             // 우리가 아니면 설득도 안 된다 — **침대는 살려 두는 자리**다.
@@ -891,29 +1636,8 @@ public class InspectPanelUI : MonoBehaviour
         }
     }
 
-    // 한 줄로 붙여 쓴다 — `특성  강인함 · 겁쟁이`. 없는 폰(0개)은 줄 자체가 안 뜬다.
-    static void AppendTraits(StringBuilder sb, UnitBrain brain)
-    {
-        string names = TraitPool.NameList(brain.Traits);
-        if (string.IsNullOrEmpty(names)) return;
 
-        sb.AppendLine($"특성  <color=#D8C89A>{names}</color>");
-    }
 
-    static string H(string t)    => $"<color=#E8C566>{t}</color>";
-    static string Row2(string l1, string v1, string l2, string v2)
-    {
-        string left  = l1.Length > 0 ? $"{l1}  <b>{v1}</b>" : v1;
-        string right = l2.Length > 0 ? $"{l2}  <b>{v2}</b>" : v2;
-        return $"  {left,-20}  {right}";
-    }
-
-    static string BloodBar(float blood, float max = 100f)
-    {
-        int filled = Mathf.Clamp(Mathf.RoundToInt(blood / max * 10), 0, 10);
-        string color = blood > 60 ? "#E55" : blood > 30 ? "#F90" : "#F44";
-        return $"<color={color}>{new string('█', filled)}{new string('░', 10 - filled)}</color>  {blood:F0}/{max:F0}";
-    }
 
     static string BarColored(float val, float max, string fill, string empty)
     {
@@ -921,11 +1645,4 @@ public class InspectPanelUI : MonoBehaviour
         return $"<color={fill}>{new string('█', filled)}</color><color={empty}>{new string('░', 10 - filled)}</color>";
     }
 
-    static string FormatPart(BodyPartSystem body, BodyPartType type)
-    {
-        var part = body.GetPart(type);
-        if (part.IsDestroyed) return $"<color=#F44>{part.CurrentHP:F0}/{part.MaxHP:F0} [파괴]</color>";
-        if (part.IsDisabled)  return $"<color=#F90>{part.CurrentHP:F0}/{part.MaxHP:F0} [상실]</color>";
-        return $"{part.CurrentHP:F0}/{part.MaxHP:F0}";
-    }
 }

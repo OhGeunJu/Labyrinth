@@ -34,6 +34,9 @@ public static class BiomeContent
     public static IReadOnlyList<ResourceNodeData> ResourceNodes(Biome b) =>
         Get(b)?.ResourceNodes ?? (IReadOnlyList<ResourceNodeData>)Array.Empty<ResourceNodeData>();
 
+    public static IReadOnlyList<BiomeContentData.WildSpawnEntry> WildSpawns(Biome b) =>
+        Get(b)?.WildSpawns ?? (IReadOnlyList<BiomeContentData.WildSpawnEntry>)Array.Empty<BiomeContentData.WildSpawnEntry>();
+
     public static IReadOnlyList<MinionData> SummonableMinions(Biome b) =>
         Get(b)?.SummonableMinions ?? (IReadOnlyList<MinionData>)Array.Empty<MinionData>();
 

@@ -33,6 +33,19 @@ public static class PawnPlacement
     public static float Lift(CharacterController cc) =>
         cc != null ? cc.height * 0.5f - cc.center.y : 1f;
 
+    // **피벗에서 몸 한가운데까지.** 어깨에 메거나 침대에 눕힐 때는 발이 아니라 **몸통**을
+    // 어디에 둘지가 문제라, 그 자리들은 이 값만큼 비켜 놓는다.
+    //
+    // 왜 상수가 아닌가: **피벗이 발밑에 있기 때문이다**(`center.y = height/2`). 그래야 씬에
+    // 놓을 때 유니티가 피벗을 지면에 붙이는 것이 곧 "발로 선다"가 된다 — 몸 한가운데에 두면
+    // 놓는 족족 **정확히 절반이 묻힌다**(2026-08-14에 그렇게 겪었다). 대신 높이가 종족마다
+    // 다르므로(늑대 1.0 · 곰 1.4 · 사람 2.0) 몸통 자리는 **콜라이더에게 물어야** 한다.
+    public static float CenterOffset(GameObject pawn)
+    {
+        var cc = pawn != null ? pawn.GetComponent<CharacterController>() : null;
+        return cc != null ? cc.center.y : 1f;
+    }
+
     // **바닥 윗면 좌표**를 받아 그 위에 세운다(`TileToGround`가 주는 값을 그대로 넘기면 된다).
     public static Vector3 StandingPos(GameObject pawn, Vector3 groundPos) =>
         new Vector3(groundPos.x, groundPos.y + Lift(pawn) + GroundClearance, groundPos.z);

@@ -35,6 +35,14 @@ public class ItemSchema
     // 한 칸에 몇 개까지 쌓이는가. **자원만의 속성이 아니다** — 밀·빵·씨앗도 쌓여야 한다.
     // 안 적으면 1(무기·방어구처럼 한 칸에 하나).
     public int    maxStack = 1;
+
+    // 재료로 칠 때 이 아이템으로도 센다(`ItemData.CountsAs`) — 예: 늑대 고기 → `Food_RawMeat`.
+    public string countsAs;
+
+    // 차고 있으면 둘레를 밝힌다(m · `ItemData.LightRadius`). 0이면 빛이 없다.
+    public float  lightRadius;
+    // 타는 시간(게임 일 · `ItemData.BurnDays`). 0이면 영구.
+    public float  burnDays;
 }
 
 [Serializable]
@@ -49,10 +57,21 @@ public class WeaponSchema : ItemSchema
     public float  attackRange        = 1.5f;
     public float  blockBonus;
     public float  rangedBlockBonus;
-    public string damageCategory     = "Physical";
-    public string physicalType       = "Slash";
-    public string damageElement      = "None";
+    // **축이 하나다**(2026-08-23) — 물리 셋(Slash/Pierce/Blunt) + 원소 일곱
+    // (Fire/Water/Earth/Lightning/Arcane/Dark/Holy). 옛 `damageCategory`·`physicalType`·
+    // `damageElement` 셋은 여기 하나로 접혔다.
+    public string damageType         = "Slash";
+
+    // 옛 키 — 모드 JSON이 아직 이걸 들고 있을 수 있어 읽어는 준다(경고하고 옮긴다).
+    public string damageCategory     = "";
+    public string physicalType       = "";
+    public string damageElement      = "";
     public float  effectChance       = 0.2f;
+
+    // **장비가 능동을 준다**(2026-08-23). JSON 아이템은 런타임 생성이라 SO를 참조할 수
+    // 없으므로 **id로 가리킨다** — `LoadoutData.ItemId`·`MerchantPoolEntry`와 같은 규약이다.
+    // 비우면 능동이 없다. 오타는 조용히 "능동 없음"이 되므로 콘솔에 적는다.
+    public string abilityId = "";
 }
 
 [Serializable]
@@ -60,6 +79,13 @@ public class ArmorSchema : ItemSchema
 {
     public string armorSlot       = "Chest";
     public float  damageReduction = 5f;
+    public float  moveSpeedMult   = 1f;   // 걸음 배율(신발) — 안 적으면 1
+    public string wornColor       = "";   // 입은 색 `#RRGGBB`(`ArmorData.WornColor`) — 안 적으면 기본 갈색
+
+    // **장비가 능동을 준다**(2026-08-23). JSON 아이템은 런타임 생성이라 SO를 참조할 수
+    // 없으므로 **id로 가리킨다** — `LoadoutData.ItemId`·`MerchantPoolEntry`와 같은 규약이다.
+    // 비우면 능동이 없다. 오타는 조용히 "능동 없음"이 되므로 콘솔에 적는다.
+    public string abilityId = "";
 }
 
 [Serializable]
@@ -102,6 +128,10 @@ public class RecipeSchema
     public float              requiredSkillLevel;
     public float              skillGrowthAmount = 0.5f;
     public string             requiredResearchId;
+
+    // **어느 등급의 작업대라야 만드나**(`BenchTier`). 0·1 = 아무 데나, 2 = 개량 작업대.
+    // 안 적으면 0이라 **기존 레시피는 전부 그대로 열려 있다.**
+    public int                requiredBenchTier;
 }
 
 [Serializable]

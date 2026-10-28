@@ -75,27 +75,37 @@ public class ItemInfoUI : MonoBehaviour
 
     // priceLabel: null이면 "상점가"/"가치" 자동 결정
     // owner: 이 툴팁을 띄운 컴포넌트. 넘기면 그게 사라질 때 툴팁도 같이 닫힌다.
+    // left: 열린 하나의 남은 양(`ItemInstance.Left`). 1이면 안 적는다.
     public static void Show(ItemData item, ItemQuality quality, int price = -1,
                             string priceLabel = null, bool locked = false,
-                            Component owner = null)
+                            Component owner = null, float left = 1f)
     {
         if (Instance == null) return;
         Instance._owner = owner;
+        Instance._left  = left;
         Instance.ShowInternal(item, quality, price, priceLabel, locked);
     }
 
+    float _left = 1f;
+
+    // **당장 안 끈다 — 프레임 끝에 판정한다**(2026-08-29). 근거는 `HoverHold`에 있다:
+    // 격자에서 옆 칸으로 곧장 옮기면 Enter와 Exit이 같은 프레임에 오는데 순서가 보장되지
+    // 않아, 즉시 끄면 **방금 띄운 옆 칸의 툴팁을 지나온 칸이 꺼 버린다.**
     public static void Hide()
     {
         if (Instance == null) return;
         Instance._owner = null;
-        if (Instance.panel != null) Instance.panel.SetActive(false);
+        Instance._hold.HideAsked();
     }
+
+    HoverHold _hold;
 
     void ShowInternal(ItemData item, ItemQuality quality, int price, string priceLabel, bool locked)
     {
         if (item == null || panel == null) return;
 
-        panel.SetActive(true);
+        WindowRaiser.Open(panel);
+        _hold.Shown();
 
         if (icon)
         {
@@ -112,13 +122,18 @@ public class ItemInfoUI : MonoBehaviour
         if (qualityText)
         {
             qualityText.text  = $"{quality.DisplayName()} · {item.TypeName}";
+            // 쓰다 만 것 — 횃불은 탈 시간, 약은 남은 몫으로 읽는다.
+            if (_left < 1f - ItemInstance.Epsilon)
+                qualityText.text += item.BurnDays > 0f
+                    ? $" · {_left * item.BurnDays * 24f:0.#}시간 남음"
+                    : $" · {Mathf.CeilToInt(_left * 100f)}% 남음";
             qualityText.color = QualityColor(quality);
         }
 
         bool hasStats = FillStats(item, quality);
         if (statsGroup) statsGroup.SetActive(hasStats);
 
-        if (descText) descText.text = item.Description ?? "";
+        if (descText) descText.text = Josa.Fix(item.Description) ?? "";
 
         // 잠긴 뭉치는 **왜 안 팔리는지**를 여기서 말한다. 격자의 `잠금` 글자는 상태만
         // 보여 줄 뿐이라, 팔려다 거절당한 사람은 그게 원인인 줄 모른다.
@@ -147,11 +162,30 @@ public class ItemInfoUI : MonoBehaviour
         FollowCursor();
     }
 
+    // 불빛 한 줄 — 램프와 횃불이 같은 줄을 쓴다(`ItemData.LightRadius`·`BurnDays`).
+    static string LightLine(ItemData item)
+    {
+        if (!item.GivesLight) return null;
+        string burn = item.BurnDays > 0f
+            ? $"{item.BurnDays * 24f:0}시간 탄다"
+            : "꺼지지 않는다";
+        return $"불빛: {item.LightRadius:0.#}m  ({burn})";
+    }
+
     bool FillStats(ItemData item, ItemQuality quality)
     {
         float mult = quality.StatMultiplier();
         if (item is WeaponData wd)
         {
+            // **횃불은 휘두르는 무기가 아니다** — 주 무기 타격에 얹는 불이고, 사거리·간격은 주 무기의 것이다.
+            if (wd.Type == WeaponType.Torch)
+            {
+                SetRow(statDamageRow,  $"불 피해: {wd.BaseDamage * mult:F1}  (근접 타격마다)");
+                SetRow(statDefenseRow, null);
+                SetRow(statWeightRow,  $"무게: {wd.Weight:F1}");
+                SetRow(statExtraRow,   LightLine(wd));
+                return true;
+            }
             SetRow(statDamageRow,  $"공격력: {wd.BaseDamage * mult:F1}");
             SetRow(statDefenseRow, null);
             SetRow(statWeightRow,  $"무게: {wd.Weight:F1}");
@@ -160,11 +194,14 @@ public class ItemInfoUI : MonoBehaviour
         }
         if (item is ArmorData ad)
         {
+            // 막는 것이 없는 허리 램프에 `방어: 0.0`을 적으면 고장으로 읽힌다.
             SetRow(statDamageRow,  null);
-            SetRow(statDefenseRow, $"방어: {ad.DamageReduction * mult:F1}");
+            SetRow(statDefenseRow, ad.DamageReduction > 0f ? $"방어: {ad.DamageReduction * mult:F1}" : null);
             SetRow(statWeightRow,  $"무게: {ad.Weight:F1}");
             // 어느 칸에 입는지는 위 종류줄("몸통 방어구")이 이미 말한다 — 여기 또 적지 않는다.
-            SetRow(statExtraRow,   null);
+            SetRow(statExtraRow,   ad.GivesLight ? LightLine(ad)
+                                 : !Mathf.Approximately(ad.MoveSpeedMult, 1f) ? $"이동 속도: {(ad.MoveSpeedMult - 1f) * 100f:+0;-0}%"
+                                 : null);
             return true;
         }
         if (item is FoodData fd)
@@ -184,6 +221,10 @@ public class ItemInfoUI : MonoBehaviour
 
     void LateUpdate()
     {
+        // **끄는 판정이 먼저다** — 아래의 조기 반환 뒤에 두면 창이 꺼져 있을 때 밀린 요청이
+        // 영영 안 소모되어, 다음에 띄운 툴팁이 **뜨자마자 꺼진다.**
+        if (_hold.ShouldHide()) { WindowRaiser.Close(panel); return; }
+
         if (panel == null || !panel.activeSelf) return;
 
         // 띄운 놈이 파괴됐거나(유니티 null) 꺼졌으면 거둔다.
@@ -201,21 +242,9 @@ public class ItemInfoUI : MonoBehaviour
         FollowCursor();
     }
 
-    void FollowCursor()
-    {
-        if (_rt == null || _canvas == null || Mouse.current == null) return;
-        Camera    cam      = _canvas.renderMode != RenderMode.ScreenSpaceOverlay ? _canvas.worldCamera : null;
-        var       cRt      = (RectTransform)_canvas.transform;
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                cRt, Mouse.current.position.ReadValue(), cam, out var local)) return;
-
-        Vector2 pos   = local + cursorOffset;
-        Vector2 cSize = cRt.sizeDelta;
-        Vector2 pSize = _rt.sizeDelta;
-        pos.x = Mathf.Clamp(pos.x, -cSize.x * 0.5f, cSize.x * 0.5f - pSize.x);
-        pos.y = Mathf.Clamp(pos.y, -cSize.y * 0.5f + pSize.y, cSize.y * 0.5f);
-        _rt.anchoredPosition = pos;
-    }
+    // 자리 계산은 **`CursorTooltip` 한 벌**이다 — 커서 툴팁이 둘인데 규칙이 갈리면
+    // 한쪽만 화면 끝에서 가리키던 것을 덮는다(실제로 `HoverTooltipUI`가 그랬다).
+    void FollowCursor() => CursorTooltip.Place(_rt, _canvas, cursorOffset);
 
     static void SetRow(TextMeshProUGUI txt, string value)
     {

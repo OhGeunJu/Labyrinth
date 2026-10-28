@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
+public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource, IUpgradableBench
 {
     [Serializable]
     public struct FuelEntry
@@ -14,6 +14,12 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
     }
 
     [SerializeField] CraftSkill tableType = CraftSkill.WeaponCrafting;
+
+    // **등급 — 빠른 것과 상위 레시피가 같은 값에서 나온다**(`BenchTier`).
+    // 0으로 남은 프리팹은 `Tier`가 1로 받으므로 **기존 작업대는 아무것도 안 바뀐다.**
+    [Tooltip("작업대 등급. 1 = 기본, 2 = 개량(빠르고 상위 레시피를 연다). " +
+             "비워 두면 1이다 — 속도도 해금도 이 값 하나가 답한다.")]
+    [SerializeField] int tier = BenchTier.Min;
 
     [Header("연료 (용광로 등)")]
     [SerializeField] bool            _requiresFuel;
@@ -42,6 +48,21 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
     const float HaulCheckInterval   = 2f;
 
     public CraftSkill TableType => tableType;
+
+    // **`Clamp`로 받는다** — 새 필드는 0에서 시작하므로, 안 그러면 이미 놓인 작업대
+    // 열하나가 **등급 0이 되어 조용히 느려진다**(그리고 화면에는 아무 표시도 안 난다).
+    public int   Tier  => BenchTier.Clamp(tier);
+    public float Speed => BenchTier.SpeedOf(Tier);
+
+    // **올리는 문은 `BenchUpgrade` 하나다** — 여기서 값을 바꾸는 것은 그 완료 처리뿐이다.
+    public void SetTier(int value)
+    {
+        tier = BenchTier.Clamp(value);
+        BenchVisual.Ensure(this)?.Apply();   // **얼굴도 같이 간다** — 숫자만 오르면 올린 표시가 안 난다
+    }
+
+    // 등급을 뺀 이름. `BuildingName`이 이미 `제련소`처럼 등급 없는 말이라 그대로 쓴다.
+    public string BenchName => BenchTier.BaseNameOf(this);
 
     // ── 산출물 (IHaulSource) ─────────────────────────────────────────────────
     // 완성품이 여기 쌓인다. **폰 인벤토리에 바로 넣으면** 그 폰이 물건을 들고 돌아다니게 되고,
@@ -165,9 +186,12 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
     void Awake()
     {
         // 프리팹이 이미 Inventory를 들고 있으면 그 크기를 존중한다 — 우리가 만든 것만 크기를 잡는다.
-        var existing = GetComponent<Inventory>();
-        Inventory = existing ?? gameObject.AddComponent<Inventory>();
-        if (existing == null) Inventory.Resize(outputSize.x, outputSize.y);
+        if (TryGetComponent(out Inventory existing)) Inventory = existing;
+        else
+        {
+            Inventory = gameObject.AddComponent<Inventory>();
+            Inventory.Resize(outputSize.x, outputSize.y);
+        }
 
         Inventory.OnChanged += () => OnChanged?.Invoke(this);
         _haul = new HaulDispatcher(this);
@@ -188,8 +212,21 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
 
     public void OnFuelJobComplete() => _fuelJobPending = false;
 
-    public IReadOnlyList<RecipeData> Recipes =>
-        new List<RecipeData>(DataManager.GetRecipesBySkill(tableType));
+    // **등급이 모자란 레시피는 여기 안 뜬다**(2026-09-17).
+    //
+    // 잠긴 채로 보여 주지 않는 이유는 **연구와 같다** — 무엇이 상위 작업대를 요구하는지는
+    // 연구 화면이 이미 말하고(그 연구가 여는 레시피 목록), 여기 목록은 *지금 만들 수 있는
+    // 것*을 든다. 둘을 겸하면 만들 수 있는 것과 못 하는 것이 한 줄로 섞인다.
+    public IReadOnlyList<RecipeData> Recipes
+    {
+        get
+        {
+            var list = new List<RecipeData>();
+            foreach (var r in DataManager.GetRecipesBySkill(tableType))
+                if (r != null && r.RequiredBenchTier <= Tier) list.Add(r);
+            return list;
+        }
+    }
 
     public static event Action<CraftingTable> OnSelected;
 
@@ -244,7 +281,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         foreach (var entry in _acceptedFuels)
         {
             if (entry.Item == null) continue;
-            if (Storage.GetTotalByItem(entry.Item) <= 0) continue;
+            if (Storage.GetTotalByItem(entry.Item, transform.position) <= 0) continue;
             _fuelJobPending = true;
             JobManager.Instance.RegisterJob(new FuelJob(this, entry));
             return;
@@ -267,7 +304,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
         foreach (var ing in recipe.Ingredients)
         {
             if (ing.Item == null || ing.Amount <= 0) continue;
-            max = Mathf.Min(max, Storage.GetTotalByItem(ing.Item) / ing.Amount);
+            max = Mathf.Min(max, Storage.GetTotalByItem(ing.Item, transform.position) / ing.Amount);
         }
 
         // **셀 재료가 없는 레시피는 "못 만든다"가 아니라 "무엇도 막지 않는다"이다.**
@@ -325,7 +362,7 @@ public class CraftingTable : MonoBehaviour, IWorldClickable, IHaulSource
     {
         if (recipe == null) return false;
         foreach (var ing in recipe.Ingredients)
-            if (Storage.GetTotalByItem(ing.Item) < ing.Amount)
+            if (Storage.GetTotalByItem(ing.Item, transform.position) < ing.Amount)
                 return false;
         return true;
     }
