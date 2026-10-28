@@ -75,26 +75,6 @@
 - Wingman
 - DOTween Pro
 
-동작 확인은 에디터 Play Mode에서 한다. 컴파일만은 에디터 없이도 본다:
-
-```
-dotnet msbuild Assembly-CSharp.csproj -t:Build
-dotnet msbuild Assembly-CSharp-Editor.csproj -t:Build
-```
-
-`.csproj`는 유니티가 만들기 때문에, 파일을 새로 만들거나 지운 직후에는 유니티에 포커스를 한 번 줘서
-다시 만들게 해야 한다.
-
-### 세계 굽기
-
-세계는 저작 씬(`Assets/0_Scenes/World.unity`)에서 만들고 청크로 굽는다. 게임 씬은 `Scene1`이다.
-
-```
-DungeonColony → World → 1. Rebuild Underworld (전부)
-```
-
-굴이 어떻게 났는지는 `2. Preview Cave Map`이 PNG 한 장으로 보여준다.
-
 ---
 
 ## 폴더
