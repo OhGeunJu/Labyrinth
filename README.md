@@ -31,8 +31,6 @@
 ## 개발 환경
 
 - Unity 6.3 (6000.3.9f1) · URP (Forward+)
-- Input System (New)
-- TextMeshPro
 - Wingman
 - DOTween Pro
 
