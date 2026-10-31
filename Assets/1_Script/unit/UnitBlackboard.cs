@@ -157,8 +157,9 @@ public class UnitBlackboard
 
     public float AttackRange
     {
+        // 근접은 **팔 길이**를 얹는다(`BodySize.Reach` — 큰 종족). 원거리는 몸집과 무관하다.
         get => RangedWeapon ? BaseAttackRange * CombatHandler.RangeMult(Brain?.Stats)
-                            : BaseAttackRange;
+                            : BaseAttackRange + BodySize.Reach(Brain != null ? Brain.Data : null);
         set => BaseAttackRange = value;
     }
 

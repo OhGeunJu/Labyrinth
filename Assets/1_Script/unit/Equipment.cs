@@ -65,6 +65,14 @@ public class Equipment : MonoBehaviour
         }
     }
 
+    // **이 무기를 쥘 수 있나 — 종족이 답한다**(`UnitData.ForbiddenWeapons`, 2026-10-28). 막는 자리는 `CanEquip`과 같은
+    // `Wear*`다(배낭 · 상자 · 시체 · 다른 폰의 칸 — 어느 길로 와도 여기를 지난다).
+    public bool CanWield(WeaponData weapon)
+    {
+        Bind();
+        return weapon == null || _unitData == null || !_unitData.Forbids(weapon.Type);
+    }
+
     // ── 인스턴스 직접 장착 ───────────────────────────────────────────────────
     //
     // **배낭을 안 거친다.** 밖(상자·시체·다른 폰의 장비칸)에서 건너온 것은 내 배낭에 자리가
@@ -78,6 +86,7 @@ public class Equipment : MonoBehaviour
     {
         if (!CanEquip) return false;
         if (inst?.Data is not WeaponData weapon) return false;
+        if (!CanWield(weapon)) return false;
 
         // **방패는 주손에 들지 않는다.** 주손 칸에 떨어뜨려도 보조손으로 보낸다 —
         // 방패를 들고 때릴 수는 없는데, 막지 않으면 주손에 끼워 무기를 못 드는 상태가 된다.
@@ -135,6 +144,7 @@ public class Equipment : MonoBehaviour
     {
         if (!CanEquip) return false;
         if (inst?.Data is not WeaponData item) return false;
+        if (!CanWield(item)) return false;
 
         Bind();
 

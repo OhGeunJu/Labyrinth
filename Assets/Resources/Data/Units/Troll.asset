@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Name: Troll
+  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  Id: Troll
+  RaceName: "\uD2B8\uB864"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uC2A4\uD06C\uB77C\uADF8"
+  - "\uC6B0\uB974\uC2A4"
+  - "\uADF8\uB9BC"
+  - "\uD638\uB974\uD06C"
+  - "\uC790\uBE0C"
+  - "\uD2B8\uB8E9"
+  - "\uBE0C\uB77D"
+  - "\uC2A4\uB0A0"
+  - "\uBB34\uB974\uADF8"
+  - "\uD06C\uB85C\uADF8"
+  MaleNames: []
+  FemaleNames: []
+  MaxHP: 220
+  MoveSpeed: 3.8
+  AttackDamage: 18
+  AttackRange: 1.5
+  DetectRange: 10
+  NightVision: 0
+  IsUndead: 0
+  IsConstruct: 0
+  Resistances: []
+  UsesBackstory: 1
+  DefaultMinGrade: 6
+  DefaultMaxGrade: 6
+  StatGrades:
+  - Stat: 0
+    Min: 11
+    Max: 11
+  - Stat: 1
+    Min: 11
+    Max: 11
+  StatGrowthRates: []
+  ButcherYield:
+  - Item: {fileID: 0}
+    ItemId: res_rawhide
+    Chance: 0.8
+    MinCount: 1
+    MaxCount: 3
+  - Item: {fileID: 0}
+    ItemId: food_meat_human
+    Chance: 0.8
+    MinCount: 2
+    MaxCount: 4
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 1
+    MaxCount: 3
+  RollStats: 1
+  CanEquip: 1
+  DisabledJobs: 
+  Tameable: 0
+  BodyScale: 2
+  CleaveTargets: 2
+  CleaveDamage: 0.5
+  ForbiddenWeapons: 090000000a0000000c000000
+  RegenPerSecond: 0.6
+  HitEffect: 2
+  HitEffectChance: 0
+  HitEffectDuration: 2
+  HitEffectStrength: 0.6
+  SkinTones:
+  - {r: 0.36862746, g: 0.41568628, b: 0.47843137, a: 1}
+  - {r: 0.34509805, g: 0.3764706, b: 0.41568628, a: 1}
+  - {r: 0.47843137, g: 0.5019608, b: 0.5254902, a: 1}
+  - {r: 0.30588236, g: 0.36862746, b: 0.5019608, a: 1}

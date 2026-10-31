@@ -343,6 +343,9 @@ public class CombatHandler : MonoBehaviour
         // 굴림보다 **먼저** 적는다 — 결과와 무관해야 하기 때문이다.
         targetBrain.Blackboard?.RecordAttacker(gameObject);
 
+        // **큰 몸은 둘레까지 휩쓴다**(`UnitData.CleaveTargets`) — 표적이 막든 피하든 휘두름은 지나간다.
+        Sweep(target);
+
         WeaponType weaponType = GetWeaponType();
         bool unarmed          = weaponType == WeaponType.Unarmed;
         float weaponSkill     = _stats.GetSkillFor(Weapon);
@@ -385,6 +388,7 @@ public class CombatHandler : MonoBehaviour
             targetBrain.TakeDamage(dmgInfo);
 
         ApplyTorchBurn(target, targetBodySystem, targetBrain);
+        ApplyHitEffect(target);
 
         // 신성 무기: 공격 성공 시 힐/버프 발동
         var weapon = Weapon;
@@ -407,6 +411,71 @@ public class CombatHandler : MonoBehaviour
 
         OnDamageDealt?.Invoke(this, damage);
         Debug.Log($"[Combat] {gameObject.name} → {target.name} {damage:F1} 데미지 ({weaponType})");
+    }
+
+    // ── 휘두르기 · 맞히면 거는 것 (2026-10-28, `BodySize`) ──────────────────────
+    //
+    // 표적 말고 **앞쪽 부채꼴 · 팔 길이 안**의 적을 가까운 순으로 `CleaveTargets`만큼. 하나하나가 제 막기·회피를 굴린다
+    // (휩쓸린다고 못 막는 것은 아니다). **경험치는 안 준다** — 한 번 휘둘러 셋을 치면서 셋 몫을 배우면 몰이 사냥이 수련이 된다.
+    void Sweep(GameObject primary)
+    {
+        var data = _brain.Data;
+        var bb   = _brain.Blackboard;
+        if (data == null || data.CleaveTargets <= 0 || bb == null || bb.Faction == null || bb.RangedWeapon) return;
+
+        float reach = bb.AttackRange;
+        var   swept = BodySize.Swept;
+        // 후보는 넉넉히 — 거리는 둘레까지 재므로(`DistanceTo`) 큰 놈은 중심이 사거리 밖이어도 걸린다.
+        if (FactionScan.HostilesWithin(gameObject, bb.Faction, reach + 3f, false, swept) == 0) return;
+
+        Vector3 pos = transform.position;
+        Vector3 fwd = primary.transform.position - pos;
+        fwd.y = 0f;
+        if (fwd.sqrMagnitude < 1e-4f) fwd = transform.forward;
+        fwd.Normalize();
+        float cosHalf = Mathf.Cos(BodySize.SweepHalfAngle * Mathf.Deg2Rad);
+
+        swept.Remove(primary);
+        swept.Sort((x, y) => (x.transform.position - pos).sqrMagnitude.CompareTo((y.transform.position - pos).sqrMagnitude));
+
+        WeaponType wt   = GetWeaponType();
+        bool unarmed    = wt == WeaponType.Unarmed;
+        float atkSkill  = _stats.GetAttackCombatSkill(unarmed);
+        if (_sfx != null) atkSkill *= _sfx.AttackChanceMod;
+
+        int hits = 0;
+        foreach (var other in swept)
+        {
+            if (hits >= data.CleaveTargets) break;
+            if (other == null || BTTargetUtil.DistanceTo(pos, other) > reach) continue;
+
+            Vector3 to = other.transform.position - pos;
+            to.y = 0f;
+            if (to.sqrMagnitude > 1e-4f && Vector3.Dot(fwd, to.normalized) < cosHalf) continue;
+
+            if (!other.TryGetComponent(out UnitBrain ob)) continue;
+            ob.Blackboard?.RecordAttacker(gameObject);
+            hits++;   // 막혀도 한 자리를 쓴다 — 휘두름이 거기서 걸렸다
+
+            other.TryGetComponent(out CombatHandler oc);
+            var avoid = Measure(oc, atkSkill, ranged: false);
+            if (oc != null && (avoid.RollBlock() || avoid.RollDodge())) continue;
+
+            var info = BuildDamageInfo(CalcMeleeDamage(wt, _stats.GetSkillFor(Weapon), unarmed) * data.CleaveDamage);
+            if (other.TryGetComponent(out BodyPartSystem obody)) obody.TakeDamage(info);
+            else ob.TakeDamage(info);
+        }
+        swept.Clear();
+    }
+
+    // 맞힌 표적에 종족이 거는 것(`UnitData.HitEffect` — 오우거의 경직 등). 휩쓸린 쪽에는 안 건다 — 제대로 맞은 놈만.
+    void ApplyHitEffect(GameObject target)
+    {
+        var data = _brain.Data;
+        if (data == null || data.HitEffectChance <= 0f) return;
+        if (UnityEngine.Random.value >= data.HitEffectChance) return;
+        if (target.TryGetComponent(out StatusEffectSystem fx))
+            fx.ApplyEffect(data.HitEffect, data.HitEffectDuration, data.HitEffectStrength);
     }
 
     float CalcMeleeDamage(WeaponType weaponType, float weaponSkill, bool unarmed)

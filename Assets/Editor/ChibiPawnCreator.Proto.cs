@@ -188,8 +188,10 @@ public static partial class ChibiPawnCreator
         }
 
         float headShift = d.Top - TorsoH;
+        // **큰 짐승은 머리를 제자리에 빚어 온다**(`ChibiPawnCreator.Brutes`) — 몸 거리장과 한 좌표라 옮기지 않는다.
+        if (skeleton != null && skeleton.HeadInPlace) headShift = 0f;
         // **해골은 목이 짧다** — 두개골 거리장의 원점을 `SkullOriginY`에 둔다(해골 메시는 `Head` 틀에서 `SkullCenter`만큼 비켜 있다).
-        if (skeleton != null)
+        else if (skeleton != null)
             foreach (var p in headParts)
                 if (p.Name == "Head") headShift = SkullOriginY * d.Hh - p.Center.y + SkullCenter.y / SkullUnit * p.Size.y;
         var rigid = new List<Part>();
@@ -274,11 +276,12 @@ public static partial class ChibiPawnCreator
         public readonly float   ArmX, ArmR, ShoulderY, HandY, ElbowY, Hand;
         public readonly Vector3 Shoe;
 
-        public BodyDims(float hh, float[] half, float depth, float hand, float armR, float legX, float legR)
+        public BodyDims(float hh, float[] half, float depth, float hand, float armR, float legX, float legR,
+                        float armK = 1f, float legK = 1f)
         {
             Hh = hh; Half = half; Depth = depth;
             TorsoH = PTorsoH * hh;
-            Lift   = (PShoeH + PLegVis) * hh;           // 몸통 밑
+            Lift   = (PShoeH + PLegVis * legK) * hh;    // 몸통 밑
             Top    = Lift + TorsoH;                     // 몸통 꼭대기
             HemY   = Lift + PPantsH * hh;
 
@@ -293,7 +296,7 @@ public static partial class ChibiPawnCreator
             ArmR      = armR;
             ShoulderY = Top - PShoulder * hh - ShoulderDrop;   // 위팔 관절
             ArmX      = BodyTorsoRadius(half, 1f - PShoulder / PTorsoH, TorsoH) + ArmR * 2f * PArmIn;
-            HandY     = Top - PShoulder * hh - PArmLen * hh;
+            HandY     = Top - PShoulder * hh - PArmLen * armK * hh;
             ElbowY    = (ShoulderY + HandY) * 0.5f;
         }
     }

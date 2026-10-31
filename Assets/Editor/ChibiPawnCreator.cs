@@ -97,8 +97,9 @@ public static partial class ChibiPawnCreator
         public readonly float[] Half;    // 반폭(m) — 밑·엉덩이·허리·가슴·어깨
         public readonly float   Depth;
         public readonly float   HandR;
-        public Shape(string suffix, string label, string gender, float[] half, float depth, float handR)
-        { Suffix = suffix; Label = label; Gender = gender; Half = half; Depth = depth; HandR = handR; }
+        public readonly float   ArmK, LegK;   // 팔 · 보이는 다리 길이 배수(사람 1) — 큰 짐승 몸(`ChibiPawnCreator.Brutes`)이 쓴다
+        public Shape(string suffix, string label, string gender, float[] half, float depth, float handR, float armK = 1f, float legK = 1f)
+        { Suffix = suffix; Label = label; Gender = gender; Half = half; Depth = depth; HandR = handR; ArmK = armK; LegK = legK; }
     }
 
     static readonly float[] Stations = { 0f, 0.30f, 0.55f, 0.80f, 1f };
@@ -628,7 +629,8 @@ public static partial class ChibiPawnCreator
         var mats = EnsureMaterials(toon, face, outer, atlases);
 
         _saved.Clear();
-        _boneBodies.Clear();   // 뼈 몸 메시는 돌 때마다 다시 굽는다(남겨 두면 `_saved`에 안 적혀 끝의 청소가 지운다)
+        _boneBodies.Clear();
+        _brutes.Clear();   // 뼈 몸 메시는 돌 때마다 다시 굽는다(남겨 두면 `_saved`에 안 적혀 끝의 청소가 지운다)
         Heads = MakeHeads(ChibiFaceLayout.LoadOrCreate());
         var heads    = new Dictionary<string, Mesh>();
         var features = new Dictionary<(string, string), Mesh>();
@@ -752,6 +754,23 @@ public static partial class ChibiPawnCreator
             if (Dress(op, oShape, o.Skeleton ? skullParts : headParts, oMats, atlases, isSource: false, o.Skeleton ? SkeletonLook : null,
                       o.Skeleton ? BoneBodyFor(oShape) : null))
                 made.Add(o.Prefab);
+        }
+
+        // **오우거 · 트롤 — 따로 빚은 몸**(2026-10-28, `ChibiPawnCreator.Brutes`). 살 재질은 프리팹 벌의 기본 색이고, 판에서 개체마다
+        // 종족의 살색 후보 하나로 칠한다(`SkinLook`). 트롤의 밝은 배는 살색을 안 탄다(`Chibi_Belly_*` — `SkinLook`이 이름으로 거른다).
+        foreach (var br in Brutes)
+        {
+            string bp = $"{OutDir}/{br.Prefab}.prefab";
+            if (!File.Exists(bp)) { Debug.LogWarning($"[치비] 프리팹이 없다 — {bp} (`Pawn/9`가 세운다)"); continue; }
+            var bMats = OutfitMaterials(mats, br.Kind, br.Cloth, br.Cloth, br.Skin, br.Eye);
+            bMats["Horn"]     = Variant(mats["Bone"], $"Chibi_Horn_{br.Kind}", "_BaseColor", br.Horn);
+            bMats["EyeWhite"] = Variant(mats["Bone"], $"Chibi_EyeWhite_{br.Kind}", "_BaseColor", new Color32(0xF2, 0xF0, 0xE8, 0xFF));
+            bMats["Iris"]     = Variant(mats["Bone"], $"Chibi_Iris_{br.Kind}", "_BaseColor", br.Eye);
+            bMats["Belly"] = Variant(mats["SkinOuter"], $"Chibi_Belly_{br.Kind}", "_BaseColor", br.Belly);
+            var (body, head) = BruteFor(br.Kind);
+            var bHeads = new Dictionary<string, List<Part>> { ["Male"] = head, ["Female"] = head };
+            if (Dress(bp, BruteShape(br.Kind), bHeads, bMats, atlases, isSource: false, BruteLook, body))
+                made.Add(br.Prefab);
         }
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
@@ -892,11 +911,42 @@ public static partial class ChibiPawnCreator
         new Outfit("Npc_Freefolk_Peddler",   "FreePeddler",   "ThinMale",   new Color32(0x7A, 0x8A, 0x5A, 0xFF), new Color32(0x4A, 0x3F, 0x33, 0xFF)),
         new Outfit("Npc_Freefolk_Villager",  "FreeVillager",  "Female",     new Color32(0xA8, 0x5A, 0x5A, 0xFF), new Color32(0x5A, 0x4A, 0x3A, 0xFF)),
 
+        // **큰 종족**(2026-10-28, `BigRaceCreator` — `Pawn/9`가 프리팹을 세운다). 크기는 종족이 준다(`BodySize`).
+        new Outfit("Enemy_Orc",              "Orc",           "Hulk",       new Color32(0x5A, 0x44, 0x2E, 0xFF), new Color32(0x33, 0x2A, 0x22, 0xFF), new Color32(0x6E, 0x8A, 0x52, 0xFF)),
+        // 오우거 · 트롤은 사람 몸이 아니다 — 따로 빚는다(`ChibiPawnCreator.Brutes`, 아래 `Brutes` 표).
+
         // **해골** — 살·옷 전부 뼈 색 · 마른 몸. 머리는 사람 머리가 아니라 빚은 해골이다(`ChibiPawnCreator.Skull` · 2026-10-27).
         new Outfit("Enemy_Skeleton",         "Skeleton",      "ThinMale",   Bone, new Color32(0xCF, 0xC5, 0xAC, 0xFF), Bone, skeleton: true),
         new Outfit("Enemy_SkeletonArcher",   "Skeleton",      "ThinMale",   Bone, new Color32(0xCF, 0xC5, 0xAC, 0xFF), Bone, skeleton: true),
         new Outfit("Minion_Skeleton",        "Skeleton",      "ThinMale",   Bone, new Color32(0xCF, 0xC5, 0xAC, 0xFF), Bone, skeleton: true),
     };
+
+    // ── 오우거 · 트롤 (2026-10-28) ───────────────────────────────────────────
+    readonly struct BruteOutfit
+    {
+        public readonly string Prefab, Kind;
+        public readonly Color  Cloth, Skin, Eye, Horn, Belly;
+        public BruteOutfit(string prefab, string kind, Color32 cloth, Color32 skin, Color32 eye, Color32 horn, Color32 belly)
+        { Prefab = prefab; Kind = kind; Cloth = cloth; Skin = skin; Eye = eye; Horn = horn; Belly = belly; }
+    }
+
+    static readonly BruteOutfit[] Brutes =
+    {
+        //                 프리팹         종류        천(허리 · 팔목)                     살(기본)                            눈                                  뿔 · 이                              배
+        new BruteOutfit("Enemy_Ogre",  BruteOgre,  new Color32(0x4E, 0x6A, 0x3A, 0xFF), new Color32(0x6E, 0x8F, 0xC8, 0xFF), new Color32(0xE0, 0xB8, 0x30, 0xFF), new Color32(0x9A, 0x96, 0x8C, 0xFF), new Color32(0x6E, 0x8F, 0xC8, 0xFF)),
+        new BruteOutfit("Enemy_Troll", BruteTroll, new Color32(0x4A, 0x3A, 0x2A, 0xFF), new Color32(0x5E, 0x6A, 0x7A, 0xFF), new Color32(0xC8, 0xC0, 0x90, 0xFF), new Color32(0xD8, 0xCC, 0x9E, 0xFF), new Color32(0xC8, 0xC0, 0xA8, 0xFF)),
+    };
+
+    // 얼굴을 비운다 — 사람 머리가 아니라 빚은 머리라 머리형 · 머리카락 · 귀 · 코를 고를 것이 없다.
+    static void BruteLook(GameObject root)
+    {
+        var look = root.GetComponent<PawnLook>();
+        if (look == null) return;
+        var so = new SerializedObject(look);
+        foreach (var f in new[] { "shapeOverride", "hairOverride", "earOverride", "noseOverride" })
+            so.FindProperty(f).stringValue = "";
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
 
     // 해골 머리에는 머리카락 · 귀 · 코가 없다 — 사람 머리 시절에 못 박아 둔 것(민머리 · 동물 코)을 비운다. 뼈 색 · 눈구멍 속은 `BoneLook`.
     static void SkeletonLook(GameObject root)
@@ -986,7 +1036,7 @@ public static partial class ChibiPawnCreator
         float depth = PDepth * (s.Depth / male.Depth);
         float hip   = half[1];
         return new BodyDims(hh, half, depth, hand, hand * (PArmW / PHand) * 0.5f,
-                            hip * (PLegX / PTorsoHalf[1]), hip * (PLegW * 0.5f / PTorsoHalf[1]));
+                            hip * (PLegX / PTorsoHalf[1]), hip * (PLegW * 0.5f / PTorsoHalf[1]), s.ArmK, s.LegK);
     }
 
     static void Build(Transform model, Part p, Dictionary<string, Material> mats,

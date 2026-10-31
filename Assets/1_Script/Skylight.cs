@@ -83,6 +83,31 @@ public class Skylight : MonoBehaviour
             return;
         }
 
+        Rescale();
+
+        // **천장에 구멍을 낸다**(2026-10-28) — 1인칭에서는 천장이 보인다(`RockRenderer.BuildCeiling`). 크기를 맞춘
+        // 뒤에 재야 구멍이 빛기둥과 같은 너비다.
+        _holeR = shaft != null ? Mathf.Max(shaft.bounds.extents.x, shaft.bounds.extents.z) : FallbackHole;
+        _holeAt = transform.position;
+        RockRenderer.AddSkyHole(_holeAt, _holeR);
+        _holeOpen = true;
+    }
+
+    const float FallbackHole = 2f;   // 빛기둥 모형이 없을 때 구멍의 반경(m)
+    float   _holeR;
+    Vector3 _holeAt;
+    bool    _holeOpen;
+
+    // 뿌리기가 청크를 따라 거둔다 — 구멍도 같이 닫는다.
+    void OnDestroy()
+    {
+        if (!_holeOpen) return;
+        _holeOpen = false;
+        RockRenderer.RemoveSkyHole(_holeAt, _holeR);
+    }
+
+    void Rescale()
+    {
         float s = transform.lossyScale.x, y = transform.lossyScale.y;
         if (Mathf.Approximately(s, 1f) && Mathf.Approximately(y, 1f)) return;
 

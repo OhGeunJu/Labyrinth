@@ -1,0 +1,81 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Name: Orc
+  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  Id: Orc
+  RaceName: "\uC624\uD06C"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uADF8\uB86C\uB9C8\uC26C"
+  - "\uC6B0\uB974\uAC01"
+  - "\uBCFC\uADF8"
+  - "\uAC00\uC988\uB099"
+  - "\uB450\uB974\uD06C"
+  - "\uBAA8\uB974\uACE4"
+  - "\uB77C\uADF8\uB099"
+  - "\uC2A4\uB178\uAC00"
+  - "\uD0C0\uB974\uC26C"
+  - "\uC6B0\uADF8\uB77D"
+  MaleNames: []
+  FemaleNames: []
+  MaxHP: 130
+  MoveSpeed: 4
+  AttackDamage: 13
+  AttackRange: 1.5
+  DetectRange: 10
+  NightVision: 0
+  IsUndead: 0
+  IsConstruct: 0
+  Resistances: []
+  UsesBackstory: 1
+  DefaultMinGrade: 7
+  DefaultMaxGrade: 7
+  StatGrades:
+  - Stat: 0
+    Min: 10
+    Max: 10
+  - Stat: 1
+    Min: 10
+    Max: 10
+  StatGrowthRates: []
+  ButcherYield:
+  - Item: {fileID: 0}
+    ItemId: res_rawhide
+    Chance: 0.8
+    MinCount: 1
+    MaxCount: 3
+  - Item: {fileID: 0}
+    ItemId: food_meat_human
+    Chance: 0.8
+    MinCount: 2
+    MaxCount: 4
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 1
+    MaxCount: 3
+  RollStats: 1
+  CanEquip: 1
+  DisabledJobs: 
+  Tameable: 0
+  BodyScale: 1.25
+  CleaveTargets: 0
+  CleaveDamage: 0.5
+  ForbiddenWeapons: 
+  RegenPerSecond: 0
+  HitEffect: 2
+  HitEffectChance: 0
+  HitEffectDuration: 2
+  HitEffectStrength: 0.6
+  SkinTones: []

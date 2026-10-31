@@ -219,4 +219,43 @@ public class UnitData : ScriptableObject
     // 일은 운반뿐이고, 수레를 단 동안만 명령을 받는다(`UnitBrain.IsTamedBeast` · `PawnCart`).
     [Tooltip("길들일 수 있는 짐승 — 우리에 가두면 조련(간수와 나란한 일)으로 돌려세운다. 넘어오면 가축.")]
     public bool Tameable = false;
+
+    // ── 몸집 · 휘두르기 · 체질 (2026-10-28) ─────────────────────────────────
+    //
+    // 사용자: *"오크 1.25배 큰 크기? 오우거 트롤 2배 큰 크기"* · *"오우거나 트롤 같이 큰 캐릭들이 범위가 아닌 단일 공격만
+    // 하는 것은 어색함 하지만 범위 공격만 하면 안됌"*. 답은 `BodySize`에 있다 — 큰 몸은 **보이는 몸과 팔이 크고**,
+    // 칠 때 **표적은 온전히 · 둘레의 다른 적은 덜** 맞힌다(휘두르기). 단일이면서 범위다.
+    //
+    // **부딪히는 몸은 한 칸 그대로다**(`PawnMover.BodyRadius`) — 굵히면 1m 굴에 낀다. 크기는 그림과 팔 길이다.
+    [Header("몸집 · 휘두르기 · 체질")]
+    [Tooltip("사람 = 1. 보이는 몸과 근접 팔 길이가 이 배수를 탄다(부딪히는 몸은 그대로 한 칸).")]
+    [Min(0.3f)] public float BodyScale = 1f;
+
+    [Tooltip("근접으로 칠 때 표적 말고 둘레에서 같이 휩쓰는 적의 수. 0이면 한 놈만 친다.")]
+    [Min(0)] public int CleaveTargets = 0;
+
+    [Tooltip("휩쓸린 적이 받는 피해의 몫(표적이 받는 것에 대한 비).")]
+    [Range(0f, 1f)] public float CleaveDamage = 0.5f;
+
+    // **못 쥐는 무기**(사용자: *"종족에 따른 무기 제한"*). 막는 자리는 `Equipment.Wear*` 하나 — `CanEquip`과 같다.
+    [Tooltip("이 종족이 못 쥐는 무기 종류(큰 손가락으로 활시위를 못 당긴다 등).")]
+    public List<WeaponType> ForbiddenWeapons = new();
+
+    // **저절로 아문다**(트롤). 불이 붙어 있는 동안은 안 아문다(`Regeneration`).
+    [Tooltip("초당 아무는 양 — 피와 부위에 같이. 0이면 안 아문다. 불타는 동안은 멈춘다.")]
+    [Min(0f)] public float RegenPerSecond = 0f;
+
+    // **맞히면 거는 것**(오우거의 경직 등). 확률이 0이면 아무것도 안 건다.
+    [Tooltip("근접으로 맞힌 표적에 거는 상태(확률 0이면 없음).")]
+    public StatusEffectType HitEffect = StatusEffectType.Slowed;
+    [Range(0f, 1f)] public float HitEffectChance = 0f;
+    [Min(0f)] public float HitEffectDuration = 2f;
+    [Range(0f, 1f)] public float HitEffectStrength = 0.5f;
+
+    // **살색은 개체마다 다르다**(2026-10-28, 사용자: *"오우거는 색이 여러개야 · 트롤이 파란색이랑 회색쪽만"*). 비우면 프리팹 재질
+    // 그대로다. 고르는 것은 씨앗이다(`SkinLook` — 같은 개체는 늘 같은 색).
+    [Tooltip("이 종족의 살색 후보. 비우면 프리팹 재질 그대로. 개체마다 씨앗이 하나를 고른다.")]
+    public List<Color> SkinTones = new();
+
+    public bool Forbids(WeaponType type) => ForbiddenWeapons != null && ForbiddenWeapons.Contains(type);
 }

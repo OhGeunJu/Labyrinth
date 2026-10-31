@@ -79,7 +79,12 @@ public class CameraController : MonoBehaviour
     float _yaw;
     float _pitch;
 
-    void Awake() => _cam = GetComponent<Camera>();
+    // **1인칭은 같은 카메라를 붙든다**(`FirstPersonView`) — 없으면 붙인다(씬 배선을 늘리면 언젠가 한 씬만 빠진다).
+    void Awake()
+    {
+        _cam = GetComponent<Camera>();
+        if (!TryGetComponent(out FirstPersonView _)) gameObject.AddComponent<FirstPersonView>();
+    }
 
     // ── 특정 지점 비추기 ─────────────────────────────────────────────────
     // 목록에서 폰을 더블클릭했을 때처럼 **화면 밖에 있는 것을 보여줘야** 할 때 쓴다.
@@ -231,6 +236,9 @@ public class CameraController : MonoBehaviour
 
     void Update()
     {
+        // 1인칭이 카메라를 붙든 동안은 손을 뗀다 — 나오면 그 각(`_yaw`·`_pitch`)을 그대로 이어 간다.
+        if (FirstPersonView.On) { _isRotating = false; return; }
+
         HandleMove();
         HandleRotate();
         HandleZoom();

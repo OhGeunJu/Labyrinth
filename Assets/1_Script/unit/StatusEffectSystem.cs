@@ -144,6 +144,17 @@ public class StatusEffectSystem : MonoBehaviour
         }
     }
 
+    // **타고 있나** — 아무는 몸(`Regeneration`)이 묻는다. 불이 붙은 트롤은 안 아문다.
+    public bool IsBurning
+    {
+        get
+        {
+            foreach (var e in _active)
+                if (e.Type == StatusEffectType.Burning) return true;
+            return false;
+        }
+    }
+
     // **불이 물을 말린다.** 안 그러면 젖은 채로 계속 타는 그림이 되고, 무엇보다 물을 끼얹어
     // 두면 불·전기가 **둘 다** 잘 드는 공짜 조합이 된다(물의 값은 전기 하나여야 한다).
     public void DryOff() => _active.RemoveAll(e => e.Type == StatusEffectType.Wet);

@@ -29,11 +29,13 @@ Guidance for Claude Code in this repository.
 - **탐험은 이어진 세계를 걸어서 한다** — 옛 3D 월드맵·원정대·화면 전환(`GameModeManager`)은 없다. 필드인지 묻지 않는다. 고용 후보 표 `BiomeContentData.TownRecruits`는 읽는 곳이 없다(마을 고용을 다시 열 때 쓴다). → `docs/world.md` 끝
 - **길들이기 · 가축 · 수레** — 우리에 가둔 `UnitData.Tameable` 짐승을 조련(`Conversion.CanTame` · `TameJob`) · 가축은 운반만(`UnitBrain.IsTamedBeast`) · 수레를 단 동안만 명령을 받는다(`PawnCart` · `CartData`). → `docs/units.md`
 - **벽은 둘** — 외곽벽은 칸을 먹고 이웃과 잇는다(`FortWall`) · **얇은 벽은 변을 막는다**(`EdgeWalls` — 로컬·지름길·광역이 한 표를 읽는다 · 콜라이더는 `Default` 층). → `docs/build.md`
+- **1인칭 · 천장** — `F`가 고른 폰의 눈으로 같은 카메라를 붙든다(`FirstPersonView.On`이면 `CameraController`는 손을 뗀다) · 그동안 벽 자르기를 끄고 천장을 켠다 · 천장은 바위 메시에 안 넣는다(뚜껑은 자르는 높이로 끌려 내려온다 — 청크의 자식 렌더러 `BuildCeiling`) · 볕 구멍 위는 비운다(`RockRenderer.AddSkyHole`).
+- **몸집은 종족이 든다**(`UnitData.BodyScale` → `BodySize`) — 그림과 팔 길이만 큰다 · 부딪히는 몸은 한 칸 그대로 · 거리는 둘레까지(`BTTargetUtil.DistanceTo` · `MeleeSlots`) · 큰 몸은 휘두른다(표적 온전히 + 둘레 `CleaveTargets`) · 못 쥐는 무기는 `Equipment.CanWield` · 아무는 몸 `Regeneration`(불 붙으면 멈춘다).
 - **미룬 것**(건물 에셋 대기) — 마을 건설 · 마을=핵 · 건물 2층(층 넷과 다른 장치 — 같은 XZ에 바닥 둘). **남은 미결** — 월드 에디터의 퀘스트.
 
 ## Project Overview
 
-**DungeonColony** — RimWorld + Kenshi + Palworld + Mount&Blade + Dungeon Core. 유닛은 **방랑자(Wanderer)**(직접 제어)와 **하수인(Minion)**(자동 AI, 던전 코어 소환). **루프는 탐험이 본류다** — 기지는 잠깐 들러 점검하는 곳이고, 탐험해 가져온 자원으로 장비·하수인을 만들어 더 험한 지역에 간다(`docs/design_progression.md`).
+**DungeonColony** — RimWorld + Kenshi + Palworld + Dungeon Core. 유닛은 **방랑자(Wanderer)**(직접 제어)와 **하수인(Minion)**(자동 AI, 던전 코어 소환). **루프는 탐험이 본류다** — 기지는 잠깐 들러 점검하는 곳이고, 탐험해 가져온 자원으로 장비·하수인을 만들어 더 험한 지역에 간다(`docs/design_progression.md`).
 
 ## Development Environment
 
@@ -148,6 +150,7 @@ Guidance for Claude Code in this repository.
 | `L` 세력 | `FactionPanelUI` | `F1~F5` 진형 | `FormationController` |
 | `O` 자동운반 품목 | `HaulPolicyPanel` | `M` 지도 | `WorldMapPanel` |
 | `H` 지휘소(배치) | `WorkPostsUI` | `T` 상단 | `CaravanUI` |
+| `F` 1인칭(고른 폰의 눈) | `FirstPersonView` | | |
 | `1~4` 능동 능력(건설·명령·구역이 켜져 있으면 양보) | `AbilityController` | 좌/우클릭 | `SelectionManager` / `MoveController` |
 
 - **모드 바**(`ModeBarUI`, 하단 가운데) — 명령 · 구역 · 건설 · 지휘소 · 상단 · 무리 · 세력 · 지도(뒤의 다섯은 창 — 키와 같은 문을 부른다) · 칸은 `UI → Setup Command Bar`가 세운다. 거점 바(`OutpostBarUI`, 좌상단)는 거점이 둘 이상일 때만.
@@ -163,7 +166,7 @@ Guidance for Claude Code in this repository.
 ## Stat Grade System (`StatGrade.cs`, `CombatXp.cs`)
 
 모든 스탯 0–130, 5단위 27등급(F- ~ SSS+).
-- `StatGrade`(27) + `StatName`(53) — 통합 식별자 · 등급 정의는 `UnitData.DefaultMinGrade/MaxGrade` + `StatGrades`.
+- `StatGrade`(27) + `StatName`(45) — 통합 식별자 · 등급 정의는 `UnitData.DefaultMinGrade/MaxGrade` + `StatGrades`.
 - **모든 성장은 `UnitStats.GrowStat` 하나** — `IsLocked`(하수인)면 막힌다 · 종족 배율 `UnitData.StatGrowthRates` · 열정 배율 `Passions`.
 - 켄시식 XP `CombatXp.Calculate` — 노동(`BTLeafNodes`·`CraftJob`·`ResearchJob`·`PawnMover.Athletics`)도 같은 셈 · 노동 도전 레벨은 `ResourceNodeData.RequiredSkill`.
 

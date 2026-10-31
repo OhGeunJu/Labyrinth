@@ -9,7 +9,7 @@ public partial class UnitBrain : MonoBehaviour
 
     // **편이 바뀌었다.** 태어나는 것과 다른 축이라 따로 알린다 — `OnUnitSpawned`는 `Start`에서
     // 한 번 뜨고 마는데, 회유로 넘어온 포로나 합류한 떠돌이는 **그 문을 안 지난다.**
-    // 그래서 명부(`ColonyUI`)·원정 편성이 새 식구를 영영 못 봤다(2026-08-14 발견).
+    // 그래서 명부(`ColonyUI`)가 새 식구를 영영 못 봤다(2026-08-14 발견).
     //
     // 듣는 쪽은 `OnUnitSpawned`와 **같이** 받아야 한다 — 한쪽만 달면 어느 경로로 들어왔느냐로
     // 화면이 갈린다.
@@ -443,6 +443,14 @@ public partial class UnitBrain : MonoBehaviour
         // 어차피 목록이 비어 아무 일도 안 한다(`WorkSettings`가 일꾼에만 붙는 것과 다른 축 —
         // 저쪽은 저작 대상이고 이건 장비에서 파생된다).
         gameObject.AddComponent<AbilityUser>();
+
+        // **몸집은 종족이 든다**(`UnitData.BodyScale` — 오크 · 오우거 · 트롤). 프리팹을 종족마다 키워 두면 같은 몸을
+        // 다른 종족에 물릴 때 크기가 따라가지 않는다. 아무는 몸(트롤)도 여기서 붙인다.
+        BodySize.Apply(gameObject, unitData);
+        if (unitData != null && unitData.RegenPerSecond > 0f && !TryGetComponent(out Regeneration _))
+            gameObject.AddComponent<Regeneration>();
+        if (unitData != null && unitData.SkinTones != null && unitData.SkinTones.Count > 0 && !TryGetComponent(out SkinLook _))
+            gameObject.AddComponent<SkinLook>();
 
         Stats = UnitStats.FromData(unitData);
         // 성장이 잠기는 건 **내가 소환한** 하수인이다. 같은 종족 에셋을 쓰는 야생 개체까지
@@ -1346,7 +1354,7 @@ public partial class UnitBrain : MonoBehaviour
         Debug.Log($"[세력] {UnitName} → {to.FactionName} " +
                   $"({(unitData is MinionData ? "하수인" : IsTamedBeast ? "가축" : "방랑자")}, 성장잠금 {Stats.IsLocked})");
 
-        // **알린다.** 명부·원정 편성은 `OnUnitSpawned`만 듣고 있었는데 그건 `Start`에서 한 번
+        // **알린다.** 명부는 `OnUnitSpawned`만 듣고 있었는데 그건 `Start`에서 한 번
         // 뜨고 마는 것이라, **이 문으로 들어온 식구는 화면에 영영 안 나타났다.**
         OnFactionChanged?.Invoke(this);
     }

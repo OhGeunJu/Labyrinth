@@ -27,6 +27,7 @@ public class PawnApparel : MonoBehaviour
 
     // 몸 메시의 재질 칸 — `ChibiPawnCreator.BodyMesh`(0 셔츠 · 1 바지 · 2 바깥 선).
     const int ShirtSlot = 0, PantsSlot = 1;
+    SkinLook _skin;
 
     Equipment           _equip;
     PawnLook            _look;
@@ -87,7 +88,11 @@ public class PawnApparel : MonoBehaviour
         var mat  = mats.Length == 0 ? null : mats[Mathf.Clamp(slot, 0, mats.Length - 1)];
         if (mat == null || !mat.HasProperty(BaseColor)) return;
 
-        var color = armor != null ? armor.WornTint : mat.GetColor(BaseColor);
+        // 벗은 칸은 재질 색으로 — **살이면 그 개체의 살색으로**(`SkinLook`). 안 물으면 장비를 갈 때마다 맨몸이 프리팹 색으로 돌아간다.
+        if (_skin == null) TryGetComponent(out _skin);
+        var color = armor != null ? armor.WornTint
+                  : _skin != null && _skin.TryTone(mat, out var tone) ? tone
+                  : mat.GetColor(BaseColor);
         if (slot < 0) r.GetPropertyBlock(_mpb); else r.GetPropertyBlock(_mpb, slot);
         _mpb.SetColor(BaseColor, color);
         if (slot < 0) r.SetPropertyBlock(_mpb); else r.SetPropertyBlock(_mpb, slot);

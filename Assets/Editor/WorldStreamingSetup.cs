@@ -669,7 +669,11 @@ public static class WorldStreamingSetup
 
         // 이웃 정점 사이 최대 낙차 — **이것이 *보이나*에 답한다.** 단이 아무리 층져도
         // 전이가 정점 한 간격에 걸쳐 나므로, 화면에 서는 것은 그 각도다.
+        // **셀 경계가 휘고부터는(2026-10-28, `TerrainHeight.WarpCell`) 셀 번호의 이웃이 곧 땅의 이웃이 아니다** —
+        // 그래서 걸어갈 수 있나도 정점끼리 잰다(대각선까지). 한 단 반을 넘게 벌어진 정점 쌍이 *두 단 턱*이다.
         float maxDrop = 0f;
+        int vertexCliffs = 0;
+        float cliffDrop = p.TerraceStep * 1.5f;
         int g0x = Mathf.FloorToInt((c.x - R) / TerrainGrid.VertexSpacing);
         int g0z = Mathf.FloorToInt((c.z - R) / TerrainGrid.VertexSpacing);
         int gN = (2 * R) / TerrainGrid.VertexSpacing;
@@ -677,8 +681,15 @@ public static class WorldStreamingSetup
         for (int gx = g0x; gx <= g0x + gN; gx++)
         {
             float h = TerrainHeight.VertexHeightGlobal(gx, gz);
-            maxDrop = Mathf.Max(maxDrop, Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx + 1, gz) - h));
-            maxDrop = Mathf.Max(maxDrop, Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx, gz + 1) - h));
+            float a1 = Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx + 1, gz) - h);
+            float a2 = Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx, gz + 1) - h);
+            float a3 = Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx + 1, gz + 1) - h);
+            float a4 = Mathf.Abs(TerrainHeight.VertexHeightGlobal(gx + 1, gz - 1) - h);
+            maxDrop = Mathf.Max(maxDrop, Mathf.Max(a1, a2));
+            if (a1 > cliffDrop) vertexCliffs++;
+            if (a2 > cliffDrop) vertexCliffs++;
+            if (a3 > cliffDrop) vertexCliffs++;
+            if (a4 > cliffDrop) vertexCliffs++;
         }
         float deg = Mathf.Atan2(maxDrop, TerrainGrid.VertexSpacing) * Mathf.Rad2Deg;
 
@@ -708,9 +719,13 @@ public static class WorldStreamingSetup
                   "화면에 서는 것은 이 각도다(30° 넘으면 절벽 텍스처까지 바뀐다).");
         sb.Append($"\n두 단 이상 벌어진 셀 경계 **{cliffs}** / {pairs} — " +
                   (cliffs == 0 ? "어디든 걸어갈 수 있다." : "**못 넘는 턱이 있다.**"));
+        sb.Append($"\n한 단 반 넘게 벌어진 이웃 정점 **{vertexCliffs}**" +
+                  (vertexCliffs == 0 ? " — 휜 경계에서도 걸어갈 수 있다." : " — **휜 경계에 못 넘는 턱이 있다.**"));
 
         if (cliffs > 0)
             Debug.LogError(sb + "\n계단 봉투가 이웃 셀을 한 단 이내로 못 누르고 있다 — `TerrainHeight.TerraceLevel`을 볼 것.");
+        else if (vertexCliffs > 0)
+            Debug.LogError(sb + "\n셀 경계의 휨이 너무 가파르다 — 맞닿은 정점이 먼 셀에 떨어진다. `TerrainHeight.WarpCell`의 폭을 줄일 것.");
         else if (keys.Count <= 1)
             Debug.LogWarning(sb + "\n**층이 하나뿐이다** — 주기가 이 범위보다 커서 통째로 한 층에 " +
                              "들어왔을 수 있다. `Terrace Period`를 줄이거나 더 넓게 잴 것.");

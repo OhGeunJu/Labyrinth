@@ -39,7 +39,9 @@ public static class BTTargetUtil
     public static float DistanceTo(Vector3 from, GameObject go)
     {
         var b = go.GetComponent<BuildingHealth>();
-        return b != null ? b.DistanceFrom(from) : Vector3.Distance(from, go.transform.position);
+        // 큰 몸은 **둘레까지** 잰다(`BodySize.Girth`) — 중심까지 재면 배 속으로 걸어 들어와야 사거리에 든다.
+        return b != null ? b.DistanceFrom(from)
+                         : Mathf.Max(0f, Vector3.Distance(from, go.transform.position) - BodySize.Girth(go));
     }
 
     // 다가갈 자리 — 건물은 가장 가까운 면(그 칸이 막혀 있으면 `PawnMover`가 설 수 있는 칸으로 접는다).

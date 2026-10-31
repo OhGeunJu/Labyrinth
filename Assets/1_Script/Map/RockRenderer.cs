@@ -121,7 +121,9 @@ public class RockRenderer : MonoBehaviour
     void PushCutUniforms()
     {
         CutActive = false;
-        if (!cutNearWalls) { Shader.SetGlobalFloat(IdOn, 0f); return; }
+        // **1인칭에서는 안 자른다**(2026-10-28) — 자르기는 위에서 내려다보는 눈을 위한 것이다. 눈높이에서
+        // 자르면 바닥 언저리(`cutLow`)에서 벽이 끊겨 굴 밖 허공이 보인다. 그 위는 천장이 덮는다.
+        if (!cutNearWalls || FirstPersonView.On) { Shader.SetGlobalFloat(IdOn, 0f); return; }
 
         var cam = Camera.main;
         var map = MapManager.Instance;
@@ -197,6 +199,10 @@ public class RockRenderer : MonoBehaviour
 
         // 이 청크 벽에 붙은 조명(칸 → 선 것). **청크의 자식이다** — 청크를 버리면 같이 간다.
         public readonly Dictionary<Vector2Int, PlacedLight> Lights = new();
+
+        // 천장(`BuildCeiling`) — 판 안에서만 선다. 1인칭일 때만 그린다.
+        public Mesh         CeilMesh;
+        public MeshRenderer CeilRenderer;
     }
 
     struct PlacedLight
@@ -409,6 +415,8 @@ public class RockRenderer : MonoBehaviour
         TerrainHeight.OnHeightChanged += OnRockChanged;
         TerrainStreamer.ChunkLoaded   += OnTerrainChunk;
         TerrainStreamer.ChunkUnloaded += OnTerrainGone;
+        FirstPersonView.Changed       += OnFirstPerson;
+        HoleChanged                   += OnHoleChanged;
 
         foreach (var c in TerrainStreamer.LiveChunks) OnTerrainChunk(c);
     }
@@ -419,6 +427,8 @@ public class RockRenderer : MonoBehaviour
         TerrainHeight.OnHeightChanged -= OnRockChanged;
         TerrainStreamer.ChunkLoaded   -= OnTerrainChunk;
         TerrainStreamer.ChunkUnloaded -= OnTerrainGone;
+        FirstPersonView.Changed       -= OnFirstPerson;
+        HoleChanged                   -= OnHoleChanged;
 
         _doomed.Clear();   // 떠날 때는 예산이 없다 — 아래에서 전부 버린다
         foreach (var c in new List<Vector2Int>(_chunks.Keys)) Drop(c);
@@ -668,7 +678,8 @@ public class RockRenderer : MonoBehaviour
             TopSpecks(ore, tile, xa, za, top);
         }
 
-        if (_top.Count == 0 && _side.Count == 0 && _mark.Count == 0) { Drop(chunk); return; }
+        // **판 안에서는 다 판 청크도 남긴다** — 바위는 없어도 천장은 있다(`BuildCeiling`). 큰 방을 파면 흔하다.
+        if (_top.Count == 0 && _side.Count == 0 && _mark.Count == 0 && !Application.isPlaying) { Drop(chunk); return; }
 
         var ch = Ensure(chunk);
         var mesh = ch.Mesh;
@@ -702,9 +713,12 @@ public class RockRenderer : MonoBehaviour
         // **바닥까지 늘린다** — 옆면이 있는 청크가 이미 갖는 모양이고, 자르기는 **내리기만
         // 하므로** 그 아래로는 안 간다. 자르는 면의 기준은 **카메라 발밑**이라 이 청크가
         // 그보다 높으면 조금 더 내려갈 수 있어 여유를 한 뼘 둔다.
-        var b = mesh.bounds;
-        b.SetMinMax(new Vector3(b.min.x, lowest - CutBoundsSlack, b.min.z), b.max);
-        mesh.bounds = b;
+        if (lowest <= highest)   // 바위가 하나도 없으면 늘릴 바닥도 없다(천장만 있는 청크)
+        {
+            var b = mesh.bounds;
+            b.SetMinMax(new Vector3(b.min.x, lowest - CutBoundsSlack, b.min.z), b.max);
+            mesh.bounds = b;
+        }
 
         // **재질은 청크마다 다시 맞춘다** — 광맥 서브메시가 늘고 줄기 때문이다(한 칸을
         // 파내면 드러나는 벽이 바뀌어 굽기마다 종류가 달라질 수 있다). 개수가 어긋나면
@@ -723,7 +737,165 @@ public class RockRenderer : MonoBehaviour
         FitBoxes(ch, chunk, lowest, highest);
 
         SyncWallLights(ch);
+
+        BuildCeiling(ch, chunk, map);
     }
+
+    // ── 천장 (2026-10-28) ───────────────────────────────────────────────────
+    //
+    // 사용자: *"천장을 보이게 하자는 건데 1인칭 카메라를 만들어서"*. 굴은 위에서 내려다보는 화면을 위해 지어서
+    // 천장이 없었다 — 벽 위가 그냥 뚫려 있다. 눈높이(`FirstPersonView`)에서 고개를 들면 그 허공이 보인다.
+    //
+    // **따로 굽고 따로 그린다 — 바위 메시에 안 넣는다.** 바위 셰이더는 *뚜껑*(수평면)을 자르는 높이까지
+    // 끌어내린다(`RockCutWS`). 천장을 같은 메시에 넣으면 위에서 볼 때 눈앞까지 내려와 화면을 덮는다.
+    // 그래서 청크의 자식 렌더러로 두고 **1인칭일 때만 켠다**(그때는 자르기도 꺼진다). 위에서 볼 때 값은 0이다.
+    //
+    // **높이는 빈칸마다 하나** — *제 바닥 + 벽 높이*와 *둘레 여덟 바위의 꼭대기* 중 낮은 쪽. 바닥이 계단이라
+    // 이웃 벽 꼭대기가 1m씩 다른데, 천장이 그보다 높으면 벽과 천장 사이로 허공이 샌다. 낮게 두면 벽이 천장을
+    // 뚫고 올라갈 뿐이고 그 윗부분은 아래에서 안 보인다. 천장끼리 높이가 다른 자리는 세로 띠로 잇는다.
+    //
+    // **벽선의 흔들림을 같이 탄다** — 칸을 넷으로 쪼개 반 칸 격자 점을 쓰고 `Quad`로 굽는다. 벽 꼭대기의
+    // 점과 같은 자리라 같은 만큼 움직인다(`Wobble`은 자리의 함수다).
+    readonly List<int> _ceil = new();
+
+    void BuildCeiling(Chunk ch, Vector2Int chunk, MapManager map)
+    {
+        if (ch.CeilMesh == null) return;   // 판 밖(씬 뷰)에서는 안 세운다 — `Ensure`
+
+        _verts.Clear(); _norms.Clear(); _uvs.Clear(); _ceil.Clear(); _liftAt.Clear();
+
+        int x0 = chunk.x * ChunkTiles, y0 = chunk.y * ChunkTiles;
+        for (int ty = 0; ty < ChunkTiles; ty++)
+        for (int tx = 0; tx < ChunkTiles; tx++)
+        {
+            if (_solid[tx, ty]) continue;
+            var tile = new Vector2Int(x0 + tx, y0 + ty);
+            if (SkyHoles.Contains(tile)) continue;   // 볕 구멍 — 위가 뚫려 있다(`Skylight`)
+
+            float y = CeilingOf(tile);
+            Vector3 c = map != null ? map.TileToWorld(tile) : new Vector3(tile.x + 0.5f, 0f, tile.y + 0.5f);
+            float xa = c.x - 0.5f, xb = c.x + 0.5f, za = c.z - 0.5f, zb = c.z + 0.5f, xm = c.x, zm = c.z;
+
+            var down = Vector3.down;
+            Quad(_ceil, new Vector3(xa, y, za), new Vector3(xm, y, za), new Vector3(xm, y, zm), new Vector3(xa, y, zm), down);
+            Quad(_ceil, new Vector3(xm, y, za), new Vector3(xb, y, za), new Vector3(xb, y, zm), new Vector3(xm, y, zm), down);
+            Quad(_ceil, new Vector3(xa, y, zm), new Vector3(xm, y, zm), new Vector3(xm, y, zb), new Vector3(xa, y, zb), down);
+            Quad(_ceil, new Vector3(xm, y, zm), new Vector3(xb, y, zm), new Vector3(xb, y, zb), new Vector3(xm, y, zb), down);
+
+            // 이웃 천장이 더 높으면 그 차이를 세로로 막는다 — **낮은 쪽이 그린다**(벽의 단차 띠와 같은 규칙, 겹침 없음).
+            Riser(tile + Vector2Int.left,  y, xa, za, xa, zb, Vector3.right);
+            Riser(tile + Vector2Int.right, y, xb, za, xb, zb, Vector3.left);
+            Riser(tile + Vector2Int.down,  y, xa, za, xb, za, Vector3.forward);
+            Riser(tile + Vector2Int.up,    y, xa, zb, xb, zb, Vector3.back);
+        }
+
+        var mesh = ch.CeilMesh;
+        mesh.Clear();
+        mesh.indexFormat = _verts.Count > 65000
+            ? UnityEngine.Rendering.IndexFormat.UInt32
+            : UnityEngine.Rendering.IndexFormat.UInt16;
+        mesh.SetVertices(_verts);
+        mesh.SetNormals(_norms);
+        mesh.SetUVs(0, _uvs);
+        SetLift(mesh);   // **셰이더가 읽는 채널은 늘 든다** — 0이어도
+        mesh.SetTriangles(_ceil, 0);
+        mesh.RecalculateBounds();
+
+        ch.CeilRenderer.sharedMaterial = SideMat();
+        TintCeiling(ch.CeilRenderer, chunk);
+        ch.CeilRenderer.enabled = FirstPersonView.On && _ceil.Count > 0;
+    }
+
+    void Riser(Vector2Int neighbor, float y, float x1, float z1, float x2, float z2, Vector3 n)
+    {
+        if (RockMap.IsRock(neighbor) || SkyHoles.Contains(neighbor)) return;
+        float ny = CeilingOf(neighbor);
+        if (ny <= y + 0.001f) return;
+
+        float xm = (x1 + x2) * 0.5f, zm = (z1 + z2) * 0.5f;
+        Quad(_ceil, new Vector3(x1, y, z1), new Vector3(x1, ny, z1), new Vector3(xm, ny, zm), new Vector3(xm, y, zm), n);
+        Quad(_ceil, new Vector3(xm, y, zm), new Vector3(xm, ny, zm), new Vector3(x2, ny, z2), new Vector3(x2, y, z2), n);
+    }
+
+    // 빈칸의 천장 높이 — 위의 규칙. **자리만의 함수다** — 청크 이음매 너머 이웃도 같은 답을 낸다.
+    static float CeilingOf(Vector2Int t)
+    {
+        float y = RockMap.SurfaceOf(t) + RockMap.Height;
+        for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            if (dx == 0 && dy == 0) continue;
+            var n = new Vector2Int(t.x + dx, t.y + dy);
+            if (RockMap.IsRock(n)) y = Mathf.Min(y, RockMap.TopOf(n));
+        }
+        return y;
+    }
+
+    // 천장은 벽과 같은 돌이고 조금 어둡다 — 횃불이 멀리서 비춘다.
+    const float CeilShade = 0.8f;
+
+    void TintCeiling(MeshRenderer mr, Vector2Int chunk)
+    {
+        if (MapManager.Instance == null) return;
+        _mpb ??= new MaterialPropertyBlock();
+
+        float half = ChunkTiles * 0.5f;
+        var at = MapManager.Instance.TileToWorld(new Vector2Int(Mathf.RoundToInt(chunk.x * ChunkTiles + half),
+                                                                 Mathf.RoundToInt(chunk.y * ChunkTiles + half)));
+        var tint = WorldMap.BiomeAtWorld(new Vector2(at.x, at.z)).RockTint() * CeilShade;
+        tint.a = 1f;
+
+        _mpb.Clear();
+        _mpb.SetColor("_BaseColor", tint);
+        _mpb.SetColor("_Color",     tint);
+        mr.SetPropertyBlock(_mpb);
+    }
+
+    void OnFirstPerson(bool on)
+    {
+        foreach (var c in _chunks.Values)
+            if (c.CeilRenderer != null) c.CeilRenderer.enabled = on && c.CeilMesh.vertexCount > 0;
+    }
+
+    // ── 볕 구멍 — 천장을 비운다 ────────────────────────────────────────────
+    //
+    // 볕(`Skylight`)은 *천장에 뚫린 구멍*으로 지은 물건이다. 천장이 생기면 그 자리를 비워야 볕이 거짓말이 안 된다.
+    // 볕은 뿌리기가 청크를 따라 세우고 거두므로 **선 것이 스스로 알린다**(겹칠 수 있어 칸마다 센다).
+    static readonly Dictionary<Vector2Int, int> _holeCount = new();
+    static readonly HashSet<Vector2Int> SkyHoles = new();
+    static event System.Action<Vector2Int> HoleChanged;
+
+    public static void AddSkyHole(Vector3 center, float radius)  => EditSkyHole(center, radius, +1);
+    public static void RemoveSkyHole(Vector3 center, float radius) => EditSkyHole(center, radius, -1);
+
+    static void EditSkyHole(Vector3 center, float radius, int delta)
+    {
+        var map = MapManager.Instance;
+        if (map == null) return;
+
+        var mid = map.WorldToTile(center);
+        int r = Mathf.CeilToInt(radius);
+        for (int dy = -r; dy <= r; dy++)
+        for (int dx = -r; dx <= r; dx++)
+        {
+            var t = new Vector2Int(mid.x + dx, mid.y + dy);
+            var p = map.TileToWorld(t);
+            float ex = p.x - center.x, ez = p.z - center.z;
+            if (ex * ex + ez * ez > radius * radius) continue;
+
+            _holeCount.TryGetValue(t, out int n);
+            n += delta;
+            if (n > 0) { _holeCount[t] = n; SkyHoles.Add(t); }
+            else       { _holeCount.Remove(t); SkyHoles.Remove(t); }
+        }
+        // 구멍이 청크 경계에 걸치면 이웃 청크도 — 네 귀퉁이가 든 청크를 다 더럽힌다(같은 청크면 한 번으로 접힌다).
+        HoleChanged?.Invoke(mid + new Vector2Int(r, r));
+        HoleChanged?.Invoke(mid - new Vector2Int(r, r));
+        HoleChanged?.Invoke(mid + new Vector2Int(r, -r));
+        HoleChanged?.Invoke(mid + new Vector2Int(-r, r));
+    }
+
+    void OnHoleChanged(Vector2Int tile) => Dirty(ChunkOf(tile));
 
     // ── 벽에 박힌 조명 (2026-09-28) ─────────────────────────────────────────
     //
@@ -1583,6 +1755,20 @@ public class RockRenderer : MonoBehaviour
         // **색조는 여기서 안 얹는다** — 광맥 서브메시 때문에 재질 슬롯 수가 굽기마다
         // 달라지므로, 재질을 갈아 끼운 **뒤에** `Rebuild`가 얹는다.
         c = new Chunk { Go = go, Mesh = mesh, Renderer = mr };
+
+        // **천장은 판 안에서만** — 씬 뷰는 저작하는 눈이라 위가 트여 있어야 한다.
+        if (Application.isPlaying)
+        {
+            var ceil = new GameObject("Ceiling");
+            ceil.transform.SetParent(go.transform, false);
+            ceil.layer = go.layer;
+            c.CeilMesh = new Mesh { name = chunkName + "_Ceiling" };
+            ceil.AddComponent<MeshFilter>().sharedMesh = c.CeilMesh;
+            c.CeilRenderer = ceil.AddComponent<MeshRenderer>();
+            c.CeilRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;   // 바위와 같은 이유
+            c.CeilRenderer.enabled = false;
+        }
+
         _chunks[chunk] = c;
 
         return c;
@@ -1661,6 +1847,7 @@ public class RockRenderer : MonoBehaviour
 
         if (c.Go != null) Toss(c.Go);
         if (c.Mesh != null) Toss(c.Mesh);   // **메시도 같이 버린다** — 안 버리면 샌다
+        if (c.CeilMesh != null) Toss(c.CeilMesh);
     }
 
     // **버리는 문은 하나다** — `Destroy`는 **편집 모드에서 에러**이고(씬 뷰에도 벽을 세우면서

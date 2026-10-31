@@ -115,7 +115,8 @@ public static class MeleeSlots
         var from = self.transform.position;
         var ring = RingOf(self, target);
 
-        float off = bb.AttackRange * Inset;
+        // 큰 표적은 둘레만큼 물러선다(`BodySize.Girth`) — 거리도 둘레에서 잰다(`BTTargetUtil.DistanceTo`).
+        float off = bb.AttackRange * Inset + BodySize.Girth(target);
         Lay(ring, ref ring.In, off, Front);
 
         var band = ring.In;
@@ -158,7 +159,7 @@ public static class MeleeSlots
     {
         var self = bb.Self;
         var ring = RingOf(self, target);
-        Lay(ring, ref ring.In, bb.AttackRange * Inset, Front);
+        Lay(ring, ref ring.In, bb.AttackRange * Inset + BodySize.Girth(target), Front);
         ring.Out?.Drop(self);
 
         var band = ring.In;

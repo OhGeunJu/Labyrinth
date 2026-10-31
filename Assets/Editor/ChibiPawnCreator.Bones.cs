@@ -41,6 +41,7 @@ public static partial class ChibiPawnCreator
         public readonly List<Part> Parts = new();
         public readonly HashSet<string> Shells = new();   // 방어구 껍데기 — 게임 오브젝트를 꺼 둔다
         public float ArmX;                // 관절(m)
+        public bool  HeadInPlace;         // 머리 부위가 이미 몸과 한 좌표에 있다(큰 짐승) — `DressSkinned`가 안 옮긴다
     }
 
     static readonly Dictionary<string, BoneBody> _boneBodies = new();

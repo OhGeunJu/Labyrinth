@@ -246,9 +246,39 @@ public static class TerrainHeight
         if (p.TerraceStep <= 0.0001f || p.TerraceLevels <= 0) return 0f;
 
         float cell = TerraceCellSize(p);
+        WarpCell(ref worldX, ref worldZ, cell);
         int ix = Mathf.FloorToInt(worldX / cell);
         int iz = Mathf.FloorToInt(worldZ / cell);
         return TerraceLevel(ix, iz) * p.TerraceStep;
+    }
+
+    // ── 셀 경계를 휜다 (2026-10-28) ─────────────────────────────────────────
+    //
+    // 사용자: *"땅이 너무 네모낳게 획일화 되어있다"*. 셀이 6m 정사각이라 단의 경계가 **자로 그은 격자**로
+    // 읽혔다. 패치를 통째로 평평하게 두는 약속(위)은 지키면서 **어느 셀에 드나만** 휜 좌표로 묻는다 —
+    // 그러면 패치 하나는 여전히 한 높이이고, 경계만 구불구불한 덩어리가 된다(값 자체를 휘면 등고선이 된다).
+    //
+    // **휨의 기울기는 1보다 한참 작아야 한다** — 그래야 맞닿은 두 정점(2m)이 휜 공간에서도 맞닿은 셀(체비쇼프
+    // 1)에 떨어지고, 봉투가 지키는 *"이웃은 한 단까지"*가 그대로 산다(접히면 먼 셀끼리 붙어 두 단 턱이 난다).
+    // 큰 굽이(셀의 0.75배 · 주기 5셀)와 잔굽이(0.2배 · 2셀) — 펄린의 기울기를 넉넉히 1.8로 잡아도 합이 0.9라,
+    // 대각선 정점 쌍(2m, 2m)도 휜 공간에서 축마다 6m(한 셀) 안에 든다. 확인은 `0b. Probe Floor Terraces`의
+    // *"한 단 반 넘게 벌어진 이웃 정점"*이다.
+    //
+    // 셀 안의 날것 층을 묻는 자리(`RawTerraceLevel`)는 안 휜다 — 셀 번호가 같으면 같은 층이어야 캐시가 맞다.
+    const float WarpBig = 0.75f, WarpBigPeriod = 5f;
+    const float WarpFine = 0.2f, WarpFinePeriod = 2f;
+
+    static void WarpCell(ref float x, ref float z, float cell)
+    {
+        float pb = cell * WarpBigPeriod, pf = cell * WarpFinePeriod;
+        float ab = cell * WarpBig,       af = cell * WarpFine;
+
+        float dx = (Mathf.PerlinNoise(x / pb + 517.3f, z / pb + 91.1f) * 2f - 1f) * ab
+                 + (Mathf.PerlinNoise(x / pf + 33.7f,  z / pf + 702.9f) * 2f - 1f) * af;
+        float dz = (Mathf.PerlinNoise(x / pb + 248.6f, z / pb + 613.4f) * 2f - 1f) * ab
+                 + (Mathf.PerlinNoise(x / pf + 840.2f, z / pf + 155.5f) * 2f - 1f) * af;
+        x += dx;
+        z += dz;
     }
 
     // **정점 간격의 배수로 접는다.** 0이나 음수가 들어와도 정점 간격 하나로 떨어진다.
