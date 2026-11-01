@@ -18,11 +18,10 @@ using UnityEngine;
 public static class ExplorationSiteCreator
 {
     const string SiteDir = "Assets/3_Prefab/Site";
-    const string PawnDir = "Assets/3_Prefab/Pawn";
 
     static Material _post, _tent, _fire, _wall, _roof, _web;
 
-    [MenuItem("DungeonColony/World/L. Create Exploration Sites (거미 둥지 · 고블린 부락 · 신전 · 은둔자 · 폐허)")]
+    [MenuItem("DungeonColony/World/L. Create Exploration Sites (거미 둥지 · 고블린 부락 · 신전 · 은둔자 · 폐허 · 묶는 기둥)")]
     public static void Create()
     {
         _post = Mat("Site_Post"); _tent = Mat("Site_Tent"); _fire = Mat("Site_Fire");
@@ -35,6 +34,7 @@ public static class ExplorationSiteCreator
         Build("Site_Shrine",        Shrine,        made);
         Build("Site_Hermit",        Hermit,        made);
         Build("Site_RuinedVillage", RuinedVillage, made);
+        BuildCaptivePost(made);
 
         AssetDatabase.SaveAssets();
         Debug.Log($"[탐험 장소] {string.Join(" · ", made)} — `{SiteDir}`. 놓는 자리는 저작할 것(`Authoring → Show Terrain Here`). " +
@@ -197,7 +197,7 @@ public static class ExplorationSiteCreator
 
     static void Pawn(Transform r, string prefab, Vector3 pos)
     {
-        var src = AssetDatabase.LoadAssetAtPath<GameObject>($"{PawnDir}/{prefab}.prefab");
+        var src = AssetDatabase.LoadAssetAtPath<GameObject>(PawnPrefabPaths.PathOf(prefab));
         if (src == null) { Debug.LogWarning($"[탐험 장소] 폰 프리팹이 없다 — {prefab}"); return; }
         var go = (GameObject)PrefabUtility.InstantiatePrefab(src, r);
         go.transform.SetLocalPositionAndRotation(pos, Quaternion.Euler(0f, Hash(pos.GetHashCode()) * 360f, 0f));
@@ -216,6 +216,47 @@ public static class ExplorationSiteCreator
         float a = Hash(i * 2 + 1) * Mathf.PI * 2f;
         float d = Mathf.Sqrt(Hash(i * 2 + 2)) * radius;
         return new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d);
+    }
+
+    // ── 묶는 기둥 (2026-11-01 — `CaptivePost`) ───────────────────────────────
+    //
+    // 먹는 종족이 굴에 세우는 기둥 — 판에서 세우므로 `Resources`에 둔다. 루트의 앞(+Z)이 묶인 사람이 보는 쪽이고
+    // 기둥은 그 등 뒤다(`CaptivePost.HoldPosition`). 굵은 기둥 · 가로대 · 묶은 줄 · 발치의 뼈.
+    const string PostPath = "Assets/Resources/Prefabs/CaptivePost.prefab";
+
+    static void BuildCaptivePost(List<string> made)
+    {
+        GameObject root;
+        bool exists = File.Exists(PostPath);
+        if (exists)
+        {
+            root = PrefabUtility.LoadPrefabContents(PostPath);
+            for (int i = root.transform.childCount - 1; i >= 0; i--) Object.DestroyImmediate(root.transform.GetChild(i).gameObject);
+        }
+        else root = new GameObject("CaptivePost");
+
+        try
+        {
+            var r = root.transform;
+            Piece(r, "Post",  PrimitiveType.Cylinder, new Vector3(0f, 1.15f, 0f), Quaternion.identity, new Vector3(0.24f, 1.15f, 0.24f), _post);
+            Piece(r, "Bar",   PrimitiveType.Cylinder, new Vector3(0f, 1.85f, 0f), Quaternion.Euler(0f, 0f, 90f), new Vector3(0.12f, 0.55f, 0.12f), _post);
+            Piece(r, "Rope",  PrimitiveType.Cylinder, new Vector3(0f, 1.25f, 0f), Quaternion.identity, new Vector3(0.3f, 0.05f, 0.3f), _tent);
+            Piece(r, "Rope",  PrimitiveType.Cylinder, new Vector3(0f, 0.55f, 0f), Quaternion.identity, new Vector3(0.3f, 0.05f, 0.3f), _tent);
+            for (int i = 0; i < 5; i++)
+            {
+                var p = Scatter(i + 90, 0.9f);
+                Piece(r, "Bone", PrimitiveType.Capsule, p + Vector3.up * 0.04f, Quaternion.Euler(90f, Hash(i + 95) * 180f, 0f),
+                      new Vector3(0.06f, 0.18f, 0.06f), _web);
+            }
+            if (!root.TryGetComponent(out CaptivePost _)) root.AddComponent<CaptivePost>();
+            PrefabUtility.SaveAsPrefabAsset(root, PostPath);
+            made.Add("CaptivePost");
+        }
+        finally
+        {
+            if (exists) PrefabUtility.UnloadPrefabContents(root);
+            else Object.DestroyImmediate(root);
+        }
     }
 
     // ── 짓기 ────────────────────────────────────────────────────────────────

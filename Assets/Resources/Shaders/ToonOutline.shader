@@ -56,6 +56,11 @@ Shader "DungeonColony/ToonOutline"
         // 계단 음영은 빛의 방향만 봐서 깊은 구멍의 바닥도 밝게 칠한다 — 구운 그늘이 그것을 누른다. 0이면 정점 색을 안 본다
         // (다른 메시는 정점 색이 없다). 눈구멍 속을 뼈색으로 둘 개체는 `BoneLook`이 렌더러마다 낮춘다.
         _VertexAO("정점 색 그늘", Range(0,1)) = 0
+
+        // **형태 그늘**(2026-11-01, 사용자: *"캐릭터에 그림자를 넣을 수 없나"* → 몸 명암) — 아래를 보는 면일수록 어둡게.
+        // 굴에는 해가 없어 불빛이 안 닿으면 몸 전체가 그늘색 한 가지였다(평평한 종이 인형). 빛과 상관없이 위는 밝고 아래(턱 밑 · 배 밑 ·
+        // 팔 아래)가 어두운 계단 하나를 늘 얹는다. 0이면 끈다. 폰 재질은 `ChibiPawnCreator.EnsureMaterials`가 적는다.
+        _FormShade("형태 그늘(아래 면 어둡게)", Range(0,1)) = 0
     }
 
     SubShader
@@ -74,6 +79,7 @@ Shader "DungeonColony/ToonOutline"
             float  _OutlineWidth;
             float  _OutlineMin;
             float  _VertexAO;
+            float  _FormShade;
         CBUFFER_END
 
         // 폰의 최저 밝기 — **재질이 아니라 세계가 든다**(`UnderworldLighting`). 상수(0.35)였을 때는 굴을
@@ -188,6 +194,8 @@ Shader "DungeonColony/ToonOutline"
 
                 half3 shade = _BaseColor.rgb * _ShadeColor.rgb;
                 half3 col   = lerp(shade, _BaseColor.rgb, lit) * i.ao;
+                // 형태 그늘 — 위를 보는 면은 그대로 · 아래를 보는 면은 (1 − _FormShade)배. 경계는 부드러운 계단(툰).
+                col *= lerp(1 - _FormShade, 1, smoothstep(-0.35, 0.25, n.y));
 
                 // 주변광이 **바닥을 든다** — 굴의 주변광이 폰의 최저 밝기다.
                 // **불빛 안에서도 0.6까지다** — 폰의 색은 주변광 0.35~0.45 아래에서 맞춘 것이라, 1까지 올리면

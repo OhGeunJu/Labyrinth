@@ -84,6 +84,8 @@ public class SelectionManager : MonoBehaviour
     // **던전 핵은 `PlacedBuilding`이 아니다** — 배치로 지은 물건이 아니라 씬에 놓인 축이라
     // 분해도 환불도 없다. 그래도 "이게 무엇이고 무엇을 할 수 있는가"는 같은 자리에서 답한다.
     public static event Action<DungeonCore> OnCoreInspected;
+    // 묶는 기둥(`CaptivePost`) — 묶인 사람도 기둥으로 다룬다.
+    public static event Action<CaptivePost> OnPostInspected;
 
     // 좌클릭 경로 **밖에서** 같은 패널을 열어야 할 때 쓰는 통로(우클릭 선택지 창 등).
     // 이벤트는 선언한 클래스에서만 발행할 수 있어서 이렇게 문을 내야 한다 —
@@ -98,8 +100,13 @@ public class SelectionManager : MonoBehaviour
         OnForageInspected?.Invoke(forage);
     }
 
+    // 씬에 하나 — 찾지 말고 이것을 묻는다(`FindObjectByType`은 씬을 훑는다).
+    public static SelectionManager Instance { get; private set; }
+    void OnDestroy() { if (Instance == this) Instance = null; }
+
     void Awake()
     {
+        Instance = this;
         _cam = Camera.main;
         OnSelectionChanged += (pawn, selected) =>
         {
@@ -238,6 +245,7 @@ public class SelectionManager : MonoBehaviour
         OnBlueprintInspected?.Invoke(null);
         OnBuildingInspected?.Invoke(null);
         OnCoreInspected?.Invoke(null);
+        OnPostInspected?.Invoke(null);
         SelectItems(null);
 
         // **업혀 있는 것은 건너뛴다 — 그건 고를 것이 아니라 짐이다.** 어깨 위에 붙어 있어
@@ -287,6 +295,20 @@ public class SelectionManager : MonoBehaviour
             // 채집물 — **선택은 유지한다**(노드·시체·바닥 물건과 같은 이유).
             var forage = hit.collider.GetComponentInParent<Forageable>();
             if (forage != null) { InspectForage(forage); return; }
+
+            // **묶는 기둥 — 묶인 사람을 눌러도 기둥 창이 뜬다**(2026-11-01, 사용자: *"폰 누르는 것보다는 봉을 누르게"*).
+            // 묶인 내 폰은 명령을 못 받으니 고를 까닭이 없고, 할 일(줄 풀기 · 탈출 · 끌어내기)은 기둥 창에 모았다.
+            // 폰 선택은 유지한다 — [끌어낸다]는 고른 폰에게 시키는 일이다.
+            var post = hit.collider.GetComponentInParent<CaptivePost>();
+            var tied = post == null ? hit.collider.GetComponentInParent<Devoured>() : null;
+            if (tied != null) post = tied.Post;
+            if (post != null)
+            {
+                OnNodeSelected?.Invoke(null);
+                OnPawnInspected?.Invoke(null);
+                OnPostInspected?.Invoke(post);
+                return;
+            }
 
             var corpse = hit.collider.GetComponent<Corpse>();
             if (corpse != null)

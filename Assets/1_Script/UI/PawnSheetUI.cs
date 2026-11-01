@@ -239,7 +239,7 @@ public class PawnSheetUI : MonoBehaviour
         BodyPartType.LeftArm, BodyPartType.RightArm, BodyPartType.LeftLeg, BodyPartType.RightLeg,
     };
 
-    static string PartName(BodyPartType t) => t switch
+    public static string PartName(BodyPartType t) => t switch
     {
         BodyPartType.Head     => "머리",
         BodyPartType.Chest    => "가슴",

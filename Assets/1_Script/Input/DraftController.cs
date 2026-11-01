@@ -29,7 +29,7 @@ public class DraftController : MonoBehaviour
         SelfStanding.Create<DraftController>("DraftController");
     }
 
-    SelectionManager _selection;
+    SelectionManager _selection => SelectionManager.Instance;
 
     void Update()
     {
@@ -53,7 +53,6 @@ public class DraftController : MonoBehaviour
     void Toggle()
     {
         // 씬 오브젝트라 매번 찾지 않고 들고 있는다(정착지를 갈아타면 다시 찾는다).
-        if (_selection == null) _selection = FindFirstObjectByType<SelectionManager>();
         if (_selection == null) return;
 
         // **셀 때와 걸 때가 같은 목록이어야 한다** — 하수인이 섞여 있다고 "전부 켜져 있나"의

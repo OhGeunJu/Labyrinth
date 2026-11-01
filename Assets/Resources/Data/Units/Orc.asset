@@ -16,7 +16,7 @@ MonoBehaviour:
   RaceName: "\uC624\uD06C"
   Icon: {fileID: 0}
   NamePool:
-  - "\uADF8\uB86C\uB9C8\uC26C"
+  - "\uADF8\uB85C\uB9C8\uD06C"
   - "\uC6B0\uB974\uAC01"
   - "\uBCFC\uADF8"
   - "\uAC00\uC988\uB099"
@@ -47,35 +47,48 @@ MonoBehaviour:
   - Stat: 1
     Min: 10
     Max: 10
+  - Stat: 3
+    Min: 7
+    Max: 7
   StatGrowthRates: []
   ButcherYield:
   - Item: {fileID: 0}
-    ItemId: res_rawhide
-    Chance: 0.8
+    ItemId: res_orchide
+    Chance: 0.9
     MinCount: 1
-    MaxCount: 3
+    MaxCount: 2
   - Item: {fileID: 0}
-    ItemId: food_meat_human
-    Chance: 0.8
-    MinCount: 2
-    MaxCount: 4
+    ItemId: food_meat_orc
+    Chance: 1
+    MinCount: 3
+    MaxCount: 5
   BoneYield:
   - Item: {fileID: 0}
     ItemId: res_bone
     Chance: 1
-    MinCount: 1
+    MinCount: 2
     MaxCount: 3
   RollStats: 1
   CanEquip: 1
   DisabledJobs: 
   Tameable: 0
-  BodyScale: 1.25
+  BodyScale: 1.15
   CleaveTargets: 0
   CleaveDamage: 0.5
   ForbiddenWeapons: 
   RegenPerSecond: 0
+  Devours: 0
   HitEffect: 2
   HitEffectChance: 0
   HitEffectDuration: 2
   HitEffectStrength: 0.6
-  SkinTones: []
+  SkinTones:
+  - {r: 0.43137255, g: 0.5411765, b: 0.32156864, a: 1}
+  - {r: 0.36862746, g: 0.47843137, b: 0.26666668, a: 1}
+  - {r: 0.47843137, g: 0.57254905, b: 0.3529412, a: 1}
+  - {r: 0.39215687, g: 0.4862745, b: 0.2901961, a: 1}
+  TattooChance: 0
+  InkTones:
+  - {r: 0.6039216, g: 0.12156863, b: 0.101960786, a: 1}
+  LeaderTattoo: 1
+  LeaderInk: {r: 0.6039216, g: 0.12156863, b: 0.101960786, a: 1}

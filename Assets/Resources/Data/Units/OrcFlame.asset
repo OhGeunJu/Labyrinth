@@ -1,0 +1,99 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Name: OrcFlame
+  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  Id: OrcFlame
+  RaceName: "\uC6A9\uC554 \uBD80\uC871 \uC624\uD06C"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uADF8\uB85C\uB9C8\uD06C"
+  - "\uC6B0\uB974\uAC01"
+  - "\uBCFC\uADF8"
+  - "\uAC00\uC988\uB099"
+  - "\uB450\uB974\uD06C"
+  - "\uBAA8\uB974\uACE4"
+  - "\uB77C\uADF8\uB099"
+  - "\uC2A4\uB178\uAC00"
+  - "\uD0C0\uB974\uC26C"
+  - "\uC6B0\uADF8\uB77D"
+  MaleNames: []
+  FemaleNames: []
+  MaxHP: 175
+  MoveSpeed: 4
+  AttackDamage: 18
+  AttackRange: 1.5
+  DetectRange: 10
+  NightVision: 0
+  IsUndead: 0
+  IsConstruct: 0
+  Resistances:
+  - Type: 3
+    Amount: 0.5
+  - Type: 4
+    Amount: -0.3
+  UsesBackstory: 1
+  DefaultMinGrade: 8
+  DefaultMaxGrade: 8
+  StatGrades:
+  - Stat: 0
+    Min: 11
+    Max: 11
+  - Stat: 1
+    Min: 11
+    Max: 11
+  - Stat: 3
+    Min: 7
+    Max: 7
+  StatGrowthRates: []
+  ButcherYield:
+  - Item: {fileID: 0}
+    ItemId: res_orchide
+    Chance: 0.9
+    MinCount: 1
+    MaxCount: 2
+  - Item: {fileID: 0}
+    ItemId: food_meat_orc
+    Chance: 1
+    MinCount: 3
+    MaxCount: 5
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 2
+    MaxCount: 3
+  RollStats: 1
+  CanEquip: 1
+  DisabledJobs: 
+  Tameable: 0
+  BodyScale: 1.15
+  CleaveTargets: 0
+  CleaveDamage: 0.5
+  ForbiddenWeapons: 
+  RegenPerSecond: 0
+  Devours: 0
+  HitEffect: 2
+  HitEffectChance: 0
+  HitEffectDuration: 2
+  HitEffectStrength: 0.6
+  SkinTones:
+  - {r: 0.6509804, g: 0.63529414, b: 0.5803922, a: 1}
+  - {r: 0.5882353, g: 0.57254905, b: 0.5254902, a: 1}
+  - {r: 0.32156864, g: 0.32941177, b: 0.34509805, a: 1}
+  - {r: 0.36862746, g: 0.3764706, b: 0.39215687, a: 1}
+  TattooChance: 0.5
+  InkTones:
+  - {r: 0.8784314, g: 0.41568628, b: 0.14117648, a: 1}
+  - {r: 0.78431374, g: 0.19607843, b: 0.11764706, a: 1}
+  LeaderTattoo: 1
+  LeaderInk: {r: 0.9411765, g: 0.54901963, b: 0.16470589, a: 1}

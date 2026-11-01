@@ -38,6 +38,7 @@ public class InspectPanelUI : MonoBehaviour
     // 이미 있는데 여기에 또 만들면 둘이 어긋난다.
     ResourceNode _node;
     Forageable   _forage;
+    CaptivePost  _post;
     Vector2Int?  _rock;
 
     // 바닥에 떨어진 물건. **자동 운반이 켜졌는지**를 볼 자리가 여기다 — 초록 구슬만으로는
@@ -74,6 +75,7 @@ public class InspectPanelUI : MonoBehaviour
         SelectionManager.OnCoreInspected      += OnCoreInspected;
         SelectionManager.OnNodeSelected       += OnNodeSelected;
         SelectionManager.OnForageInspected    += OnForageInspected;
+        SelectionManager.OnPostInspected      += OnPostInspected;
         SelectionManager.OnRockInspected      += OnRockInspected;
         SelectionManager.OnItemsInspected     += OnItemsInspected;
         BuildModeManager.OnActiveChanged      += OnBuildModeChanged;
@@ -175,6 +177,7 @@ public class InspectPanelUI : MonoBehaviour
         SelectionManager.OnCoreInspected      -= OnCoreInspected;
         SelectionManager.OnNodeSelected       -= OnNodeSelected;
         SelectionManager.OnForageInspected    -= OnForageInspected;
+        SelectionManager.OnPostInspected      -= OnPostInspected;
         SelectionManager.OnRockInspected      -= OnRockInspected;
         SelectionManager.OnItemsInspected     -= OnItemsInspected;
         BuildModeManager.OnActiveChanged      -= OnBuildModeChanged;
@@ -183,6 +186,7 @@ public class InspectPanelUI : MonoBehaviour
     void OnItemsInspected(IReadOnlyList<DroppedItem> items)
     {
         _forage = null;
+        _post   = null;
         _rock   = null;
         _itemFocus = null;   // 새로 고른 것은 전체부터 본다
         _items.Clear();
@@ -195,6 +199,7 @@ public class InspectPanelUI : MonoBehaviour
     {
         _inspected = brain;
         _forage = null;
+        _post   = null;
         _rock   = null;
         Refresh();
     }
@@ -203,6 +208,7 @@ public class InspectPanelUI : MonoBehaviour
     {
         _blueprint = bp;
         _forage = null;
+        _post   = null;
         _rock   = null;
         Refresh();
     }
@@ -211,6 +217,7 @@ public class InspectPanelUI : MonoBehaviour
     {
         _building = pb;
         _forage = null;
+        _post   = null;
         _rock   = null;
         Refresh();
     }
@@ -277,6 +284,59 @@ public class InspectPanelUI : MonoBehaviour
         };
         if (item != null) acts.Add(HaulSwitch(item));
 
+        SetActions(acts);
+    }
+
+    // **묶는 기둥**(2026-11-01, 사용자: *"묶이는 봉 … 거기에 대한 설명도 보이게 해주고 거기서는 폰 누르는 것보다는 봉을 누르게"*).
+    // 무엇인가 · 누가 묶였나 · 언제 먹히나 · 어디가 다음인가를 적고, 할 일은 우클릭 메뉴와 같은 목록(`MoveController.CaptiveOptions`).
+    void ShowPost(CaptivePost post)
+    {
+        Show();
+        if (infoText == null) return;
+
+        var sb = new StringBuilder();
+        string who = post.Captor != null ? post.Captor.FactionName : "먹는 종족";
+        sb.AppendLine($"<b><color=#E8C566>묶는 기둥</color></b>  <color=#888>[{who}]</color>");
+        sb.AppendLine();
+        sb.AppendLine("<color=#9a9a9a>사람을 먹는 종족이 붙잡아 온 사람을 묶어 두는 기둥입니다. " +
+                      "끼니 때마다 한 놈이 와서 오른팔부터 뜯어먹습니다(하루 네 끼).</color>");
+        sb.AppendLine();
+
+        var captive = post.Captive;
+        if (captive == null || !captive.TryGetComponent(out Devoured d))
+        {
+            sb.AppendLine("<color=#888>비어 있습니다.</color>");
+            infoText.text = sb.ToString();
+            SetActions(null);
+            return;
+        }
+
+        sb.AppendLine($"묶인 사람  <b>{captive.UnitName}</b>" + (d.Conscious ? "" : "  <color=#F90>기절</color>"));
+
+        if (d.Eater != null)
+            sb.AppendLine($"<color=#F44336>먹히는 중</color>  <color=#888>{d.Eater.DisplayTitle} · {d.MealLeft:F0}초 남음</color>");
+        else if (d.MealDue)
+            sb.AppendLine("<color=#F90>끼니 때</color>  <color=#888>먹을 놈이 오는 중</color>");
+        else
+            sb.AppendLine($"다음 끼니까지  <b>{d.NextMealIn / 60f:F0}분</b> <color=#888>(게임 시간)</color>");
+
+        var part = d.NextPart;
+        sb.AppendLine(part.HasValue
+            ? $"다음에 뜯길 곳  <b>{PawnSheetUI.PartName(part.Value)}</b> <color=#888>({d.PartHP(part.Value):F0})</color>"
+            : "<color=#F44336>남은 곳이 없습니다</color>");
+
+        sb.AppendLine();
+        if (d.Loose)        sb.AppendLine("<color=#7fe08a>줄이 풀렸습니다</color>  <color=#888>— [탈출한다]로 바로 나갑니다</color>");
+        else if (d.Untying) sb.AppendLine("<color=#c9c9c9>몰래 줄을 푸는 중</color>");
+        else                sb.AppendLine($"<color=#888>깨어 있으면 줄을 풀어 볼 수 있습니다({d.UntieChance * 100f:F0}% · 손재주)  ·  " +
+                                          "고른 폰을 보내 끌어낼 수도 있습니다</color>");
+
+        infoText.text = sb.ToString();
+
+        var opts = new List<PawnMenuOption>();
+        MoveController.CaptiveOptions(captive, new List<PawnMover>(selectionManager.Selected), opts);
+        var acts = new List<(string, Action)>();
+        foreach (var o in opts) acts.Add((o.Label, o.OnClick == null ? null : (Action)(() => { o.OnClick(); Refresh(); })));
         SetActions(acts);
     }
 
@@ -396,6 +456,16 @@ public class InspectPanelUI : MonoBehaviour
     {
         _rock   = tile;
         _forage = null;
+        _post   = null;
+        _items.Clear();
+        Refresh();
+    }
+
+    void OnPostInspected(CaptivePost post)
+    {
+        _post   = post;
+        _forage = null;
+        _rock   = null;
         _items.Clear();
         Refresh();
     }
@@ -403,6 +473,7 @@ public class InspectPanelUI : MonoBehaviour
     void OnForageInspected(Forageable f)
     {
         _forage = f;
+        _post   = null;
         _items.Clear();     // 바닥 물건이 창을 먼저 가져간다 — 눌러 본 것이 이겨야 한다
         Refresh();
     }
@@ -411,6 +482,7 @@ public class InspectPanelUI : MonoBehaviour
     {
         _node = node;
         _forage = null;
+        _post   = null;
         _rock   = null;
         Refresh();
     }
@@ -423,7 +495,7 @@ public class InspectPanelUI : MonoBehaviour
         if (active)
         {
             _inspected = null; _blueprint = null; _building = null;
-            _core = null; _node = null; _forage = null; _rock = null; _items.Clear();
+            _core = null; _node = null; _forage = null; _rock = null; _post = null; _items.Clear();
         }
         Refresh();
     }
@@ -446,7 +518,7 @@ public class InspectPanelUI : MonoBehaviour
     void Update()
     {
         bool showing = selectionManager.Selected.Count > 0 || _inspected != null
-                    || _blueprint != null || _building != null || _core != null || _node != null;
+                    || _blueprint != null || _building != null || _core != null || _node != null || _post != null;
 
         if (FocusMode.Active != _focus) { _focus = FocusMode.Active; UiRefresh.Now(ref _beat); }
         ItemRowClick();
@@ -578,6 +650,7 @@ public class InspectPanelUI : MonoBehaviour
             if (_items[i] == null) _items.RemoveAt(i);
         if (_items.Count > 0) { ShowItems();                 return; }
         if (_rock.HasValue && RockMap.IsRock(_rock.Value)) { ShowRock(_rock.Value); return; }
+        if (_post      != null) { ShowPost(_post);           return; }
         if (_forage    != null) { ShowForage(_forage);       return; }
         if (_node      != null) { ShowNode(_node);           return; }
         if (_building  != null) { ShowBuilding(_building);   return; }

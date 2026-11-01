@@ -69,7 +69,8 @@ public static partial class ChibiPawnCreator
         var head = new List<Part>();
 
         Func<Vector3, float> torso = ogre ? p => OgreTorso(p, j) : p => TrollTorso(p, j);
-        Func<Vector3, float> skull = ogre ? p => OgreHead(p, j)  : p => TrollHead(p, j);
+        // 오우거의 그늘 장면은 귀 · 코 없는 맨 머리다 — 귀 · 코는 조합마다 다른 머리 벌이라 하나를 장면에 넣으면 다른 벌의 살이 그 그늘을 탄다.
+        Func<Vector3, float> skull = ogre ? p => OgreHead(p, j, null, null) : p => TrollHead(p, j);
         Func<Vector3, float> scene = p =>
         {
             float a = Mathf.Min(torso(p), skull(p));
@@ -85,15 +86,28 @@ public static partial class ChibiPawnCreator
 
         Part Piece(string name, string mat, string line, Func<Vector3, float> f, Bounds b, float step, float keep)
         {
-            var mesh = SaveSkull($"Chibi_{kind}_{name.Replace('.', '_')}", SurfaceNets(f, b, step, scene, Place, 0.04f, 4f, keep));
+            // 조건(`@축.!벌`)도 이름에 남긴다 — 귀 × 코 머리 벌은 조건만 다르다.
+            var surf = SurfaceNets(f, b, step, scene, Place, 0.04f, 4f, keep);
+            // **살은 편다**(2026-11-01, 사용자: *"검은 선이 자글자글"*) — 줄인 표면은 잘게 울퉁불퉁하고(칠은 거리장 법선이 가려 매끈해 보인다)
+            // 바깥 선은 그 정점을 법선으로 밀어 그리므로 털처럼 됐다. 얇은 천 · 뿔 · 이는 펴면 무너지니 살만.
+            if (mat == "SkinOuter" && !name.Contains(".Lids.")) Relax(surf.Verts, surf.Tris, 6);
+            var mesh = SaveSkull($"Chibi_{kind}_{name.Replace('.', '_').Replace('@', '_').Replace("!", "")}", surf);
             return new Part(name, mesh, Vector3.zero, Vector3.one, mat, outerMat: line);
         }
         void Body(string name, string mat, string line, Func<Vector3, float> f, Bounds b, float step, float keep = BruteKeep)
             => bb.Parts.Add(Piece(name, mat, line, f, b, step, keep));
         void Head(string name, string mat, string line, Func<Vector3, float> f, Bounds b, float step, float keep = BruteKeep)
             => head.Add(Piece(name, mat, line, f, b, step, keep));
+        // 고르는 축의 벌 — 첫 벌(통과한 모습)만 켜 두고 구운 뒤에는 `PawnLook`이 씨앗으로 고른다.
+        void Opt(List<Part> to, string name, string mat, string line, Func<Vector3, float> f, Bounds b, float step, float keep, bool on)
+        {
+            var pc = Piece(name, mat, line, f, b, step, keep);
+            to.Add(new Part(pc.Name, pc.Mesh, pc.Center, pc.Size, pc.Mat, on, outerMat: pc.OuterMat));
+        }
 
-        const string Flesh = "SkinOuter", Line = "OutlineOuter", Fine = "OutlineOuterFine";
+        // 큰 짐승은 얼굴 선(`OutlineOuterFine` — *얼굴 표시* 자리만 비킨다)을 안 쓴다 — 머리 살이 몸 번호만 적어 그 선이 살 위에 검은 띠로 섰다
+        // (2026-11-01 — 눈 · 쇠 장식 · 송곳니 · 뿔 밑동). 가는 조각도 몸 바깥 선을 받는다.
+        const string Flesh = "SkinOuter", Line = "OutlineOuter", Fine = Line;
         float top = j.Top;
 
         // **목 관절 자리** — 안 보이는 `Head`의 밑이 목이다(`DressSkinned`). 머리가 어깨에 묻히므로 몸통 꼭대기보다 낮다.
@@ -107,23 +121,62 @@ public static partial class ChibiPawnCreator
         {
             float y0 = j.Hip - 0.26f, y1 = top + 0.18f;
             Body("Spine.Brute.Torso",  Flesh, Line, torso, Box3(0f, (y0 + y1) * 0.5f, 0.03f, 1.20f, y1 - y0, 1.06f), BruteStep);
-            Body("Spine.Brute.Sash",   "Pants", Line, p => OgreSash(p, j), Box3(0f, (y0 + y1) * 0.5f + 0.06f, 0.03f, 1.10f, y1 - y0, 1.10f), BruteFineStep * 1.3f);
+            // 어깨 천 — 있음 · 없음(`@Sash.!Off`는 `Off` 벌을 축에 올리는 조건이다 — 없음은 렌더러가 없다).
+            Opt(bb.Parts, "Spine.Pick.Sash.On@Sash.!Off", "Pants", Line, p => OgreSash(p, j), Box3(0f, (y0 + y1) * 0.5f + 0.06f, 0.03f, 1.10f, y1 - y0, 1.10f), BruteFineStep * 1.3f, BruteKeep, true);
             Body("Hips.Brute.Loin",    "Pants", Line, p => OgreLoin(p, j), Box3(0f, j.Hip - 0.03f, 0.04f, 1.10f, 0.52f, 1.00f), BruteFineStep * 1.3f);
-            Body("Hips.Brute.Buckle",  "BoneArmor", Fine, p => OgreBuckle(p, j), Box3(0f, j.Hip + 0.07f, 0.42f, 0.28f, 0.28f, 0.22f), BruteFineStep * 0.8f, BruteFineKeep);
+            // 쇠 장식 · 눈 흰자는 **몸의 바깥 선**(`Line`)을 받는다(2026-11-01, 사용자: *"눈쪽에 검은색 · 허리띠 장신구에도 검은 선"*) —
+            // 얼굴 선(`Fine`)은 *제 얼굴 표시(+128)*가 적힌 자리만 비키는데 오우거 살 · 천은 몸 번호만 적어, 반쯤 묻힌 껍데기가 살 위에 띠로 섰다.
+            Body("Hips.Brute.Buckle",  "BoneArmor", Line, p => OgreBuckle(p, j), Box3(0f, j.Hip + 0.07f, 0.42f, 0.28f, 0.28f, 0.22f), BruteFineStep * 0.8f, BruteFineKeep);
 
-            Head("Head.Brute.Skull", Flesh, Line, skull, Box3(0f, top + 0.42f, 0.08f, 1.00f, 0.90f, 0.86f), BruteFineStep * 1.3f);
+            // 머리 — 귀 × 코 조합마다 한 벌(귀가 축 · 코는 조건).
+            for (int ei = 0; ei < OgreEars.Length; ei++)
+            for (int ni = 0; ni < OgreNoses.Length; ni++)
+            {
+                string ear = OgreEars[ei], nose = OgreNoses[ni];
+                Opt(head, $"Head.Pick.Ears.{ear}.Skull@Nose.{nose}", Flesh, Line, p => OgreHead(p, j, ear, nose),
+                    Box3(0f, top + 0.42f, 0.08f, 1.00f, 0.90f, 0.86f), BruteFineStep * 1.3f, BruteKeep, ei == 0 && ni == 0);
+            }
             Head("Head.Brute.Mouth", "NoseDark", null, p => OgreMouth(p, j), Box3(0f, top + 0.245f, 0.26f, 0.36f, 0.16f, 0.16f), BruteFineStep, BruteFineKeep);
-            Head("Head.Brute.Teeth", "Bone", Fine, p => OgreTeeth(p, j), Box3(0f, top + 0.255f, 0.305f, 0.32f, 0.14f, 0.10f), BruteFineStep * 0.5f, BruteFineKeep);
-            Head("Head.Brute.Tusks", "Bone", Fine, p => OgreTusks(p, j), Box3(0f, top + 0.295f, 0.333f, 0.44f, 0.24f, 0.14f), BruteFineStep * 0.7f, BruteFineKeep);
-            Head("Head.Brute.Horn",  "Horn", Fine, p => OgreHorn(p, j),  Box3(0f, top + 0.86f, 0.01f, 0.26f, 0.40f, 0.26f), BruteFineStep * 0.8f, BruteFineKeep);
+            var teethBox = Box3(0f, top + 0.255f, 0.305f, 0.32f, 0.14f, 0.10f);
+            Opt(head, "Head.Pick.Teeth.Full", "Bone", Fine, p => OgreTeeth(p, j, false), teethBox, BruteFineStep * 0.5f, BruteFineKeep, true);
+            Opt(head, "Head.Pick.Teeth.Gap",  "Bone", Fine, p => OgreTeeth(p, j, true),  teethBox, BruteFineStep * 0.5f, BruteFineKeep, false);
+            var tuskBox = Box3(0f, top + 0.295f, 0.333f, 0.44f, 0.24f, 0.14f);
+            // 송곳니 — 없는 벌은 없다 · 선은 몸 바깥 선(`Line` — 얼굴 선은 살 위에 검은 띠를 그었다, 눈 · 쇠 장식과 같은 까닭).
+            for (int ti = 0; ti < OgreTuskSets.Length; ti++)
+            {
+                var (tn, tl, tr) = OgreTuskSets[ti];
+                Opt(head, $"Head.Pick.Tusks.{tn}", "Bone", Line, p => OgreTusks(p, j, tl, tr), tuskBox, BruteFineStep * 0.7f, BruteFineKeep, ti == 0);
+            }
+            var hornBox = Box3(0f, top + 0.86f, 0.01f, 0.26f, 0.40f, 0.26f);
+            // 뿔 없는 오우거는 없다(2026-11-01, 사용자) — 하나 · 둘 · 부러진 것만.
+            Opt(head, "Head.Pick.Horn.One",            "Horn", Fine, p => OgreHorn(p, j),       hornBox, BruteFineStep * 0.8f, BruteFineKeep, true);
+            Opt(head, "Head.Pick.Horn.Broken",         "Horn", Fine, p => OgreHornBroken(p, j), hornBox, BruteFineStep * 0.8f, BruteFineKeep, false);
+            Opt(head, "Head.Pick.Horn.Two",            "Horn", Fine, p => OgreHornTwo(p, j),
+                Box3(0f, top + 0.765f, 0.015f, 0.66f, 0.36f, 0.26f), BruteFineStep * 0.8f, BruteFineKeep, false);
             // 눈 하나 · 둘 — 씨앗이 고른다(`PawnLook` — `Head.Pick.{축}.{벌}` · 넷째 마디 뒤는 조각 이름이라 안 읽힌다).
             var eye1 = OneEye + Vector3.up * top; var eye2 = TwoEye + Vector3.up * top;
-            Head("Head.Pick.Eyes.One.White", "EyeWhite", Fine, p => OgreOneWhite(p, j), new Bounds(eye1, new Vector3(0.26f, 0.25f, 0.20f)), BruteFineStep * 0.6f, BruteFineKeep);
+            Head("Head.Pick.Eyes.One.White", "EyeWhite", Line, p => OgreOneWhite(p, j), new Bounds(eye1, new Vector3(0.26f, 0.25f, 0.20f)), BruteFineStep * 0.6f, BruteFineKeep);
             Head("Head.Pick.Eyes.One.Iris",  "Iris", null, p => OgreOneIris(p, j),  new Bounds(eye1 + new Vector3(0f, 0f, 0.067f), new Vector3(0.16f, 0.16f, 0.06f)), BruteFineStep * 0.4f, BruteFineKeep);
             Head("Head.Pick.Eyes.One.Pupil", "NoseDark", null, p => OgreOnePupil(p, j), new Bounds(eye1 + new Vector3(0f, 0f, 0.081f), new Vector3(0.08f, 0.09f, 0.04f)), BruteFineStep * 0.3f, BruteFineKeep);
-            Head("Head.Pick.Eyes.Two.White", "EyeWhite", Fine, p => OgreTwoWhite(p, j), new Bounds(new Vector3(0f, eye2.y, eye2.z), new Vector3(0.50f, 0.20f, 0.16f)), BruteFineStep * 0.5f, BruteFineKeep);
+            // 눈꺼풀 — **축이다**(`Lids` 있음 · 없음 — 2026-11-01, 사용자: *"눈꺼풀은 축으로"*). 조각은 눈 벌마다 하나이고 그 눈일 때만 켜진다
+            // (`@Eyes.One`). `@Lids.!Off`는 `Off` 벌을 축에 올리는 조건이다(없음은 렌더러가 없다). 얇은 껍데기라 펴지 않는다(`Relax`가 거른다).
+            Head("Head.Pick.Lids.On.One@Eyes.One@Lids.!Off", Flesh, Line, p => OgreOneLid(p, j), new Bounds(eye1, new Vector3(0.28f, 0.27f, 0.22f)), BruteFineStep * 0.4f, BruteFineKeep);
+            Head("Head.Pick.Lids.On.Two@Eyes.Two",           Flesh, Line, p => OgreTwoLid(p, j), new Bounds(new Vector3(0f, eye2.y, eye2.z), new Vector3(0.52f, 0.24f, 0.20f)), BruteFineStep * 0.4f, BruteFineKeep);
+            Head("Head.Pick.Eyes.Two.White", "EyeWhite", Line, p => OgreTwoWhite(p, j), new Bounds(new Vector3(0f, eye2.y, eye2.z), new Vector3(0.50f, 0.20f, 0.16f)), BruteFineStep * 0.5f, BruteFineKeep);
             Head("Head.Pick.Eyes.Two.Iris",  "Iris", null, p => OgreTwoIris(p, j),  new Bounds(new Vector3(0f, eye2.y, eye2.z + 0.062f), new Vector3(0.42f, 0.13f, 0.05f)), BruteFineStep * 0.3f, BruteFineKeep);
+            // 구울 때는 **눈 둘만 켜 둔다** — 씬에 놓인 것은 에디터에서 `PawnLook`이 안 돌아 구운 그대로 보인다. 외눈까지 켜 두면 두 벌이 겹쳐
+            // 눈꺼풀이 얼굴을 덮었다(2026-11-01, 사용자: *"그냥 씬일 때 왜 이렇게 보이지"*). 판에서는 씨앗이 하나를 고른다.
+            void EyesDefault()
+            {
+                for (int i = 0; i < head.Count; i++)
+                    if (head[i].Name.StartsWith("Head.Pick.Eyes.One.") || head[i].Name.StartsWith("Head.Pick.Lids.On.One"))
+                    {
+                        var x = head[i];
+                        head[i] = new Part(x.Name, x.Mesh, x.Center, x.Size, x.Mat, false, outerMat: x.OuterMat);
+                    }
+            }
             Head("Head.Pick.Eyes.Two.Pupil", "NoseDark", null, p => OgreTwoPupil(p, j), new Bounds(new Vector3(0f, eye2.y, eye2.z + 0.075f), new Vector3(0.36f, 0.08f, 0.03f)), BruteFineStep * 0.25f, BruteFineKeep);
+            EyesDefault();
         }
         else
         {
@@ -154,9 +207,11 @@ public static partial class ChibiPawnCreator
                  new Bounds(new Vector3(j.LX * k, 0.11f, 0.13f), new Vector3(0.54f, 0.32f, 0.82f)), BruteFineStep * 1.4f);
             if (ogre)
             {
-                Body($"LowerArm{lr}.Brute.Band",  "Pants", Line, p => OgreBand(Side(p, k), j), Limb(j.AX, j.Wrist + 0.26f, j.Wrist + 0.04f, 0.22f), BruteFineStep * 1.2f);
-                Body($"LowerArm{lr}.Brute.Spike", "BoneArmor", Fine, p => OgreBandSpike(Side(p, k), j),
-                     new Bounds(new Vector3((j.AX + 0.21f) * k, j.Wrist + 0.155f, 0.03f), new Vector3(0.30f, 0.16f, 0.16f)), BruteFineStep * 0.6f, BruteFineKeep);
+                // 팔목 띠 · 가시 — 있음 · 없음(양팔이 한 축이다).
+                Opt(bb.Parts, $"LowerArm{lr}.Pick.Bands.On.Band@Bands.!Off", "Pants", Line, p => OgreBand(Side(p, k), j),
+                    Limb(j.AX, j.Wrist + 0.26f, j.Wrist + 0.04f, 0.22f), BruteFineStep * 1.2f, BruteKeep, true);
+                Opt(bb.Parts, $"LowerArm{lr}.Pick.Bands.On.Spike", "BoneArmor", Fine, p => OgreBandSpike(Side(p, k), j),
+                    new Bounds(new Vector3((j.AX + 0.21f) * k, j.Wrist + 0.155f, 0.03f), new Vector3(0.30f, 0.16f, 0.16f)), BruteFineStep * 0.6f, BruteFineKeep, true);
             }
         }
 
@@ -166,6 +221,34 @@ public static partial class ChibiPawnCreator
     }
 
     static Bounds Box3(float x, float y, float z, float sx, float sy, float sz) => new(new Vector3(x, y, z), new Vector3(sx, sy, sz));
+
+    // 정점을 이웃 평균 쪽으로 폈다가(λ) 되민다(μ) — 잔물결만 지우고 덩어리는 안 줄인다(Taubin). 법선 · 그늘은 거리장에서 잰 그대로 둔다.
+    // 미리보기(메시 에셋을 읽어 선을 같은 식으로 그린 것)로 6번이면 선 가장자리의 털이 사라지는 것을 봤다.
+    static void Relax(List<Vector3> v, List<int> tris, int iterations)
+    {
+        int n = v.Count;
+        var nb = new HashSet<int>[n];
+        for (int i = 0; i < n; i++) nb[i] = new HashSet<int>();
+        for (int t = 0; t < tris.Count; t += 3)
+        {
+            int a = tris[t], b = tris[t + 1], c = tris[t + 2];
+            nb[a].Add(b); nb[a].Add(c); nb[b].Add(a); nb[b].Add(c); nb[c].Add(a); nb[c].Add(b);
+        }
+        var tmp = new Vector3[n];
+        void Step(float k)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                if (nb[i].Count == 0) { tmp[i] = v[i]; continue; }
+                var avg = Vector3.zero;
+                foreach (int o in nb[i]) avg += v[o];
+                avg /= nb[i].Count;
+                tmp[i] = v[i] + (avg - v[i]) * k;
+            }
+            for (int i = 0; i < n; i++) v[i] = tmp[i];
+        }
+        for (int it = 0; it < iterations; it++) { Step(0.5f); Step(-0.53f); }
+    }
 
     static float Torus(Vector3 p, Vector3 c, float big, float small)
     {

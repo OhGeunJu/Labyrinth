@@ -113,7 +113,7 @@ public class PawnPreviewStage : MonoBehaviour
         var b = new Bounds();
         foreach (var r in _pawn.GetComponentsInChildren<Renderer>())
         {
-            if (!r.enabled) continue;
+            if (!r.enabled || PawnShadow.IsShadow(r)) continue;   // 발밑 그림자는 틀에 안 넣는다
             if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
         }
         if (!any) return;

@@ -4,8 +4,10 @@ using UnityEngine;
 public enum Biome
 {
     Unknown,    // 미지정 — 데이터가 없을 때의 기본값(게이팅 대상 아님)
-    Plains,     // 평원 (시작 지역)
-    Forest,     // 숲
+    // **지상 시절 값(평원 · 숲 · 설원)은 걷었다**(2026-11-01, 사용자: *"지상에 깔려있던 바이옴은 다 정리해줘 안쓰는거"*) — 에셋 · 지형 성격 ·
+    // 지도 색 · 이름을 지웠다. **값 자리만 남긴다** — 정수 직렬화라 지우면 뒤의 모든 바이옴이 한 칸씩 밀린다. `Obsolete`라 인스펙터 · 저작 창의 목록에 안 뜬다.
+    [System.Obsolete("지상 시절 값 — 안 쓴다")] Plains,
+    [System.Obsolete("지상 시절 값 — 안 쓴다")] Forest,
     // **모래굴 — 지상 `사막`을 지하에서 되살려 쓴다**(2026-09-15, 사용자 결정).
     // `Cavern`이 지상 시절 *산악*이었다가 지하에서 **제 이름을 되찾은** 것과 같은 자리다.
     // **식별자를 안 바꾼다** — 물이 말라 고운 모래가 깔린 굴이라 `Desert`가 뜻과 어긋나지
@@ -14,7 +16,7 @@ public enum Biome
     // **에셋에 지상 시절 저작이 그대로 있다** — 소굴·마을 무리·상인이 채워져 있어서,
     // 살려 쓰는 것만으로 2층에 내용이 붙는다(지하 바이옴 대부분은 그게 비어 있다).
     Desert,     // 모래굴 — 물이 마른 굴. 고운 모래가 깔렸다
-    Tundra,     // 설원
+    [System.Obsolete("지상 시절 값 — 안 쓴다")] Tundra,
     Lava,       // 용암지대 — **지하에서도 산다**(용암층)
     Cavern,     // 동굴 — **지하에서 제 이름을 되찾는다**(지상 시절엔 "산악"으로 쓰였다)
     // **지저늪 — 지상 `늪`을 지하에서 되살려 쓴다.** 모래굴과 같은 규칙이다.
@@ -66,10 +68,7 @@ public static class BiomeExt
     public static string DisplayName(this Biome b) => b switch
     {
         Biome.Unknown => "미지",
-        Biome.Plains  => "평원",
-        Biome.Forest  => "숲",
         Biome.Desert  => "모래굴",
-        Biome.Tundra  => "설원",
         Biome.Lava    => "용암층",
         Biome.Cavern  => "동굴",
         Biome.Swamp   => "지저늪",
@@ -101,10 +100,7 @@ public static class BiomeExt
     // 게임 화면의 지형색이 아니다 — 그건 저작한 Terrain의 텍스처가 갖는다.
     public static UnityEngine.Color Color(this Biome b) => b switch
     {
-        Biome.Plains => new Color(0.45f, 0.70f, 0.35f),
-        Biome.Forest => new Color(0.18f, 0.42f, 0.20f),
         Biome.Desert => new Color(0.85f, 0.72f, 0.42f),   // 2층 — 모래
-        Biome.Tundra => new Color(0.80f, 0.86f, 0.90f),
         Biome.Lava   => new Color(0.70f, 0.25f, 0.16f),
         Biome.Cavern => new Color(0.38f, 0.38f, 0.42f),
         Biome.Swamp  => new Color(0.30f, 0.44f, 0.30f),   // 2층 — 진흙 초록

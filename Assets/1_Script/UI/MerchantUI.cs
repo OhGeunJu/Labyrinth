@@ -174,7 +174,7 @@ public class MerchantUI : MonoBehaviour
     ItemInstance                        _selectedStack;
     MerchantStockEntryUI                _selectedBuyUI;
     readonly List<MerchantStockEntryUI> _buyEntryUIs = new();
-    SelectionManager                    _selection;
+    SelectionManager                    _selection => SelectionManager.Instance;
 
     void Awake()
     {
@@ -207,7 +207,6 @@ public class MerchantUI : MonoBehaviour
 
     void Start()
     {
-        _selection = Object.FindFirstObjectByType<SelectionManager>();
         if (inventoryPanel == null) inventoryPanel = Object.FindFirstObjectByType<InventoryUI>();
     }
 
@@ -985,7 +984,6 @@ public class MerchantUI : MonoBehaviour
     // 지금 고른 폰들. 필드 상인은 이걸로 거래한다 — 원정대가 `_traders`를 받는 자리와 같다.
     List<UnitBrain> SelectedPawns()
     {
-        if (_selection == null) _selection = Object.FindFirstObjectByType<SelectionManager>();
         if (_selection == null) return null;
 
         var list = new List<UnitBrain>();

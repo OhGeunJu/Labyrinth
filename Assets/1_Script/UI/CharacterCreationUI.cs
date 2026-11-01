@@ -482,7 +482,7 @@ public class CharacterCreationUI : MonoBehaviour
 
         Close();
 
-        var sel = FindFirstObjectByType<SelectionManager>();
+        var sel = SelectionManager.Instance;
         if (sel != null && movers.Count > 0) sel.SelectOnly(movers);
         var cam = FindFirstObjectByType<CameraController>();
         if (cam != null) cam.FocusOn(center);

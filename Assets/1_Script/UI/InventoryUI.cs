@@ -86,7 +86,7 @@ public class InventoryUI : MonoBehaviour
     ItemInstance _lastSellSelection;   // 고른 것이 바뀌면 수량을 1로 되돌리려고 기억한다
 
     InventoryGridUI  _gridUI;
-    SelectionManager _selection;
+    SelectionManager _selection => SelectionManager.Instance;
 
     ActionMode      _mode;
     ItemInstance    _selectedItem;
@@ -139,7 +139,6 @@ public class InventoryUI : MonoBehaviour
 
     void Start()
     {
-        _selection = FindFirstObjectByType<SelectionManager>();
 
         if (sellMaxButton != null)
             sellMaxButton.onClick.AddListener(() =>
@@ -967,7 +966,6 @@ public class InventoryUI : MonoBehaviour
 
     Inventory GetPlayerInventory()
     {
-        if (_selection == null) _selection = FindFirstObjectByType<SelectionManager>();
         if (_selection == null || _selection.Selected.Count == 0) return null;
         return _selection.Selected[0].GetComponent<Inventory>();
     }

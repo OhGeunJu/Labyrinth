@@ -21,7 +21,7 @@ public class AbilityBarUI : MonoBehaviour
 
     readonly List<AbilityBarSlotUI> _slots = new();
 
-    SelectionManager _selection;
+    SelectionManager _selection => SelectionManager.Instance;
     UnitBrain        _bound;
     AbilityUser      _user;
 
@@ -41,7 +41,6 @@ public class AbilityBarUI : MonoBehaviour
 
     void Update()
     {
-        if (_selection == null) _selection = FindFirstObjectByType<SelectionManager>();
 
         // **고른 폰이 바뀌면 다시 짓는다.** 매 프레임 다시 지으면 커서를 올려 둔 툴팁이
         // 깜빡이고 클릭이 씹힌다 — 바뀔 때만.

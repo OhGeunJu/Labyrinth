@@ -319,6 +319,70 @@ public class BodyPartSystem : MonoBehaviour
     }
 
     // ── 기능 상실 (0) ────────────────────────────────────────────────
+    // ── 뜯어 먹히기 (2026-11-01 — `Devoured`) ──────────────────────────────
+    //
+    // **켄시처럼 한 부위를 계속 깎는다** — 한 방씩 `TakeDamage`로 넣으면 부위가 무작위로 골라지고 갑옷·강인함을 탄다.
+    // 먹는 놈이 뜯는 동안 그 부위만 초마다 줄고, 부서지면(−100) 다음 부위로 넘어간다(순서는 `Devoured`가 든다).
+    // 피는 깎인 만큼의 일부만 준다(`GnawBloodFactor`) — 다 주면 팔 하나를 먹기 전에 피가 말라 죽는다.
+    const float GnawBloodFactor = 0.2f;
+
+    public void Gnaw(BodyPartType type, float amount)
+    {
+        if (_brain == null || _brain.IsDead || amount <= 0f) return;
+        var part = _parts[type];
+        if (part.IsDestroyed) return;
+
+        bool wasDisabled = part.IsDisabled;
+        part.TakeDamage(amount);
+        part.LastWoundTime = Time.time;
+
+        if (!wasDisabled && part.IsDisabled) OnPartDisabledInternal(type);
+        if (part.IsDestroyed)                OnPartDestroyedInternal(type);
+        else if (IsCorePart(type) && part.CurrentHP <= -coreKoDepth) KnockOut();
+        if (_brain.IsDead) return;
+
+        Blood -= amount * GnawBloodFactor;
+        CheckBloodState();
+    }
+
+    public bool IsPartDestroyed(BodyPartType type) => _parts[type].IsDestroyed;
+    public float PartHP(BodyPartType type)         => _parts[type].CurrentHP;
+
+    // ── 잃은 팔다리 ─────────────────────────────────────────────────────────
+    //
+    // **부서진 팔다리는 안 보인다**(2026-11-01) — 부서진 부위는 원래 안 낫는다(`HealBodyParts`가 건너뛴다). 켄시처럼 그건
+    // 잃은 것이라 몸에서도 지운다: 그 팔 · 다리의 뿌리 관절을 접는다(스킨 메시 하나라 조각을 끌 수 없다). 애니메이터가
+    // 관절을 덮어쓰므로 `LateUpdate`에서 매번 다시 접는다 · 되살아나면(`Rise`) 펴진다.
+    bool      _limbLost;
+    PawnRig   _rig;
+    static readonly Vector3 Folded = Vector3.one * 0.0001f;
+
+    void LateUpdate()
+    {
+        if (!_limbLost) return;
+        if (_rig == null && !TryGetComponentInChildren(out _rig)) { _limbLost = false; return; }
+
+        bool any = false;
+        any |= Fold(_rig.ArmL, BodyPartType.LeftArm);
+        any |= Fold(_rig.ArmR, BodyPartType.RightArm);
+        any |= Fold(_rig.LegL, BodyPartType.LeftLeg);
+        any |= Fold(_rig.LegR, BodyPartType.RightLeg);
+        _limbLost = any;
+    }
+
+    bool Fold(Transform bone, BodyPartType type)
+    {
+        bool lost = _parts[type].IsDestroyed;
+        if (bone != null) bone.localScale = lost ? Folded : Vector3.one;
+        return lost;
+    }
+
+    bool TryGetComponentInChildren(out PawnRig rig)
+    {
+        rig = GetComponentInChildren<PawnRig>(true);
+        return rig != null;
+    }
+
     void OnPartDisabledInternal(BodyPartType type)
     {
         OnBodyPartDisabled?.Invoke(this, type);
@@ -363,6 +427,7 @@ public class BodyPartSystem : MonoBehaviour
             case BodyPartType.LeftLeg:
             case BodyPartType.RightLeg:
                 Debug.Log($"[BodyPart] {gameObject.name} {type} 파괴");
+                _limbLost = true;   // 몸에서 지운다(`LateUpdate`)
                 TryKnockOut();
                 break;
         }
@@ -396,6 +461,9 @@ public class BodyPartSystem : MonoBehaviour
             Debug.Log($"[BodyPart] {gameObject.name} 기절 저항 (Toughness: {toughness:F1})");
     }
 
+    // 밖에서 바로 쓰러뜨린다(디버그 창 — 납치 시험). 판정 없이 `KnockOut`과 같은 길을 탄다.
+    public void KnockOutNow() => KnockOut();
+
     void KnockOut()
     {
         // **언데드는 쓰러지지 않고 부서진다.** 기절은 *의식을 잃는 것*이라 해골에게도,
@@ -414,6 +482,10 @@ public class BodyPartSystem : MonoBehaviour
         // BT가 정지하므로 전투/이동은 여기서 직접 꺼야 함 (기절 중 공격 지속 방지)
         if (TryGetComponent(out CombatHandler combat)) combat.ExitCombat();
         _mover?.StopMovement();
+
+        // **메고 있던 사람을 떨어뜨린다**(2026-11-01) — 쓰러진 어깨에 사람이 얹혀 남으면 메고 가던 놈을 쓰러뜨려도
+        // 빼낼 수가 없다(납치된 동료를 되찾는 길이 그것이다 — `Abduction`). 죽을 때는 `UnitBrain.Die`가 내려놓는다.
+        PawnCarry.PutDown(_brain, transform.position);
 
         // 눕는 포즈 — CharacterController 캡슐은 회전을 안 따라가므로 충돌은 그대로
         _preKoRotation = transform.rotation;

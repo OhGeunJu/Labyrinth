@@ -20,7 +20,7 @@ public class AbilityController : MonoBehaviour
         SelfStanding.Create<AbilityController>("AbilityController");
     }
 
-    SelectionManager _selection;
+    SelectionManager _selection => SelectionManager.Instance;
 
     void Update()
     {
@@ -49,7 +49,6 @@ public class AbilityController : MonoBehaviour
     // 목록으로 모으면 방패를 안 든 폰의 칸이 비어 번호가 밀린다.
     void UseSlot(int index)
     {
-        if (_selection == null) _selection = FindFirstObjectByType<SelectionManager>();
         if (_selection == null) return;
 
         foreach (var mover in _selection.Selected)

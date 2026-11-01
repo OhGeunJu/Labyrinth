@@ -14,9 +14,6 @@ public static class BiomeTerrain
     // 바이옴별 지형 성격 — **여기가 단일 출처**다. 지도 모양을 바꾸려면 이 표만 고친다.
     public static BiomeTerrainProfile Of(Biome b) => b switch
     {
-        Biome.Plains => new BiomeTerrainProfile { Base =  0.0f, Amplitude = 0.7f, Roughness = 0.6f },
-        Biome.Forest => new BiomeTerrainProfile { Base =  0.3f, Amplitude = 1.8f, Roughness = 1.0f },
-        Biome.Tundra => new BiomeTerrainProfile { Base =  0.5f, Amplitude = 2.2f, Roughness = 0.8f },
         Biome.Lava   => Flat,
 
         // ── 지하는 완전 평지다 (2026-08-29, 사용자 결정) ─────────────────

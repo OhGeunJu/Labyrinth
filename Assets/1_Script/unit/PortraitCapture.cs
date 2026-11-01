@@ -146,7 +146,8 @@ public static class PortraitCapture
             return null;
         }
 
-        var renderers = target.GetComponentsInChildren<Renderer>(false);
+        // 발밑 그림자는 뺀다 — 넣으면 경계가 넓어져 얼굴이 멀어지고 초상화에도 찍힌다(`PawnShadow`).
+        var renderers = System.Array.FindAll(target.GetComponentsInChildren<Renderer>(false), r => !PawnShadow.IsShadow(r));
         if (renderers.Length == 0) return null;
 
         EnsureRig();

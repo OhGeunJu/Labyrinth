@@ -424,6 +424,8 @@ public class MoveController : MonoBehaviour
         }
 
         var go      = hit.collider.gameObject;
+        // 기둥을 누르면 묶인 사람을 누른 것이다(`CaptivePost`).
+        if (go.TryGetComponent(out CaptivePost tiedPost) && tiedPost.Captive != null) go = tiedPost.Captive.gameObject;
         var options = new List<PawnMenuOption>();
         string title = "이곳";
 
@@ -1014,9 +1016,31 @@ public class MoveController : MonoBehaviour
 
     // **명령 받을 폰이 필요 없다.** 놓아 주는 것은 우리·침대가 하는 일이라, 마지막 한 명을
     // 가둔 뒤에도 뜬다.
+    // 기둥에 묶인 우리 폰으로 할 수 있는 일 — 기둥 창(`InspectPanelUI`)과 우클릭 메뉴가 같은 목록을 쓴다.
+    public static void CaptiveOptions(UnitBrain captive, List<PawnMover> commanders, List<PawnMenuOption> options)
+    {
+        AddPrisonerOptions(captive, commanders, options);
+        AddCarryOption(captive, commanders, options);
+    }
+
     static void AddPrisonerOptions(UnitBrain prisoner, List<PawnMover> commanders,
                                    List<PawnMenuOption> options)
     {
+        // **적의 기둥에 묶인 우리 폰**(`Devoured`) — 줄을 풀고(확률) 풀렸으면 나간다(데려오는 것은 [끌어낸다]).
+        // 먹이기 · 지배 · 설득은 내가 붙잡은 사람의 일이라 여기서 끝낸다.
+        if (prisoner.TryGetComponent(out Devoured caught))
+        {
+            if (caught.Loose)
+                options.Add(caught.Conscious ? ("탈출한다", (System.Action)caught.Escape) : ("탈출한다 - 기절해 있다", (System.Action)null));
+            else if (caught.Untying)
+                options.Add(("줄을 푸는 중", (System.Action)null));
+            else if (!caught.Conscious)
+                options.Add(("줄을 푼다 - 기절해 있다", (System.Action)null));
+            else
+                options.Add(($"줄을 푼다 ({caught.UntieChance * 100f:F0}%)", (System.Action)caught.TryUntie));
+            return;
+        }
+
         // **먹인다** — 갇힌 사람은 제 발로 못 먹으러 간다.
         //
         // 간수를 켜 뒀으면 자리(`PrisonFeeding.Tick`)가 저절로 일감을 내지만, 꺼 뒀거나

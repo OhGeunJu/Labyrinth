@@ -31,7 +31,7 @@ public class PawnLookEditor : Editor
             foreach (var axis in look.PickAxes.ToList())
             {
                 var a = axis;
-                Row($"{a} ({look.Picked(a)})", look.PickOptions(a).ToList(), look.PickOverride(a), v => look.SetPickOverride(a, v), look);
+                Row($"{AxisLabel(a)} ({look.Picked(a)})", look.PickOptions(a).ToList(), look.PickOverride(a), v => look.SetPickOverride(a, v), look);
             }
             EditorGUILayout.Space();
             using (new EditorGUILayout.HorizontalScope())
@@ -40,7 +40,7 @@ public class PawnLookEditor : Editor
                 if (GUILayout.Button("다시 모으기"))   Change(look, look.Regather);
             }
             EditorGUILayout.HelpBox("축마다 씨앗(명세 Seed · 없으면 이름 해시)이 따로 고른다. `@축.벌`이 붙은 벌은 그 축이 맞을 때만 켜진다" +
-                                    "(이는 턱이 있을 때만). 뼈 색 · 눈구멍 속은 `BoneLook`.", MessageType.None);
+                                    "(해골 이는 턱이 있을 때만 · 오우거 머리는 코에 맞는 벌만). 뼈 색 · 눈구멍 속은 `BoneLook` · 살색은 `SkinLook`.", MessageType.None);
             return;
         }
 
@@ -51,6 +51,7 @@ public class PawnLookEditor : Editor
             EditorGUILayout.TextField("머리",   look.Hair);
             EditorGUILayout.TextField("귀",     look.Ear);
             EditorGUILayout.TextField("코",     look.Nose);
+            EditorGUILayout.TextField("엄니",   look.Tusk);
         }
 
         EditorGUILayout.Space();
@@ -68,6 +69,9 @@ public class PawnLookEditor : Editor
 
         var noses = look.NoseNames.ToList();
         Row("코", noses, look.NoseOverride, v => look.NoseOverride = v, look, "(없음)");
+
+        var tusks = look.TuskNames.ToList();
+        Row("엄니", tusks, look.TuskOverride, v => look.TuskOverride = v, look, "(없음)");
 
         // 이목구비 — 아틀라스의 이름을 그대로 드롭다운에 낸다. 첫 칸은 "기본", 둘째는 "없음".
         EditorGUILayout.Space();
@@ -94,7 +98,7 @@ public class PawnLookEditor : Editor
             if (GUILayout.Button("전부 씨앗으로"))
                 Change(look, () =>
                 {
-                    look.ShapeOverride = ""; look.HairOverride = ""; look.EarOverride = ""; look.NoseOverride = "";
+                    look.ShapeOverride = ""; look.HairOverride = ""; look.EarOverride = ""; look.NoseOverride = ""; look.TuskOverride = "";
                     foreach (var f in PawnLook.FaceFeatures) look.SetFaceOverride(f, "");
                 });
             if (GUILayout.Button("다시 모으기"))
@@ -107,6 +111,14 @@ public class PawnLookEditor : Editor
             "표정은 코드가 `SetFace`로 잠깐 얹는다(여기서 고른 것보다 앞선다).",
             MessageType.None);
     }
+
+    // 축 이름(렌더러 이름의 셋째 마디)을 읽기 쉽게 — 모르는 축은 그대로.
+    static string AxisLabel(string axis) => axis switch
+    {
+        "Eyes" => "눈", "Ears" => "귀", "Nose" => "코", "Horn" => "뿔", "Tusks" => "송곳니", "Teeth" => "이",
+        "Sash" => "어깨 천", "Bands" => "팔목 띠", "Lids" => "눈꺼풀", "Skull" => "두개골", "Jaw" => "턱", "Gap" => "빠진 이",
+        _ => axis,
+    };
 
     // 드롭다운 + 이전/다음. 목록이 비어 있으면(치비 머리가 아닌 폰) 말만 남긴다.
     static void Row(string label, List<string> names, string current, System.Action<string> set, PawnLook look,

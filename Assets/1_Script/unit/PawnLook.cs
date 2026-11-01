@@ -34,6 +34,7 @@ using UnityEngine;
 // **고르는 축이 여럿인 머리**(2026-10-27 — 해골: 두개골 · 턱 · 이 · 빠진 이) — `Head.Pick.{축}.{벌}`. 축마다 씨앗이 따로 하나를
 // 고르고(축 이름을 씨앗에 섞는다), 못 박을 수도 있다(`pickOverrides`). 벌이 다른 축에 매이면 이름 뒤에 `@{축}.{벌}`을 붙인다 —
 // `@Jaw.!None`은 *턱이 없지 않을 때만*. 축과 벌은 렌더러 이름에서 모은다(조건에만 나오는 벌도 — 턱 `None`은 렌더러가 없다).
+// 몸 관절에 붙은 조각도 같은 규칙이다(`Spine.Pick.Sash.On` — 2026-11-01 오우거). 살색은 축이 아니라 `SkinLook`이 고른다.
 public class PawnLook : MonoBehaviour
 {
     // **기준 머리** — 이름이 이것으로 끝나는 머리(`Male_BroadSoft`). 머리카락은 그것에 맞춰 구웠다.
@@ -67,7 +68,12 @@ public class PawnLook : MonoBehaviour
     [Tooltip("귀 모양 — `Human` · `Elf` · `Goblin`. 비우면 일반 귀(`Human`). `-`면 없음.")]
     [SerializeField] string earOverride = "";
 
+    // **엄니**(2026-11-01 — 오크) — 코와 같은 길: 모양마다 머리형마다 한 벌(`Head.Tusk.{모양}.{L|R}.{머리형}`) · 비우면 없음.
+    [Tooltip("엄니 모양 — `Orc`. 비우거나 `-`면 없음.")]
+    [SerializeField] string tuskOverride = "";
+
     public const string None = "-";
+    public const string PickHair = "Hair";   // 고르는 축 중 머리카락 — 투구가 끈다(`ApplyPicks`)
     public static readonly string[] FaceFeatures = { "EyeL", "EyeR", "Mouth" };
 
     [Tooltip("고르는 축을 못 박는다 — `축=벌`(예: `Jaw=None`). 없는 축이면 씨앗이 고른다.")]
@@ -81,6 +87,7 @@ public class PawnLook : MonoBehaviour
     readonly SortedDictionary<string, List<Renderer>> _hairs  = new();
     readonly SortedDictionary<string, List<Renderer>> _ears   = new();
     readonly SortedDictionary<string, List<Renderer>> _noses  = new();   // 모양 → (머리형마다 한 벌)
+    readonly SortedDictionary<string, List<Renderer>> _tusks  = new();   // 모양 → (머리형마다 좌우 한 벌)
     // **투구**(2026-10-23) — 머리카락처럼 기준 머리에 맞춰 굽고 윗머리 모양마다 한 벌(`Head.Helmet.Cap.Shell.Box`).
     // 켜는 것은 찬 장비가 정한다(`PawnApparel` → `Helmeted`) — 씨앗이 고르는 묶음이 아니다.
     readonly List<Renderer> _helmets = new();
@@ -90,6 +97,8 @@ public class PawnLook : MonoBehaviour
     readonly SortedDictionary<string, SortedSet<string>> _pickAxes = new();
     readonly List<(Renderer r, string axis, string option, (string axis, string option, bool not)[] when)> _pickParts = new();
     readonly Dictionary<string, string> _picked = new();
+    // 판에서 다른 컴포넌트가 정하는 축(`ForcePick` — 종족의 문신 규칙 · `MarkingLook`). 저장하지 않는다 — 인스펙터로 못 박은 것이 이긴다.
+    readonly Dictionary<string, string> _forced = new();
 
     // **머리카락이 지금 어느 머리에 맞춰져 있나** — 옮길 때 *그 머리의 틀*에서 *고른 머리의 틀*로
     // 옮긴다. 구운 값을 따로 들면 한 번 옮긴 자리가 저장된 뒤 그것을 *구운 값*으로 다시 읽어 **옮길
@@ -102,6 +111,7 @@ public class PawnLook : MonoBehaviour
     public string Hair       { get; private set; } = Bald;
     public string Ear        { get; private set; } = None;
     public string Nose       { get; private set; } = None;
+    public string Tusk       { get; private set; } = None;
 
     // 투구를 썼나 — 쓰면 머리카락을 다 끄고 투구 껍데기를 켠다. 색은 `PawnApparel`이 칠한다.
     bool _helmeted;
@@ -113,6 +123,7 @@ public class PawnLook : MonoBehaviour
     public IEnumerable<string> HairNames  => _hairs.Keys;
     public IEnumerable<string> EarNames   => _ears.Keys;
     public IEnumerable<string> NoseNames  => _noses.Keys;
+    public IEnumerable<string> TuskNames  => _tusks.Keys;
     public IEnumerable<string> PickAxes   => _pickAxes.Keys;
     public IEnumerable<string> PickOptions(string axis) => _pickAxes.TryGetValue(axis, out var set) ? set : Enumerable.Empty<string>();
     public string Picked(string axis) => _picked.TryGetValue(axis, out var v) ? v : "";
@@ -135,6 +146,16 @@ public class PawnLook : MonoBehaviour
 
     public void ClearPickOverrides() { pickOverrides.Clear(); Apply(); }
 
+    // 축 하나를 판에서 정한다(`null`이면 푼다). 못 박은 것(`pickOverrides`) 다음 · 씨앗 앞이다. 저장되지 않는다.
+    public void ForcePick(string axis, string option)
+    {
+        if (string.IsNullOrEmpty(option)) _forced.Remove(axis); else _forced[axis] = option;
+    }
+
+    // 씨앗이 고를 벌(못 박은 것 · 판에서 정한 것을 빼고) — 정하는 쪽이 *씨앗이면 무엇이었나*를 묻는다.
+    public string SeededPick(string axis)
+        => _pickAxes.TryGetValue(axis, out var set) ? KeyAt(set, Mod(Mix(Seed, axis), set.Count)) : "";
+
     // 씨앗 — 같은 사람은 늘 같은 얼굴(`SeedOf`). 칠하는 쪽도 이것으로 고른다.
     public int Seed => SeedOf();
 
@@ -142,6 +163,7 @@ public class PawnLook : MonoBehaviour
     public string HairOverride       { get => hairOverride;       set { hairOverride = value ?? "";       Apply(); } }
     public string EarOverride        { get => earOverride;        set { earOverride = value ?? "";        Apply(); } }
     public string NoseOverride       { get => noseOverride;       set { noseOverride = value ?? "";       Apply(); } }
+    public string TuskOverride       { get => tuskOverride;       set { tuskOverride = value ?? "";       Apply(); } }
 
     // 이목구비 — 인스펙터가 읽고 쓴다. **눈과 입은 아틀라스가 따로다** — 눈 줄에서 입 그림을
     // 고를 수 없게(사용자: *"같은곳에서 다 불러올 수 있게 만들지 말고"*).
@@ -226,6 +248,12 @@ public class PawnLook : MonoBehaviour
         foreach (var r in kv.Value)
             if (r != null) r.enabled = kv.Key == Nose && r.name.EndsWith("." + Shape);
 
+        // 엄니 — 코와 같다(마지막 마디가 머리형).
+        Tusk = _tusks.ContainsKey(tuskOverride) ? tuskOverride : None;
+        foreach (var kv in _tusks)
+        foreach (var r in kv.Value)
+            if (r != null) r.enabled = kv.Key == Tusk && r.name.EndsWith("." + Shape);
+
         // 머리카락은 윗머리 모양이 맞는 벌만 — 마지막 마디가 모양이다(`Shell.Box`).
         string fit = HairFitOf(Shape);
         if (!_helmeted && _hairs.TryGetValue(Hair, out var shown))
@@ -276,12 +304,16 @@ public class PawnLook : MonoBehaviour
         foreach (var kv in _pickAxes)
         {
             string authored = PickOverride(kv.Key);
-            _picked[kv.Key] = kv.Value.Contains(authored) ? authored : KeyAt(kv.Value, Mod(Mix(seed, kv.Key), kv.Value.Count));
+            _picked[kv.Key] = kv.Value.Contains(authored) ? authored
+                            : _forced.TryGetValue(kv.Key, out var forced) && kv.Value.Contains(forced) ? forced
+                            : KeyAt(kv.Value, Mod(Mix(seed, kv.Key), kv.Value.Count));
         }
         foreach (var (r, axis, option, when) in _pickParts)
         {
             if (r == null) continue;
             bool on = _picked[axis] == option;
+            // **투구를 쓰면 고른 머리카락(`Hair` 축 — 오크의 묶은 머리)도 끈다** — 사람 머리카락 묶음과 같은 규칙(투구 밑으로 뚫고 나온다).
+            if (_helmeted && axis == PickHair) on = false;
             foreach (var (a, o, not) in when)
                 if (on && a != null && _picked.TryGetValue(a, out var got)) on = not ? got != o : got == o;
             r.enabled = on;
@@ -336,7 +368,7 @@ public class PawnLook : MonoBehaviour
     void Gather()
     {
         _gathered = true;
-        _shapes.Clear(); _hairs.Clear(); _ears.Clear(); _noses.Clear(); _shapeHead.Clear(); _faceParts.Clear(); _helmets.Clear();
+        _shapes.Clear(); _hairs.Clear(); _ears.Clear(); _noses.Clear(); _tusks.Clear(); _shapeHead.Clear(); _faceParts.Clear(); _helmets.Clear();
         _pickAxes.Clear(); _pickParts.Clear();
 
         // 머리 관절 아래를 본다. 리그가 없으면(아직 안 세운 프리팹) 이름으로 찾는다.
@@ -365,12 +397,22 @@ public class PawnLook : MonoBehaviour
                 case "Hair": Add(_hairs, parts[2], r); break;
                 case "Ear":  Add(_ears,  parts[2], r); break;
                 case "Nose": Add(_noses, parts[2], r); break;
+                case "Tusk": Add(_tusks, parts[2], r); break;
                 case "Helmet": _helmets.Add(r); break;
             }
         }
+
+        // **몸에 붙은 축**(2026-11-01 — 오우거 어깨 천 · 팔목 띠) — `{관절}.Pick.{축}.{벌}`. 첫 마디가 붙을 관절이라 머리 밑에 없다.
+        foreach (var r in GetComponentsInChildren<Renderer>(true))
+        {
+            string n = r.name;
+            if (n.StartsWith("Head.")) continue;
+            int dot = n.IndexOf('.');
+            if (dot > 0 && string.CompareOrdinal(n, dot + 1, "Pick.", 0, 5) == 0) AddPick(r);
+        }
     }
 
-    // `Head.Pick.Teeth.Orc@Gap.One@Jaw.!None` → 축 Teeth · 벌 Orc · 조건 (Gap = One) · (Jaw ≠ None).
+    // `Head.Pick.Teeth.Orc@Gap.One@Jaw.!None` → 축 Teeth · 벌 Orc · 조건 (Gap = One) · (Jaw ≠ None). 첫 마디는 관절이라 안 읽는다(`Spine.Pick.Sash.On`).
     void AddPick(Renderer r)
     {
         var segs = r.name.Split('@');

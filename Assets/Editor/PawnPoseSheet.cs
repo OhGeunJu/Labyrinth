@@ -21,7 +21,7 @@ public static class PawnPoseSheet
 {
     const int Cell = 240;
     const string OutDir = "Temp/PoseSheet";
-    const string Fallback = "Assets/3_Prefab/Pawn/Proto_Chibi.prefab";
+    static readonly string Fallback = PawnPrefabPaths.PathOf("Proto_Chibi");
     const float Walk = 1.6f;   // `HumanoidClipSet.WalkAt`
 
     struct Pose

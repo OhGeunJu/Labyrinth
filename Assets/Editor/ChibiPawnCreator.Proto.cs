@@ -45,7 +45,7 @@ using UnityEngine;
 //   동작이 작아져, 사용자가 *"그냥 원래가 좋은거 같은데"*라고 해서 다시 뗐다.
 public static partial class ChibiPawnCreator
 {
-    const string ProtoPath  = OutDir + "/Proto_Chibi.prefab";
+    static readonly string ProtoPath = PawnPrefabPaths.PathOf("Proto_Chibi");
     const string ProtoHead  = "Male_" + PawnLook.BasisShape;
 
     // ── 비율(× 머리 높이) ───────────────────────────────────────────────────
@@ -122,7 +122,7 @@ public static partial class ChibiPawnCreator
         // `HeadParts`는 `Heads`(머리형 표)를 돈다 — **이 머리 하나만** 보이게 잠깐 좁혀 부른다.
         var keep = Heads;
         List<Part> headParts;
-        try { Heads = new[] { head }; headParts = HeadParts("Male", heads, features, hairs, ears, noses); }
+        try { Heads = new[] { head }; headParts = HeadParts("Male", heads, features, hairs, ears, noses, TuskMeshes()); }
         finally { Heads = keep; }
 
         // ── 몸 — 본 몸과 같은 짓기(`DressSkinned`) ─────────────────────────────

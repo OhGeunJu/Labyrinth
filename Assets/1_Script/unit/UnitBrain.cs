@@ -447,6 +447,7 @@ public partial class UnitBrain : MonoBehaviour
         // **몸집은 종족이 든다**(`UnitData.BodyScale` — 오크 · 오우거 · 트롤). 프리팹을 종족마다 키워 두면 같은 몸을
         // 다른 종족에 물릴 때 크기가 따라가지 않는다. 아무는 몸(트롤)도 여기서 붙인다.
         BodySize.Apply(gameObject, unitData);
+        PawnShadow.Attach(gameObject, unitData);   // 발밑 그림자 — 크기는 같은 몸집 값(2026-11-01)
         if (unitData != null && unitData.RegenPerSecond > 0f && !TryGetComponent(out Regeneration _))
             gameObject.AddComponent<Regeneration>();
         if (unitData != null && unitData.SkinTones != null && unitData.SkinTones.Count > 0 && !TryGetComponent(out SkinLook _))

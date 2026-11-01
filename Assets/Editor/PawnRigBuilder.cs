@@ -514,6 +514,18 @@ public static class PawnRigBuilder
                 human[i].limit = ArmLimit(HumanBones[i].human, model, HumanBones[i].bone);
         }
 
+        // **뿌리의 크기는 1로 놓고 짓는다**(2026-11-01, 사용자: *"트롤이랑 오우거는 콜라이더가 모델보다 밑에 있어서 캐릭이 떠보이던데"*).
+        // 큰 종족은 `Model`을 키워 둔다(`BodySize` — 오우거 · 트롤 2배 · 오크 · 고블린도). 그 크기를 담은 채 지으면 아바타의 사람 눈금
+        // (`humanScale` — 엉덩이 높이)이 이미 2배가 되고, 판에서 애니메이터가 그 눈금으로 엉덩이를 놓은 뒤 `Model`의 2배가 한 번 더 걸려
+        // 몸이 떴다(사람 1.0 → 아바타 눈금 0.69 · 오크 1.25배 0.87 · 트롤 2배 1.21 — 크기에 비례했다). 고블린(0.85배)은 반대로 조금 묻혔다.
+        var keepScale = model.localScale;
+        model.localScale = Vector3.one;
+        try { return BuildAvatarCore(model, prefabName, human); }
+        finally { model.localScale = keepScale; }
+    }
+
+    static Avatar BuildAvatarCore(Transform model, string prefabName, HumanBone[] human)
+    {
         // 뼈대 = 계층의 **모든** 트랜스폼(뿌리 포함), 지금 자세(T자) 그대로.
         var all = model.GetComponentsInChildren<Transform>(true);
         var skeleton = new SkeletonBone[all.Length];

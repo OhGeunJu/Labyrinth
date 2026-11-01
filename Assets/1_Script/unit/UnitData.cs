@@ -245,6 +245,11 @@ public class UnitData : ScriptableObject
     [Tooltip("초당 아무는 양 — 피와 부위에 같이. 0이면 안 아문다. 불타는 동안은 멈춘다.")]
     [Min(0f)] public float RegenPerSecond = 0f;
 
+    // **쓰러진 사람을 굴로 끌고 가 먹는다**(고블린 · 트롤 — 2026-11-01, 사용자: *"습격이오면 플레이어 캐릭들을 납치해서
+    // 잡아먹는 것도 … 굳이 습격이 아니더라도 야생에서도"*). 하는 일은 `Abduction`이 든다.
+    [Tooltip("쓰러진 적을 굴로 메고 가 묶어 두고 며칠에 걸쳐 먹는다(`Abduction`). 돌아갈 굴이 없으면 안 멘다.")]
+    public bool Devours = false;
+
     // **맞히면 거는 것**(오우거의 경직 등). 확률이 0이면 아무것도 안 건다.
     [Tooltip("근접으로 맞힌 표적에 거는 상태(확률 0이면 없음).")]
     public StatusEffectType HitEffect = StatusEffectType.Slowed;
@@ -256,6 +261,17 @@ public class UnitData : ScriptableObject
     // 그대로다. 고르는 것은 씨앗이다(`SkinLook` — 같은 개체는 늘 같은 색).
     [Tooltip("이 종족의 살색 후보. 비우면 프리팹 재질 그대로. 개체마다 씨앗이 하나를 고른다.")]
     public List<Color> SkinTones = new();
+
+    // **얼굴 문신 — 부족마다 다르다**(2026-11-01, 사용자: *"일반 오크는 그냥 초록색에 노 타투 or 대장만 빨간 타투"*). 문신을 그리는 머리
+    // (오크 — `ChibiPawnCreator.Orc`)만 읽는다(`MarkingLook`). 모양(어느 겹)은 씨앗이 고르고, 여기는 *지니나*와 *무슨 색*만 정한다.
+    [Tooltip("대장이 아닌 개체가 얼굴 문신을 지닐 확률(0이면 대장만).")]
+    [Range(0f, 1f)] public float TattooChance = 0f;
+    [Tooltip("문신 색 후보. 비우면 `MarkingLook`의 기본 넷(검정 · 빨강 · 파랑 · 뼈색).")]
+    public List<Color> InkTones = new();
+    [Tooltip("무리를 이끄는 개체(이끄는 이력 — `BackstoryData.Leads`)는 늘 문신을 지닌다.")]
+    public bool LeaderTattoo = true;
+    [Tooltip("대장의 문신 색. 알파가 0이면 위의 후보에서 고른다.")]
+    public Color LeaderInk = new(0f, 0f, 0f, 0f);
 
     public bool Forbids(WeaponType type) => ForbiddenWeapons != null && ForbiddenWeapons.Contains(type);
 }

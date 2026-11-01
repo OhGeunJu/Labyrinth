@@ -21,6 +21,9 @@ using UnityEngine;
 //   볼 때마다 새로 굴리면 결국 **거의 모든 청크에 떼가 선다**(확률이 곱해진다). 잊는 때는 셋: 청크가 내려갈 때 ·
 //   떼를 거둘 때 · 떼가 다 쓰러졌을 때.
 // - **눈앞에서 솟지 않는다** — 내 폰에서 `SafeDistance` 안이거나 던전 핵 영역 안이면 세우지 않고, 나중에 다시 본다.
+// - **마을 · 쉼터 둘레에는 안 선다**(`QuietAt` · 2026-11-01, 사용자: *"쉬어갈 수 있게 딱히 뭐가 없는 곳"*) — 장소는 구운 색인
+//   (`WorldSites`)에서 본다. 마을 청크가 아직 안 섰어도 답이 같아야 해서 `TownSite`(선 마을만 있다)를 안 쓴다.
+//   자리가 정해지면 바뀌지 않으므로 굴릴 때 한 번만 본다(폰 곁처럼 나중에 다시 보지 않는다).
 // - **멀어지면 거둔다** — 살아 있는 식구가 전부 카메라와 내 폰 둘 다에서 `DespawnDistance`(250m) 넘게 떨어지면 없앤다(죽인 것이 아니라 잠깐 치운 것).
 // - **다 쓰러뜨리면 `RespawnDays` 뒤에 다시 난다.** 시체는 하루 남는다(도축할 수 있다 — 핵 영역 밖 시체는 `Corpse.CheckVanish`가 하루 뒤 없앤다). 붙잡아 세력이 바뀐
 //   폰은 이 무리에서 빠진다 — 거둘 때도 안 건드린다.
@@ -30,6 +33,9 @@ public class WildSpawner : MonoBehaviour
 {
     // 내 폰에서 이만큼 안에는 안 세운다(m). 눈앞에서 솟는 것은 스폰이 아니라 사고로 보인다.
     const float SafeDistance = 40f;
+
+    // 마을 · 쉼터에서 이만큼 안에는 안 세운다(m). 떼가 이 밖에서 서 걸어 들어오는 것까지는 막지 않는다 — 쉬는 곳이지 성벽이 아니다.
+    public const float QuietRadius = 60f;
 
     // 청크 안에서 설 자리를 찾는 반경(m) — 세계의 3분의 2가 바위라 찍은 점은 대개 벽 속이다.
     const float FindOpenRadius = 24f;
@@ -72,7 +78,8 @@ public class WildSpawner : MonoBehaviour
     bool  _saidInactive;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    static void Bootstrap() => SelfStanding.Create<WildSpawner>("WildSpawner");
+    static void Bootstrap() => _self = SelfStanding.Create<WildSpawner>("WildSpawner");
+    static WildSpawner _self;
 
     void OnEnable()
     {
@@ -188,6 +195,13 @@ public class WildSpawner : MonoBehaviour
             if (now < g.NextMoveAt) continue;
             g.NextMoveAt = now + Random.Range(MoveEveryMin, MoveEveryMax);
 
+            // **사람을 묶어 둔 무리는 굴을 안 떠난다**(`Abduction`) — 떠나면 먹을 놈이 곁에 없다.
+            if (Abduction.HoldsCaptive(g.Faction, g.Home))
+            {
+                if ((g.Anchor - g.Home).sqrMagnitude > 1f) { g.Anchor = g.Home; SetAnchor(g, walk: true); }
+                continue;
+            }
+
             // **싸우는 중이면 안 옮긴다** — 하나라도 붙어 있으면 무리가 거기 있는 것이다.
             bool fighting = false;
             foreach (var b in g.Pawns)
@@ -206,6 +220,29 @@ public class WildSpawner : MonoBehaviour
             g.Anchor = at;
             SetAnchor(g, walk: true);
         }
+    }
+
+    // **지금 이 자리에 떼를 세운다**(2026-11-01 — 납치 시험) — 표를 굴리지 않고 `Spawn`을 그대로 탄다. 세운 자리가
+    // 태어난 자리(`Home`)가 되어 굴로도 쓰인다. 거두기 · 떠돌기 · 다시 나지 않음은 여느 떼와 같다(id는 음수 — 표의 것과 안 겹친다).
+    static long _handId;
+    public static bool SpawnHere(WorldBandData band, Vector3 at)
+    {
+        if (_self == null || band == null || !band.IsUsable) return false;
+        if (!RockMap.TryNearestOpen(at, FindOpenRadius, out var open)) return false;
+        float size  = TerrainGrid.ChunkSize;
+        var   chunk = new Vector2Int(Mathf.FloorToInt(open.x / size), Mathf.FloorToInt(open.z / size));
+        var   e     = new BiomeContentData.WildSpawnEntry { Band = band, ChancePerChunk = 1f, RespawnDays = 999f };
+        return _self.Spawn(e, --_handId, chunk, open);
+    }
+
+    // **이 폰이 떠도는 무리의 식구면 그 무리가 태어난 자리** — 사람을 메고 돌아갈 굴(`Abduction.TryDenOf`).
+    public static bool TryHomeOf(UnitBrain brain, out Vector3 home)
+    {
+        home = default;
+        if (_self == null || brain == null) return false;
+        foreach (var g in _self._live.Values)
+            if (g.Pawns.Contains(brain)) { home = g.Home; return true; }
+        return false;
     }
 
     static readonly List<Vector3> _roamPick = new();
@@ -271,7 +308,7 @@ public class WildSpawner : MonoBehaviour
     // 화면으로는 못 가린다 — 처음 `CensusChunks`개 청크를 **까닭별로 세어 한 줄로** 찍는다(뿌리기 결산과 같은 모양).
     const int CensusChunks = 40;
     int _censusDone;
-    int _cNoTable, _cRolledOut, _cNoOpen, _cNearPlayer, _cMade;
+    int _cNoTable, _cRolledOut, _cNoOpen, _cQuiet, _cNearPlayer, _cMade;
     readonly HashSet<Biome> _cEmptyBiomes = new();
     readonly HashSet<Vector2Int> _cSeen = new();
 
@@ -282,7 +319,7 @@ public class WildSpawner : MonoBehaviour
 
         string empty = _cEmptyBiomes.Count > 0 ? $" (표가 빈 바이옴: {string.Join(", ", _cEmptyBiomes)})" : "";
         Debug.Log($"[야생] 첫 {CensusChunks}청크 결산 — 표가 빔 {_cNoTable}{empty} · 확률에서 빠짐 {_cRolledOut} · " +
-                  $"설 자리 없음 {_cNoOpen} · 내 폰 곁/핵 영역 {_cNearPlayer}(나중에 다시 본다) → **선 무리 {_cMade}**" +
+                  $"설 자리 없음 {_cNoOpen} · 마을/쉼터 곁 {_cQuiet} · 내 폰 곁/핵 영역 {_cNearPlayer}(나중에 다시 본다) → **선 무리 {_cMade}**" +
                   (_cMade == 0 && _cNoTable == CensusChunks
                       ? "  ← **표가 전부 비었다** — 바이옴 에셋의 `WildSpawns`를 저작할 것." : ""));
         _censusDone = -1;
@@ -331,8 +368,9 @@ public class WildSpawner : MonoBehaviour
                 else
                 {
                     var pick = new Vector3(chunk.x * size + Random.value * size, 0f, chunk.y * size + Random.value * size);
-                    if (RockMap.TryNearestOpen(pick, FindOpenRadius, out var open)) plan.At = open;
-                    else { plan.Present = false; if (first) _cNoOpen++; }
+                    if (!RockMap.TryNearestOpen(pick, FindOpenRadius, out var open)) { plan.Present = false; if (first) _cNoOpen++; }
+                    else if (QuietAt(open)) { plan.Present = false; if (first) _cQuiet++; }
+                    else plan.At = open;
                 }
                 _plans[id] = plan;
             }
@@ -386,6 +424,10 @@ public class WildSpawner : MonoBehaviour
 
         if (g.Pawns.Count == 0) return false;
 
+        // **떼에도 대장이 있다**(2026-11-02, 사용자: *"떠도는 무리에도 대장이 있어야지"*) — 둘 이상이면 가장 센 놈을 습격대와 같은 문으로
+        // 세운다(표식 · 수준 · 이끄는 이력 · 부족 대장의 문신 — `BandLeader`). 혼자 떠도는 놈(트롤 하나)은 대장이 아니다.
+        if (g.Pawns.Count >= 2) BandLeader.Promote(g.Pawns, b => b != null && b.isActiveAndEnabled, unchecked((int)id));
+
         // 떼의 기준점 — 태어난 자리에서 시작해 첫 이동까지 조금 쉰다.
         g.Home = g.Anchor = at;
         g.NextMoveAt = GameTimeManager.Elapsed + Random.Range(MoveEveryMin * 0.5f, MoveEveryMax * 0.5f);
@@ -429,6 +471,18 @@ public class WildSpawner : MonoBehaviour
             if (new Vector2(p.x - q.x, p.z - q.z).sqrMagnitude < r2) return false;
         }
         return true;
+    }
+
+    // 마을 · 쉼터 곁인가. 장소는 수백 개 안쪽이고 묻는 것은 청크가 설 때 무리 줄마다 한 번이라 다 훑는다.
+    public static bool QuietAt(Vector3 at)
+    {
+        const float r2 = QuietRadius * QuietRadius;
+        foreach (var s in WorldSites.All)
+        {
+            if (s.Kind != WorldNodeContent.Town && s.Kind != WorldNodeContent.Haven) continue;
+            if (new Vector2(s.Position.x - at.x, s.Position.y - at.z).sqrMagnitude < r2) return true;
+        }
+        return false;
     }
 
     // 내 폰 가까이 · 핵 영역 안에는 안 세운다.

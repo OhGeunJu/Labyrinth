@@ -462,8 +462,8 @@ public class ChasmPainter : EditorWindow
     static int RockVariant(Vector3 at)
     {
         string b = WorldMap.BiomeAtWorld(new Vector2(at.x, at.z)).ToString();
-        if (b == "Glacier" || b == "Crystal" || b == "Tundra") return 1;
-        if (b == "Mossgrotto" || b == "Fungal" || b == "Swamp" || b == "Forest") return 0;
+        if (b == "Glacier" || b == "Crystal") return 1;
+        if (b == "Mossgrotto" || b == "Fungal" || b == "Swamp") return 0;
         return 2;
     }
 

@@ -28,7 +28,10 @@ MonoBehaviour:
   WallLights:
   - Light: {fileID: 11400000, guid: 60fed12e174ab3246a06290c5ce9db4c, type: 2}
     Chance: 0.03
-  WildSpawns: []
+  WildSpawns:
+  - Band: {fileID: 11400000, guid: e497e7490d8fb484e9b0e66814f9a906, type: 2}
+    ChancePerChunk: 0.05
+    RespawnDays: 3
   Deposits: []
   TownMerchants: []
   TownFaction: {fileID: 0}

@@ -19,7 +19,7 @@ public class WorldMapEditorWindow : EditorWindow
     WorldMapData _data;
 
     Brush            _brush        = Brush.Biome;
-    Biome            _biomeBrush   = Biome.Plains;
+    Biome            _biomeBrush   = Biome.Cavern;
     WorldNodeContent _contentBrush = WorldNodeContent.Town;
 
     float     _cellSize = 26f;

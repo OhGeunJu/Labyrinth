@@ -25,7 +25,7 @@ public enum MapDir
 [CreateAssetMenu(menuName = "DungeonColony/BiomeContentData")]
 public class BiomeContentData : ScriptableObject
 {
-    public Biome Biome = Biome.Plains;
+    public Biome Biome = Biome.Unknown;
 
     // ── 지역 난도 ────────────────────────────────────────────────────────────
     //

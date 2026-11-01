@@ -11,6 +11,13 @@ public partial class UnitBrain
     {
         _roleStanceFallback = fallback;   // 프로필도 오버라이드도 없을 때 쓰는 값
 
+        // **먹는 종족은 쓰러진 사람을 굴로 메고 간다**(`Abduction`) — 떠나기 · 도주 · 교전보다 위(`BTAbductionNodes` 머리글).
+        if (Abduction.Devours(this))
+        {
+            root.Add(new HaulToDenNode());
+            root.Add(new SeizeDownedNode());
+        }
+
         // **떠나는 것이 도망보다 위다.** 풀려난 사람은 위협을 피해 서성이는 게 아니라
         // 가장자리로 가서 사라진다 — 도주가 먼저 잡으면 구석에서 맴돌기만 한다.
         // (맞으면 `LeaveMapNode`가 스스로 꺼지고 아래 분기가 평소대로 받는다.)
@@ -21,6 +28,9 @@ public partial class UnitBrain
 
         // 도주 성향이면 교전하지 않는다 — 조건으로 막아 런타임 전환에도 대응.
         AddFight(root, skipWhenFleeing: true);
+
+        // 싸울 것이 없으면 끼니 — 기둥에 묶인 사람을 뜯는다(`DevourNode`).
+        if (Abduction.Devours(this)) root.Add(new DevourNode());
     }
 
     // **전투 묶음 — 한 벌이다**(2026-10-18). 방랑자 · 하수인 · 가축 · NPC/적(`AddCombatBranch`) 네 트리가 같은

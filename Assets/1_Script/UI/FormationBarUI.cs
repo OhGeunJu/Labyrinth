@@ -37,7 +37,7 @@ public class FormationBarUI : MonoBehaviour
     // 안 떠 있으면 알림이 **유일한 답**이다(`FormationController`가 이걸 본다).
     public static bool IsShowing { get; private set; }
 
-    SelectionManager _selection;
+    SelectionManager _selection => SelectionManager.Instance;
 
     void OnDisable() => IsShowing = false;
 
@@ -70,7 +70,6 @@ public class FormationBarUI : MonoBehaviour
     bool AnyDrafted()
     {
         // 씬 오브젝트라 매번 찾지 않고 들고 있는다(정착지를 갈아타면 다시 찾는다).
-        if (_selection == null) _selection = FindFirstObjectByType<SelectionManager>();
         if (_selection == null) return false;
 
         foreach (var pawn in _selection.Selected)

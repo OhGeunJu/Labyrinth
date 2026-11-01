@@ -104,8 +104,14 @@ public static class BackstoryPool
         if (b.Leads) return false;   // 굴려서는 안 나온다 — `LeaderOf`가 준다
 
         string mine = string.IsNullOrWhiteSpace(b.Group) ? DefaultGroup : b.Group;
-        return mine == group;
+        return InGroup(mine, group);
     }
+
+    // **묶음은 점으로 갈래를 친다**(2026-11-01, 사용자: *"오크 배경은 똑같게 부족 배경은 다르게 … 다른 배경이 뜰 수도 있지만 같은 배경이
+    // 뜰 수도 있게"*) — `orc.frost`(서리 부족)는 제 것(`orc.frost`)과 뿌리의 것(`orc`)에서 함께 뽑는다. 뿌리(`orc`)는 갈래의 것을 안 받는다
+    // (일반 오크에게서 서리 부족 이력이 나오지 않게). 갈래가 없는 묶음은 예전 그대로 같은 이름끼리다.
+    static bool InGroup(string mine, string group)
+        => mine == group || (group != null && group.StartsWith(mine + "."));
 
     // **무리를 이끄는 이력**(`BackstoryData.Leads`). 두목을 세게 만들면서 배경을 다시 굴리는데,
     // 그러면 갓 뽑은 두목이 *"짐꾼"*을 달고 서게 된다 — 그때 이걸로 덮는다.
@@ -120,19 +126,26 @@ public static class BackstoryPool
     // 달게 되어 세력마다 이력을 갈라 둔 뜻이 지워진다. 없으면 굴린 것을 그대로 둔다.
     public static BackstoryData LeaderOf(string group)
     {
+        // 갈래부터 — 제 부족의 두목 이력이 있으면 그것, 없으면 한 단 위(`orc.frost` → `orc`).
         string want = string.IsNullOrWhiteSpace(group) ? DefaultGroup : group;
-
-        BackstoryData best = null;
-        foreach (var b in All)
+        while (true)
         {
-            if (b == null || !b.Leads || b.Slot != BackstorySlot.Adulthood) continue;
+            BackstoryData best = null;
+            foreach (var b in All)
+            {
+                if (b == null || !b.Leads || b.Slot != BackstorySlot.Adulthood) continue;
+                if (b.Weight <= 0f) continue;   // 무게 0 = 저작한 한 사람만(족장 — `BigRaceCreator.Chiefs`) · 대장으로 안 준다
 
-            string mine = string.IsNullOrWhiteSpace(b.Group) ? DefaultGroup : b.Group;
-            if (mine != want) continue;
+                string mine = string.IsNullOrWhiteSpace(b.Group) ? DefaultGroup : b.Group;
+                if (mine != want) continue;
 
-            if (best == null || b.Weight > best.Weight) best = b;
+                if (best == null || b.Weight > best.Weight) best = b;
+            }
+            if (best != null) return best;
+            int dot = want.LastIndexOf('.');
+            if (dot <= 0) return null;
+            want = want.Substring(0, dot);
         }
-        return best;
     }
 
     // ── 스탯에 얹기 ──────────────────────────────────────────────────────────

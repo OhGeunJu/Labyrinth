@@ -16,6 +16,9 @@ public enum WorldNodeContent
     // (지상 바이옴을 `Biome` enum에 남겨 둔 것과 같은 규칙: 안 쓰면 그만이다).
     ResourceSite,
     Outpost,      // 내 채집기지 — 매장 자원을 매일 캐서 쌓아둔다(사람은 살지 않는다)
+    // **쉼터**(2026-11-01, 사용자: *"특이한 지형에 마을같은 거나 쉬어갈 수 있게 딱히 뭐가 없는 곳이 있으면"*) — 아무것도 없는
+    // 빈터다. 하는 일은 하나 — 둘레에 떠도는 무리가 안 선다(`WildSpawner.QuietAt` · 마을도 같다). 어디에 두나는 사용자가 저작한다.
+    Haven,
 }
 
 public static class WorldNodeContentExt
@@ -27,6 +30,7 @@ public static class WorldNodeContentExt
         WorldNodeContent.Town         => "마을",
         WorldNodeContent.EnemyLair    => "적 소굴",
         WorldNodeContent.Outpost      => "채집기지",
+        WorldNodeContent.Haven        => "쉼터",
         _                             => c.ToString(),
     };
 
@@ -37,6 +41,7 @@ public static class WorldNodeContentExt
         WorldNodeContent.Town         => new Color(0.4f, 0.6f, 1f),
         WorldNodeContent.EnemyLair    => new Color(0.9f, 0.2f, 0.2f),
         WorldNodeContent.Outpost      => new Color(0.85f, 0.65f, 0.35f),
+        WorldNodeContent.Haven        => new Color(0.45f, 0.85f, 0.55f),
         _                             => UnityEngine.Color.white,
     };
 
@@ -47,6 +52,7 @@ public static class WorldNodeContentExt
         WorldNodeContent.Town         => "마",
         WorldNodeContent.EnemyLair    => "적",
         WorldNodeContent.Outpost      => "굴",
+        WorldNodeContent.Haven        => "쉼",
         _                             => "",
     };
 }
@@ -213,8 +219,6 @@ public class WorldMap : MonoBehaviour
         for (int y = 0; y < height; y++)
             _tiles[x, y] = new WorldTile { Biome = Biome.Unknown, Content = WorldNodeContent.Empty };
 
-        if (InBounds(startNode)) _tiles[startNode.x, startNode.y].Biome = Biome.Plains;
-
         string why = mapData == null ? "mapData 미연결" : "mapData의 배열 크기가 Width×Height와 어긋남";
         Debug.LogWarning($"[WorldMap] 저작 데이터가 없어 빈 맵({width}×{height})으로 시작합니다 — {why}. " +
                          "`DungeonColony → World Map Editor`에서 저작하고 [씬에 연결]하세요.");
@@ -294,12 +298,12 @@ public class WorldMap : MonoBehaviour
 
         // 에디터 — 세계 칸을 층과 층 안 칸으로 가른다(`LoadAuthored`와 같은 셈).
         int fw = AuthoredWidth;
-        if (fw <= 0 || x < 0 || y < 0) return Biome.Plains;
+        if (fw <= 0 || x < 0 || y < 0) return Biome.Unknown;
         var src = FloorData(Floors.OfQuadrant(x / fw, y / fw));
         int lx = x % fw, ly = y % fw;
         if (src != null && src.IsSized && src.InBounds(lx, ly)) return src.Get(lx, ly).Biome;
 
-        return Biome.Plains;
+        return Biome.Unknown;
     }
 
     // ── 변경 ─────────────────────────────────────────────────────────────────

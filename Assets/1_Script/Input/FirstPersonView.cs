@@ -84,7 +84,7 @@ public class FirstPersonView : MonoBehaviour
 
     void TryEnter()
     {
-        var sel = FindFirstObjectByType<SelectionManager>();
+        var sel = SelectionManager.Instance;
         if (sel == null || sel.Selected.Count == 0)
         {
             Debug.Log("[1인칭] 폰을 하나 고르고 F를 누를 것.");

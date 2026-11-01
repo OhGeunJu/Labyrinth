@@ -23,7 +23,7 @@ Guidance for Claude Code in this repository.
 - **사방이 바위이고 캐면서 넓힌다** — 답은 `RockMap` 하나 · 테두리 세 칸은 기반암 · 바위는 `RockRenderer` 청크 메시(자르기는 `RockCut.hlsl`을 그리는 패스 셋 전부에 · 벽선은 `Wobble`, 높이마다의 굴곡은 `RockBulge`로 흔들되 콜라이더·길찾기는 칸 그대로) · 커서로 짚는 문은 `VisiblePick` 하나 · 광맥은 바이옴 풀 한 표(바닥에 쓸 때 `IsVein`으로 거른다) · 벽 조명은 `RockMap.WallLightAt`(표는 `BiomeContentData.WallLights`) · 판 굴은 이틀 뒤 메워진다(`RockRegrow.Keeps` · `RockMap.Refill`). → `docs/design_underworld.md`
 - **절벽 · 다리** — 답은 `Chasm` 하나(`ChasmData` · 칠하기·자동 생성 `World → I` · 다리 만드는 문 `World → J`) · 지형에 구멍을 뚫는다(2m 덩어리) · 땅 고르기는 절벽을 거절한다 · 다리는 양 끝 높이로 비스듬히(`Bridge.SpanOf`), 윗면은 `Chasm`이 든다(등록 `Start` · 해제 `OnDestroy`). → `docs/world.md` "절벽 · 다리"
 - **세계 저작은 씬에서 하고 청크로 굽는다** — 저작 씬은 `Awake`에서 스스로 꺼진다 · 청크 에셋에 쓰는 문은 `5. Bake World` 하나 · 에디터 틱에서 런타임 물건을 건드리지 않는다(`isPlaying`) · 런타임 오브젝트 플래그는 `SelfStanding.RuntimeObject`. → `docs/design_world_editor.md`
-- **짐승·떠도는 적은 청크가 설 때 선다**(`WildSpawner` · 표는 `BiomeContentData.WildSpawns`) — 청크가 설 때마다 새로 굴리고 서 있는 동안은 그 답을 든다 · 떠도는 동안은 레일(`PawnMover.OnRails`) · 내 폰 40m 안과 핵 영역에는 안 선다 · 카메라와 내 폰 둘 다에서 250m 넘으면 거둔다 · 핵 영역 밖 시체는 하루 뒤 사라진다(`Corpse.CheckVanish`) · 갇힌·업힌 폰은 무리에서 빠진다. → `docs/world.md`
+- **짐승·떠도는 적은 청크가 설 때 선다**(`WildSpawner` · 표는 `BiomeContentData.WildSpawns`) — 청크가 설 때마다 새로 굴리고 서 있는 동안은 그 답을 든다 · 떠도는 동안은 레일(`PawnMover.OnRails`) · 내 폰 40m 안과 핵 영역 · 마을·쉼터 60m 안(`QuietAt` · 장소 `Haven`)에는 안 선다 · 카메라와 내 폰 둘 다에서 250m 넘으면 거둔다 · 핵 영역 밖 시체는 하루 뒤 사라진다(`Corpse.CheckVanish`) · 갇힌·업힌 폰은 무리에서 빠진다. → `docs/world.md`
 - **에디터 메뉴 번호는 겹치면 컴파일 직후 에러다**(`MenuOrderCheck`) · `1. Rebuild Underworld`는 메뉴를 이름으로 부르니 번호를 바꾸면 거기도 · **끝난 일회성 도구는 지운다**.
 - **상단 · 포탈 · 첫 마을** — 핵은 포탈(`PortalTravel` — 걸어서 닿아야 넘어간다) · 상단은 출발 핵에 다 모였다가 포탈 너머로 빠지는 추상 여정(`Caravan` · `CaravanManager` · 창 `T` · 짐은 실제 창고에서 빠지고 든다 · 길 위 습격은 `WorldBattle.ResolveAmbush`) · 첫 마을이 상단을 연다(`TownSite` · `Caravans.Unlock`) · 세력 창은 만난 세력만(`FactionRelations.Meet`). → `docs/world.md` "상단"
 - **탐험은 이어진 세계를 걸어서 한다** — 옛 3D 월드맵·원정대·화면 전환(`GameModeManager`)은 없다. 필드인지 묻지 않는다. 고용 후보 표 `BiomeContentData.TownRecruits`는 읽는 곳이 없다(마을 고용을 다시 열 때 쓴다). → `docs/world.md` 끝
@@ -31,6 +31,7 @@ Guidance for Claude Code in this repository.
 - **벽은 둘** — 외곽벽은 칸을 먹고 이웃과 잇는다(`FortWall`) · **얇은 벽은 변을 막는다**(`EdgeWalls` — 로컬·지름길·광역이 한 표를 읽는다 · 콜라이더는 `Default` 층). → `docs/build.md`
 - **1인칭 · 천장** — `F`가 고른 폰의 눈으로 같은 카메라를 붙든다(`FirstPersonView.On`이면 `CameraController`는 손을 뗀다) · 그동안 벽 자르기를 끄고 천장을 켠다 · 천장은 바위 메시에 안 넣는다(뚜껑은 자르는 높이로 끌려 내려온다 — 청크의 자식 렌더러 `BuildCeiling`) · 볕 구멍 위는 비운다(`RockRenderer.AddSkyHole`).
 - **몸집은 종족이 든다**(`UnitData.BodyScale` → `BodySize`) — 그림과 팔 길이만 큰다 · 부딪히는 몸은 한 칸 그대로 · 거리는 둘레까지(`BTTargetUtil.DistanceTo` · `MeleeSlots`) · 큰 몸은 휘두른다(표적 온전히 + 둘레 `CleaveTargets`) · 못 쥐는 무기는 `Equipment.CanWield` · 아무는 몸 `Regeneration`(불 붙으면 멈춘다).
+- **먹는 종족은 쓰러진 사람을 굴로 메고 간다**(`UnitData.Devours` — 고블린 · 트롤 · `Abduction`) — 곁에 깨어 있는 그 편이 없을 때만 · 굴이 없으면 안 멘다 · 굴에 기둥을 세워 묶는다(`CaptivePost` — 갇힘 한 벌 `Imprisonment.Bind`) · 먹히는 것 · 탈출은 `Devoured`(끼니마다 `DevourNode`가 뜯는 동안 부위가 차례로 준다 — `BodyPartSystem.Gnaw`) · 부서진 팔다리는 안 낫고 몸에서 접힌다 · 기절한 어깨는 업은 것을 떨어뜨린다.
 - **미룬 것**(건물 에셋 대기) — 마을 건설 · 마을=핵 · 건물 2층(층 넷과 다른 장치 — 같은 XZ에 바닥 둘). **남은 미결** — 월드 에디터의 퀘스트.
 
 ## Project Overview

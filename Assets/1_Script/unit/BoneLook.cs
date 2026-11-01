@@ -11,6 +11,9 @@ using UnityEngine;
 // - 칠하는 살은 `PawnLook.PickRenderers`(해골 머리의 `Head.Pick.*`)와 **몸의 뼈**(`관절.Bone.*` — 2026-10-27)다. 몸에는 색만 적는다
 //   (눈구멍 속은 머리의 일이다). 투구 · 방어구 껍데기는 `PawnApparel`이 칠한다.
 // - **색은 고를 수도 · 직접 넣을 수도 있다**(사용자: *"스켈레톤 뼈 색도 변경 가능하게"*) — `Custom`이면 `customColor`.
+// - **씬 · 프리팹에서도 보인다**(2026-11-01, 사용자: *"씬에 배치에서도 색이 보이게"*) — 렌더러 블록은 저장되지 않으므로
+//   에디터에서는 켜질 때마다 다시 칠한다(`SkinLook`과 같은 길 · `ExecuteAlways`). 칠만 하고 켜고 끄는 것은 없다.
+[ExecuteAlways]
 public class BoneLook : MonoBehaviour
 {
     public enum Tint   { Seeded = -1, Ivory, Pale, Dark, Custom }
@@ -41,7 +44,10 @@ public class BoneLook : MonoBehaviour
     public Tint   TintNow   { get; private set; }
     public Hollow HollowNow { get; private set; }
 
-    void Start() => Apply();
+    // 판에서는 `Start` — 명세(씨앗)가 선 뒤에. 에디터에서는 켜질 때마다(씬을 불러오거나 · 끌어다 놓거나 · 프리팹을 열 때) —
+    // 다시 구운 몸일 수 있으니 뼈 목록도 다시 모은다.
+    void OnEnable() { if (!Application.isPlaying) { _gathered = false; Apply(); } }
+    void Start()    { if (Application.isPlaying) Apply(); }
 
     void OnValidate() { if (isActiveAndEnabled) Apply(); }
 

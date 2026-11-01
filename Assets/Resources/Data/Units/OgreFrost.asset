@@ -1,0 +1,97 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Name: OgreFrost
+  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  Id: OgreFrost
+  RaceName: "\uD30C\uB791 \uC624\uC6B0\uAC70"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uAD7C\uBCF4"
+  - "\uB450\uADF8"
+  - "\uBAA8\uB85C"
+  - "\uBD80\uB974\uAC00"
+  - "\uC624\uADF8"
+  - "\uD23C\uBE0C"
+  - "\uD750\uB8F8"
+  - "\uACE0\uB974\uBC14"
+  - "\uBC14\uB8F8"
+  - "\uB460\uB450"
+  MaleNames: []
+  FemaleNames: []
+  MaxHP: 340
+  MoveSpeed: 3.4
+  AttackDamage: 26
+  AttackRange: 1.5
+  DetectRange: 10
+  NightVision: 0
+  IsUndead: 0
+  IsConstruct: 0
+  Resistances:
+  - Type: 4
+    Amount: 0.4
+  - Type: 3
+    Amount: -0.3
+  UsesBackstory: 1
+  DefaultMinGrade: 7
+  DefaultMaxGrade: 7
+  StatGrades:
+  - Stat: 0
+    Min: 14
+    Max: 14
+  - Stat: 1
+    Min: 14
+    Max: 14
+  - Stat: 3
+    Min: 10
+    Max: 10
+  StatGrowthRates: []
+  ButcherYield:
+  - Item: {fileID: 0}
+    ItemId: res_ogrehide
+    Chance: 0.9
+    MinCount: 2
+    MaxCount: 4
+  - Item: {fileID: 0}
+    ItemId: food_meat_ogre
+    Chance: 1
+    MinCount: 8
+    MaxCount: 12
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 4
+    MaxCount: 7
+  RollStats: 1
+  CanEquip: 1
+  DisabledJobs: 
+  Tameable: 0
+  BodyScale: 2
+  CleaveTargets: 2
+  CleaveDamage: 0.5
+  ForbiddenWeapons: 090000000a0000000c000000
+  RegenPerSecond: 0
+  Devours: 0
+  HitEffect: 2
+  HitEffectChance: 0.35
+  HitEffectDuration: 2
+  HitEffectStrength: 0.6
+  SkinTones:
+  - {r: 0.43137255, g: 0.56078434, b: 0.78431374, a: 1}
+  - {r: 0.30588236, g: 0.40784314, b: 0.627451, a: 1}
+  - {r: 0.5411765, g: 0.47058824, b: 0.59607846, a: 1}
+  - {r: 0.6117647, g: 0.54901963, b: 0.72156864, a: 1}
+  TattooChance: 0
+  InkTones: []
+  LeaderTattoo: 0
+  LeaderInk: {r: 0, g: 0, b: 0, a: 0}

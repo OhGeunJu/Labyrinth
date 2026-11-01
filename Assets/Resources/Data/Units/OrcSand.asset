@@ -1,0 +1,94 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Name: OrcSand
+  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  Id: OrcSand
+  RaceName: "\uBAA8\uB798 \uBD80\uC871 \uC624\uD06C"
+  Icon: {fileID: 0}
+  NamePool:
+  - "\uADF8\uB85C\uB9C8\uD06C"
+  - "\uC6B0\uB974\uAC01"
+  - "\uBCFC\uADF8"
+  - "\uAC00\uC988\uB099"
+  - "\uB450\uB974\uD06C"
+  - "\uBAA8\uB974\uACE4"
+  - "\uB77C\uADF8\uB099"
+  - "\uC2A4\uB178\uAC00"
+  - "\uD0C0\uB974\uC26C"
+  - "\uC6B0\uADF8\uB77D"
+  MaleNames: []
+  FemaleNames: []
+  MaxHP: 130
+  MoveSpeed: 4
+  AttackDamage: 13
+  AttackRange: 1.5
+  DetectRange: 10
+  NightVision: 0
+  IsUndead: 0
+  IsConstruct: 0
+  Resistances: []
+  UsesBackstory: 1
+  DefaultMinGrade: 7
+  DefaultMaxGrade: 7
+  StatGrades:
+  - Stat: 0
+    Min: 10
+    Max: 10
+  - Stat: 1
+    Min: 10
+    Max: 10
+  - Stat: 3
+    Min: 7
+    Max: 7
+  StatGrowthRates: []
+  ButcherYield:
+  - Item: {fileID: 0}
+    ItemId: res_orchide
+    Chance: 0.9
+    MinCount: 1
+    MaxCount: 2
+  - Item: {fileID: 0}
+    ItemId: food_meat_orc
+    Chance: 1
+    MinCount: 3
+    MaxCount: 5
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 2
+    MaxCount: 3
+  RollStats: 1
+  CanEquip: 1
+  DisabledJobs: 
+  Tameable: 0
+  BodyScale: 1.15
+  CleaveTargets: 0
+  CleaveDamage: 0.5
+  ForbiddenWeapons: 
+  RegenPerSecond: 0
+  Devours: 0
+  HitEffect: 2
+  HitEffectChance: 0
+  HitEffectDuration: 2
+  HitEffectStrength: 0.6
+  SkinTones:
+  - {r: 0.65882355, g: 0.5411765, b: 0.3529412, a: 1}
+  - {r: 0.6039216, g: 0.47843137, b: 0.30588236, a: 1}
+  - {r: 0.7058824, g: 0.5882353, b: 0.3764706, a: 1}
+  - {r: 0.54901963, g: 0.4392157, b: 0.3137255, a: 1}
+  TattooChance: 0.6
+  InkTones:
+  - {r: 0.85882354, g: 0.8392157, b: 0.7607843, a: 1}
+  LeaderTattoo: 1
+  LeaderInk: {r: 0, g: 0, b: 0, a: 0}

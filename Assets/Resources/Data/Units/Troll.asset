@@ -28,9 +28,9 @@ MonoBehaviour:
   - "\uD06C\uB85C\uADF8"
   MaleNames: []
   FemaleNames: []
-  MaxHP: 220
+  MaxHP: 320
   MoveSpeed: 3.8
-  AttackDamage: 18
+  AttackDamage: 26
   AttackRange: 1.5
   DetectRange: 10
   NightVision: 0
@@ -38,33 +38,36 @@ MonoBehaviour:
   IsConstruct: 0
   Resistances: []
   UsesBackstory: 1
-  DefaultMinGrade: 6
-  DefaultMaxGrade: 6
+  DefaultMinGrade: 7
+  DefaultMaxGrade: 7
   StatGrades:
   - Stat: 0
-    Min: 11
-    Max: 11
+    Min: 14
+    Max: 14
   - Stat: 1
-    Min: 11
-    Max: 11
+    Min: 14
+    Max: 14
+  - Stat: 3
+    Min: 3
+    Max: 3
   StatGrowthRates: []
   ButcherYield:
   - Item: {fileID: 0}
-    ItemId: res_rawhide
-    Chance: 0.8
-    MinCount: 1
+    ItemId: res_trollhide
+    Chance: 0.9
+    MinCount: 2
     MaxCount: 3
   - Item: {fileID: 0}
-    ItemId: food_meat_human
-    Chance: 0.8
-    MinCount: 2
-    MaxCount: 4
+    ItemId: food_meat_troll
+    Chance: 1
+    MinCount: 6
+    MaxCount: 10
   BoneYield:
   - Item: {fileID: 0}
     ItemId: res_bone
     Chance: 1
-    MinCount: 1
-    MaxCount: 3
+    MinCount: 4
+    MaxCount: 6
   RollStats: 1
   CanEquip: 1
   DisabledJobs: 
@@ -74,8 +77,9 @@ MonoBehaviour:
   CleaveDamage: 0.5
   ForbiddenWeapons: 090000000a0000000c000000
   RegenPerSecond: 0.6
+  Devours: 1
   HitEffect: 2
-  HitEffectChance: 0
+  HitEffectChance: 0.25
   HitEffectDuration: 2
   HitEffectStrength: 0.6
   SkinTones:
@@ -83,3 +87,7 @@ MonoBehaviour:
   - {r: 0.34509805, g: 0.3764706, b: 0.41568628, a: 1}
   - {r: 0.47843137, g: 0.5019608, b: 0.5254902, a: 1}
   - {r: 0.30588236, g: 0.36862746, b: 0.5019608, a: 1}
+  TattooChance: 0
+  InkTones: []
+  LeaderTattoo: 0
+  LeaderInk: {r: 0, g: 0, b: 0, a: 0}

@@ -537,6 +537,15 @@ public static class DataManager
         a.DamageReduction = s.damageReduction;
         a.MoveSpeedMult   = s.moveSpeedMult > 0f ? s.moveSpeedMult : 1f;
         a.Ability         = ResolveAbility(s.abilityId, s.id);
+        if (s.resistances != null)
+            foreach (var r in s.resistances)
+            {
+                if (r == null) continue;
+                // 종류 오타는 조용히 저항 없음이 된다 — 적었는데 못 읽은 것은 알린다.
+                if (!System.Enum.TryParse(r.type, true, out DamageType t))
+                { Debug.LogWarning($"[데이터] `{s.id}`의 저항 종류 `{r.type}`를 못 읽었습니다 — `DamageType` 이름으로 적을 것."); continue; }
+                a.Resistances.Add(new DamageResistance { Type = t, Amount = Mathf.Clamp(r.amount, -2f, 0.9f) });
+            }
         // 색 오타는 조용히 기본 갈색이 된다 — 적었는데 못 읽은 것은 알린다(`ResolveAbility`와 같은 이유).
         if (!string.IsNullOrEmpty(s.wornColor))
         {

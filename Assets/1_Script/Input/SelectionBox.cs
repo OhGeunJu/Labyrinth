@@ -26,7 +26,7 @@ public class SelectionBox : MonoBehaviour
         // **판단은 `SelectionManager`가 한다**(`PressOverUI`) — 그리는 쪽이 따로 물으면
         // 언젠가 두 답이 갈린다. 배선이 비었으면 그때만 스스로 찾는다.
         if (selectionManager == null)
-            selectionManager = Object.FindFirstObjectByType<SelectionManager>();
+            selectionManager = SelectionManager.Instance;
 
         if (selectionManager != null && selectionManager.PressOverUI) { _drawing = false; return; }
 

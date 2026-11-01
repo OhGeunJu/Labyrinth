@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Ogre
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uC624\uC6B0\uAC70 \uC77C\uC871"
+  tokenColor: {r: 0.7, g: 0.5, b: 0.3, a: 1}
+  faction: {fileID: 11400000, guid: 5681b617cbcd962488df12bd4dfa7db3, type: 2}
+  behavior: 0
+  members:
+  - Prefab: {fileID: 6894885055828391614, guid: c48c2e66097f9654da55663ec300f0ae, type: 3}
+    MinCount: 1
+    MaxCount: 2
+    MinGrade: 6
+    MaxGrade: 6
+  speed: 3.4
+  ChaseRadius: 14
+  merchant: {fileID: 0}
+  loot: []
+  PowerMultiplier: 2

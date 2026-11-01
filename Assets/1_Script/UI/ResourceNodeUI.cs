@@ -91,7 +91,7 @@ public class ResourceNodeUI : MonoBehaviour
     [SerializeField] Button haulThresholdDownButton;
 
     ResourceNode _current;
-    SelectionManager _selection;
+    SelectionManager _selection => SelectionManager.Instance;
 
     void Awake()
     {
@@ -104,7 +104,6 @@ public class ResourceNodeUI : MonoBehaviour
 
     void Start()
     {
-        _selection = FindFirstObjectByType<SelectionManager>();
     }
 
     void OnEnable()

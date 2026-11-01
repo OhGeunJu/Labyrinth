@@ -25,7 +25,7 @@ using UnityEngine.UI;
 public static class CharacterCreationUICreator
 {
     const string FontPath     = "Assets/NanumGothic SDF.asset";
-    const string WandererPath = "Assets/3_Prefab/Pawn/Wanderer_Human.prefab";
+    static readonly string WandererPath = PawnPrefabPaths.PathOf("Wanderer_Human");
 
     static readonly Color Dim      = new(0f, 0f, 0f, 0.86f);
     static readonly Color WindowBg = new(0.10f, 0.10f, 0.12f, 1f);
