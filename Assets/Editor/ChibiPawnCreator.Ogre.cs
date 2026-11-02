@@ -12,7 +12,7 @@ using UnityEngine;
 //   - **눈** — 큰 외눈(흰자 · 홍채 · 동공) 또는 눈 둘(작으면 도깨비 같다 — 10-31에 키웠다). 개체마다 씨앗이 고른다(`Head.Pick.Eyes.One/Two` — `PawnLook`).
 //     조각이 셋이라 이름 넷째 마디 뒤에 무엇인지 붙인다(`Head.Pick.Eyes.One.Iris` — `PawnLook`은 축 · 벌 뒤를 안 읽는다).
 //   - **고르는 축은 눈 말고도 일곱**(2026-11-01, 사용자: *"고를 수 있는게 눈 뿐"*) — 귀(둥근 · 뜯긴 · 작은) × 코(넓적 · 들린)는 머리 한 벌로
-//     조합마다 굽고 · 뿔(하나 · 둘 · 부러진 — 뿔 없는 오우거는 없다) · 송곳니(긴 · 짧은 · 한쪽 부러진 · 양쪽 부러진 — 없는 것은 없다) · 이(다 있음 · 빠짐) · 어깨 천 · 팔목 띠(있음 · 없음).
+//     조합마다 굽고 · 뿔(없음 · 하나 · 부러진 — 11-02에 둘을 빼고 없음을 다시 넣었다) · 송곳니(긴 · 짧은 · 한쪽 부러진 · 양쪽 부러진 — 없는 것은 없다) · 이(다 있음 · 빠짐) · 어깨 천 · 팔목 띠(있음 · 없음).
 //     몸에 붙은 축도 같은 이름 규칙이다(`Spine.Pick.Sash.On` — 첫 마디가 관절). 첫 벌이 10-31에 통과한 모습이다(구울 때 켜 둔다).
 //   - **몸** — 처진 배 · 좁고 비스듬한 어깨(v4의 덩어리 그대로 작게) · 짧은 다리 · 큰 주먹 · 큰 발.
 //   - **걸친 것** — 한쪽 어깨에 걸친 천 · 몸통에 붙은 허리 천(v4 — 사용자가 좋다고 한 것)과 둥근 쇠 장식 · 해진 아래 천 ·
@@ -178,29 +178,21 @@ public static partial class ChibiPawnCreator
     static float OgreTwoIris(Vector3 p, BruteJoints j)  => Ell(Mirror(p), TwoEye + new Vector3(0f, j.Top, 0.062f), new Vector3(0.054f, 0.054f, 0.014f));
     static float OgreTwoPupil(Vector3 p, BruteJoints j) => Ell(Mirror(p), TwoEye + new Vector3(0f, j.Top, 0.075f), new Vector3(0.023f, 0.028f, 0.007f));
 
-    // 정수리 뿔 — 위로 솟다 뒤로 휜다.
+    // 정수리 뿔 — 위로 솟다 뒤로 휜다. **키웠다**(2026-11-02, 사용자: *"뿔 크기를 좀 더 키워줘"* — 남녀 둘 다 · 미리보기 `ogre_v3`).
+    // 벌은 없음 · 하나 · 부러진 셋이다(사용자: *"뿔 없는 버전도 다시 넣고 뿔 두개는 없애버리자"*).
     static float OgreHorn(Vector3 p, BruteJoints j)
     {
         float t = j.Top;
-        var a = new Vector3(0f, t + 0.72f, 0.05f); var b = new Vector3(0f, t + 0.90f, 0.02f); var c = new Vector3(0f, t + 1.02f, -0.04f);
-        return Mathf.Min(Seg(p, a, b, 0.095f, 0.055f), Seg(p, b, c, 0.055f, 0.01f));
+        var a = new Vector3(0f, t + 0.70f, 0.05f); var b = new Vector3(0f, t + 0.94f, 0.01f); var c = new Vector3(0f, t + 1.12f, -0.08f);
+        return Mathf.Min(Seg(p, a, b, 0.125f, 0.072f), Seg(p, b, c, 0.072f, 0.012f));
     }
 
     // 부러진 뿔 — 아랫마디만 남고 비스듬히 잘렸다.
     static float OgreHornBroken(Vector3 p, BruteJoints j)
     {
         float t = j.Top;
-        float stub = Seg(p, new Vector3(0f, t + 0.72f, 0.05f), new Vector3(0f, t + 0.90f, 0.02f), 0.095f, 0.055f);
-        return SMax(stub, p.y - (t + 0.83f + 0.05f * p.x), 0.01f);
-    }
-
-    // 뿔 둘 — 정수리 양옆에서 솟아 바깥 · 뒤로 휜다(하나보다 가늘다).
-    static float OgreHornTwo(Vector3 p, BruteJoints j)
-    {
-        float t = j.Top;
-        var m = Mirror(p);
-        var a = new Vector3(0.15f, t + 0.68f, 0.04f); var b = new Vector3(0.22f, t + 0.80f, 0f); var c = new Vector3(0.24f, t + 0.90f, -0.07f);
-        return Mathf.Min(Seg(m, a, b, 0.07f, 0.042f), Seg(m, b, c, 0.042f, 0.008f));
+        float stub = Seg(p, new Vector3(0f, t + 0.70f, 0.05f), new Vector3(0f, t + 0.94f, 0.01f), 0.125f, 0.072f);
+        return SMax(stub, p.y - (t + 0.86f + 0.06f * p.x), 0.01f);
     }
 
     // ── 팔 — 통통한 원기둥 · 큰 주먹 ──────────────────────────────────────────

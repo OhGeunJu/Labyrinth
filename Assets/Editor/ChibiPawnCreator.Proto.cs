@@ -219,7 +219,7 @@ public static partial class ChibiPawnCreator
 
         // 관절 — 팔을 내린 자세로 세운다(몸을 그 자세로 지었으니 바인드 포즈도 그 자세다). T자는 맨 끝에.
         if (!model.TryGetComponent(out PawnRig rig)) rig = model.gameObject.AddComponent<PawnRig>();
-        var bones = BodyJoints(model, rig, d, neckY, skeleton?.ArmX);
+        var bones = BodyJoints(model, rig, d, neckY, skeleton?.ArmX, skeleton?.ArmZ ?? 0f);
 
         // 굳은 살은 이름의 앞머리(`관절.무엇`)가 붙을 관절이다 — `PawnRigBuilder.RigBiped`와 같은 규칙.
         foreach (var p in rigid)
@@ -277,10 +277,10 @@ public static partial class ChibiPawnCreator
         public readonly Vector3 Shoe;
 
         public BodyDims(float hh, float[] half, float depth, float hand, float armR, float legX, float legR,
-                        float armK = 1f, float legK = 1f)
+                        float armK = 1f, float legK = 1f, float torsoK = 1f)
         {
             Hh = hh; Half = half; Depth = depth;
-            TorsoH = PTorsoH * hh;
+            TorsoH = PTorsoH * torsoK * hh;   // 몸통 배수 — 트롤만 1이 아니다(`Shape.TorsoK`)
             Lift   = (PShoeH + PLegVis * legK) * hh;    // 몸통 밑
             Top    = Lift + TorsoH;                     // 몸통 꼭대기
             HemY   = Lift + PPantsH * hh;
@@ -313,7 +313,8 @@ public static partial class ChibiPawnCreator
 
     // 관절 — `PawnRig` 규격의 계층(Model/Hips/{Spine/{Head, ArmL/…}, LegL/…}). 돌려주는 배열은 `B` 순서다.
     // `armX` — 팔 자리(m)를 몸 치수 대신(해골 — `BoneArmX`).
-    static Transform[] BodyJoints(Transform model, PawnRig rig, BodyDims d, float neckY, float? armX = null)
+    // `armZ` — 팔 뼈의 앞뒤 자리(굽은 등 앞에 팔이 선 트롤 — `BoneBody.ArmZ`). 사람은 0.
+    static Transform[] BodyJoints(Transform model, PawnRig rig, BodyDims d, float neckY, float? armX = null, float armZ = 0f)
     {
         float ax = armX ?? d.ArmX;
         Transform J(Transform parent, string name, Vector3 at)
@@ -334,9 +335,9 @@ public static partial class ChibiPawnCreator
         {
             string side = s < 0 ? "L" : "R";
             int o = s < 0 ? 0 : 3;
-            b[(int)B.ArmL + o]      = J(b[(int)B.Spine],         "Arm" + side,      new Vector3(s * ax, d.ShoulderY, 0f));
-            b[(int)B.LowerArmL + o] = J(b[(int)B.ArmL + o],      "LowerArm" + side, new Vector3(s * ax, d.ElbowY, 0f));
-            b[(int)B.HandL + o]     = J(b[(int)B.LowerArmL + o], "Hand" + side,     new Vector3(s * ax, d.HandY, 0f));
+            b[(int)B.ArmL + o]      = J(b[(int)B.Spine],         "Arm" + side,      new Vector3(s * ax, d.ShoulderY, armZ));
+            b[(int)B.LowerArmL + o] = J(b[(int)B.ArmL + o],      "LowerArm" + side, new Vector3(s * ax, d.ElbowY, armZ));
+            b[(int)B.HandL + o]     = J(b[(int)B.LowerArmL + o], "Hand" + side,     new Vector3(s * ax, d.HandY, armZ));
             b[(int)B.LegL + o]      = J(b[(int)B.Hips],          "Leg" + side,      new Vector3(s * d.LegX, d.HipY, 0f));
             b[(int)B.LowerLegL + o] = J(b[(int)B.LegL + o],      "LowerLeg" + side, new Vector3(s * d.LegX, d.KneeY, 0f));
             b[(int)B.FootL + o]     = J(b[(int)B.LowerLegL + o], "Foot" + side,     new Vector3(s * d.LegX, d.FootY, 0f));

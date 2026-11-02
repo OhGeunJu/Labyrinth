@@ -59,13 +59,14 @@ public class PawnLook : MonoBehaviour
     [SerializeField] string mouthOverride = "";
     // **코는 입체다**(2026-09-19, 사용자: *"코는 텍스쳐가 아니라 모델링으로"*) — 머리형마다 모양마다 한 벌
     // (`Head.Nose.{모양}.{머리형}`)을 구워 두고 **고른 모양 × 지금 머리형** 하나만 켠다. 비우면 없음.
-    [Tooltip("코 모양 — `Button` · `Pointy` · `Long` · `Wide`. 비우거나 `-`면 없음.")]
+    // **이름 끝의 `*`는 묶음이다**(2026-11-02 — 고블린 귀 셋 · 매부리코 셋) — `Hook*`이면 `Hook`으로 시작하는 벌 중 씨앗이 고른다(`Family`).
+    [Tooltip("코 모양 — `Real` · `Anime` · `Pointy` · `Long` · `Animal` · `Hook`(`HookBig` · `HookSmall`). 비우거나 `-`면 없음. 끝에 `*`면 그 묶음에서 씨앗이 고른다.")]
     [SerializeField] string noseOverride = "";
 
     // **귀**(2026-09-19) — 머리카락과 같은 길: 모양마다 한 벌(`Head.Ear.{모양}.L/R`)을 구워 두고 하나만 켠다.
     // 비우면 **일반 귀**, `-`면 없음. 귀는 판이 아니라 입체라 머리형이 바뀌면 머리카락처럼 **고른 머리로 옮긴다.**
     public const string DefaultEar = "Human";
-    [Tooltip("귀 모양 — `Human` · `Elf` · `Goblin`. 비우면 일반 귀(`Human`). `-`면 없음.")]
+    [Tooltip("귀 모양 — `Human` · `Elf` · `Goblin`(`GoblinLong` · `GoblinCut`). 비우면 일반 귀(`Human`). `-`면 없음. 끝에 `*`면 그 묶음에서 씨앗이 고른다.")]
     [SerializeField] string earOverride = "";
 
     // **엄니**(2026-11-01 — 오크) — 코와 같은 길: 모양마다 머리형마다 한 벌(`Head.Tusk.{모양}.{L|R}.{머리형}`) · 비우면 없음.
@@ -78,6 +79,17 @@ public class PawnLook : MonoBehaviour
 
     [Tooltip("고르는 축을 못 박는다 — `축=벌`(예: `Jaw=None`). 없는 축이면 씨앗이 고른다.")]
     [SerializeField] List<string> pickOverrides = new();
+
+    // **벌의 비율**(2026-11-02, 사용자: 머리 둘 오우거는 *"일부에게만"* · *"15%"*) — 적힌 벌은 그 몫만큼 나오고 나머지 몫을 안 적힌
+    // 벌들이 똑같이 나눈다. 적힌 것이 없는 축은 예전 그대로 고른다(같은 씨앗 · 같은 얼굴). 생성 도구가 적는다(`ChibiPawnCreator.OgreLook`).
+    [System.Serializable]
+    public struct PickChance
+    {
+        public string Axis, Option;
+        [Range(0f, 1f)] public float Chance;
+        public PickChance(string axis, string option, float chance) { Axis = axis; Option = option; Chance = chance; }
+    }
+    [SerializeField] List<PickChance> pickChances = new();
 
     // 코드가 부른 표정 — 인스펙터보다 앞선다. 비면 안 부른 것이다.
     readonly Dictionary<string, string> _expression = new();
@@ -154,7 +166,34 @@ public class PawnLook : MonoBehaviour
 
     // 씨앗이 고를 벌(못 박은 것 · 판에서 정한 것을 빼고) — 정하는 쪽이 *씨앗이면 무엇이었나*를 묻는다.
     public string SeededPick(string axis)
-        => _pickAxes.TryGetValue(axis, out var set) ? KeyAt(set, Mod(Mix(Seed, axis), set.Count)) : "";
+        => _pickAxes.TryGetValue(axis, out var set) ? SeedChoice(set, Seed, axis) : "";
+
+    // 씨앗이 축 하나에서 고르는 벌 — 비율(`pickChances`)이 적힌 축만 몫을 나눠 고른다.
+    string SeedChoice(SortedSet<string> set, int seed, string axis)
+    {
+        int roll = Mix(seed, axis);
+        List<(string opt, float chance)> weighted = null;
+        foreach (var c in pickChances)
+            if (c.Axis == axis && set.Contains(c.Option)) (weighted ??= new()).Add((c.Option, Mathf.Clamp01(c.Chance)));
+        if (weighted == null) return KeyAt(set, Mod(roll, set.Count));
+
+        float u = Mod(roll, 10000) / 10000f;
+        foreach (var (opt, chance) in weighted)
+        {
+            if (u < chance) return opt;
+            u -= chance;
+        }
+        var rest = set.Where(o => !weighted.Exists(w => w.opt == o)).ToList();
+        if (rest.Count == 0) return weighted[weighted.Count - 1].opt;
+        return rest[Mod(Mix(seed, axis + "#"), rest.Count)];   // 몫을 굴린 수와 다른 열로 나머지를 고른다
+    }
+
+    // 생성 도구가 비율을 적는다(프리팹에 저장된다).
+    public void SetPickChances(IEnumerable<PickChance> chances)
+    {
+        pickChances.Clear();
+        if (chances != null) pickChances.AddRange(chances);
+    }
 
     // 씨앗 — 같은 사람은 늘 같은 얼굴(`SeedOf`). 칠하는 쪽도 이것으로 고른다.
     public int Seed => SeedOf();
@@ -239,11 +278,12 @@ public class PawnLook : MonoBehaviour
         // 귀 — 비우면 둥근 귀, `-`면 없음, 모르는 이름이면 둥근 귀.
         Ear = earOverride == None ? None
             : _ears.ContainsKey(earOverride) ? earOverride
-            : _ears.ContainsKey(DefaultEar) ? DefaultEar : None;
+            : Family(_ears, earOverride, seed, "Ear")
+            ?? (_ears.ContainsKey(DefaultEar) ? DefaultEar : None);
         Show(_ears, Ear);
 
         // 코 — 고른 모양 중 **지금 머리형의 것** 하나만(마지막 마디가 머리형이다).
-        Nose = _noses.ContainsKey(noseOverride) ? noseOverride : None;
+        Nose = _noses.ContainsKey(noseOverride) ? noseOverride : Family(_noses, noseOverride, seed, "Nose") ?? None;
         foreach (var kv in _noses)
         foreach (var r in kv.Value)
             if (r != null) r.enabled = kv.Key == Nose && r.name.EndsWith("." + Shape);
@@ -306,7 +346,7 @@ public class PawnLook : MonoBehaviour
             string authored = PickOverride(kv.Key);
             _picked[kv.Key] = kv.Value.Contains(authored) ? authored
                             : _forced.TryGetValue(kv.Key, out var forced) && kv.Value.Contains(forced) ? forced
-                            : KeyAt(kv.Value, Mod(Mix(seed, kv.Key), kv.Value.Count));
+                            : SeedChoice(kv.Value, seed, kv.Key);
         }
         foreach (var (r, axis, option, when) in _pickParts)
         {
@@ -318,6 +358,25 @@ public class PawnLook : MonoBehaviour
                 if (on && a != null && _picked.TryGetValue(a, out var got)) on = not ? got != o : got == o;
             r.enabled = on;
         }
+    }
+
+    // `Hook*` → `Hook`으로 시작하는 벌 중 하나(씨앗 · 축 이름으로 갈라 귀와 코가 따로 굴린다). 묶음이 아니거나 벌이 없으면 null.
+    static string Family(SortedDictionary<string, List<Renderer>> map, string pattern, int seed, string axis)
+    {
+        if (string.IsNullOrEmpty(pattern) || pattern[^1] != '*') return null;
+        string prefix = pattern.Substring(0, pattern.Length - 1);
+        var hits = new List<string>();
+        foreach (var key in map.Keys) if (key.StartsWith(prefix, System.StringComparison.Ordinal)) hits.Add(key);
+        return hits.Count == 0 ? null : hits[Mod(Mix(seed, axis), hits.Count)];
+    }
+
+    // 묶음 칸(인스펙터) — 다른 벌의 앞머리가 되는 이름마다 `이름*`.
+    public static IEnumerable<string> Families(IEnumerable<string> names)
+    {
+        var list = new List<string>(names);
+        foreach (var a in list)
+            foreach (var b in list)
+                if (b.Length > a.Length && b.StartsWith(a, System.StringComparison.Ordinal)) { yield return a + "*"; break; }
     }
 
     // 축마다 씨앗을 갈라 쓴다 — 같은 씨앗을 그대로 나누면 벌 수가 같은 축끼리 늘 같은 자리를 고른다.

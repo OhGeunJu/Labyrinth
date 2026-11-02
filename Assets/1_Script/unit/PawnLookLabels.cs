@@ -32,6 +32,8 @@ public static class PawnLookLabels
         "Human"       => "보통 귀",
         "Elf"         => "엘프 귀",
         "Goblin"      => "고블린 귀",
+        "GoblinLong"  => "긴 고블린 귀",
+        "GoblinCut"   => "한쪽 잘린 고블린 귀",
         _             => key,
     };
 
@@ -42,6 +44,9 @@ public static class PawnLookLabels
         "Anime"       => "작은 코",
         "Pointy"      => "뾰족한 코",
         "Long"        => "긴 코",
+        "Hook"        => "매부리코",
+        "HookBig"     => "큰 매부리코",
+        "HookSmall"   => "작은 매부리코",
         "Animal"      => "동물 코",
         _             => key,
     };

@@ -64,10 +64,12 @@ public class PawnLookEditor : Editor
         Row("머리", hairs, look.HairOverride, v => look.HairOverride = v, look);
 
         var ears = look.EarNames.ToList();
+        ears.AddRange(PawnLook.Families(look.EarNames));   // `Goblin*` — 묶음에서 씨앗이 고른다
         ears.Insert(0, PawnLook.None);
         Row("귀", ears, look.EarOverride, v => look.EarOverride = v, look, "(일반 귀)");
 
         var noses = look.NoseNames.ToList();
+        noses.AddRange(PawnLook.Families(look.NoseNames));
         Row("코", noses, look.NoseOverride, v => look.NoseOverride = v, look, "(없음)");
 
         var tusks = look.TuskNames.ToList();

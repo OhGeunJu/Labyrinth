@@ -101,7 +101,7 @@ public static class BigRaceCreator
                  new Color32[] { new(0xA6, 0xA2, 0x94, 0xFF), new(0x96, 0x92, 0x86, 0xFF),     // 옅은 잿빛(따뜻한 회색)
                                  new(0x52, 0x54, 0x58, 0xFF), new(0x5E, 0x60, 0x64, 0xFF) },   // 회색 섞인 짙은 검정(슬레이트)
                  kin: "Orc", resist: new[] { (DamageType.Fire, 0.5f), (DamageType.Water, -0.3f) }),
-        new Race("Ogre",  "오우거", 2.0f,  260f, 3.4f, 22f, 2, 0f,   0.35f, StatGrade.DMinus, StatGrade.B,     StatGrade.C,
+        new Race("Ogre",  "오우거", 2.03f,  260f, 3.4f, 22f, 2, 0f,   0.35f, StatGrade.DMinus, StatGrade.B,     StatGrade.C,
                  BigHands,
                  new[] { "굼보", "두그", "모로", "부르가", "오그", "툼브", "흐룸", "고르바", "바룸", "둠두" },
                  // 오우거는 개체마다 살색이 다르다 — **살색 계통**(2026-11-01, 사용자: *"초록 오우거는 말이 안되는거 같은데 살색 계통으로"*):
@@ -112,20 +112,20 @@ public static class BigRaceCreator
         // **오우거보다 세다**(사용자: *"3층 오우거들은 뭐가 특이한 거니깐 더 쌔야"*) — 트롤과 같은 층의 세기(체력은 조금 위 · 대신 안 아문다).
         // 사는 곳의 원소를 견디고 맞은편에 약하다. 살색은 두 갈래씩(사용자: *"두 종류의 색이 나오면"*) — 빙하는 푸른 · 보랏빛, 용암은 붉은 · 숯빛 · 주황(셋).
         // 같은 일족이라 세력 · 배경 · 지닐 것 · 도축은 오우거 것(`Kin`).
-        new Race("OgreFrost", "파랑 오우거", 2.0f, 340f, 3.4f, 26f, 2, 0f, 0.35f, StatGrade.D,      StatGrade.BPlus,  StatGrade.C,
+        new Race("OgreFrost", "파랑 오우거", 2.03f, 340f, 3.4f, 26f, 2, 0f, 0.35f, StatGrade.D,      StatGrade.BPlus,  StatGrade.C,
                  BigHands,
                  new[] { "굼보", "두그", "모로", "부르가", "오그", "툼브", "흐룸", "고르바", "바룸", "둠두" },
                  new Color32[] { new(0x6E, 0x8F, 0xC8, 0xFF), new(0x4E, 0x68, 0xA0, 0xFF),     // 푸른
                                  new(0x8A, 0x78, 0x98, 0xFF), new(0x9C, 0x8C, 0xB8, 0xFF) },   // 보랏빛
                  kin: "Ogre", resist: new[] { (DamageType.Water, 0.4f), (DamageType.Fire, -0.3f) }),
-        new Race("OgreFlame", "붉은 오우거", 2.0f, 340f, 3.4f, 26f, 2, 0f, 0.35f, StatGrade.D,      StatGrade.BPlus,  StatGrade.C,
+        new Race("OgreFlame", "붉은 오우거", 2.03f, 340f, 3.4f, 26f, 2, 0f, 0.35f, StatGrade.D,      StatGrade.BPlus,  StatGrade.C,
                  BigHands,
                  new[] { "굼보", "두그", "모로", "부르가", "오그", "툼브", "흐룸", "고르바", "바룸", "둠두" },
                  new Color32[] { new(0xB0, 0x4C, 0x3A, 0xFF), new(0x8C, 0x3A, 0x2E, 0xFF),     // 붉은
                                  new(0x4A, 0x3E, 0x3C, 0xFF), new(0x5E, 0x4A, 0x44, 0xFF),     // 숯빛(식은 용암 · 재)
                                  new(0xC8, 0x6A, 0x2E, 0xFF), new(0xD8, 0x84, 0x3C, 0xFF) },   // 주황(달군 바위 · 사용자)
                  kin: "Ogre", resist: new[] { (DamageType.Fire, 0.5f), (DamageType.Water, -0.3f) }),
-        new Race("Troll", "트롤",   2.0f,  320f, 3.8f, 26f, 2, 0.6f, 0.25f, StatGrade.D,      StatGrade.BPlus,  StatGrade.EMinus,
+        new Race("Troll", "트롤",   2.86f,  320f, 3.8f, 26f, 2, 0.6f, 0.25f, StatGrade.D,      StatGrade.BPlus,  StatGrade.EMinus,
                  BigHands,
                  new[] { "스크라그", "우르스", "그림", "호르크", "자브", "트룩", "브락", "스날", "무르그", "크로그" },
                  // 트롤은 푸른빛과 회색 안에서만 — 푸른 회색 · 슬레이트 · 찬 회색 · 어두운 청색
