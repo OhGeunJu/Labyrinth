@@ -32,6 +32,7 @@ Guidance for Claude Code in this repository.
 - **1인칭 · 천장** — `F`가 고른 폰의 눈으로 같은 카메라를 붙든다(`FirstPersonView.On`이면 `CameraController`는 손을 뗀다) · 그동안 벽 자르기를 끄고 천장을 켠다 · 천장은 바위 메시에 안 넣는다(뚜껑은 자르는 높이로 끌려 내려온다 — 청크의 자식 렌더러 `BuildCeiling`) · 볕 구멍 위는 비운다(`RockRenderer.AddSkyHole`).
 - **몸집은 종족이 든다**(`UnitData.BodyScale` → `BodySize`) — 그림과 팔 길이만 큰다 · 부딪히는 몸은 한 칸 그대로 · 거리는 둘레까지(`BTTargetUtil.DistanceTo` · `MeleeSlots`) · 큰 몸은 휘두른다(표적 온전히 + 둘레 `CleaveTargets`) · 못 쥐는 무기는 `Equipment.CanWield` · 아무는 몸 `Regeneration`(불 붙으면 멈춘다).
 - **먹는 종족은 쓰러진 사람을 굴로 메고 간다**(`UnitData.Devours` — 고블린 · 트롤 · `Abduction`) — 곁에 깨어 있는 그 편이 없을 때만 · 굴이 없으면 안 멘다 · 굴에 기둥을 세워 묶는다(`CaptivePost` — 갇힘 한 벌 `Imprisonment.Bind`) · 먹히는 것 · 탈출은 `Devoured`(끼니마다 `DevourNode`가 뜯는 동안 부위가 차례로 준다 — `BodyPartSystem.Gnaw`) · 부서진 팔다리는 안 낫고 몸에서 접힌다 · 기절한 어깨는 업은 것을 떨어뜨린다.
+- **드워프는 사람 치비 몸 + 빚은 머리**(`ChibiPawnCreator.Dwarf`) — 체형은 `Shapes` 밖 한 줄(`DwarfShape` — 안에 두면 방랑자 몸 목록에 든다) · 수염 · 머리카락 · 눈썹은 따로 고른다(`Head.Pick.*`) · 눈은 빚는다(사람 눈 판은 눈썹뼈에 묻힌다) · 드워프만 굽는 문은 `Pawn/10` · 종족 · 씨족은 아직. → `docs/units.md` 치비 절
 - **미룬 것**(건물 에셋 대기) — 마을 건설 · 마을=핵 · 건물 2층(층 넷과 다른 장치 — 같은 XZ에 바닥 둘). **남은 미결** — 월드 에디터의 퀘스트.
 
 ## Project Overview
@@ -48,6 +49,8 @@ Guidance for Claude Code in this repository.
 ## 폴더
 
 `Assets/1_Script/` — `Combat` · `Data` · `Event` · `Input` · `Item` · `Job` · `Map` · `UI` · `World` · `core` · `unit`(`UnitBrain`은 partial — `.Wanderer`·`.Minion`·`.Enemy`·`.Npc`가 트리를 짓는다) · 최상위에 `BuildModeManager` · `GameTimeManager` · `LightSource` · `UnderworldLighting` · `RuntimeShaders` 등. 에디터 도구는 `Assets/Editor`.
+
+**모델 미리보기(파이썬 거리장)는 `Tools/ModelLab/<모델>/`** — 세션 scratchpad에 두지 말 것 · 그림은 `renders/` · 보낸 그림은 `_refs/`(둘 다 깃 밖) · 판마다 스크립트 사본을 쌓지 않는다(`Tools/ModelLab/README.md`).
 
 에셋은 `5_Data`(SO) · `2_Material` · `3_Prefab`(`Building` · `Pawn` · `Node` · `Prop` · `UI`).
 - **`.meta`를 짝지어 옮길 것** — 프리팹만 옮기면 새 guid가 발급돼 참조가 조용히 끊긴다.

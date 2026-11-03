@@ -4,7 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-// **비율 시제품 — 머리 하나(넓고 부드러운 남자 머리)에 몸을 처음부터 새로 붙인다**(2026-10-06).
+// **치비 몸의 비율 · 짓기 — 비율 시제품에서 시작했다**(2026-10-06 — 머리 하나(넓고 부드러운 남자 머리)에 몸을 처음부터 새로 붙였다).
 //
 // 사용자: *"머리는 broadsoft만 쓰고 전체적으로 새로 만들라"* · *"기존 몸 원래대로 되돌리고 별도 프리팹으로 따로"* ·
 // *"팔도 보이게"*. 레퍼런스는 사용자가 보낸 작은 마법사 캐릭터의 정면 전신(옷이 다리를 가리는 것은 안 따른다 — 사용자).
@@ -35,19 +35,16 @@ using UnityEngine;
 // 이 프리팹은 안 건드린다). 아바타·컨트롤러만 그쪽 한 벌을 쓴다(`PawnRigBuilder.FinishBiped`). 관절 이름과 계층은
 // `PawnRig` 규격 그대로다 — 클립이 경로로 묶인다.
 //
-// ## 본 몸과 섞이지 않게
+// ## 시제품은 걷어냈다 (2026-11-03)
 //
-// - **프리팹은 따로다**(`Proto_Chibi.prefab`) — 방랑자 몸 목록(`BodyVariants`)에 안 들어가고 어디서도 안 가리킨다.
-// - **이 몸만의 메시는 `Proto_` 이름이다** — 본 도구(`Pawn/3`)는 이번에 안 만든 `Chibi_` 메시를 지운다. 머리·이목구비·
-//   머리카락은 본 도구가 굽는 것과 **같은 것**을 같은 이름으로 다시 쓴다(내용이 같다 — 머리카락은 머리형 전부로 깎는다).
-// - **곡괭이질 대체(`ChibiToolSwing`)·몸통 덜 흔들기(`ChibiPoseDamp`)는 안 붙인다.** 앞의 것은 손 공을 자리로 옮겨 보이는
-//   팔에서 손이 떨어진다. 뒤의 것은 10-09에 붙여 찍어 봤다 — 곡괭이를 들 때 눕던 몸은 섰지만 팔이 얼굴 앞을 가로지르고
-//   동작이 작아져, 사용자가 *"그냥 원래가 좋은거 같은데"*라고 해서 다시 뗐다.
+// 이 몸은 처음에 따로 된 시제품 프리팹(`Proto_Chibi` · `Pawn/7`)에서 맞췄고, 10-09부터 본 몸 전부가 같은 짓기(`DressSkinned`)를 탄다.
+// 시제품은 할 일을 다해 걷어냈다(사용자: *"다 쓴 에디터들 정리해줘봐"*) — 메뉴 · 프리팹 · `Proto_` 메시 · 아바타. 남은 것은 본 몸이 쓰는
+// 비율 · 짓기 · 관절이다. 자세 찍기(`Pawn/8`)는 고른 것이 없으면 남성 몸(`Chibi_Male`)을 찍는다.
+// **곡괭이질 대체(`ChibiToolSwing`)·몸통 덜 흔들기(`ChibiPoseDamp`)는 안 붙인다.** 앞의 것은 손 공을 자리로 옮겨 보이는
+// 팔에서 손이 떨어진다. 뒤의 것은 10-09에 붙여 찍어 봤다 — 곡괭이를 들 때 눕던 몸은 섰지만 팔이 얼굴 앞을 가로지르고
+// 동작이 작아져, 사용자가 *"그냥 원래가 좋은거 같은데"*라고 해서 다시 뗐다.
 public static partial class ChibiPawnCreator
 {
-    static readonly string ProtoPath = PawnPrefabPaths.PathOf("Proto_Chibi");
-    const string ProtoHead  = "Male_" + PawnLook.BasisShape;
-
     // ── 비율(× 머리 높이) ───────────────────────────────────────────────────
     const float PTorsoH   = 0.96f;
     const float PLegVis   = 0.40f;                  // 몸통 밑 ↔ 신발 위
@@ -72,96 +69,7 @@ public static partial class ChibiPawnCreator
     // 스킨 메시의 뼈 순서 — `bones` 배열과 가중치의 번호가 이것이다. 이름이 곧 관절 이름이다(`PawnRig` 규격).
     enum B { Hips, Spine, ArmL, LowerArmL, HandL, ArmR, LowerArmR, HandR, LegL, LowerLegL, FootL, LegR, LowerLegR, FootR, Head, Count }
 
-    [MenuItem("DungeonColony/Pawn/7. Create Proportion Proto (시제품 · 머리 하나 · 팔다리)")]
-    public static void CreateProto()
-    {
-        var toon  = Shader.Find(ToonShader);
-        var face  = Shader.Find(FaceShader);
-        var outer = Shader.Find(OuterShader);
-        if (toon == null || face == null || outer == null)
-        { Debug.LogError($"[시제품] 셰이더를 못 찾았다 — {ToonShader} / {FaceShader} / {OuterShader}"); return; }
-        if (AssetDatabase.LoadAssetAtPath<GameObject>(Source) == null) { Debug.LogError($"[시제품] 바탕 폰이 없다 — {Source}"); return; }
-
-        var atlases = BuildFaceAtlases();
-        var mats    = EnsureMaterials(toon, face, outer, atlases);
-
-        _saved.Clear();
-        var all = MakeHeads(ChibiFaceLayout.LoadOrCreate());
-        var head = Array.Find(all, x => x.Name == ProtoHead);
-        if (head.Name == null) { Debug.LogError($"[시제품] 머리 `{ProtoHead}`가 없다."); return; }
-
-        // ── 머리 — 본 도구와 같은 메시를 같은 이름으로 ─────────────────────────
-        var heads    = new Dictionary<string, Mesh>();
-        var features = new Dictionary<(string, string), Mesh>();
-        {
-            var h = head;
-            heads[h.Name] = Shear(Lathe($"Chibi_Head_{h.Name}", t => HeadRadius(t, h), 64, 48, out _, normalize: false,
-                                        densePole: 2), h.Forward);
-            foreach (var f in Features) features[(h.Name, f.Name)] = BuildFeature(h, f, atlases[f.Kind].Cells);
-        }
-
-        // 머리카락은 **머리형 전부로** 깎는다 — 본 도구와 같은 메시여야 같은 이름에 덮어써도 본 몸이 안 바뀐다.
-        var hairs = new Dictionary<string, Mesh>();
-        foreach (var fit in HairFits)
-        {
-            var group = new List<HeadShape>();
-            foreach (var hh in all) if (PawnLook.HairFitOf(hh.Name) == fit) group.Add(hh);
-            float forward = 0f;
-            foreach (var hh in group) forward += hh.Forward / group.Count;
-            Func<float, float> hairR = t => { float r = 0f; foreach (var hh in group) r = Mathf.Max(r, HeadRadius(t, hh)); return r; };
-            hairs[$"{fit}.Short"] = Shear(HairShell($"Chibi_Hair_{fit}_Short", hairR, 0.44f, 150f), forward);
-            hairs[$"{fit}.Bob"]   = Shear(HairShell($"Chibi_Hair_{fit}_Bob",   hairR, 0.26f, 125f), forward);
-            hairs[$"{fit}.Long"]  = Shear(HairShell($"Chibi_Hair_{fit}_Long",  hairR, 0.10f, 110f), forward);
-            hairs[$"{fit}.Helmet"] = HelmetShell(fit, hairR, forward);
-        }
-        var ears = new Dictionary<string, Mesh>();
-        foreach (var e in Ears) ears[e.Name] = Lathe($"Chibi_Ear_{e.Name}", e.Profile, 16, 16, out _, densePole: 2);
-        var noses = new Dictionary<string, Mesh>();
-        foreach (var n in Noses) noses[n.Name] = Lathe($"Chibi_Nose_{n.Name}", n.Profile, 12, 16, out _, densePole: 2);
-
-        // `HeadParts`는 `Heads`(머리형 표)를 돈다 — **이 머리 하나만** 보이게 잠깐 좁혀 부른다.
-        var keep = Heads;
-        List<Part> headParts;
-        try { Heads = new[] { head }; headParts = HeadParts("Male", heads, features, hairs, ears, noses, TuskMeshes()); }
-        finally { Heads = keep; }
-
-        // ── 몸 — 본 몸과 같은 짓기(`DressSkinned`) ─────────────────────────────
-        float headH = head.Size.y;
-        var half = new float[PTorsoHalf.Length];
-        for (int i = 0; i < half.Length; i++) half[i] = PTorsoHalf[i] * headH;
-        var d = new BodyDims(headH, half, PDepth, PHand * headH, PArmW * headH * 0.5f, PLegX * headH, PLegW * headH * 0.5f);
-
-        // ── 프리팹 — guid를 지킨다(있으면 내용만 덮는다) ─────────────────────────
-        if (File.Exists(ProtoPath)) { File.Copy(Source, ProtoPath, true); AssetDatabase.ImportAsset(ProtoPath, ImportAssetOptions.ForceUpdate); }
-        else                        { AssetDatabase.CopyAsset(Source, ProtoPath); AssetDatabase.ImportAsset(ProtoPath); }
-
-        bool ok = false;
-        var root = PrefabUtility.LoadPrefabContents(ProtoPath);
-        try
-        {
-            if (!DressSkinned(root, d, headParts, mats, atlases, Path.GetFileNameWithoutExtension(ProtoPath), "Proto_Body")) return;
-
-            if (!root.TryGetComponent(out PawnLook _))      root.AddComponent<PawnLook>();
-            if (!root.TryGetComponent(out PawnOutlineId _)) root.AddComponent<PawnOutlineId>();
-            var bv = root.GetComponent<BodyVariants>();
-            if (bv != null) UnityEngine.Object.DestroyImmediate(bv);
-
-            if (!root.TryGetComponent(out PawnBody pb)) pb = root.AddComponent<PawnBody>();
-            pb.Gender = Gender.Male; pb.ShapeLabel = "시제품";
-
-            PrefabUtility.SaveAsPrefabAsset(root, ProtoPath);
-            ok = true;
-        }
-        finally { PrefabUtility.UnloadPrefabContents(root); }
-
-        AssetDatabase.SaveAssets();
-        if (ok)
-            Debug.Log($"[시제품] {ProtoPath} — 머리 {ProtoHead}(높이 {d.Hh:F2}m) · 키 {d.Top + HeadGap + d.Hh:F2}m · 몸통 {d.TorsoH:F2} · " +
-                      $"보이는 다리 {PLegVis * d.Hh:F2} · 신발 {PShoeH * d.Hh:F2} · 팔 {PArmLen * d.Hh:F2} · 몸은 스킨 메시 하나. " +
-                      "**이제 `Pawn/8. Pose Sheet`.**");
-    }
-
-    // ── 한 덩어리 몸 짓기 — 시제품과 본 몸(체형 여섯 · 방랑자 · 고블린)이 같이 쓴다 ──────────────────
+    // ── 한 덩어리 몸 짓기 — 본 몸(체형 여섯 · 방랑자 · 고블린 · 역할 · 드워프)이 다 쓴다 ──────────────────
     //
     // `Model`의 자식을 비우고 → 관절을 세우고(팔을 내린 자세) → 머리·손·신발을 관절에 달고 → 몸통·팔·다리를 스킨 메시
     // 하나로 짓고 → T자로 벌려 아바타를 세운다. 머리 부위(`headParts`)는 옛 몸의 몸통 꼭대기(`TorsoH`)에 맞춰 놓인 것을
@@ -212,7 +120,7 @@ public static partial class ChibiPawnCreator
 
         // **허리 램프**(2026-10-23) — 바지 띠 높이, 몸 앞 오른쪽에 반쯤 묻힌 알. 꺼 두고 허리에 무엇을 차면 켜진다(`PawnApparel`).
         {
-            float r = BodyTorsoRadius(d.Half, PPantsH / PTorsoH, d.TorsoH);
+            float r = BodyTorsoRadius(d.Half, PPantsH / PTorsoH, d.TorsoH, d.TopR);
             rigid.Add(new Part("Hips.Lamp", null, new Vector3(r * 0.55f, d.HemY, r * d.Depth * 0.85f),
                                Vector3.one * PLamp * d.Hh, "Lamp", on: false));
         }
@@ -274,12 +182,14 @@ public static partial class ChibiPawnCreator
         public readonly float[] Half;                      // 몸통 반폭(m) — 밑 · 엉덩이 · 허리 · 가슴 · 어깨(`Stations`)
         public readonly float   HipY, LegX, LegR, FootY, KneeY;
         public readonly float   ArmX, ArmR, ShoulderY, HandY, ElbowY, Hand;
+        public readonly float   TopR;                      // 몸통 꼭대기 둥글림(× 어깨 반폭 — `Shape.TopR`)
         public readonly Vector3 Shoe;
 
+        // `armW` — 팔 굵기 배수(`Shape.ArmW`). 굵어진 만큼 위팔 관절을 내린다(팔 윗끝이 몸통 꼭대기 위로 솟으면 어깨만 높고 승모근이 꺼져 보인다).
         public BodyDims(float hh, float[] half, float depth, float hand, float armR, float legX, float legR,
-                        float armK = 1f, float legK = 1f, float torsoK = 1f)
+                        float armK = 1f, float legK = 1f, float torsoK = 1f, float armW = 1f, float topR = TopRound)
         {
-            Hh = hh; Half = half; Depth = depth;
+            Hh = hh; Half = half; Depth = depth; TopR = topR;
             TorsoH = PTorsoH * torsoK * hh;   // 몸통 배수 — 트롤만 1이 아니다(`Shape.TorsoK`)
             Lift   = (PShoeH + PLegVis * legK) * hh;    // 몸통 밑
             Top    = Lift + TorsoH;                     // 몸통 꼭대기
@@ -294,18 +204,19 @@ public static partial class ChibiPawnCreator
 
             Hand      = hand;
             ArmR      = armR;
-            ShoulderY = Top - PShoulder * hh - ShoulderDrop;   // 위팔 관절
-            ArmX      = BodyTorsoRadius(half, 1f - PShoulder / PTorsoH, TorsoH) + ArmR * 2f * PArmIn;
-            HandY     = Top - PShoulder * hh - PArmLen * armK * hh;
+            float thick = ArmR - ArmR / armW;                    // 굵어진 반지름 — 그만큼 관절 · 손을 내린다(사람 0)
+            ShoulderY = Top - PShoulder * hh - ShoulderDrop - thick;   // 위팔 관절
+            ArmX      = BodyTorsoRadius(half, 1f - PShoulder / PTorsoH, TorsoH, topR) + ArmR * 2f * PArmIn;
+            HandY     = Top - PShoulder * hh - PArmLen * armK * hh - thick;
             ElbowY    = (ShoulderY + HandY) * 0.5f;
         }
     }
 
     // 몸통 옆선 — 반폭 표(m)를 잇고 위아래를 둥글린다(옛 몸의 `TorsoRadius`와 같은 셈, 밑동만 덜 둥글다 — 바지 밑이 판판하게).
-    static float BodyTorsoRadius(float[] half, float t, float torsoH)
+    static float BodyTorsoRadius(float[] half, float t, float torsoH, float topR = TopRound)
     {
         float y = t * torsoH, w = HalfAt(half, t);
-        float rb = half[0] * PBottomRound, rt = half[^1] * TopRound;
+        float rb = half[0] * PBottomRound, rt = half[^1] * topR;
         if (y < rb)          return w - rb + Mathf.Sqrt(Mathf.Max(0f, rb * rb - (rb - y) * (rb - y)));
         if (y > torsoH - rt) { float dd = torsoH - y; return w - rt + Mathf.Sqrt(Mathf.Max(0f, rt * rt - (rt - dd) * (rt - dd))); }
         return w;
@@ -407,6 +318,9 @@ public static partial class ChibiPawnCreator
     }
 
     // 캡슐 — 아래 반구 중심 `y0` · 위 반구 중심 `y1`. 위 반구는 관절(어깨·엉덩이) 한가운데에 둔다 — 돌려도 제자리다.
+    // 다리 관의 아래 끝(반구 한가운데) — 반구 밑이 신발 바닥보다 1cm 위에 오도록. 관절 자리(`FootY`)는 그대로다.
+    static float LegBottom(BodyDims d) => Mathf.Max(d.FootY, d.LegR + 0.01f);
+
     static List<(float y, float r)> Capsule(float y0, float y1, float r, int straight)
     {
         const int Cap = 7;
@@ -443,7 +357,7 @@ public static partial class ChibiPawnCreator
         for (int i = 0; i <= TorsoRings; i++)
         {
             float t = i / (float)TorsoRings;
-            torso.Add((d.Lift + t * d.TorsoH, BodyTorsoRadius(d.Half, t, d.TorsoH)));
+            torso.Add((d.Lift + t * d.TorsoH, BodyTorsoRadius(d.Half, t, d.TorsoH, d.TopR)));
         }
         torso.Add((d.Top, 0f));
         Tube(sb, 0f, 0f, d.Depth, torso,
@@ -460,7 +374,9 @@ public static partial class ChibiPawnCreator
                  y => Blend(y, d.ElbowY, band, arm, lowerArm), _ => 0);
 
             // 다리 — 위 반구가 엉덩이 관절 한가운데(몸통 속) · 아래 끝은 신발 속.
-            Tube(sb, s * d.LegX, 0f, 1f, Capsule(d.FootY, d.HipY, d.LegR, 16),
+            // **아래 반구가 신발 바닥을 뚫지 않게** 밑동을 반지름만큼 띄운다 — 발 관절(`FootY` = 신발 높이의 반)에 그대로 두면
+            // 굵은 다리는 둥근 끝이 땅 밑으로 나온다(남성 2cm · 굵은 다리는 더 — 11-03 사용자: *"발바닥 밑에 다리는 왜 삐져나와"*).
+            Tube(sb, s * d.LegX, 0f, 1f, Capsule(LegBottom(d), d.HipY, d.LegR, 16),
                  y => Blend(y, d.KneeY, band, leg, lowerLeg), _ => 1);
         }
 

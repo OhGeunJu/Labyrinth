@@ -12,7 +12,7 @@ using UnityEngine.SceneManagement;
 // 지운 도구를 다시 세운다. 줄은 자세(대기 · 걷기 넷 · 곡괭이질 둘 · 공격 둘), 칸은 보는 쪽(정면 · 옆 · 게임 시점)이고
 // 결과는 `Temp/PoseSheet/sheet.png`다. 씬은 안 건드린다(미리보기 씬은 저장되지 않는다).
 //
-// 대상은 **프로젝트 창에서 고른 폰 프리팹**, 고른 것이 없으면 비율 시제품(`Proto_Chibi`). 관절이 안 선 프리팹(`Animator`가
+// 대상은 **프로젝트 창에서 고른 폰 프리팹**, 고른 것이 없으면 남성 몸(`Chibi_Male`). 관절이 안 선 프리팹(`Animator`가
 // 없다)은 `Pawn/2`부터 돌릴 것.
 //
 // **애니메이터를 직접 돌린다**(`Animator.Update`) — 매개변수는 판에서 `PawnAnimator`가 넣는 것과 같다(`Speed` · `Work` ·
@@ -21,7 +21,7 @@ public static class PawnPoseSheet
 {
     const int Cell = 240;
     const string OutDir = "Temp/PoseSheet";
-    static readonly string Fallback = PawnPrefabPaths.PathOf("Proto_Chibi");
+    static readonly string Fallback = PawnPrefabPaths.PathOf("Chibi_Male");   // 시제품(`Proto_Chibi`)은 11-03에 걷어냈다
     const float Walk = 1.6f;   // `HumanoidClipSet.WalkAt`
 
     struct Pose

@@ -9,7 +9,7 @@ using UnityEngine;
 // - **지니나 · 무슨 색은 종족(부족)이 정한다**(`UnitData.TattooChance` · `InkTones` · `LeaderTattoo` · `LeaderInk` — 사용자: *"일반 오크는
 //   초록색에 노 타투 or 대장만 빨간 타투"*). 대장은 이끄는 이력(`BackstoryData.Leads`)을 받은 개체다 — 습격대가 두목을 세우면 다시 칠한다.
 //   문신이 없으면 겹 축(`Tat*`)을 다 끄고, 있으면 씨앗의 겹을 두되 하나는 켠다(`PawnLook.ForcePick` — 판에서만 · 못 박은 것이 이긴다).
-// - 칠하는 살은 이름으로 가린다 — 문신 겹은 먹 색, 머리카락 · 수염(뼈 고리 `.Cuff` 말고)은 머리카락 색.
+// - 칠하는 살은 이름으로 가린다 — 문신 겹은 먹 색, 머리카락 · 수염 · 짧은 머리(`.Short`)는 머리카락 색, 반삭(`.Buzz`)은 살과 머리색 사이(뼈 고리 · 가죽 · 쇠는 안 칠한다).
 // - 렌더러 블록은 **읽고 덧쓴다** — 죽으면 `Corpse.Tint`가 덮는다.
 // - **씬 · 프리팹에서도 보인다**(2026-11-01, 사용자: *"씬에 배치에서도 색이 보이게"*) — 블록은 저장되지 않으므로 에디터에서는
 //   켜질 때마다 다시 칠한다(`SkinLook`과 같은 길 · `ExecuteAlways`). 그때는 **칠만** 한다 — 겹을 켜고 끄면 렌더러의 켜짐이 씬 ·
@@ -50,7 +50,7 @@ public class MarkingLook : MonoBehaviour
     static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
     MaterialPropertyBlock _mpb;
-    readonly List<Renderer> _ink = new(), _hair = new();
+    readonly List<Renderer> _ink = new(), _hair = new(), _buzz = new();
     bool _gathered;
 
     public Ink      InkNow  { get; private set; }
@@ -61,7 +61,14 @@ public class MarkingLook : MonoBehaviour
     void OnEnable() { if (!Application.isPlaying) { _gathered = false; Apply(gate: false); } }
     void Start()    { if (Application.isPlaying) Apply(); }
 
-    void OnValidate() { if (isActiveAndEnabled) Apply(); }
+    // **다음 틱으로 미룬다** — 겹을 정하면 렌더러를 켜고 끄는데(`PawnLook.ApplyPicks`), `OnValidate` 안에서는 유니티가 그것을 막는다
+    // ("SendMessage cannot be called during … OnValidate" — 2026-11-03 여성 오크 프리팹을 구운 뒤 봤다).
+    void OnValidate()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.delayCall += () => { if (this != null && isActiveAndEnabled) Apply(); };
+#endif
+    }
 
     public void Apply() => Apply(gate: true);
 
@@ -94,6 +101,18 @@ public class MarkingLook : MonoBehaviour
         _mpb ??= new MaterialPropertyBlock();
         Paint(_ink, inkColor);
         Paint(_hair, hairColor);
+        // 반삭(여성 오크 — `….Buzz`) — 살과 머리색 사이(살 0.55 · 머리 0.45). 살은 개체 살색이 있으면 그것, 없으면 머리 살 재질의 색.
+        if (_buzz.Count > 0) Paint(_buzz, Color.Lerp(SkinNow(model: transform.Find("Model")), hairColor, 0.45f));
+    }
+
+    Color SkinNow(Transform model)
+    {
+        if (TryGetComponent(out SkinLook skin) && skin.HasTone) return skin.Tone;
+        if (model != null)
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+                if (r.name.StartsWith("Head.Shape.") && r.name.Split('.').Length == 3 && r.sharedMaterial != null && r.sharedMaterial.HasProperty(BaseColor))
+                    return r.sharedMaterial.GetColor(BaseColor);
+        return Color.gray;
     }
 
     // 문신 겹 축(`Tat*` — On/Off)을 정한다. 안 지니면 다 끄고, 지니면 씨앗의 겹을 두되 다 꺼졌으면 하나(씨앗이 고른 것)를 켠다.
@@ -128,7 +147,7 @@ public class MarkingLook : MonoBehaviour
     void Gather()
     {
         _gathered = true;
-        _ink.Clear(); _hair.Clear();
+        _ink.Clear(); _hair.Clear(); _buzz.Clear();
         var model = transform.Find("Model");
         if (model == null) return;
         foreach (var r in model.GetComponentsInChildren<Renderer>(true))
@@ -136,7 +155,13 @@ public class MarkingLook : MonoBehaviour
             var parts = r.name.Split('@')[0].Split('.');
             if (parts.Length < 4 || parts[0] != "Head" || parts[1] != "Pick") continue;
             if (parts[2].StartsWith("Tat")) _ink.Add(r);
-            else if ((parts[2] == PawnLook.PickHair || parts[2] == "Beard") && !(parts.Length > 4 && parts[4] == "Cuff")) _hair.Add(r);
+            else if (parts[2] == PawnLook.PickHair || parts[2] == "Beard" || parts[2] == "Brow")   // 눈썹(드워프 — `Head.Pick.Brow.*`)도 털 색
+            {
+                // 머리카락 덩어리(조각 이름 없음) · 짧은 머리(`.Short`)는 머리색 · 반삭(`.Buzz`)은 살과 섞은 색 · 뼈 고리 · 가죽 · 쇠(`.Cuff` · `.Leather` · `.Metal` · `.Ring`)는 안 칠한다.
+                string piece = parts.Length > 4 ? parts[4] : null;
+                if (piece == null || piece == "Short") _hair.Add(r);
+                else if (piece == "Buzz") _buzz.Add(r);
+            }
         }
     }
 

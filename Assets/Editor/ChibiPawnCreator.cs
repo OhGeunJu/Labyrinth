@@ -99,8 +99,14 @@ public static partial class ChibiPawnCreator
         public readonly float   HandR;
         public readonly float   ArmK, LegK;   // 팔 · 보이는 다리 길이 배수(사람 1) — 큰 짐승 몸(`ChibiPawnCreator.Brutes`)이 쓴다
         public readonly float   TorsoK;       // 몸통 높이 배수(사람 1) — 트롤은 하반신이 짧고 상체가 길다(다리를 줄인 만큼 늘린다)
-        public Shape(string suffix, string label, string gender, float[] half, float depth, float handR, float armK = 1f, float legK = 1f, float torsoK = 1f)
-        { Suffix = suffix; Label = label; Gender = gender; Half = half; Depth = depth; HandR = handR; ArmK = armK; LegK = legK; TorsoK = torsoK; }
+        // **드워프(2026-11-03)가 연 칸 셋** — 사람은 팔 굵기가 손에서, 다리 굵기가 엉덩이에서 따라 나오는데 그 비에 곱한다(사용자: *"손만 키우지 말고
+        // 팔 크기 자체를 키워봐"* · *"다리가 너무 얇아 드워프는 근육질"*). 어깨둥글림은 몸통 꼭대기를 깎는 반지름(× 어깨 반폭 · 사람 `TopRound`) —
+        // 작을수록 승모근이 목까지 차오른다(*"어깨에 비해 승모근쪽이 너무 낮은데?"*). 미리보기 `Tools/ModelLab/dwarf/body.py`.
+        public readonly float   ArmW, LegW, TopR;
+        public Shape(string suffix, string label, string gender, float[] half, float depth, float handR, float armK = 1f, float legK = 1f, float torsoK = 1f,
+                     float armW = 1f, float legW = 1f, float topR = TopRound)
+        { Suffix = suffix; Label = label; Gender = gender; Half = half; Depth = depth; HandR = handR; ArmK = armK; LegK = legK; TorsoK = torsoK;
+          ArmW = armW; LegW = legW; TopR = topR; }
     }
 
     static readonly float[] Stations = { 0f, 0.30f, 0.55f, 0.80f, 1f };
@@ -221,6 +227,10 @@ public static partial class ChibiPawnCreator
         ("Ink",       new Color32(0x17, 0x17, 0x1C, 0xFF)),
         // **빚은 머리카락**(오크 묶은 머리 · 수염) — 제 선을 끈다(빚은 덩어리는 오목한 자리에서 제 선이 살을 뚫는다). 색은 `MarkingLook`.
         ("HairFine",  new Color32(0x22, 0x1E, 0x24, 0xFF)),
+        // **여성 오크의 머리 장식**(2026-11-03 — `ChibiPawnCreator.OrcFemale`) — 묶은 끈 · 감개는 가죽, 고리는 쇠, 귀고리는 구리. 빚은 덩어리라 제 선을 끈다.
+        ("Leather",   new Color32(0x6B, 0x42, 0x26, 0xFF)),
+        ("Metal",     new Color32(0x94, 0x99, 0xA3, 0xFF)),
+        ("Copper",    new Color32(0xCC, 0x73, 0x33, 0xFF)),
     };
 
     public const string OutlineBoneTorso = "OutlineBoneTorso", OutlineBoneLimb = "OutlineBoneLimb", OutlineBoneDigit = "OutlineBoneDigit";
@@ -231,7 +241,8 @@ public static partial class ChibiPawnCreator
     static bool ThinLine(string mat) => mat == "BoneBody" || mat == "BoneArmor";
 
     // 제 선을 끄고 바깥 선을 따로 받는 재질 — 이름으로 가른다(`Mats`의 코 둘 · 해골 머리).
-    static bool FineOutline(string mat) => mat == "SkinFine" || mat == "SkinShaded" || mat == "NoseDark" || mat == "Bone" || mat == "Ink" || mat == "HairFine";
+    static bool FineOutline(string mat) => mat == "SkinFine" || mat == "SkinShaded" || mat == "NoseDark" || mat == "Bone" || mat == "Ink" || mat == "HairFine" ||
+                                             mat == "Leather" || mat == "Metal" || mat == "Copper";
 
     // ── 이목구비 판 ─────────────────────────────────────────────────────────
     //
@@ -697,6 +708,7 @@ public static partial class ChibiPawnCreator
         _boneBodies.Clear();
         _brutes.Clear();   // 뼈 몸 메시는 돌 때마다 다시 굽는다(남겨 두면 `_saved`에 안 적혀 끝의 청소가 지운다)
         _orcHead = null;   // 오크 머리도 같다(`ChibiPawnCreator.Orc`)
+        _orcFemaleHead = null;
         Heads = MakeHeads(ChibiFaceLayout.LoadOrCreate());
         var heads    = new Dictionary<string, Mesh>();
         var features = new Dictionary<(string, string), Mesh>();
@@ -755,6 +767,8 @@ public static partial class ChibiPawnCreator
         // 오크 머리 — 오크만 받는다(`ChibiPawnCreator.Orc` — 바탕 머리 한 벌에 오크 부위를 빚는다).
         var orc      = OrcHeadParts(features, hairs);
         var orcParts = new Dictionary<string, List<Part>> { ["Male"] = orc, ["Female"] = orc };
+        // 여성 오크 — 사람 여성 머리 바탕(`ChibiPawnCreator.OrcFemale`) · 오크 역할마다 몸 하나 더(`DressOrcFemale`).
+        var orcFemaleParts = new Dictionary<string, List<Part>> { ["Female"] = OrcFemaleHeadParts(features, hairs) };
 
         var made   = new List<string>();
         var bodies = new List<string>();   // 방랑자가 태어날 수 있는 몸들(`BodyVariants`)
@@ -829,6 +843,7 @@ public static partial class ChibiPawnCreator
                 made.Add(o.Prefab);
                 // 사람 역할은 체형 여섯이 다 나온다 — 해골(뼈 몸) · 오크(남성 머리 · 헐크 — 사용자가 그대로 두었다)는 빼고.
                 if (!o.Skeleton && !o.Orc) bodyVariants += DressBodies(o, op, oShape, headParts, oMats, atlases);
+                if (o.Orc && DressOrcFemale(o, op, orcFemaleParts, oMats, atlases)) made.Add($"{o.Prefab} 여성");
             }
         }
 
@@ -861,6 +876,9 @@ public static partial class ChibiPawnCreator
             made.Add(br.Prefab);
             if (ogre && DressOgreFemale(br, bp, bMats, atlases)) made.Add($"{br.Prefab} 여성");
         }
+
+        // **드워프 — 보기 몸**(`ChibiPawnCreator.Dwarf` — 드워프만 다시 굽는 문은 `Pawn/10`).
+        if (DressDwarf(mats, atlases, hairs)) made.Add($"드워프({DwarfPreview})");
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
         // 성별에 맞는 몸을 여기서 고른다. 원본 자신의 몸(남성)은 씬에 직접 놓을 때만 쓰인다.
@@ -1125,15 +1143,21 @@ public static partial class ChibiPawnCreator
     // 사본은 종족 폴더 밑 `Body/`(`Ogre/Body/Enemy_Ogre_Female`).
     static bool DressOgreFemale(BruteOutfit br, string rolePath, Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases)
     {
-        string dir = $"{PawnPrefabPaths.FolderOf(br.Prefab)}/Body";
-        PawnPrefabPaths.Ensure(dir);
-        string fp = $"{dir}/{br.Prefab}_Female.prefab";
-        if (File.Exists(fp)) { File.Copy(rolePath, fp, true); AssetDatabase.ImportAsset(fp, ImportAssetOptions.ForceUpdate); }
-        else { AssetDatabase.CopyAsset(rolePath, fp); AssetDatabase.ImportAsset(fp); }
-
         var (fBody, fHead) = BruteFor(BruteOgreFemale);
         var heads = new Dictionary<string, List<Part>> { ["Female"] = fHead };
-        if (!Dress(fp, BruteShape(BruteOgreFemale), heads, mats, atlases, isSource: false, OgreLook, fBody)) return false;
+        return DressFemaleCopy(br.Prefab, rolePath, fp => Dress(fp, BruteShape(BruteOgreFemale), heads, mats, atlases, isSource: false, OgreLook, fBody));
+    }
+
+    // 역할 프리팹을 `{종족}/Body/{역할}_Female`로 복사해 `dress`로 여성 몸을 입히고, 역할 프리팹에 몸 목록(남성 자신 · 여성)을 붙인다
+    // (여성 오우거 · 여성 오크). 세울 때 `PawnSpawn`이 성별로 고른다.
+    static bool DressFemaleCopy(string prefab, string rolePath, Func<string, bool> dress)
+    {
+        string dir = $"{PawnPrefabPaths.FolderOf(prefab)}/Body";
+        PawnPrefabPaths.Ensure(dir);
+        string fp = $"{dir}/{prefab}_Female.prefab";
+        if (File.Exists(fp)) { File.Copy(rolePath, fp, true); AssetDatabase.ImportAsset(fp, ImportAssetOptions.ForceUpdate); }
+        else { AssetDatabase.CopyAsset(rolePath, fp); AssetDatabase.ImportAsset(fp); }
+        if (!dress(fp)) return false;
 
         var root = PrefabUtility.LoadPrefabContents(rolePath);
         try
@@ -1260,8 +1284,8 @@ public static partial class ChibiPawnCreator
         float hand  = PHand * hh * (s.HandR / male.HandR);
         float depth = PDepth * (s.Depth / male.Depth);
         float hip   = half[1];
-        return new BodyDims(hh, half, depth, hand, hand * (PArmW / PHand) * 0.5f,
-                            hip * (PLegX / PTorsoHalf[1]), hip * (PLegW * 0.5f / PTorsoHalf[1]), s.ArmK, s.LegK, s.TorsoK);
+        return new BodyDims(hh, half, depth, hand, hand * (PArmW / PHand) * 0.5f * s.ArmW,
+                            hip * (PLegX / PTorsoHalf[1]), hip * (PLegW * 0.5f / PTorsoHalf[1]) * s.LegW, s.ArmK, s.LegK, s.TorsoK, s.ArmW, s.TopR);
     }
 
     static void Build(Transform model, Part p, Dictionary<string, Material> mats,
@@ -1735,6 +1759,17 @@ public static partial class ChibiPawnCreator
         of.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 1;
         EditorUtility.SetDirty(of);
         map["OutlineOuterFine"] = of;
+
+        // **늘어진 털의 선**(2026-11-03 — 드워프 수염 · 머리카락) — 얼굴 털 선(`OutlineOuterFine`)과 같고 **땅 이기기만 켠다**. 수염 아랫단은
+        // 거의 평평한 몸통 꼭대기(드워프는 어깨가 각지다 — `Shape.TopR`)에 얹혀, 위에서 내려다보면 그 윗면이 땅처럼 선을 먹었다(사용자: *"턱 수염
+        // 외곽선에 몸이 가려져야하는데 그렇지 않네"*). 머리에 걸면 머리카락을 뚫고 비친다던 경고(`ToonOutlineOuter`)는 여기엔 안 걸린다 — 털 · 얼굴 살은
+        // 얼굴 비트를 적어 이 선이 그 위에서는 비킨다.
+        var ob = LoadOrMake($"{MatDir}/Chibi_OutlineOuterBeard.mat", outer);
+        ob.CopyPropertiesFromMaterial(of);
+        ob.SetFloat("_OutlineGroundPush", 1.3f);
+        ob.renderQueue = of.renderQueue;
+        EditorUtility.SetDirty(ob);
+        map["OutlineOuterBeard"] = ob;
 
         map["FaceEyes"]   = Face("Eyes",   new Color32(0x5A, 0x3C, 0x28, 0xFF));
         map["FaceMouths"] = Face("Mouths", new Color32(0xC8, 0x5A, 0x5A, 0xFF));

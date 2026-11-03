@@ -30,13 +30,14 @@ public static partial class ChibiPawnCreator
         public HeadShape H;
         public float W, Ht, D, F, EyeT, MouthT, NoseT, EY, MY, NY, EX, ER, LipZ, ChinY, ChinZ, R0, EU;
 
-        public OrcFrame(HeadShape h)
+        // `mouthT` — 머리 표보다 앞서는 입 높이(여성 오크 0.26 · 음수면 표 그대로) · `eyeS` — 미리보기의 눈 지름(눈썹뼈 · 속눈썹 자리만 쓴다).
+        public OrcFrame(HeadShape h, float mouthT = -1f, float eyeS = 0.1578f)
         {
             H = h; W = h.Size.x; Ht = h.Size.y; D = h.Size.z; F = h.Forward;
-            EyeT = h.EyeT; MouthT = h.MouthT; NoseT = h.NoseT;
+            EyeT = h.EyeT; MouthT = mouthT >= 0f ? mouthT : h.MouthT; NoseT = h.NoseT;
             EY = (EyeT - 0.5f) * Ht; MY = (MouthT - 0.5f) * Ht; NY = (NoseT - 0.5f) * Ht;
             EX = h.Ref.EyeDx * W;
-            ER = 0.1578f * 0.7f * W * 0.5f;        // 미리보기의 눈 반지름(눈썹뼈 자리만 쓴다)
+            ER = eyeS * 0.7f * W * 0.5f;           // 미리보기의 눈 반지름
             LipZ = Front(MouthT) + 0.040f;
             ChinY = MY - 0.10f; ChinZ = LipZ - 0.03f;
             EU = Mathf.Atan2(EX, Front(EyeT)) * InkR;
