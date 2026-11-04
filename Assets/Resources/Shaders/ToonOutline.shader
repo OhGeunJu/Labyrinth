@@ -40,6 +40,10 @@ Shader "DungeonColony/ToonOutline"
         _OutlineColor("외곽선 색", Color) = (0.04,0.04,0.05,1)
         _OutlineWidth("외곽선 굵기(m)", Range(0,0.12)) = 0.06
         _OutlineMin("외곽선 최소 굵기(px)", Range(0,4)) = 1
+        // **제 선 껍데기를 카메라 반대쪽으로 미는 깊이(m)**(2026-11-04 — 감염자 버섯). 껍데기는 정점을 법선으로 밀어 뒷면만 칠하는데, 굽은 반지름이
+        // 선 굵기보다 작은 자리(버섯 테 · 주름)에서는 앞면 삼각형이 밀리다 뒤집혀 **제 앞면 깊이에 검은 조각**으로 박힌다. 깊이만 뒤로 밀면 제 앞면 뒤에 숨는다.
+        // 대가: 이만큼 붙어 앞에 놓인 다른 부위와의 사이 선이 사라진다 — 그래서 기본 0, 쓰는 재질만 켠다.
+        _OutlineBack("외곽선 깊이 뒤로(m)", Range(0,0.1)) = 0
 
         // **면 버리기** — 기본은 뒷면을 버린다(Back). 머리카락처럼 **한 겹짜리 열린 껍질**은 Off로 둔다:
         // 안 그러면 트인 자리로 **안쪽 면이 보여야 할 곳이 비어** 뒤가 비친다(2026-09-18, 사용자:
@@ -78,6 +82,7 @@ Shader "DungeonColony/ToonOutline"
             float4 _OutlineColor;
             float  _OutlineWidth;
             float  _OutlineMin;
+            float  _OutlineBack;
             float  _VertexAO;
             float  _FormShade;
         CBUFFER_END
@@ -106,7 +111,18 @@ Shader "DungeonColony/ToonOutline"
             #pragma fragment OutlineFrag
 
             #include "ToonOutlineHull.hlsl"
-            OutlineOut OutlineVert(OutlineIn v) { return OutlineHull(v, 0); }
+            OutlineOut OutlineVert(OutlineIn v)
+            {
+                OutlineOut o = OutlineHull(v, 0);
+                if (_OutlineBack > 0)
+                {
+                    // **깊이만** 뒤로 — 시선 반대로 민 자리의 z/w를 원래 w에 싣는다(화면 자리는 그대로 · `OutlineHull`의 땅 당기기와 거꾸로).
+                    float3 posWS = TransformObjectToWorld(v.positionOS.xyz);
+                    float4 far = TransformWorldToHClip(posWS - GetWorldSpaceNormalizeViewDir(posWS) * _OutlineBack);
+                    o.positionCS.z = far.z / far.w * o.positionCS.w;
+                }
+                return o;
+            }
 
             half4 OutlineFrag(OutlineOut i) : SV_Target { return _OutlineColor; }
             ENDHLSL

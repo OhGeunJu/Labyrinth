@@ -50,7 +50,7 @@ public class MarkingLook : MonoBehaviour
     static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
     MaterialPropertyBlock _mpb;
-    readonly List<Renderer> _ink = new(), _hair = new(), _buzz = new();
+    readonly List<Renderer> _ink = new(), _hair = new(), _buzz = new(), _plait = new();
     bool _gathered;
 
     public Ink      InkNow  { get; private set; }
@@ -103,6 +103,8 @@ public class MarkingLook : MonoBehaviour
         Paint(_hair, hairColor);
         // 반삭(여성 오크 — `….Buzz`) — 살과 머리색 사이(살 0.55 · 머리 0.45). 살은 개체 살색이 있으면 그것, 없으면 머리 살 재질의 색.
         if (_buzz.Count > 0) Paint(_buzz, Color.Lerp(SkinNow(model: transform.Find("Model")), hairColor, 0.45f));
+        // 땋은 장식(엘프 반묶음 — `….Plait`) — 머리색보다 한 톤 어둡게(같은 색이면 숱에 녹아 안 보인다 · 미리보기 `elf.py`).
+        if (_plait.Count > 0) Paint(_plait, new Color(hairColor.r * 0.8f, hairColor.g * 0.8f, hairColor.b * 0.8f, 1f));
     }
 
     Color SkinNow(Transform model)
@@ -147,7 +149,7 @@ public class MarkingLook : MonoBehaviour
     void Gather()
     {
         _gathered = true;
-        _ink.Clear(); _hair.Clear(); _buzz.Clear();
+        _ink.Clear(); _hair.Clear(); _buzz.Clear(); _plait.Clear();
         var model = transform.Find("Model");
         if (model == null) return;
         foreach (var r in model.GetComponentsInChildren<Renderer>(true))
@@ -157,10 +159,11 @@ public class MarkingLook : MonoBehaviour
             if (parts[2].StartsWith("Tat")) _ink.Add(r);
             else if (parts[2] == PawnLook.PickHair || parts[2] == "Beard" || parts[2] == "Brow")   // 눈썹(드워프 — `Head.Pick.Brow.*`)도 털 색
             {
-                // 머리카락 덩어리(조각 이름 없음) · 짧은 머리(`.Short`)는 머리색 · 반삭(`.Buzz`)은 살과 섞은 색 · 뼈 고리 · 가죽 · 쇠(`.Cuff` · `.Leather` · `.Metal` · `.Ring`)는 안 칠한다.
+                // 머리카락 덩어리(조각 이름 없음) · 짧은 머리(`.Short`)는 머리색 · 반삭(`.Buzz`)은 살과 섞은 색 · 땋은 장식(`.Plait`)은 한 톤 어둡게 · 뼈 고리 · 가죽 · 쇠(`.Cuff` · `.Leather` · `.Metal` · `.Ring`)는 안 칠한다.
                 string piece = parts.Length > 4 ? parts[4] : null;
                 if (piece == null || piece == "Short") _hair.Add(r);
                 else if (piece == "Buzz") _buzz.Add(r);
+                else if (piece == "Plait") _plait.Add(r);
             }
         }
     }

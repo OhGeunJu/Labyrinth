@@ -127,10 +127,16 @@ def render(P, yaw_deg, Wpx=320, Hpx=320, center_y=0.0, span=1.1, pitch=0.0):
     X, Y = np.meshgrid(xs, ys)
     org = (np.array([0, center_y, 0], np.float32) - fwd * 4 + X[..., None] * right + Y[..., None] * up).astype(np.float32)
     t = np.zeros((Hpx, Wpx), np.float32); hit = np.zeros((Hpx, Wpx), bool)
+    # 안 끝난 광선만 잰다(닿았거나 그림 뒤로 빠진 것은 뺀다) · 다 끝나면 멈춘다 — 220걸음을 늘 다 돌던 것을 줄였다(11-04).
+    far = 4.0 + span * 1.5
     for _ in range(220):
-        d, _ = scene(org + fwd * t[..., None])
-        hit |= d < 0.0015
-        t = np.where(hit, t, np.minimum(t + np.maximum(d * 0.8, 0.001), 30))
+        live = ~hit & (t < far)
+        if not live.any(): break
+        q = org[live] + fwd * t[live][:, None]
+        d, _ = scene(q)
+        h = d < 0.0015
+        hit[live] = h
+        t[live] = np.where(h, t[live], np.minimum(t[live] + np.maximum(d * 0.8, 0.001), 30))
     p = org + fwd * t[..., None]
     _, idx = scene(p)
     e = 0.002
@@ -140,8 +146,14 @@ def render(P, yaw_deg, Wpx=320, Hpx=320, center_y=0.0, span=1.1, pitch=0.0):
     L = np.array([0.35, 0.75, 0.55], np.float32); L /= np.linalg.norm(L)
     lam = np.clip((n * L).sum(-1), 0, 1)
     shade = np.where(lam > 0.55, 1.0, np.where(lam > 0.2, 0.80, 0.60))
-    cols = np.array([c for _, c in P], np.float32)
-    img = np.where(hit[..., None], cols[idx] * shade[..., None], np.array([0.16, 0.16, 0.18], np.float32))
+    # 색은 값이거나 자리마다 색을 돌려주는 함수(점들 → (N, 3)) — 몸에 번진 얼룩(감염자 11-04).
+    cols = np.array([(1, 1, 1) if callable(c) else c for _, c in P], np.float32)
+    base = cols[idx]
+    for i, (_, c) in enumerate(P):
+        if callable(c):
+            m = hit & (idx == i)
+            if m.any(): base[m] = c(p[m])
+    img = np.where(hit[..., None], base * shade[..., None], np.array([0.16, 0.16, 0.18], np.float32))
     t = np.where(hit, t, 30.0)
     edge = np.zeros(hit.shape, bool)
     for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2)]:

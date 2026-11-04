@@ -33,6 +33,8 @@ Guidance for Claude Code in this repository.
 - **몸집은 종족이 든다**(`UnitData.BodyScale` → `BodySize`) — 그림과 팔 길이만 큰다 · 부딪히는 몸은 한 칸 그대로 · 거리는 둘레까지(`BTTargetUtil.DistanceTo` · `MeleeSlots`) · 큰 몸은 휘두른다(표적 온전히 + 둘레 `CleaveTargets`) · 못 쥐는 무기는 `Equipment.CanWield` · 아무는 몸 `Regeneration`(불 붙으면 멈춘다).
 - **먹는 종족은 쓰러진 사람을 굴로 메고 간다**(`UnitData.Devours` — 고블린 · 트롤 · `Abduction`) — 곁에 깨어 있는 그 편이 없을 때만 · 굴이 없으면 안 멘다 · 굴에 기둥을 세워 묶는다(`CaptivePost` — 갇힘 한 벌 `Imprisonment.Bind`) · 먹히는 것 · 탈출은 `Devoured`(끼니마다 `DevourNode`가 뜯는 동안 부위가 차례로 준다 — `BodyPartSystem.Gnaw`) · 부서진 팔다리는 안 낫고 몸에서 접힌다 · 기절한 어깨는 업은 것을 떨어뜨린다.
 - **드워프는 사람 치비 몸 + 빚은 머리**(`ChibiPawnCreator.Dwarf`) — 체형은 `Shapes` 밖 한 줄(`DwarfShape` — 안에 두면 방랑자 몸 목록에 든다) · 수염 · 머리카락 · 눈썹은 따로 고른다(`Head.Pick.*`) · 눈은 빚는다(사람 눈 판은 눈썹뼈에 묻힌다) · 드워프만 굽는 문은 `Pawn/10` · 종족 · 씨족은 아직. → `docs/units.md` 치비 절
+- **감염자는 사람 치비 몸 + 버섯 — 버섯은 고르기 축**(`ChibiPawnCreator.Fungal`) — 몸 자리 · 틈은 저마다 켜고 끄는 축(`SiteNN` · `WoundN` — 표 순서가 축 번호라 끝에만 붙일 것) · 몸에 붙는 조각은 `Dress`의 `extra` · 감염자만 굽는 문은 `Pawn/11`. → `docs/units.md` 치비 절
+- **엘프는 사람 치비 몸(긴 다리) + 좁힌 사람 머리**(`ChibiPawnCreator.Elf`) — 체형은 `Shapes` 밖 한 줄(`ElfShape`) · 귀는 조각 축(`Head.Pick.Ear.*`) · 머리카락은 귀마다 한 벌(`@Ear.*` — 귀 모양대로 파인다) · 땋은 장식 `.Plait`는 한 톤 어둡게(`MarkingLook`) · 엘프만 굽는 문은 `Pawn/12`. → `docs/units.md` 치비 절
 - **미룬 것**(건물 에셋 대기) — 마을 건설 · 마을=핵 · 건물 2층(층 넷과 다른 장치 — 같은 XZ에 바닥 둘). **남은 미결** — 월드 에디터의 퀘스트.
 
 ## Project Overview

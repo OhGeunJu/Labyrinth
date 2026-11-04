@@ -16,8 +16,8 @@
 | `orc_female/` | 여성 오크 머리 · 얼굴 · 머리 열(`hair_v2.py`) · 체형(`body_cmp.py`) | `ChibiPawnCreator.OrcFemale` |
 | `dwarf/` | 드워프 머리 · 수염 · 머리카락 · 눈썹(`dwarf.py` — `brows` 인자로 눈썹 보기) · 몸 비례(`body.py` — 사람 몸 식 그대로) | `ChibiPawnCreator.Dwarf` |
 | `dwarf/` | 드워프 머리 · 수염 · 머리카락(바탕 머리 `head_base.py`) | (아직) |
-| `elf/` | 엘프 머리 · 귀 · 머리카락(`elf.py` — 바탕은 `dwarf/`) · 몸 비례(`elf_body.py`) | (아직) |
-| `fungal/` | 감염된 사람(기생림) — 사람 치비 몸(`dwarf/body.py` `dims(MALE)`) + 민머리(`dwarf/head_base`)에 버섯 · 얼굴 셋(`fungal.py` · 2분) | (아직) |
+| `elf/` | 엘프 머리 · 귀 셋 · 머리카락 여섯(`elf.py` — 바탕은 `dwarf/` · 한 판 약 4분 · `python elf.py out.png 5,7 0,30,70` = 고른 줄 · 보기 각도) · 몸 비례(`elf_body.py`) | `ChibiPawnCreator.Elf` |
+| `fungal/` | 감염된 사람(기생림) — 사람 치비 몸(`dwarf/body.py` `dims(MALE)`) + 민머리(`dwarf/head_base`)에 버섯 · 얼굴 셋 · 말굽 자리 · 틈 · 대표 버섯(`fungal.py` · 2분 · `python fungal.py out.png 시드 collar,ink,...`) | `ChibiPawnCreator.Fungal` |
 
 - **작업 공간(`.claude/worktrees/`)에 만들지 않는다** — 이 폴더는 본 체크아웃에만 있다(작업 공간에는 따라오지 않는다).
 
@@ -35,4 +35,5 @@
   ```
 - 실행은 그 모델 폴더에서 — 그림은 `renders/`로: `cd Tools/ModelLab/troll && python troll_preview.py renders/troll_full57.png`
 - **수치를 고치면 C#에도 같이 옮긴다** — 미리보기와 C#이 어긋나면 그림으로 맞춘 것이 거짓이 된다.
+- 렌더러(`dwarf/head_base.render`)는 안 끝난 광선만 재고 다 끝나면 멈춘다.
 - 한 번 쓰고 끝난 진단(확대 · 단면)은 다 쓰면 지운다. 다시 쓸 만한 보기 도구(`face_sheet.py` · `neck_pair.py` · `section.py`)만 남긴다.

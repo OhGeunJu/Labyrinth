@@ -879,6 +879,8 @@ public static partial class ChibiPawnCreator
 
         // **드워프 — 보기 몸**(`ChibiPawnCreator.Dwarf` — 드워프만 다시 굽는 문은 `Pawn/10`).
         if (DressDwarf(mats, atlases, hairs)) made.Add($"드워프({DwarfPreview})");
+        // **감염자 — 보기 몸**(`ChibiPawnCreator.Fungal` — 감염자만 다시 굽는 문은 `Pawn/11`).
+        if (DressFungal(mats, atlases)) made.Add($"감염자({FungalPreview})");
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
         // 성별에 맞는 몸을 여기서 고른다. 원본 자신의 몸(남성)은 씬에 직접 놓을 때만 쓰인다.
@@ -1227,13 +1229,13 @@ public static partial class ChibiPawnCreator
     // 세우므로 `Pawn/2`가 따로 필요 없다(그 도구는 치비 몸 — `PawnLook`이 붙은 몸을 건너뛴다).
     static bool Dress(string path, Shape s, Dictionary<string, List<Part>> headParts,
                       Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, bool isSource,
-                      Action<GameObject> finish = null, BoneBody skeleton = null)
+                      Action<GameObject> finish = null, BoneBody skeleton = null, List<Part> extra = null)
     {
         var root = PrefabUtility.LoadPrefabContents(path);
         try
         {
             if (!DressSkinned(root, DimsOf(s), headParts[s.Gender], mats, atlases,
-                              Path.GetFileNameWithoutExtension(path), $"Chibi_Body_{s.Suffix}", skeleton)) return false;
+                              Path.GetFileNameWithoutExtension(path), $"Chibi_Body_{s.Suffix}", skeleton, extra)) return false;
 
             if (root.GetComponent<PawnLook>() == null) root.AddComponent<PawnLook>();
             // 몸통 선이 **제 몸만** 피하게 폰마다 번호를 준다(`ToonOutlineOuter`).

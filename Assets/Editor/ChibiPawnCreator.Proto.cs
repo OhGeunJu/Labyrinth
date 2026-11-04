@@ -76,7 +76,7 @@ public static partial class ChibiPawnCreator
     // 받아 이 몸의 꼭대기로 옮긴다. **갈라 적으면 시제품에서 고친 것이 본 몸에 안 간다.**
     static bool DressSkinned(GameObject root, BodyDims d, List<Part> headParts, Dictionary<string, Material> mats,
                              Dictionary<string, ChibiFaceAtlas> atlases, string prefabName, string meshName,
-                             BoneBody skeleton = null)
+                             BoneBody skeleton = null, List<Part> extra = null)
     {
         var model = root.transform.Find("Model");
         if (model == null) { Debug.LogError($"[치비] {prefabName}에 `Model`이 없다."); return false; }
@@ -117,6 +117,9 @@ public static partial class ChibiPawnCreator
             rigid.Add(new Part("FootL.Shoe", null, new Vector3(-d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
             rigid.Add(new Part("FootR.Shoe", null, new Vector3( d.LegX, d.Shoe.y * 0.5f, PShoeFwd * d.Hh), d.Shoe, "Shoe", outerMat: "OutlineOuter"));
         }
+
+        // **몸에 덧붙는 굳은 조각**(2026-11-04 — 감염자 버섯 · `ChibiPawnCreator.Fungal`) — Model 좌표 그대로(머리처럼 옮기지 않는다) · 이름 앞머리가 관절.
+        if (extra != null) rigid.AddRange(extra);
 
         // **허리 램프**(2026-10-23) — 바지 띠 높이, 몸 앞 오른쪽에 반쯤 묻힌 알. 꺼 두고 허리에 무엇을 차면 켜진다(`PawnApparel`).
         {

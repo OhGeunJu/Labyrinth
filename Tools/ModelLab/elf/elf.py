@@ -90,9 +90,16 @@ def scalp(p, th, low):
     s3 = s[..., None] if np.ndim(s) else s
     d = nhead(p / s3) * s
     return smax(d, low - p[..., 1], 0.02)
-def ear_gap(p, d, spec):   # 귀가 머리카락을 뚫고 나온다 — 뿌리 둘레를 덜어 낸다
-    m = mirror(p)
-    return smax(d, -sph(m, V(R0 + 0.02, EY - 0.015, -0.04), 0.07), 0.02)
+def ear_gap(p, d, spec):   # 귀가 머리카락을 뚫고 나온다 — 귀 판 모양 그대로 바로 둘레만 덜어 낸다
+    # 뿌리 둘레를 공으로 파면 귀 밑에 동그란 구멍이 남는다(11-04 사용자) — 머리카락이 귀에 붙어 갈라지게
+    # 귀 판만 덜면 뿌리가 숱 두께 속에 묻혀 끝만 보인다 → 귀 판을 옆으로 밀어 낸 자국(바깥 · 안)까지 덜어
+    # 귀를 덮은 숱 · 앞 판 · 뒷머리가 귀 모양 그대로 갈라진다(k < 0이 바깥)
+    sx = np.sign(p[..., 0])
+    cut = NONE(p)
+    for k in (-0.064, -0.048, -0.032, -0.016, 0.0, 0.016):
+        q = p.copy(); q[..., 0] = p[..., 0] + sx * k
+        cut = np.minimum(cut, ear_blade(q, spec))
+    return smax(d, -(cut - 0.004), 0.004)
 def part_line(p):    # 가운데 가르마 — 정수리 앞에 얕은 골
     return 0.012 * np.exp(-(p[..., 0] / 0.012) ** 2) * (p[..., 2] > -0.05) * (p[..., 1] > 0.15)
 
@@ -119,9 +126,11 @@ def flock(p, pts, r0, r1, F=2.2, k=0.02):   # 납작한 가닥 — 앞뒤(z)로 
     q = p * np.array([1, 1, F], np.float32)
     return lock(q, [t * np.array([1, 1, F], np.float32) for t in pts], r0, r1, k) / F
 def curtain_line(ang):   # 첫 번째 머리 — 가르마에서 이마 양쪽으로 둥글게 흘러내리다(C) 관자놀이에서 꺾여 곧게 떨어진다(앞 가닥이 잇는다)
-    top, temple, nape = EY + 0.26, EY + 0.05, -0.28
-    fr = np.where(ang < 50, top + (temple - top) * ease(ang / 50) ** 0.8, temple)
-    return np.where(ang < 95, fr, temple + (nape - temple) * ease((ang - 100) / 60))
+    # 관자놀이에서 귀 앞까지는 구레나룻으로 턱께까지 내려온다 — 수평으로 두면 앞 판과 귀 사이에 맨살 띠가 남아
+    # 앞 판이 따로 붙은 것처럼 보였다(11-04 사용자 "구레나룻 쪽이 자연스럽게 안 이어진다")
+    top, temple, burn, nape = EY + 0.26, EY + 0.05, EY - 0.12, -0.28
+    fr = np.where(ang < 50, top + (temple - top) * ease(ang / 50) ** 0.8, temple + (burn - temple) * ease((ang - 50) / 38))
+    return np.where(ang < 90, fr, burn + (nape - burn) * ease((ang - 90) / 70))
 
 def nlock(p, pts, r0, r1, n, F=2.2):   # 납작한 가닥 — 바깥 방향(n)으로 얇다(옆쪽 가닥도 판처럼 붙게)
     n = np.asarray(n, np.float32)
@@ -173,6 +182,38 @@ def h_straight(p, spec):   # 가운데 가르마 긴 생머리 — 뒤는 허리
     d = smin(cap, back_fall(p), 0.04)
     d = smin(d, front_locks(p), 0.03)   # 윗머리를 넉넉히 녹인다 — 혹이 안 서게
     return ear_gap(p, d, spec) + strands(p, 0.0015, 55), NONE(p), NONE(p)   # 결은 얕게(깊으면 갈라져 보인다)
+# 커튼 앞머리(11-04 사용자 그림 `_refs/2026-11-04_elf/want_curtain_bangs.png`) — 가운데 가르마에서 갈라져 이마 위로 내려온다.
+# 다발(관)을 이마에서 띄워 붙이면 옆에서 볼록볼록 혹이 선다(v17 · 사용자) → 이마를 감싸는 매끈한 한 장(숱 껍데기)으로 빚고,
+# 모양은 아랫단 곡선 · 뾰족한 다발 끝 · 바깥으로 쓸리는 결(골)이 낸다. 두께는 뿌리에서 숱과 같고 아랫단으로 얇아진다.
+def hem_A(ang):   # A자 — 가운데(가르마)가 높고 바깥으로 갈수록 길어져 눈썹 바깥께로 · 꼭지는 둥글게(뾰족하면 어색하다 · v19 사용자)
+    return np.interp(ang, [0, 8, 18, 30, 44, 58, 72], [EY + 0.17, EY + 0.155, EY + 0.125, EY + 0.10, EY + 0.08, EY + 0.065, EY + 0.05])
+def hem_Arch(ang):   # 가르마에서 둥근 ∧로 흘러내리는 단(v20 맨 아래 줄 · 사용자 "좋아 보인다") — 숱 이마선이 단 아래까지 덮어 이 모양이 된다
+    return np.interp(ang, [0, 3, 8, 14, 26, 38, 46, 54, 64, 72], [EY + 0.235, EY + 0.215, EY + 0.165, EY + 0.148, EY + 0.14, EY + 0.145, EY + 0.12, EY + 0.06, EY - 0.02, EY - 0.06])
+def hem_M(ang):   # M자 — 사용자 그림 `_refs/2026-11-04_elf/want_bangsM_slit.png`: 이마는 가운데 좁은 세로 틈으로만 드러난다.
+    # 틈 위 끝은 가운데가 살짝 파인 M · 양옆 앞머리는 틈 옆으로 곧게 떨어져 눈썹께에서 이마를 덮고, 틈 아래 끝은 바깥으로 살짝 벌어진다
+    # 위는 거의 평평하고 가운데만 살짝 파인다 · 위 모서리는 둥글게 · 옆은 곧게(v22는 좁고 낮아 ∧로 읽혔다)
+    return np.interp(ang, [0, 2, 4, 8, 11, 13, 14.5, 15.5, 16.5, 18, 21, 26, 34, 45, 55, 64, 72],
+                     [EY + 0.24, EY + 0.25, EY + 0.262, EY + 0.265, EY + 0.26, EY + 0.245, EY + 0.22, EY + 0.18, EY + 0.13, EY + 0.10, EY + 0.08, EY + 0.07, EY + 0.065, EY + 0.065, EY + 0.04, EY - 0.02, EY - 0.06])
+def bangs(p, hem, reach=72, tip=0.0):
+    ang = angle(p); h = hem(ang)
+    if tip:   # 다발 끝 — 둥근 물결로 아주 얕게(세모 물결 · 깊은 끝은 뾰족했다 · 결 골은 선으로 읽혀 뺐다 · v19 사용자)
+        ph = (ang + 160 * (EY + 0.30 - p[..., 1])) / 15.0
+        h = h - tip * (0.5 - 0.5 * np.cos(ph * 2 * np.pi)) * ease(ang / 10)   # 가르마 자리는 물결을 안 탄다(꼭지 뾰족이)
+    th = 0.010 + 0.022 * ease((p[..., 1] - h) / 0.10)      # 아랫단에서 얇고 위로 숱 두께
+    d = scalp(p, th, h)
+    return smax(d, (ang - reach) * np.pi / 180 * 0.28, 0.01)   # 앞에만 — 옆은 숱 · 구레나룻이 든다
+def h_bangs_with(hem, line, reach=72, tip=0.0):
+    def f(p, spec):    # 앞머리 생머리 — 뒤 · 옆은 생머리(`h_straight`) 그대로, 앞 판 대신 커튼 앞머리
+        ang = angle(p)
+        low = np.where(ang < 90, line(ang), curtain_line(ang))
+        cap = scalp(p, 0.030, low) + part_line(p)
+        d = smin(cap, back_fall(p), 0.04)
+        d = smin(d, bangs(p, hem, reach, tip), 0.015)
+        return ear_gap(p, d, spec) + strands(p, 0.0012, 55) * (ang > 70), NONE(p), NONE(p)
+    return f
+h_bangs = h_bangs_with(hem_A, curtain_line, tip=0.006)
+h_bangs_arch = h_bangs_with(hem_Arch, curtain_line)
+h_bangs_m = h_bangs_with(hem_M, lambda a: np.maximum(curtain_line(a), hem_M(a)))   # 숱 이마선이 단보다 내려오면 평평한 단을 가려 다시 비스듬한 A가 된다(v20)
 def h_halfup(p, spec):     # 반묶음 — 관자놀이에서 땋은 두 가닥이 뒤통수에서 만나고 아래는 풀어 내렸다
     cap = scalp(p, 0.030, front_line(angle(p))) + part_line(p)   # 두 번째 머리 앞은 C자 그대로(사용자)
     d = smin(cap, back_fall(p, -0.72), 0.04)
@@ -197,7 +238,7 @@ def h_tail(p, spec):       # 뒤로 빗어 넘겨 높이 묶은 꽁지 + 이마 
     circ = smax(np.abs(nhead(p) - 0.034) - 0.006, np.abs(p[..., 1] - (EY + 0.17 - 0.25 * np.maximum(-p[..., 2], 0))) - 0.014, 0.003)   # 이마에서 뒤로 내려간다
     gem = sph(p, V(0, EY + 0.175, front(EYE_T + 0.25) + 0.032), 0.022)
     return ear_gap(p, d, spec), np.minimum(np.minimum(tie, circ), gem), NONE(p)
-HAIRS = {'Straight': h_straight, 'HalfUp': h_halfup, 'Tail': h_tail}
+HAIRS = {'Straight': h_straight, 'HalfUp': h_halfup, 'Tail': h_tail, 'Bangs': h_bangs, 'BangsM': h_bangs_m, 'BangsArch': h_bangs_arch}
 
 def body(p): return ell(p, V(0, -0.86, -0.02), V(0.40, 0.42, 0.30))   # 좁은 어깨(개략)
 
@@ -220,19 +261,23 @@ def pieces(ear, hair, col, eyec, metal):
             (body, TUNIC), (h(0), col), (h(1), metal), (h(2), tuple(c * 0.80 for c in col))]
 
 COMBOS = [('Leaf', 'Straight', PLAT, BLUE, SILVER), ('Long', 'HalfUp', BLOND, GREEN, GOLD), ('Sweep', 'Tail', SNOW, BLUE, GOLD),
-          ('Long', 'Straight', RAVEN, GREEN, SILVER), ('Sweep', 'HalfUp', PLAT, BLUE, SILVER)]
+          ('Long', 'Straight', RAVEN, GREEN, SILVER), ('Sweep', 'HalfUp', PLAT, BLUE, SILVER),
+          ('Leaf', 'Bangs', BLOND, BLUE, SILVER), ('Long', 'Bangs', RAVEN, GREEN, SILVER),
+          ('Leaf', 'BangsM', BLOND, BLUE, SILVER), ('Long', 'BangsM', RAVEN, GREEN, SILVER),
+          ('Long', 'BangsArch', RAVEN, GREEN, SILVER)]
 
 S, Hh, VIEWS = 300, 420, (0, 50, 120, 180)
-def row(c):
-    e, hn, col, ec, mt = c
-    return [np.asarray(render(pieces(e, hn, col, ec, mt), a, S, Hh, -0.20, 1.70)) for a in VIEWS]
+def row(job):
+    (e, hn, col, ec, mt), views = job
+    return [np.asarray(render(pieces(e, hn, col, ec, mt), a, S, Hh, -0.20, 1.70)) for a in views]
 
 if __name__ == '__main__':
     from multiprocessing import Pool
     out = sys.argv[1]
     if len(sys.argv) > 2: COMBOS[:] = [COMBOS[int(i)] for i in sys.argv[2].split(',')]
-    with Pool(len(COMBOS)) as pool: rows = pool.map(row, COMBOS)
-    sheet = Image.new('RGB', (S * len(VIEWS), Hh * len(COMBOS)), (40, 40, 44)); d = ImageDraw.Draw(sheet)
+    views = tuple(int(a) for a in sys.argv[3].split(',')) if len(sys.argv) > 3 else VIEWS   # 보기 각도(기본 0,50,120,180)
+    with Pool(len(COMBOS)) as pool: rows = pool.map(row, [(c, views) for c in COMBOS])
+    sheet = Image.new('RGB', (S * len(views), Hh * len(COMBOS)), (40, 40, 44)); d = ImageDraw.Draw(sheet)
     for r, ims in enumerate(rows):
         for c, im in enumerate(ims): sheet.paste(Image.fromarray(im), (c * S, r * Hh))
         e, hn = COMBOS[r][:2]; d.text((6, r * Hh + 4), f'ear {e} / hair {hn}', fill=(255, 220, 120))

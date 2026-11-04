@@ -39,6 +39,9 @@ Shader "DungeonColony/ToonOutlineOuter"
         [IntRange] _StencilRef("스텐실 번호(폰마다)", Range(0,255)) = 1
         // 얼굴의 선인가(코) — 켜면 번호 + 128과 비교해 **제 얼굴 위에서만** 비킨다(`PawnOutlineId`가 읽는다).
         [ToggleUI] _StencilFace("얼굴(번호 + 128)", Float) = 0
+        // **읽기 마스크**(2026-11-04 — 감염자) — 127이면 얼굴 표시(128)를 무시하고 **폰 번호만** 본다: 제 몸 · 제 얼굴 어디에도 안 긋고 폰 밖에만 긋는다.
+        // 붙은 조각(버섯)이 많은 폰은 조각 사이를 가는 제 선이 가르고, 굵은 선은 폰 전체의 테두리 하나만 남긴다. 기본 255(예전 그대로).
+        [IntRange] _StencilReadMask("스텐실 읽기 마스크", Range(0,255)) = 255
     }
 
     SubShader
@@ -51,7 +54,7 @@ Shader "DungeonColony/ToonOutlineOuter"
             Tags { "LightMode" = "SRPDefaultUnlit" }
             Cull Front
             ZWrite On
-            Stencil { Ref [_StencilRef] Comp NotEqual }
+            Stencil { Ref [_StencilRef] ReadMask [_StencilReadMask] Comp NotEqual }
 
             HLSLPROGRAM
             #pragma vertex OutlineVert
