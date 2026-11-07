@@ -32,9 +32,10 @@ Guidance for Claude Code in this repository.
 - **1인칭 · 천장** — `F`가 고른 폰의 눈으로 같은 카메라를 붙든다(`FirstPersonView.On`이면 `CameraController`는 손을 뗀다) · 그동안 벽 자르기를 끄고 천장을 켠다 · 천장은 바위 메시에 안 넣는다(뚜껑은 자르는 높이로 끌려 내려온다 — 청크의 자식 렌더러 `BuildCeiling`) · 볕 구멍 위는 비운다(`RockRenderer.AddSkyHole`).
 - **몸집은 종족이 든다**(`UnitData.BodyScale` → `BodySize`) — 그림과 팔 길이만 큰다 · 부딪히는 몸은 한 칸 그대로 · 거리는 둘레까지(`BTTargetUtil.DistanceTo` · `MeleeSlots`) · 큰 몸은 휘두른다(표적 온전히 + 둘레 `CleaveTargets`) · 못 쥐는 무기는 `Equipment.CanWield` · 아무는 몸 `Regeneration`(불 붙으면 멈춘다).
 - **먹는 종족은 쓰러진 사람을 굴로 메고 간다**(`UnitData.Devours` — 고블린 · 트롤 · `Abduction`) — 곁에 깨어 있는 그 편이 없을 때만 · 굴이 없으면 안 멘다 · 굴에 기둥을 세워 묶는다(`CaptivePost` — 갇힘 한 벌 `Imprisonment.Bind`) · 먹히는 것 · 탈출은 `Devoured`(끼니마다 `DevourNode`가 뜯는 동안 부위가 차례로 준다 — `BodyPartSystem.Gnaw`) · 부서진 팔다리는 안 낫고 몸에서 접힌다 · 기절한 어깨는 업은 것을 떨어뜨린다.
-- **드워프는 사람 치비 몸 + 빚은 머리**(`ChibiPawnCreator.Dwarf`) — 체형은 `Shapes` 밖 한 줄(`DwarfShape` — 안에 두면 방랑자 몸 목록에 든다) · 수염 · 머리카락 · 눈썹은 따로 고른다(`Head.Pick.*`) · 눈은 빚는다(사람 눈 판은 눈썹뼈에 묻힌다) · 드워프만 굽는 문은 `Pawn/10` · 종족 · 씨족은 아직. → `docs/units.md` 치비 절
+- **드워프는 사람 치비 몸 + 빚은 머리**(`ChibiPawnCreator.Dwarf`) — 체형은 `Shapes` 밖 한 줄(`DwarfShape` — 안에 두면 방랑자 몸 목록에 든다) · 수염 · 머리카락 · 눈썹은 따로 고른다(`Head.Pick.*`) · 눈은 빚는다(사람 눈 판은 눈썹뼈에 묻힌다) · 드워프만 굽는 문은 `Pawn/10` · 종족은 `Dwarf`(털 색 후보는 종족이 든다 — `UnitData.HairTones` → `MarkingLook`) · 씨족 · 역할 · 여성은 아직. → `docs/units.md` 치비 절
 - **감염자는 사람 치비 몸 + 버섯 — 버섯은 고르기 축**(`ChibiPawnCreator.Fungal`) — 몸 자리 · 틈은 저마다 켜고 끄는 축(`SiteNN` · `WoundN` — 표 순서가 축 번호라 끝에만 붙일 것) · 몸에 붙는 조각은 `Dress`의 `extra` · 감염자만 굽는 문은 `Pawn/11`. → `docs/units.md` 치비 절
-- **엘프는 사람 치비 몸(긴 다리) + 좁힌 사람 머리**(`ChibiPawnCreator.Elf`) — 체형은 `Shapes` 밖 한 줄(`ElfShape`) · 귀는 조각 축(`Head.Pick.Ear.*`) · 머리카락은 귀마다 한 벌(`@Ear.*` — 귀 모양대로 파인다) · 땋은 장식 `.Plait`는 한 톤 어둡게(`MarkingLook`) · 엘프만 굽는 문은 `Pawn/12`. → `docs/units.md` 치비 절
+- **엘프는 사람 치비 몸(긴 다리) + 좁힌 사람 머리**(`ChibiPawnCreator.Elf`) — 체형은 `Shapes` 밖 한 줄(`ElfShape`) · 귀는 조각 축(`Head.Pick.Ear.*`) · 머리카락은 귀마다 한 벌(`@Ear.*` — 귀 모양대로 파인다) · 땋은 장식 `.Plait`는 한 톤 어둡게(`MarkingLook`) · 종족은 `Elf`(털 색 후보 — `Pawn/12`가 없으면 만든다) · 엘프만 굽는 문은 `Pawn/12`. **종족만 굽는 문(`Pawn/10~12`)을 새로 내면 `Pawn/3`에도 한 줄** — `Pawn/3`의 끝 청소가 그 판에 안 만든 `Chibi_` 메시를 지운다. → `docs/units.md` 치비 절
+- **사람 얼굴은 빚는다**(`ChibiPawnCreator.Human` · `HeadParts(human: true)`) — 머리 모양 표는 그대로 · 머리마다 눈 · 반짝임 · 입 · 귀는 `Head.Shape.{머리}.*`, 코 · 눈썹은 고르기 축을 머리에 매단다(`@Shape.{머리}` — `PawnLook.ShapeAxis`) · 넓은 날카로운 머리는 뺀다 · 좁은 머리 세로 0.88 · 여자 이목구비 자리는 같은 모양의 남자 값 · 고블린은 옛 얼굴(`headParts`). 머리카락은 아직 옛 껍데기(미리보기 `Tools/ModelLab/human/port.py`). → `docs/units.md` 치비 절
 - **미룬 것**(건물 에셋 대기) — 마을 건설 · 마을=핵 · 건물 2층(층 넷과 다른 장치 — 같은 XZ에 바닥 둘). **남은 미결** — 월드 에디터의 퀘스트.
 
 ## Project Overview
@@ -214,6 +215,7 @@ Guidance for Claude Code in this repository.
 | 이 걸음이 막힌 변을 건너나 | `EdgeWalls`(`StepOpen` · `MaskAt`) |
 | 쓰다 만 물건의 남은 양 · 넣는 문 · 옮기는 문 | `ItemInstance.Left`(뭉치마다 열린 하나) · `Inventory.TryAddOpened` · `Inventory.Transfer`/`TryAddLike` — 개수로 빼는 길은 새것만 |
 | 대화로 영입할 수 있나 | `UnitBrain.Recruitable`(세우는 쪽이 켠다 — 역할·자리로 묻지 말 것) |
+| 치비 머리카락 · 수염의 외곽선 · 선을 언제 당기나 | `ChibiPawnCreator.LineFor`(`Head.Pick.Hair/Beard.*`는 생성기가 무엇을 넘기든 `HangLine`) · 당김은 아래를 향한 선 · 내려다볼 때만(`ToonOutlineHull`) |
 | 화면을 언제 다시 그리나 | `UiRefresh`(박 0.15초 · `Due(ref _beat, 배수)`) — 켜고 끄는 것은 이 박자에 안 태운다 · 주기는 코드가 든다 |
 
 ## 알려진 이슈 (`docs/timing.md` · `docs/rendering.md`)

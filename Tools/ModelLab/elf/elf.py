@@ -182,11 +182,10 @@ def h_straight(p, spec):   # 가운데 가르마 긴 생머리 — 뒤는 허리
     d = smin(cap, back_fall(p), 0.04)
     d = smin(d, front_locks(p), 0.03)   # 윗머리를 넉넉히 녹인다 — 혹이 안 서게
     return ear_gap(p, d, spec) + strands(p, 0.0015, 55), NONE(p), NONE(p)   # 결은 얕게(깊으면 갈라져 보인다)
+# (A자 `Bangs` · 일자 · 둥근은 11-06 사용자가 뺐다 — "셋다 별로")
 # 커튼 앞머리(11-04 사용자 그림 `_refs/2026-11-04_elf/want_curtain_bangs.png`) — 가운데 가르마에서 갈라져 이마 위로 내려온다.
 # 다발(관)을 이마에서 띄워 붙이면 옆에서 볼록볼록 혹이 선다(v17 · 사용자) → 이마를 감싸는 매끈한 한 장(숱 껍데기)으로 빚고,
 # 모양은 아랫단 곡선 · 뾰족한 다발 끝 · 바깥으로 쓸리는 결(골)이 낸다. 두께는 뿌리에서 숱과 같고 아랫단으로 얇아진다.
-def hem_A(ang):   # A자 — 가운데(가르마)가 높고 바깥으로 갈수록 길어져 눈썹 바깥께로 · 꼭지는 둥글게(뾰족하면 어색하다 · v19 사용자)
-    return np.interp(ang, [0, 8, 18, 30, 44, 58, 72], [EY + 0.17, EY + 0.155, EY + 0.125, EY + 0.10, EY + 0.08, EY + 0.065, EY + 0.05])
 def hem_Arch(ang):   # 가르마에서 둥근 ∧로 흘러내리는 단(v20 맨 아래 줄 · 사용자 "좋아 보인다") — 숱 이마선이 단 아래까지 덮어 이 모양이 된다
     return np.interp(ang, [0, 3, 8, 14, 26, 38, 46, 54, 64, 72], [EY + 0.235, EY + 0.215, EY + 0.165, EY + 0.148, EY + 0.14, EY + 0.145, EY + 0.12, EY + 0.06, EY - 0.02, EY - 0.06])
 def hem_M(ang):   # M자 — 사용자 그림 `_refs/2026-11-04_elf/want_bangsM_slit.png`: 이마는 가운데 좁은 세로 틈으로만 드러난다.
@@ -211,7 +210,6 @@ def h_bangs_with(hem, line, reach=72, tip=0.0):
         d = smin(d, bangs(p, hem, reach, tip), 0.015)
         return ear_gap(p, d, spec) + strands(p, 0.0012, 55) * (ang > 70), NONE(p), NONE(p)
     return f
-h_bangs = h_bangs_with(hem_A, curtain_line, tip=0.006)
 h_bangs_arch = h_bangs_with(hem_Arch, curtain_line)
 h_bangs_m = h_bangs_with(hem_M, lambda a: np.maximum(curtain_line(a), hem_M(a)))   # 숱 이마선이 단보다 내려오면 평평한 단을 가려 다시 비스듬한 A가 된다(v20)
 def h_halfup(p, spec):     # 반묶음 — 관자놀이에서 땋은 두 가닥이 뒤통수에서 만나고 아래는 풀어 내렸다
@@ -238,7 +236,7 @@ def h_tail(p, spec):       # 뒤로 빗어 넘겨 높이 묶은 꽁지 + 이마 
     circ = smax(np.abs(nhead(p) - 0.034) - 0.006, np.abs(p[..., 1] - (EY + 0.17 - 0.25 * np.maximum(-p[..., 2], 0))) - 0.014, 0.003)   # 이마에서 뒤로 내려간다
     gem = sph(p, V(0, EY + 0.175, front(EYE_T + 0.25) + 0.032), 0.022)
     return ear_gap(p, d, spec), np.minimum(np.minimum(tie, circ), gem), NONE(p)
-HAIRS = {'Straight': h_straight, 'HalfUp': h_halfup, 'Tail': h_tail, 'Bangs': h_bangs, 'BangsM': h_bangs_m, 'BangsArch': h_bangs_arch}
+HAIRS = {'Straight': h_straight, 'HalfUp': h_halfup, 'Tail': h_tail, 'BangsM': h_bangs_m, 'BangsArch': h_bangs_arch}
 
 def body(p): return ell(p, V(0, -0.86, -0.02), V(0.40, 0.42, 0.30))   # 좁은 어깨(개략)
 
@@ -262,7 +260,6 @@ def pieces(ear, hair, col, eyec, metal):
 
 COMBOS = [('Leaf', 'Straight', PLAT, BLUE, SILVER), ('Long', 'HalfUp', BLOND, GREEN, GOLD), ('Sweep', 'Tail', SNOW, BLUE, GOLD),
           ('Long', 'Straight', RAVEN, GREEN, SILVER), ('Sweep', 'HalfUp', PLAT, BLUE, SILVER),
-          ('Leaf', 'Bangs', BLOND, BLUE, SILVER), ('Long', 'Bangs', RAVEN, GREEN, SILVER),
           ('Leaf', 'BangsM', BLOND, BLUE, SILVER), ('Long', 'BangsM', RAVEN, GREEN, SILVER),
           ('Long', 'BangsArch', RAVEN, GREEN, SILVER)]
 

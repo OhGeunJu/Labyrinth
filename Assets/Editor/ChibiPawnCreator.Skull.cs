@@ -417,6 +417,21 @@ public static partial class ChibiPawnCreator
 
     // `place` — 거리장 좌표를 메시 좌표로(비우면 해골 머리의 틀 — `SkullCenter` · `SkullUnit`) · `aoStep`·`aoGain` — 그늘을 재는 걸음(거리장 단위) ·
     // `keep` — 뽑은 뒤 정점을 이 비율까지 줄인다(`Decimate`).
+    // 굽기 시간 진단 — 단계마다 쌓는다(재기 · 표면 뽑기 · 당기기 · 줄이기 · 그늘 · 펴기 · 저장). `NetsTimeReport`가 읽고 비운다.
+    static readonly double[] NetsTime = new double[7];
+    static readonly string[] NetsTimeName = { "재기", "뽑기", "당기기", "줄이기", "그늘", "펴기", "저장" };
+    static long _netsMark;
+    static void NetsLap(int stage) { long now = System.Diagnostics.Stopwatch.GetTimestamp(); if (stage >= 0) NetsTime[stage] += (now - _netsMark) / (double)System.Diagnostics.Stopwatch.Frequency; _netsMark = now; }
+    static string NetsTimeReport()
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < NetsTime.Length; i++) { sb.Append($"{NetsTimeName[i]} {NetsTime[i]:F1}s · "); NetsTime[i] = 0; }
+        return sb.ToString();
+    }
+
+    const int   NetsCoarse = 4;     // 성긴 칸 하나 = 촘촘한 칸 4×4×4
+    const float NetsBand   = 2f;    // 성긴 칸 대각선의 몇 배 안이면 다 재나 — 거리장 기울기가 2까지는 표면을 안 놓친다
+
     static Surface SurfaceNets(Func<Vector3, float> f, Bounds b, float step, Func<Vector3, float> scene,
                                Func<Vector3, Vector3> place = null, float aoStep = 0.04f, float aoGain = 4.5f, float keep = 1f)
     {
@@ -426,12 +441,50 @@ public static partial class ChibiPawnCreator
         int Idx(int i, int j, int k) => (k * ny + j) * nx + i;
         Vector3 At(int i, int j, int k) => min + new Vector3(i * step, j * step, k * step);
 
+        // **표면 둘레만 촘촘히 잰다**(2026-11-06, 사용자: *"뭔 하나 돌리는데 3분이 넘는거지"* — 엘프 머리카락 열여덟 벌이 벌마다 900만 번을
+        // 쟀다). 먼저 `NetsCoarse`칸마다 한 번 재고, 칸 모서리 여덟 중 하나라도 표면에서 `NetsBand` × 칸 대각선 안이면 그 칸만 다 잰다.
+        // 나머지 칸은 안팎이 한 가지라 모서리 값을 그대로 채운다(부호만 쓴다 — 표면 칸은 다 잰 칸이다). 거리장이 1보다 가파르게
+        // 변하는 곳(옆으로 좁힌 머리 · 잔물결)을 놓치지 않게 띠를 넉넉히 둔다.
+        NetsLap(-1);
+        int cx = (nx - 2) / NetsCoarse + 2, cy = (ny - 2) / NetsCoarse + 2, cz = (nz - 2) / NetsCoarse + 2;
+        var coarse = new float[cx * cy * cz];
+        int CIdx(int i, int j, int k) => (k * cy + j) * cx + i;
+        float cstep = step * NetsCoarse;
+        Parallel.For(0, cz, k =>
+        {
+            for (int j = 0; j < cy; j++)
+            for (int i = 0; i < cx; i++) coarse[CIdx(i, j, k)] = f(min + new Vector3(i * cstep, j * cstep, k * cstep));
+        });
+        float band = NetsBand * cstep * 1.7320508f;
+        var fine = new bool[nx * ny * nz];
+        for (int k = 0; k < cz - 1; k++)
+        for (int j = 0; j < cy - 1; j++)
+        for (int i = 0; i < cx - 1; i++)
+        {
+            bool near = false;
+            for (int c = 0; c < 8 && !near; c++)
+                near = Mathf.Abs(coarse[CIdx(i + (c & 1), j + ((c >> 1) & 1), k + ((c >> 2) & 1))]) < band;
+            if (!near) continue;
+            int i1 = Mathf.Min(nx - 1, (i + 1) * NetsCoarse), j1 = Mathf.Min(ny - 1, (j + 1) * NetsCoarse), k1 = Mathf.Min(nz - 1, (k + 1) * NetsCoarse);
+            for (int kk = k * NetsCoarse; kk <= k1; kk++)
+            for (int jj = j * NetsCoarse; jj <= j1; jj++)
+            for (int ii = i * NetsCoarse; ii <= i1; ii++) fine[Idx(ii, jj, kk)] = true;
+        }
         Parallel.For(0, nz, k =>
         {
+            int ck = Mathf.Min(k / NetsCoarse, cz - 2);
             for (int j = 0; j < ny; j++)
-            for (int i = 0; i < nx; i++) val[Idx(i, j, k)] = f(At(i, j, k));
+            {
+                int cj = Mathf.Min(j / NetsCoarse, cy - 2);
+                for (int i = 0; i < nx; i++)
+                {
+                    int id = Idx(i, j, k);
+                    val[id] = fine[id] ? f(At(i, j, k)) : coarse[CIdx(Mathf.Min(i / NetsCoarse, cx - 2), cj, ck)];
+                }
+            }
         });
 
+        NetsLap(0);
         // 칸마다 점 하나.
         var cellVert = new int[(nx - 1) * (ny - 1) * (nz - 1)];
         int Cell(int i, int j, int k) => (k * (ny - 1) + j) * (nx - 1) + i;
@@ -487,7 +540,9 @@ public static partial class ChibiPawnCreator
             return ns;
         }
         var pts = verts.ToArray();
+        NetsLap(1);
         var normals = Settle(pts, step);
+        NetsLap(2);
 
         // 부호가 바뀌는 격자 변마다 사각형 하나. 네 칸은 변 축을 오른손으로 도는 순서로 받는다 — 그 순서면 면이 변 축의 +쪽을
         // 본다. **앞뒤는 그 변의 부호로만 정한다**(안 → 밖이 +쪽이면 그대로) — 꺾인 사각형의 대각선으로 재면 접힌 자리에서
@@ -531,9 +586,11 @@ public static partial class ChibiPawnCreator
             normals = Settle(pts, 0f);
         }
 
+        NetsLap(3);
         var colors = new Color[pts.Length];
         Parallel.For(0, pts.Length, v => { float ao = AoOf(scene, pts[v], normals[v], aoStep, aoGain); colors[v] = new Color(ao, ao, ao, 1f); });
 
+        NetsLap(4);
         var outV = new List<Vector3>(pts.Length);
         foreach (var p in pts) outV.Add(place != null ? place(p) : (p - SkullCenter) / SkullUnit);
         return new Surface(outV, new List<Vector3>(normals), new List<Color>(colors), tris);

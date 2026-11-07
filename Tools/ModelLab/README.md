@@ -7,16 +7,17 @@
 
 | 폴더 | 무엇 | C# |
 |---|---|---|
-| `common/` | 공용 — 거리장 도구 · 큰 짐승 관절(`brute_preview.py`) · 큰 짐승 렌더러(`ogre_preview.py`) | `ChibiPawnCreator.Brutes` |
+| `common/` | 공용 — 거리장 도구 · 큰 짐승 관절(`brute_preview.py`) · 큰 짐승 렌더러(`ogre_preview.py`) · **구운 메시 보기**(`mesh_view.py` — 게임에 든 메시 에셋을 읽어 살 + 껍데기 외곽선 · 왼쪽 정점 법선 / 오른쪽 선 법선) | `ChibiPawnCreator.Brutes` · `BakeOutlineNormals` |
 | `skull/` | 해골 머리 | `ChibiPawnCreator.Skull` |
 | `skeleton/` | 해골 몸(뼈) · 방어구 · 선 | `ChibiPawnCreator.Bones` |
 | `troll/` | 트롤(`troll_preview.py` = v52 · 목걸이는 `necklace56.py`가 덮는다) | `ChibiPawnCreator.Troll` |
 | `ogre/` | 오우거(`ogre_v3.py`) · 여성 오우거(`ogre_female.py`) | `ChibiPawnCreator.Ogre` · `.OgreFemale` |
-| `orc/` | 남성 오크 머리 · 귀 · 머리카락 · 수염 · 문신 | `ChibiPawnCreator.Orc` |
+| `orc/` | 남성 오크 머리 · 귀 · 머리카락 · 수염 · 문신 · 오크 머리카락 전부 한 장(`all_hair_sheet.py` — 남녀 · 귀 처리 B) | `ChibiPawnCreator.Orc` |
 | `orc_female/` | 여성 오크 머리 · 얼굴 · 머리 열(`hair_v2.py`) · 체형(`body_cmp.py`) | `ChibiPawnCreator.OrcFemale` |
 | `dwarf/` | 드워프 머리 · 수염 · 머리카락 · 눈썹(`dwarf.py` — `brows` 인자로 눈썹 보기) · 몸 비례(`body.py` — 사람 몸 식 그대로) | `ChibiPawnCreator.Dwarf` |
 | `dwarf/` | 드워프 머리 · 수염 · 머리카락(바탕 머리 `head_base.py`) | (아직) |
 | `elf/` | 엘프 머리 · 귀 셋 · 머리카락 여섯(`elf.py` — 바탕은 `dwarf/` · 한 판 약 4분 · `python elf.py out.png 5,7 0,30,70` = 고른 줄 · 보기 각도) · 몸 비례(`elf_body.py`) | `ChibiPawnCreator.Elf` |
+| `human/` | 사람 치비 — 머리 열 벌(`ChibiHeadProfiles` 표 · 넓은 날카로운 뺌 · 좁은 머리 세로 ×0.88) 위 빚은 얼굴(`human.py` — 여자 이목구비 = 같은 모양의 남자 배치) · **머리카락은 확인받은 원본을 사람 머리에 다시 읽는다**(`port.py` — 엘프 · 드워프 · 여성 오크 · 오크 올백 + 사람용 `_human_family`) · 판 `port_sheet.py`(`CLOSE=1`이면 얼굴 가까이) · `head_sheet.py` · `hair_grid.py` | (아직) |
 | `fungal/` | 감염된 사람(기생림) — 사람 치비 몸(`dwarf/body.py` `dims(MALE)`) + 민머리(`dwarf/head_base`)에 버섯 · 얼굴 셋 · 말굽 자리 · 틈 · 대표 버섯(`fungal.py` · 2분 · `python fungal.py out.png 시드 collar,ink,...`) | `ChibiPawnCreator.Fungal` |
 
 - **작업 공간(`.claude/worktrees/`)에 만들지 않는다** — 이 폴더는 본 체크아웃에만 있다(작업 공간에는 따라오지 않는다).

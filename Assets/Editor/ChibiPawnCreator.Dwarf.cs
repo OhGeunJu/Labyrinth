@@ -28,6 +28,7 @@ public static partial class ChibiPawnCreator
     // 머리 크기 — 사람 머리의 0.88(사용자: *"키는 1.65로 좀 높이고 대가리 크기를 좀 줄여"*). 밑동(목 관절)은 그대로 두고 줄인다.
     const float DwarfHeadK = 0.88f;
     const string DwarfPreview = "Chibi_Dwarf";   // 보기 몸 프리팹(`3_Prefab/Pawn/Dwarf/`) — `Pawn/3`이 굽는다
+    const string DwarfData    = "Assets/Resources/Data/Units/Dwarf.asset";   // 종족(살색 · 털 색 후보)
     const string DwarfBasis = "Male_BroadSquare";
     const float DwarfHeadStep = 0.006f, DwarfFineStep = 0.0035f, DwarfHairStep = 0.0055f;
 
@@ -38,7 +39,6 @@ public static partial class ChibiPawnCreator
     static List<Part> _dwarfHead;
 
     // 수염 · 머리카락(늘어진 털)의 바깥 선 — 땅 이기기를 켠 얼굴 털 선(`EnsureMaterials`의 `OutlineOuterBeard` · 몸통 꼭대기에 먹히지 않게).
-    const string HangLine = "OutlineOuterBeard";
 
     // 드워프 머리의 틀 — 오크 틀(눈 · 코 · 입 높이 · 얼굴 앞면)에 얼굴 앞면 z 셋을 더한다.
     sealed class DwarfFrame
@@ -243,68 +243,75 @@ public static partial class ChibiPawnCreator
         }
     }
 
-    // (수염, 쇠고리) — 고리가 없으면 9.
-    static (float hair, float ring) DwarfBeard(string style, Vector3 p, DwarfFrame f, DwarfBeardPaths bp)
+    // 수염(`ring` 거짓) 또는 쇠고리(참) **하나만** 잰다 — 고리가 없으면 9. (2026-11-06 — 둘을 한 번에 돌려주면 고리를 구울 때도
+    // 무거운 수염을 매 점 쟀다. 엘프 `ElfHair`와 같은 정리 · 식은 그대로라 결과는 같다.)
+    static float DwarfBeard(string style, Vector3 p, DwarfFrame f, DwarfBeardPaths bp, bool ring)
     {
         var m = Mirror(p); float MY = f.MY, ZM = f.ZM;
         switch (style)
         {
             case "Bushy":    // 덥수룩한 큰 수염 — 둥근 아랫단 · 양옆 쇠고리
             {
+                Vector3 a = V3(0.17f, MY - 0.06f, ZM + 0.03f), b = V3(0.18f, MY - 0.12f, ZM + 0.025f);
+                if (ring) return DwarfRing(m, a, b, 0.055f);
                 float d = DwarfJawMass(p, f);
                 d = SMin(d, Ell(p, V3(0, MY - 0.17f, ZM - 0.02f), V3(0.31f, 0.25f, 0.17f)) + Strands(p), 0.06f);
-                Vector3 a = V3(0.17f, MY - 0.06f, ZM + 0.03f), b = V3(0.18f, MY - 0.12f, ZM + 0.025f);
                 d = SMin(d, Seg(m, a, b + V3(0, -0.05f, 0), 0.05f, 0.045f), 0.02f);
-                return (SMin(d, DwarfMustache(p, f), 0.012f), DwarfRing(m, a, b, 0.055f));
+                return SMin(d, DwarfMustache(p, f), 0.012f);
             }
             case "Braids":   // 짧은 덩어리 + 땋아 내린 다섯 가닥(가운데가 가장 길다) · 가닥마다 고리 둘
             {
+                var braids = new[] { (bp.BraidC, p), (bp.BraidM, m), (bp.BraidS, m) };
+                if (ring)
+                {
+                    float rg = 9f;
+                    foreach (var (pts, side) in braids) rg = Mathf.Min(rg, RingsOn(side, pts, new[] { 3, 6 }, 0.031f));
+                    return rg;
+                }
                 float d = DwarfJawMass(p, f);
                 d = SMin(d, Ell(p, V3(0, MY - 0.11f, ZM - 0.05f), V3(0.25f, 0.14f, 0.15f)) + Strands(p), 0.05f);
-                float rg = 9f;
-                foreach (var (pts, side) in new[] { (bp.BraidC, p), (bp.BraidM, m), (bp.BraidS, m) })
-                {
-                    d = SMin(d, OrcChain(side, pts, 0.036f, 0.026f, 0.010f), 0.02f);
-                    rg = Mathf.Min(rg, RingsOn(side, pts, new[] { 3, 6 }, 0.031f));
-                }
-                return (SMin(d, DwarfMustache(p, f), 0.012f), rg);
+                foreach (var (pts, side) in braids) d = SMin(d, OrcChain(side, pts, 0.036f, 0.026f, 0.010f), 0.02f);
+                return SMin(d, DwarfMustache(p, f), 0.012f);
             }
             case "Forked":   // 짧은 수염 + 땋아 내린 두 가닥(쇠고리)
             {
+                if (ring) return RingsOn(m, bp.Forked, new[] { 4 }, 0.044f);
                 float d = DwarfJawMass(p, f);
                 d = SMin(d, Ell(p, V3(0, MY - 0.11f, ZM - 0.08f), V3(0.23f, 0.13f, 0.14f)) + Strands(p), 0.05f);
                 d = SMin(d, OrcChain(m, bp.Forked, 0.050f, 0.036f), 0.025f);
-                return (SMin(d, DwarfMustache(p, f), 0.012f), RingsOn(m, bp.Forked, new[] { 4 }, 0.044f));
+                return SMin(d, DwarfMustache(p, f), 0.012f);
             }
             case "Long":     // 배까지 늘어뜨린 긴 수염 — 가슴을 타고 흐르고 끝을 고리로 묶었다(앞뒤로 납작 — 깊이 1/1.7)
             {
+                if (ring) { var tp = bp.Long[^2]; return DwarfRing(p, tp + V3(0, 0.04f, 0), tp + V3(0, -0.02f, 0), 0.075f); }
                 float d = DwarfJawMass(p, f);
                 var q = V3(p.x, p.y, p.z * 1.7f);
                 var flat = Array.ConvertAll(bp.Long, t => V3(t.x, t.y, t.z * 1.7f));
                 float lng = Lock(q, flat, 0.24f, 0.06f, 0.03f) / 1.7f + Strands(p, 0.004f, 45f);
                 d = SMin(d, lng, 0.06f);
-                var tip = bp.Long[^2];
-                return (SMin(d, DwarfMustache(p, f), 0.012f), DwarfRing(p, tip + V3(0, 0.04f, 0), tip + V3(0, -0.02f, 0), 0.075f));
+                return SMin(d, DwarfMustache(p, f), 0.012f);
             }
             case "Box":      // 짧게 다듬은 네모 수염
             {
+                if (ring) return 9f;
                 float d = DwarfJawMass(p, f);
                 d = SMin(d, RBox(p, V3(0, MY - 0.12f, ZM - 0.07f), V3(0.20f, 0.10f, 0.12f), 0.06f), 0.05f);
-                return (SMin(d, DwarfMustache(p, f), 0.012f), 9f);
+                return SMin(d, DwarfMustache(p, f), 0.012f);
             }
             case "Stache":   // 턱을 따라 짧게 깎은 수염 + 크게 기른 콧수염(끝이 턱 밑까지 처지고 고리로 묶었다)
             {
+                var pts = new[] { V3(0.015f, f.NY - 0.048f, f.ZN + 0.032f), V3(0.08f, f.NY - 0.062f, f.ZN + 0.024f), V3(0.14f, MY, ZM + 0.025f),
+                                  V3(0.175f, MY - 0.07f, ZM + 0.005f), V3(0.18f, MY - 0.15f, ZM - 0.02f), V3(0.175f, MY - 0.23f, ZM - 0.03f) };
+                if (ring) return DwarfRing(m, pts[4], pts[5], 0.030f);
                 float ang = AngleOf(p);
                 float d = SMax(DwarfBase(p, f) - BeardThick(ang, 0.022f), p.y - (MY + 0.02f + 1.1f * p.x * p.x), 0.02f);
                 d = SMax(d, (ang - 85f) * 0.004f, 0.01f);
                 d = SMin(d, Ell(p, V3(0, MY - 0.10f, ZM - 0.06f), V3(0.13f, 0.07f, 0.08f)) + Strands(p, 0.003f), 0.04f);   // 턱끝 한 줌
-                var pts = new[] { V3(0.015f, f.NY - 0.048f, f.ZN + 0.032f), V3(0.08f, f.NY - 0.062f, f.ZN + 0.024f), V3(0.14f, MY, ZM + 0.025f),
-                                  V3(0.175f, MY - 0.07f, ZM + 0.005f), V3(0.18f, MY - 0.15f, ZM - 0.02f), V3(0.175f, MY - 0.23f, ZM - 0.03f) };
                 float st = Lock(m, pts, 0.046f, 0.022f, 0.015f) + Strands(p, 0.003f, 90f);
-                return (SMin(d, st, 0.012f), DwarfRing(m, pts[4], pts[5], 0.030f));
+                return SMin(d, st, 0.012f);
             }
         }
-        return (9f, 9f);
+        return 9f;
     }
 
     // ── 머리카락 ────────────────────────────────────────────────────────────
@@ -324,13 +331,15 @@ public static partial class ChibiPawnCreator
         return ang < 90f ? frontY + (side - frontY) * Ease((ang - 20f) / 70f) : side + (nape - side) * Ease((ang - 95f) / 70f);
     }
 
-    static (float hair, float ring) DwarfHair(string style, Vector3 p, DwarfFrame f)
+    // 머리카락(`ring` 거짓) 또는 쇠고리(참) 하나만 잰다(`DwarfBeard`와 같은 정리).
+    static float DwarfHair(string style, Vector3 p, DwarfFrame f, bool ring)
     {
         float ang = AngleOf(p);
         switch (style)
         {
             case "Fringe":   // 정수리는 벗어지고 귀 뒤 · 뒤통수만 — 윗단이 들쭉날쭉(곧은 선이면 판으로 읽힌다) · 목덜미로 갈수록 숱이 준다
             {
+                if (ring) return 9f;
                 float top = 0.02f + 0.10f * Ease((ang - 100f) / 70f) + 0.018f * Mathf.Sin(ang * Mathf.Deg2Rad * 14f);
                 float d = Scalp(p, f, 0.030f, -0.30f);
                 d = SMax(d, p.y - top, 0.02f);
@@ -338,10 +347,11 @@ public static partial class ChibiPawnCreator
                 d = SMax(d, (frontEdge - ang) * 0.004f, 0.02f);
                 d += 0.03f * Ease((-0.16f - p.y) / 0.12f);
                 d = SMax(d, -(p.y + 0.27f + 0.025f * Mathf.Sin(ang * Mathf.Deg2Rad * 18f)), 0.015f);
-                return (d + 0.006f * Mathf.Sin(ang * Mathf.Deg2Rad * 40f + p.y * 15f), 9f);
+                return d + 0.006f * Mathf.Sin(ang * Mathf.Deg2Rad * 40f + p.y * 15f);
             }
             case "Long":     // 뒤로 넘긴 긴 머리 — 어깨 뒤까지 · 뒤는 가닥 다섯(한 판이면 벽이 된다)
             {
+                if (ring) return 9f;
                 float cap = Scalp(p, f, 0.035f, Hairline(ang, f.EY + 0.20f, f));
                 var m = Mirror(p); float fall = 9f;
                 foreach (var (x, L, mirrored) in new[] { (0f, -0.66f, false), (0.10f, -0.60f, true), (0.19f, -0.50f, true) })
@@ -351,16 +361,18 @@ public static partial class ChibiPawnCreator
                                                                     V3(x * 1.12f, L, z - 0.04f) }, 0.085f, 0.045f, 0.02f), 0.012f);
                 }
                 float side = Lock(m, new[] { V3(0.24f, 0f, -0.15f), V3(0.28f, -0.25f, -0.16f), V3(0.31f, -0.46f, -0.14f) }, 0.07f, 0.05f, 0.03f);
-                return (SMin(SMin(cap, fall, 0.08f), side, 0.05f) + Strands(p, 0.004f, 55f), 9f);
+                return SMin(SMin(cap, fall, 0.08f), side, 0.05f) + Strands(p, 0.004f, 55f);
             }
             case "Braid":    // 뒤로 빗어 넘겨 굵게 한 가닥 땋았다
             {
-                float cap = Scalp(p, f, 0.032f, Hairline(ang, f.EY + 0.20f, f)) + Strands(p, 0.004f, 90f);
                 var pts = new[] { V3(0, 0.05f, -0.36f), V3(0, -0.08f, -0.40f), V3(0, -0.20f, -0.42f), V3(0, -0.32f, -0.43f), V3(0, -0.44f, -0.42f), V3(0, -0.56f, -0.40f), V3(0, -0.66f, -0.38f) };
-                return (SMin(cap, OrcChain(p, pts, 0.07f, 0.05f, 0.012f), 0.05f), RingsOn(p, pts, new[] { 2, 5 }, 0.062f));
+                if (ring) return RingsOn(p, pts, new[] { 2, 5 }, 0.062f);
+                float cap = Scalp(p, f, 0.032f, Hairline(ang, f.EY + 0.20f, f)) + Strands(p, 0.004f, 90f);
+                return SMin(cap, OrcChain(p, pts, 0.07f, 0.05f, 0.012f), 0.05f);
             }
             case "Crest":    // 옆은 밀고 가운데 볏 — 머리 가운데 선을 따라 같은 높이로(이마 · 목덜미에서만 잦아든다) · 뒤로 짧은 꽁지
             {
+                if (ring) return DwarfRing(p, V3(0, -0.02f, -0.355f), V3(0, -0.07f, -0.385f), 0.05f);
                 float th = Mathf.Atan2(p.z, p.y);                                  // 정수리 0 · 앞(+z)으로 + · 뒤로 -
                 const float T0 = 0.80f, T1 = -1.95f;
                 float rise = Ease((T0 - th) / 0.45f);
@@ -371,10 +383,10 @@ public static partial class ChibiPawnCreator
                 float fin = SMax((q.magnitude - 1f) * 0.30f, Mathf.Abs(p.x) - 0.06f, 0.025f);
                 fin = SMax(fin, Mathf.Max(th - T0, T1 - th) * 0.2f, 0.02f);
                 float tail = Lock(p, new[] { V3(0, 0.02f, -0.34f), V3(0, -0.10f, -0.40f), V3(0, -0.24f, -0.40f) }, 0.06f, 0.035f, 0.02f);
-                return (SMin(fin, tail, 0.04f), DwarfRing(p, V3(0, -0.02f, -0.355f), V3(0, -0.07f, -0.385f), 0.05f));
+                return SMin(fin, tail, 0.04f);
             }
         }
-        return (9f, 9f);
+        return 9f;
     }
 
     // ── 부위 ────────────────────────────────────────────────────────────────
@@ -429,9 +441,9 @@ public static partial class ChibiPawnCreator
         foreach (var st in DwarfBeards)
         {
             string s = st;
-            Add($"Head.Pick.Beard.{s}", Sculpt($"Beard_{s}", p => DwarfBeard(s, p, f, bp).hair, beardB, DwarfHairStep, 0.35f, relax: true), "HairFine", HangLine, on: s == "Bushy");
+            Add($"Head.Pick.Beard.{s}", Sculpt($"Beard_{s}", p => DwarfBeard(s, p, f, bp, false), beardB, DwarfHairStep, 0.35f, relax: true), "HairFine", HangLine, on: s == "Bushy");
             if (s != "Box")
-                Add($"Head.Pick.Beard.{s}.Ring", Sculpt($"Beard_{s}_Ring", p => DwarfBeard(s, p, f, bp).ring, beardB, DwarfFineStep * 1.3f, 0.4f),
+                Add($"Head.Pick.Beard.{s}.Ring", Sculpt($"Beard_{s}_Ring", p => DwarfBeard(s, p, f, bp, true), beardB, DwarfFineStep * 1.3f, 0.4f),
                     "Metal", HangLine, on: s == "Bushy");
         }
 
@@ -440,9 +452,9 @@ public static partial class ChibiPawnCreator
         foreach (var st in DwarfHairs)
         {
             string s = st;
-            Add($"Head.Pick.Hair.{s}@Hair.!Bald", Sculpt($"Hair_{s}", p => DwarfHair(s, p, f).hair, hairB, DwarfHairStep, 0.35f, relax: true), "HairFine", HangLine, on: false);
+            Add($"Head.Pick.Hair.{s}@Hair.!Bald", Sculpt($"Hair_{s}", p => DwarfHair(s, p, f, false), hairB, DwarfHairStep, 0.35f, relax: true), "HairFine", HangLine, on: false);
             if (s is "Braid" or "Crest")
-                Add($"Head.Pick.Hair.{s}.Ring@Hair.!Bald", Sculpt($"Hair_{s}_Ring", p => DwarfHair(s, p, f).ring, hairB, DwarfFineStep * 1.3f, 0.4f),
+                Add($"Head.Pick.Hair.{s}.Ring@Hair.!Bald", Sculpt($"Hair_{s}_Ring", p => DwarfHair(s, p, f, true), hairB, DwarfFineStep * 1.3f, 0.4f),
                     "Metal", HangLine, on: false);
         }
 
@@ -457,7 +469,7 @@ public static partial class ChibiPawnCreator
 
     // ── 굽기 ────────────────────────────────────────────────────────────────
 
-    // 보기 몸 하나 — 종족 데이터 · 씨족이 아직 없어 **어디서도 안 가리키는** 프리팹(`Dwarf/Chibi_Dwarf`)에 굽는다.
+    // 보기 몸 하나 — 씨족 · 역할이 아직 없어 **어디서도 안 가리키는** 프리팹(`Dwarf/Chibi_Dwarf`)에 굽는다.
     // 방랑자처럼 원본(`Source`)을 베껴 `Model`만 갈고, 있으면 내용만 덮어 guid를 지킨다. 종족을 들일 때 역할 프리팹이 이 몸을 그대로 받는다.
     static bool DressDwarf(Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, Dictionary<string, Mesh> hairs)
     {
@@ -477,6 +489,7 @@ public static partial class ChibiPawnCreator
     [MenuItem("DungeonColony/Pawn/10. Create Dwarf Only (드워프만 — 다른 폰은 안 건드린다)")]
     public static void CreateDwarfOnly()
     {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var toon = Shader.Find(ToonShader); var face = Shader.Find(FaceShader); var outer = Shader.Find(OuterShader);
         if (toon == null || face == null || outer == null) { Debug.LogError("[드워프] 셰이더를 못 찾았다."); return; }
         var atlases = new Dictionary<string, ChibiFaceAtlas>();
@@ -505,7 +518,7 @@ public static partial class ChibiPawnCreator
             if (!_saved.Contains(path) && System.IO.Path.GetFileName(path).StartsWith("Chibi_Dwarf_")) AssetDatabase.DeleteAsset(path);
         }
         AssetDatabase.SaveAssets();
-        if (ok) Debug.Log($"[드워프] {PawnPrefabPaths.PathOf(DwarfPreview)} — 머리 · 몸만 다시 구웠다(다른 폰은 그대로).");
+        if (ok) Debug.Log($"[드워프] {PawnPrefabPaths.PathOf(DwarfPreview)} — 머리 · 몸만 다시 구웠다(다른 폰은 그대로) · {watch.Elapsed.TotalSeconds:F0}초.");
     }
 
     // 드워프 — 머리는 빚은 머리 한 벌이다(눈 · 입 판 없음). 사람 머리 시절의 못 박음을 비운다. 털 색은 `MarkingLook`.
@@ -521,6 +534,16 @@ public static partial class ChibiPawnCreator
         so.FindProperty("fittedTo").stringValue = "";
         so.ApplyModifiedPropertiesWithoutUndo();
         if (!root.TryGetComponent(out MarkingLook _)) root.AddComponent<MarkingLook>();
+        // 종족은 드워프(`Resources/Data/Units/Dwarf` — 살색 · 털 색 후보를 든다). 베낀 원본(방랑자)은 사람을 가리킨다.
+        var dwarf = AssetDatabase.LoadAssetAtPath<UnitData>(DwarfData);
+        if (dwarf == null) Debug.LogWarning($"[드워프] 종족 데이터가 없다 — {DwarfData}(사람으로 남는다).");
+        else if (root.TryGetComponent(out UnitBrain brain))
+        {
+            var bso = new SerializedObject(brain);
+            bso.FindProperty("unitData").objectReferenceValue = dwarf;
+            bso.ApplyModifiedPropertiesWithoutUndo();
+        }
+        if (!root.TryGetComponent(out SkinLook _)) root.AddComponent<SkinLook>();
         look.Apply();
     }
 }

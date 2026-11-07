@@ -492,7 +492,9 @@ public static partial class ChibiPawnCreator
             if (relax > 0) Relax(surf.Verts, surf.Tris, relax);
             return SaveSkull($"Chibi_Fungal_{name}", surf);
         }
-        void Add(string name, Mesh mesh, string mat, string line = "OutlineOuterFine", bool on = true)
+        // 머리에 붙는 조각의 선도 머리 살과 같은 `HangLine`(11-06, 사용자: *"얼굴 옆 버섯 외곽선을 저 어깨에 난 버섯이 살짝 보이는데"*) — 얼굴 선
+        // (`OutlineOuterFine`)은 안 당겨, 아래의 어깨 버섯이 그 선을 뚫었다. 머리 살 선이 등 포자를 덮는 것과 같은 까닭이다.
+        void Add(string name, Mesh mesh, string mat, string line = HangLine, bool on = true)
             => parts.Add(new Part(name, mesh, pos, Vector3.one, mat, on, outerMat: line));
 
         parts.Add(new Part("Head", null, pos, h.Size, "HeadSkin", on: false));

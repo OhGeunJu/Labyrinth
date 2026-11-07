@@ -534,11 +534,11 @@ public static partial class ChibiPawnCreator
         foreach (var fh in OrcFemaleHairs(o))
         {
             string n = $"Head.Pick.Hair.{fh.Name}";
-            Add(n, Sculpt($"Hair_{fh.Name}", fh.Hair.Field(), fh.Hair.Bounds(0.03f), OrcHairStep, 0.35f), "HairFine", "OutlineOuterFine", on: first);
+            Add(n, Sculpt($"Hair_{fh.Name}", fh.Hair.Field(), fh.Hair.Bounds(0.03f), OrcHairStep, 0.35f), "HairFine", HangLine, on: first);
             if (fh.Leather != null)
-                Add($"{n}.Leather", Sculpt($"Hair_{fh.Name}_Leather", fh.Leather.Field(), fh.Leather.Bounds(0.02f), OrcFineStep * 1.3f, 0.4f), "Leather", "OutlineOuterFine", on: first);
+                Add($"{n}.Leather", Sculpt($"Hair_{fh.Name}_Leather", fh.Leather.Field(), fh.Leather.Bounds(0.02f), OrcFineStep * 1.3f, 0.4f), "Leather", HangLine, on: first);
             if (fh.Metal != null)
-                Add($"{n}.Metal", Sculpt($"Hair_{fh.Name}_Metal", fh.Metal.Field(), fh.Metal.Bounds(0.02f), OrcFineStep * 1.3f, 0.4f), "Metal", "OutlineOuterFine", on: first);
+                Add($"{n}.Metal", Sculpt($"Hair_{fh.Name}_Metal", fh.Metal.Field(), fh.Metal.Bounds(0.02f), OrcFineStep * 1.3f, 0.4f), "Metal", HangLine, on: first);
             if (fh.Buzz != null)
             {
                 var bb = new Bounds(new Vector3(0f, 0f, 0f), new Vector3(o.W + 0.06f, o.Ht + 0.06f, o.D + 0.10f));

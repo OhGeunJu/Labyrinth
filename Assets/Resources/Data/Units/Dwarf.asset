@@ -1,0 +1,139 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b1dd649e8c113ce49b2f076ddc5263c2, type: 3}
+  m_Name: Dwarf
+  m_EditorClassIdentifier: Assembly-CSharp::UnitData
+  Id: Dwarf
+  RaceName: "\uB4DC\uC6CC\uD504"
+  Icon: {fileID: 0}
+  NamePool: []
+  MaleNames:
+  - "\uBE0C\uB78C"
+  - "\uB454\uADF8\uB9BC"
+  - "\uBC14\uB974\uB3C5"
+  - "\uC624\uB974\uBE10"
+  - "\uD1A0\uB974\uBC1C"
+  - "\uCE74\uC988\uB984"
+  - "\uBCF4\uB978"
+  - "\uD558\uB974\uB460"
+  - "\uADF8\uB780"
+  - "\uBAB0\uB4DC\uB9BC"
+  - "\uBE0C\uB8EC"
+  - "\uB458\uB77D"
+  - "\uB85C\uD2B8\uAC08"
+  - "\uBE44\uB978"
+  - "\uACE0\uB78C"
+  - "\uD558\uADF8\uB374"
+  - "\uC6B0\uB978"
+  - "\uAD70\uB2E4\uB974"
+  - "\uD14C\uADF8\uB9B0"
+  - "\uC2A4\uBCA0\uB978"
+  FemaleNames: []
+  MaxHP: 120
+  MoveSpeed: 3.6
+  AttackDamage: 11
+  AttackRange: 1.5
+  DetectRange: 10
+  NightVision: 0.4
+  IsUndead: 0
+  IsConstruct: 0
+  Resistances:
+  - Type: 5
+    Amount: 0.2
+  UsesBackstory: 1
+  DefaultMinGrade: 7
+  DefaultMaxGrade: 7
+  StatGrades:
+  - Stat: 0
+    Min: 9
+    Max: 9
+  - Stat: 1
+    Min: 10
+    Max: 10
+  - Stat: 29
+    Min: 10
+    Max: 10
+  - Stat: 39
+    Min: 9
+    Max: 9
+  - Stat: 40
+    Min: 9
+    Max: 9
+  - Stat: 25
+    Min: 6
+    Max: 6
+  StatGrowthRates:
+  - Stat: 29
+    Multiplier: 1.3
+  - Stat: 39
+    Multiplier: 1.3
+  - Stat: 40
+    Multiplier: 1.25
+  - Stat: 36
+    Multiplier: 1.2
+  - Stat: 37
+    Multiplier: 1.2
+  - Stat: 42
+    Multiplier: 1.2
+  - Stat: 8
+    Multiplier: 1.15
+  - Stat: 11
+    Multiplier: 1.15
+  - Stat: 27
+    Multiplier: 0.6
+  ButcherYield:
+  - Item: {fileID: 0}
+    ItemId: res_rawhide
+    Chance: 0.8
+    MinCount: 1
+    MaxCount: 2
+  - Item: {fileID: 0}
+    ItemId: food_meat_dwarf
+    Chance: 0.8
+    MinCount: 2
+    MaxCount: 4
+  BoneYield:
+  - Item: {fileID: 0}
+    ItemId: res_bone
+    Chance: 1
+    MinCount: 1
+    MaxCount: 3
+  RollStats: 1
+  CanEquip: 1
+  DisabledJobs:
+  Tameable: 0
+  BodyScale: 1
+  CleaveTargets: 0
+  CleaveDamage: 0.5
+  ForbiddenWeapons:
+  RegenPerSecond: 0
+  Devours: 0
+  HitEffect: 2
+  HitEffectChance: 0
+  HitEffectDuration: 2
+  HitEffectStrength: 0.5
+  SkinTones:
+  - {r: 0.8862745, g: 0.7058824, b: 0.5882353, a: 1}
+  - {r: 0.8313725, g: 0.6039216, b: 0.4941176, a: 1}
+  - {r: 0.7215686, g: 0.5176471, b: 0.4156863, a: 1}
+  - {r: 0.5568627, g: 0.3921569, b: 0.3137255, a: 1}
+  HairTones:
+  - {r: 0.5490196, g: 0.1803922, b: 0.1176471, a: 1}
+  - {r: 0.7058824, g: 0.3764706, b: 0.1647059, a: 1}
+  - {r: 0.4156863, g: 0.2039216, b: 0.1254902, a: 1}
+  - {r: 0.2431373, g: 0.1647059, b: 0.1176471, a: 1}
+  - {r: 0.1333333, g: 0.1176471, b: 0.1411765, a: 1}
+  - {r: 0.4313725, g: 0.4156863, b: 0.4, a: 1}
+  TattooChance: 0
+  InkTones: []
+  LeaderTattoo: 0
+  LeaderInk: {r: 0, g: 0, b: 0, a: 0}

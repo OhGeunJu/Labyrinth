@@ -427,6 +427,13 @@ public static partial class ChibiPawnCreator
         m.SetTriangles(tris, 0);
         m.RecalculateNormals();
         m.RecalculateBounds();
+        // **회전체 메시는 선 법선을 굽지 않는다**(2026-11-06, 사용자: *"일반 캐릭터랑 고블린 캐릭터 머리에 저런 외곽선이 생겼어"*) — 사람 머리 ·
+        // 머리카락 · 귀 · 코는 식으로 돌린 매끈한 메시라 정점 법선이 이미 고르다. 섞기(`OutlineNormals`)는 거리장 메시의 가시를 펴려는 것인데,
+        // 얇은 머리카락 껍데기에서는 안팎 면이 반지름(6cm) 안에 같이 들어 방향이 옆으로 꺾였고 그 껍데기가 얼굴 위에 줄무늬로 비쳤다.
+        // 탄젠트 `w = -2`가 "정점 법선 그대로" 표지다(`BakeOutlineNormals`가 건너뛰고, `ToonOutlineHull`은 `w > 1.5`만 따로 읽는다).
+        var keep = new Vector4[verts.Count];
+        for (int i = 0; i < keep.Length; i++) keep[i] = new Vector4(0f, 0f, 0f, -2f);
+        m.SetTangents(keep);
 
         if (fresh) AssetDatabase.CreateAsset(m, path);
         else       EditorUtility.SetDirty(m);
@@ -434,6 +441,18 @@ public static partial class ChibiPawnCreator
     }
 
     // ── 살 ──────────────────────────────────────────────────────────────────
+
+    // **늘어진 털의 선은 한 벌이다**(2026-11-06, 사용자: *"외곽선이 이렇게 모든 곳에 사용되는데 왜 매번 새롭게 저작해줘야 하는 거야?"*).
+    // 종족 생성기마다 머리카락 · 수염의 선을 손으로 골랐다 — 드워프 수염 선(당긴다)을 본뜬 엘프 긴 머리가 올려다볼 때 어깨를 검게 덮었고,
+    // 같은 머리카락이 오크에서는 당기지 않는 얼굴 선이었다. 당김은 이제 아래를 향한 선 · 내려다볼 때만이라(`ToonOutlineHull`) 털은 다 같은 선이
+    // 맞는다 — **`Head.Pick.Hair.*` · `Head.Pick.Beard.*`(고리 · 가죽 · 쇠 · 땋은 장식 포함)는 생성기가 무엇을 넘기든 `HangLine`이다.**
+    // 선을 안 긋는 조각(짧은 머리 · 반삭 — 살에 칠한 것)은 넘긴 그대로(null).
+    const string HangLine = "OutlineOuterBeard";
+    static string LineFor(string partName, string given)
+    {
+        if (given == null) return null;
+        return partName.StartsWith("Head.Pick.Hair.") || partName.StartsWith("Head.Pick.Beard.") ? HangLine : given;
+    }
 
     readonly struct Part
     {
@@ -454,7 +473,7 @@ public static partial class ChibiPawnCreator
     static List<Part> HeadParts(string gender, Dictionary<string, Mesh> heads,
                                 Dictionary<(string head, string feature), Mesh> features,
                                 Dictionary<string, Mesh> hairs, Dictionary<string, Mesh> ears,
-                                Dictionary<string, Mesh> noses, Dictionary<string, Mesh> tusks)
+                                Dictionary<string, Mesh> noses, Dictionary<string, Mesh> tusks, bool human = false)
     {
         var parts = new List<Part>();
         var basis = BasisOf(gender);
@@ -464,12 +483,16 @@ public static partial class ChibiPawnCreator
         parts.Add(new Part("Head", null, bPos, basis.Size, "HeadSkin", on: false));
 
         // 이 성별의 머리 여섯과 그 이목구비 — 기준만 켜 둔다.
+        // **사람은 빚은 얼굴이다**(`human` — `ChibiPawnCreator.Human`) — 넓은 날카로운 머리를 빼고 · 좁은 머리는 세로를 줄이고 ·
+        // 이목구비 판 대신 머리 모양마다 빚은 눈 · 입 · 귀 · 코 · 눈썹을 붙인다. 고블린은 옛 얼굴이다.
         foreach (var h in Heads)
         {
             if (h.Gender != gender) continue;
+            if (human && HumanDropped(h.Name)) continue;
             bool on = h.Name == basis.Name;
-            var pos = HeadPos(h);
-            parts.Add(new Part($"Head.Shape.{h.Name}", heads[h.Name], pos, h.Size, "HeadSkin", on));
+            var pos = human ? HumanHeadPos(h) : HeadPos(h);
+            parts.Add(new Part($"Head.Shape.{h.Name}", heads[h.Name], pos, human ? HumanSize(h) : h.Size, "HeadSkin", on));
+            if (human) { parts.AddRange(HumanFaceParts(h)); continue; }
             foreach (var f in Features)
                 parts.Add(new Part($"Head.Shape.{h.Name}.{f.Name}", features[(h.Name, f.Name)],
                                    pos, h.Size, "Face" + f.Kind, on, cell: f.DefaultCell, kind: f.Kind));
@@ -503,6 +526,8 @@ public static partial class ChibiPawnCreator
         foreach (var fit in HairFits)
             parts.Add(new Part($"Head.Helmet.Cap.Shell.{fit}", hairs[$"{fit}.Helmet"], capPos + new Vector3(0f, 0.01f, 0f),
                                basis.Size * HelmetScale, "Helmet", on: false));
+
+        if (human) return parts;   // 사람의 귀 · 코는 빚은 얼굴에 있다(엄니 · 고블린 귀 · 매부리코는 안 받는다)
 
         // 귀 — **기준 머리에 맞춰 굽고** 머리카락처럼 `PawnLook`이 고른 머리로 옮긴다. 기본은 일반 귀만 켠다.
         // **밑동을 머리 옆에 붙이고 끝을 기울인다** — 가운데를 옆에 두면 긴 귀가 머리 속으로 반쯤 파묻힌다.
@@ -703,6 +728,7 @@ public static partial class ChibiPawnCreator
         // **아틀라스를 늘 다시 굽는다** — 옛 아틀라스를 쓰면 *"넣었는데 안 보인다"*가 된다.
         var atlases = BuildFaceAtlases();
         var mats = EnsureMaterials(toon, face, outer, atlases);
+        mats["HumanLip"] = Variant(mats["Bone"], "Chibi_HumanLip", "_BaseColor", new Color(0.55f, 0.33f, 0.30f));   // 빚은 입(`ChibiPawnCreator.Human`)
 
         _saved.Clear();
         _boneBodies.Clear();
@@ -760,6 +786,12 @@ public static partial class ChibiPawnCreator
 
         var headParts = new Dictionary<string, List<Part>>();
         foreach (var g in Genders) headParts[g] = HeadParts(g, heads, features, hairs, ears, noses, tusks);
+        // 사람 — 빚은 얼굴(`ChibiPawnCreator.Human`). 고블린만 옛 얼굴(`headParts`)을 받는다.
+        _humanFace.Clear();
+        long humanT0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        var humanParts = new Dictionary<string, List<Part>>();
+        foreach (var g in Genders) humanParts[g] = HeadParts(g, heads, features, hairs, ears, noses, tusks, human: true);
+        Debug.Log($"[치비] 사람 얼굴 빚기 {(System.Diagnostics.Stopwatch.GetTimestamp() - humanT0) / (double)System.Diagnostics.Stopwatch.Frequency:F1}초");
         // 해골 머리 — 해골 셋만 받는다(`ChibiPawnCreator.Skull`).
         var skull      = SkullMeshes();
         var skullParts = new Dictionary<string, List<Part>>();
@@ -792,7 +824,7 @@ public static partial class ChibiPawnCreator
                 AssetDatabase.ImportAsset(target);
             }
 
-            if (Dress(target, s, headParts, mats, atlases, isSource: false))
+            if (Dress(target, s, humanParts, mats, atlases, isSource: false))
             {
                 made.Add($"{s.Label}(Chibi_{s.Suffix})");
                 bodies.Add(target);
@@ -804,7 +836,7 @@ public static partial class ChibiPawnCreator
             // 그대로 두고 `Model` 자식만 갈므로 guid·루트 fileID가 지켜진다(CLAUDE.md "프리팹을 통째로 다시 짓지 않는다").
             // 체형은 남성 하나다 — 한 프리팹은 한 몸이다. 이 파일이 **치비 여섯의 원본**(`Source`)이기도 하지만 복사한 뒤
             // `Model`을 비우고 다시 굽으므로 원본이 치비여도 결과는 같다.
-            if (s.Suffix == WandererShape && Dress(Source, s, headParts, mats, atlases, isSource: true))
+            if (s.Suffix == WandererShape && Dress(Source, s, humanParts, mats, atlases, isSource: true))
                 made.Add($"방랑자(Wanderer_Human = {s.Label})");
         }
 
@@ -837,12 +869,12 @@ public static partial class ChibiPawnCreator
                 oMats["Bone"]     = Variant(mats["Bone"],     $"Chibi_Bone_{o.Key}",     "_BaseColor", o.Skin ?? (Color)Bone);
                 oMats["BoneBody"] = Variant(mats["BoneBody"], $"Chibi_BoneBody_{o.Key}", "_BaseColor", o.Skin ?? (Color)Bone);
             }
-            if (Dress(op, oShape, o.Skeleton ? skullParts : o.Orc ? orcParts : headParts, oMats, atlases, isSource: false, o.Skeleton ? SkeletonLook : o.Look,
+            if (Dress(op, oShape, o.Skeleton ? skullParts : o.Orc ? orcParts : humanParts, oMats, atlases, isSource: false, o.Skeleton ? SkeletonLook : o.Look,
                       o.Skeleton ? BoneBodyFor(oShape) : null))
             {
                 made.Add(o.Prefab);
                 // 사람 역할은 체형 여섯이 다 나온다 — 해골(뼈 몸) · 오크(남성 머리 · 헐크 — 사용자가 그대로 두었다)는 빼고.
-                if (!o.Skeleton && !o.Orc) bodyVariants += DressBodies(o, op, oShape, headParts, oMats, atlases);
+                if (!o.Skeleton && !o.Orc) bodyVariants += DressBodies(o, op, oShape, humanParts, oMats, atlases);
                 if (o.Orc && DressOrcFemale(o, op, orcFemaleParts, oMats, atlases)) made.Add($"{o.Prefab} 여성");
             }
         }
@@ -881,6 +913,8 @@ public static partial class ChibiPawnCreator
         if (DressDwarf(mats, atlases, hairs)) made.Add($"드워프({DwarfPreview})");
         // **감염자 — 보기 몸**(`ChibiPawnCreator.Fungal` — 감염자만 다시 굽는 문은 `Pawn/11`).
         if (DressFungal(mats, atlases)) made.Add($"감염자({FungalPreview})");
+        // **엘프 — 보기 몸**(`ChibiPawnCreator.Elf` — 엘프만 다시 굽는 문은 `Pawn/12`). 빼먹으면 아래 청소가 엘프 메시를 지워 보기 몸이 깨진다.
+        if (DressElf(mats, atlases, hairs)) made.Add($"엘프({ElfPreview})");
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
         // 성별에 맞는 몸을 여기서 고른다. 원본 자신의 몸(남성)은 씬에 직접 놓을 때만 쓰인다.
@@ -1257,10 +1291,99 @@ public static partial class ChibiPawnCreator
             }
 
             finish?.Invoke(root);
+            BakeOutlineNormals(root);
             PrefabUtility.SaveAsPrefabAsset(root, path);
             return true;
         }
         finally { PrefabUtility.UnloadPrefabContents(root); }
+    }
+
+    // ── 선 법선 — 외곽선 껍데기가 미는 방향(2026-11-06) ──────────────────────────
+    //
+    // 사용자: *"가까이서 보면 뾰족뾰족 — 저작한 거의 모든 유닛이"*. 껍데기(`ToonOutlineHull`)는 정점을 법선 쪽으로 6cm 민다. 거리장으로
+    // 빚은 메시의 법선은 그 자리의 기울기라 주름 · 이음매(눈두덩 · 입가 · 손가락 사이)와 줄인 큰 세모에서 이웃끼리 크게 어긋나고, 어긋난 만큼
+    // 껍데기가 갈라져 실루엣에 톱니가, 얼굴 앞에 검은 조각이 섰다. 가까울수록 월드 굵기가 이겨 커지니 *가까이서만* 보였다.
+    // **살 음영의 법선은 그대로 두고** 껍데기만 둘레를 고르게 섞은 방향을 따른다 — 탄젠트 칸(xyz · 표지 `w = 2`)에 굽는다.
+    //
+    // - 반지름은 **월드 6cm**(바깥 선 굵기) — 메시마다 단위가 달라(사람 머리는 단위 틀 · 큰 짐승은 몸 좌표 · 빚은 머리는 m) 렌더러의
+    //   배율로 나눈다. 그래서 메시를 구울 때가 아니라 **프리팹에 얹은 뒤** 굽는다(`Dress` 한 곳 — 모든 치비 폰이 지난다).
+    // - **면 방향으로 거르지 않는다** — 제 법선과 같은 쪽만 섞으면 튄 법선끼리 다시 모여 조각이 남았다(트롤 눈썹으로 비교).
+    //   대신 얇은 곳(손가락 · 귀 끝 — 반지름 안에 맞은편 면이 든다)에서 서로 지워 짧아지면 제 법선으로 돌아간다.
+    // - 이미 구운 메시(같은 실행에서 다른 프리팹이 먼저 얹은 것 · 이번에 안 다시 구운 투구 껍데기)는 건너뛴다 — 다시 구우면 `Clear`가 탄젠트를 비운다.
+    const float OutlineSmoothRadius = 0.06f;
+
+    static void BakeOutlineNormals(GameObject root)
+    {
+        foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+        {
+            Mesh m = null;
+            if (r is SkinnedMeshRenderer smr) m = smr.sharedMesh;
+            else if (r.TryGetComponent(out MeshFilter mf)) m = mf.sharedMesh;
+            if (m == null || !AssetDatabase.GetAssetPath(m).StartsWith(MeshDir) || HasOutlineNormals(m)) continue;
+            var sc = r.transform.lossyScale;
+            float k = Mathf.Max(Mathf.Abs(sc.x), Mathf.Abs(sc.y), Mathf.Abs(sc.z));
+            OutlineNormals(m, OutlineSmoothRadius / Mathf.Max(k, 1e-4f));
+        }
+    }
+
+    // 이미 정했나 — 구운 선 법선(`w = 2`) 또는 "정점 법선 그대로"(`w = -2` — 회전체 메시 · `Save`).
+    static bool HasOutlineNormals(Mesh m)
+    {
+        var t = m.tangents;
+        return t.Length > 0 && t.Length == m.vertexCount && Mathf.Abs(t[0].w) > 1.5f;
+    }
+
+    static void OutlineNormals(Mesh m, float radius)
+    {
+        var v = m.vertices; var n = m.normals; var tris = m.triangles;
+        if (v.Length == 0 || n.Length != v.Length) return;
+
+        int nf = tris.Length / 3;
+        var fn  = new Vector3[nf];   // 넓이 가중 면 법선(정점 법선 쪽으로 앞뒤를 맞춘다 — 감김을 믿지 않는다)
+        var fc  = new Vector3[nf];
+        var cells = new Dictionary<Vector3Int, List<int>>();
+        Vector3Int CellOf(Vector3 p) => new(Mathf.FloorToInt(p.x / radius), Mathf.FloorToInt(p.y / radius), Mathf.FloorToInt(p.z / radius));
+        for (int f = 0; f < nf; f++)
+        {
+            int a = tris[3 * f], b = tris[3 * f + 1], c = tris[3 * f + 2];
+            var cr = Vector3.Cross(v[b] - v[a], v[c] - v[a]);
+            if (Vector3.Dot(cr, n[a] + n[b] + n[c]) < 0f) cr = -cr;
+            fn[f] = cr; fc[f] = (v[a] + v[b] + v[c]) / 3f;
+            var key = CellOf(fc[f]);
+            if (!cells.TryGetValue(key, out var list)) cells[key] = list = new List<int>();
+            list.Add(f);
+        }
+
+        float r2 = radius * radius;
+        var tan = new Vector4[v.Length];
+        System.Threading.Tasks.Parallel.For(0, v.Length, i =>
+        {
+            var p = v[i]; var home = CellOf(p);
+            var sum = Vector3.zero; float tot = 0f;
+            for (int dz = -1; dz <= 1; dz++)
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (!cells.TryGetValue(home + new Vector3Int(dx, dy, dz), out var list)) continue;
+                foreach (int f in list)
+                {
+                    float d2 = (fc[f] - p).sqrMagnitude;
+                    if (d2 >= r2) continue;
+                    float w = 1f - d2 / r2;
+                    sum += fn[f] * w; tot += fn[f].magnitude * w;
+                }
+            }
+            var own = n[i].normalized;
+            // 섞은 길이 ÷ 섞은 양 — 1이면 다 같은 쪽, 0이면 서로 지웠다. 0.3 아래는 제 법선, 0.6 위는 섞은 방향.
+            float agree = tot > 0f ? sum.magnitude / tot : 0f;
+            float t = Mathf.Clamp01((agree - 0.3f) / 0.3f);
+            var dir = Vector3.Lerp(own, sum.normalized, t).normalized;
+            if (dir.sqrMagnitude < 0.5f) dir = own.sqrMagnitude > 0.5f ? own : sum.normalized;
+            if (dir.sqrMagnitude < 0.5f) dir = Vector3.up;   // 법선이 없는 점 — 셰이더의 `normalize`가 NaN을 내지 않게
+            tan[i] = new Vector4(dir.x, dir.y, dir.z, 2f);
+        });
+        m.tangents = tan;
+        EditorUtility.SetDirty(m);
     }
 
     // **체형 → 몸의 치수 — 남성 체형이 곧 시제품 몸이고, 다른 체형은 남성에 대한 비만 가져온다.**
@@ -1313,7 +1436,8 @@ public static partial class ChibiPawnCreator
         go.transform.localRotation = Quaternion.Euler(p.Euler);
 
         var mr = go.GetComponent<MeshRenderer>();
-        mr.sharedMaterials   = p.OuterMat != null ? new[] { mats[p.Mat], mats[p.OuterMat] } : new[] { mats[p.Mat] };
+        string line = LineFor(p.Name, p.OuterMat);
+        mr.sharedMaterials   = line != null ? new[] { mats[p.Mat], mats[line] } : new[] { mats[p.Mat] };
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mr.enabled = p.On;   // **끄되 지우지 않는다**
 
@@ -1769,6 +1893,7 @@ public static partial class ChibiPawnCreator
         var ob = LoadOrMake($"{MatDir}/Chibi_OutlineOuterBeard.mat", outer);
         ob.CopyPropertiesFromMaterial(of);
         ob.SetFloat("_OutlineGroundPush", 1.3f);
+        ob.SetFloat("_OutlinePushFrom", 0.5f);   // 30°보다 내려다볼 때부터 당긴다(`ToonOutlineHull` — 가슴에 묻힌 털 껍데기가 비스듬한 각에서 드러나지 않게)
         ob.renderQueue = of.renderQueue;
         EditorUtility.SetDirty(ob);
         map["OutlineOuterBeard"] = ob;

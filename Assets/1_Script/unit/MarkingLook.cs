@@ -22,13 +22,14 @@ public class MarkingLook : MonoBehaviour
 
     [Tooltip("문신을 지니나. 비우면(Seeded) 종족의 규칙(대장 · 확률)이 정한다.")]
     [SerializeField] Tattoo tattoo = Tattoo.Seeded;
-    public enum HairTone { Seeded = -1, Black, DarkBrown, Grey, Custom }
+    // **꼬리에만 붙일 것** — 정수로 저장된다(Custom이 3). 2026-11-06 사용자: *"엘프하면 노랑 머리색인데 그게 없어 … 색깔 바리에이션좀 추가해봐"*.
+    public enum HairTone { Seeded = -1, Black, DarkBrown, Grey, Custom, Brown, Blonde, PaleBlonde, Platinum, Silver, White, Auburn, Ginger, Red, Honey }
 
-    [Tooltip("문신 색. 비우면(Seeded) 씨앗이 고른다.")]
+    [Tooltip("얼굴 문신 색 — 문신 겹이 있는 머리(오크)만 쓴다. 비우면(Seeded) 씨앗 · 종족이 고른다.")]
     [SerializeField] Ink ink = Ink.Seeded;
     [Tooltip("문신 색을 직접 — 위가 Custom일 때만 쓴다.")]
     [SerializeField] Color customInk = new Color32(0x17, 0x17, 0x1C, 0xFF);
-    [Tooltip("머리카락 · 수염 색. 비우면(Seeded) 씨앗이 고른다.")]
+    [Tooltip("머리카락 · 수염 · 눈썹 색. 비우면(Seeded) 종족의 털 색 후보(`UnitData.HairTones`)에서, 종족이 안 들면 기본 후보에서 씨앗이 고른다.")]
     [SerializeField] HairTone hair = HairTone.Seeded;
     [Tooltip("머리카락 색을 직접 — 위가 Custom일 때만 쓴다.")]
     [SerializeField] Color customHair = new Color32(0x22, 0x1E, 0x22, 0xFF);
@@ -40,12 +41,28 @@ public class MarkingLook : MonoBehaviour
         new Color32(0x29, 0x47, 0x94, 0xFF),   // 파랑
         new Color32(0xDB, 0xD6, 0xC2, 0xFF),   // 뼈색(흰 칠)
     };
-    static readonly Color[] Hairs =
+    // 이름마다 색 하나 — 직접 고를 때(인스펙터) 쓴다. 종족 후보(`UnitData.HairTones`)와는 따로다.
+    public static Color HairColorOf(HairTone t) => t switch
     {
-        new Color32(0x22, 0x1E, 0x24, 0xFF),   // 검정
-        new Color32(0x3E, 0x2A, 0x1E, 0xFF),   // 짙은 갈색
-        new Color32(0x6E, 0x6A, 0x66, 0xFF),   // 잿빛
+        HairTone.Black      => new Color32(0x22, 0x1E, 0x24, 0xFF),
+        HairTone.DarkBrown  => new Color32(0x3E, 0x2A, 0x1E, 0xFF),
+        HairTone.Grey       => new Color32(0x6E, 0x6A, 0x66, 0xFF),
+        HairTone.Brown      => new Color32(0x6B, 0x46, 0x2A, 0xFF),
+        HairTone.Blonde     => new Color32(0xD2, 0xA8, 0x4E, 0xFF),   // 금발
+        HairTone.PaleBlonde => new Color32(0xE6, 0xD0, 0x92, 0xFF),   // 옅은 금발
+        HairTone.Platinum   => new Color32(0xEE, 0xE7, 0xD2, 0xFF),   // 백금
+        HairTone.Silver     => new Color32(0xC4, 0xC8, 0xCE, 0xFF),   // 은발
+        HairTone.White      => new Color32(0xF2, 0xF0, 0xEC, 0xFF),
+        HairTone.Auburn     => new Color32(0x7A, 0x34, 0x22, 0xFF),   // 적갈색
+        HairTone.Ginger     => new Color32(0xB4, 0x60, 0x2A, 0xFF),   // 생강색(주황)
+        HairTone.Red        => new Color32(0x8C, 0x2E, 0x1E, 0xFF),   // 붉은
+        HairTone.Honey      => new Color32(0xB8, 0x8A, 0x45, 0xFF),   // 꿀색
+        _                   => new Color32(0x22, 0x1E, 0x24, 0xFF),
     };
+
+    // 종족이 털 색 후보를 안 들 때(사람 등) 씨앗이 고르는 후보.
+    static readonly HairTone[] SeededHairs =
+        { HairTone.Black, HairTone.DarkBrown, HairTone.Brown, HairTone.Blonde, HairTone.Auburn, HairTone.Grey };
 
     static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
@@ -85,9 +102,9 @@ public class MarkingLook : MonoBehaviour
                 (data == null || (leader && data.LeaderTattoo) || Mod(seed / 29, 1000) < data.TattooChance * 1000f));
         if (gate) GateLayers(look, tattoo != Tattoo.Seeded || data != null);
 
-        // 무슨 색 — 못 박은 것 > 대장 색 > 종족 후보 > 기본 넷.
+        // 무슨 색 — 못 박은 것 > 대장 색 > 종족 후보(`InkTones` · `HairTones`) > 기본 넷 · 셋.
         InkNow  = ink  != Ink.Seeded      ? ink  : (Ink)Mod(seed / 19, Inks.Length);
-        HairNow = hair != HairTone.Seeded ? hair : (HairTone)Mod(seed / 23, Hairs.Length);
+        HairNow = hair != HairTone.Seeded ? hair : SeededHairs[Mod(seed / 23, SeededHairs.Length)];
         var inkColor = InkNow == Ink.Custom ? customInk : Inks[(int)InkNow];
         if (ink == Ink.Seeded && data != null)
         {
@@ -95,7 +112,13 @@ public class MarkingLook : MonoBehaviour
             else if (data.InkTones != null && data.InkTones.Count > 0) inkColor = data.InkTones[Mod(seed / 19, data.InkTones.Count)];
             inkColor.a = 1f;
         }
-        var hairColor = HairNow == HairTone.Custom ? customHair : Hairs[(int)HairNow];
+        var hairColor = HairNow == HairTone.Custom ? customHair : HairColorOf(HairNow);
+        // 종족이 털 색 후보를 들면 그것에서(`UnitData.HairTones` — 드워프의 붉은 · 생강 등). 못 박은 것이 이긴다.
+        if (hair == HairTone.Seeded && data != null && data.HairTones != null && data.HairTones.Count > 0)
+        {
+            hairColor = data.HairTones[Mod(seed / 23, data.HairTones.Count)];
+            hairColor.a = 1f;
+        }
 
         if (!_gathered) Gather();
         _mpb ??= new MaterialPropertyBlock();

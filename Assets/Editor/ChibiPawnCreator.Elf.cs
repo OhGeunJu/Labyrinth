@@ -5,17 +5,18 @@ using UnityEngine;
 
 // **엘프 — 사람 치비 몸(긴 다리) + 좁힌 사람 머리 · 뾰족귀 · 긴 머리**(2026-11-03~04, 사용자: *"엘프는 뾰족귀에 길고 비율좋은"*).
 //
-// 몸은 사람 몸(`DressSkinned`)에 체형 한 줄(`ElfShape` — 몸 A: 다리 1.70 · 몸통 1.08 · 팔 1.20 · 좁은 반폭 · 키 2.85머리).
+// 몸은 사람 몸(`DressSkinned`)에 체형 한 줄(`ElfShape` — 다리 1.37 · 몸통 1.05 · 팔 1.12 · 키 1.85m(머리 2.69개) — 11-06 *"키가 너무 크네"* · *"키 185로"*).
+// **반폭 · 깊이 · 손은 사람 남성 그대로**(11-05 사용자: *"몸이 너무 얇아진 거 같아 … 일반몸에서 길이만 좀 늘어나는 거"* — 처음엔 좁은 반폭이었다).
 // 머리는 **넓은 네모 머리(`Male_BroadSquare` — 드워프와 같은 바탕)를 옆으로 좁혀(`ElfNar` 0.88 — 원래 폭은 "빵떡")** 곧은 코를 얹는다.
 // 눈은 드워프처럼 빚은 먹 눈 + 반짝임(흰자 · 홍채는 *"고양이 같다"*) · 눈썹은 살갗에 칠한 아치 띠(솟은 가닥은 붙인 것 같다).
 //
 // 개체마다 고르는 것(`PawnLook`의 `Head.Pick.{축}.{벌}`):
 //   - **귀**(Leaf · Long · Sweep — 사용자: *"귀는 셋 다"*). 귀는 머리 살에 녹아 붙어 있던 것을 조각으로 떼었다 — 녹인 이음은 귀 조각이 들고,
 //     머리 살과 겹치는 면은 2mm 안으로 숨긴다(`ElfEarPiece`).
-//   - **머리카락**(Straight · HalfUp · Tail · Bangs · BangsM · BangsArch). 머리카락은 귀 모양대로 파여 귀가 숱 위로 나온다(`ElfEarGap` —
+//   - **머리카락**(Straight · HalfUp · Tail · BangsM · BangsArch — A자 `Bangs`는 11-06 사용자가 뺐다: 일자 · 둥근 안도 *"셋다 별로"*). 머리카락은 귀 모양대로 파여 귀가 숱 위로 나온다(`ElfEarGap` —
 //     귀 둘레를 공으로 파면 *"동그랗게 파여 있다"*) — 그래서 **귀마다 한 벌**(`@Ear.{귀}`). 반묶음의 땋은 장식은 한 톤 어둡게(`.Plait` ·
 //     `MarkingLook`) · 쇠붙이(`.Metal`)는 안 칠한다.
-// 털 색은 `MarkingLook`(머리카락 · 눈썹이 한 색) — 엘프 털 색 후보는 종족 데이터와 함께 들인다.
+// 털 색은 `MarkingLook`(머리카락 · 눈썹이 한 색) — 후보는 종족 `Resources/Data/Units/Elf`(금발 · 백금 · 은발 …)가 든다.
 //
 // 그림 확인은 파이썬 미리보기 `Tools/ModelLab/elf/elf.py`(머리 v16 · 앞머리 v20 · v23) · `elf_body.py`(몸 A)로 했다 —
 // 같은 수식(단위 m · 원점은 머리 한복판 · +z 앞). **수치를 고치면 그 그림과 어긋난다 — 같이 고칠 것.**
@@ -23,15 +24,57 @@ public static partial class ChibiPawnCreator
 {
     // ── 몸 ──────────────────────────────────────────────────────────────────
     //                                                             밑     엉덩이  허리   가슴   어깨      깊이   손     팔K    다리K  몸통K
-    static readonly Shape ElfShape = new("Elf", "엘프", "Male", new[] { 0.19f, 0.21f, 0.20f, 0.25f, 0.27f }, 0.78f, 0.26f, 1.20f, 1.70f, 1.08f);
+    static readonly Shape ElfShape = new("Elf", "엘프", "Male", new[] { 0.21f, 0.24f, 0.26f, 0.30f, 0.31f }, 0.82f, 0.30f, 1.12f, 1.37f, 1.05f);
 
     const float ElfNar = 0.88f;                  // 얼굴 폭 — 사람 머리를 옆으로 좁힌다
     const string ElfPreview = "Chibi_Elf";       // 보기 몸 프리팹(`3_Prefab/Pawn/Elf/`)
     const string ElfBasis = "Male_BroadSquare";
+    const string ElfData = "Assets/Resources/Data/Units/Elf.asset";
+
+    // **엘프 종족 — 없으면 사람을 바탕으로 만든다**(2026-11-06, 사용자: *"엘프하면 노랑 머리색인데 그게 없어"*). 털 색 · 살색 · 이름은
+    // **비어 있을 때만** 채운다 — 그 뒤로는 에셋이 답이다(인스펙터에서 고친 것을 다시 굽기가 되돌리지 않는다).
+    static readonly Color32[] ElfHairTones =
+    {
+        new(0xD2, 0xA8, 0x4E, 0xFF),   // 금발
+        new(0xE6, 0xD0, 0x92, 0xFF),   // 옅은 금발
+        new(0xEE, 0xE7, 0xD2, 0xFF),   // 백금
+        new(0xC4, 0xC8, 0xCE, 0xFF),   // 은발
+        new(0xB8, 0x8A, 0x45, 0xFF),   // 꿀색
+        new(0x6B, 0x46, 0x2A, 0xFF),   // 갈색(드물게)
+    };
+    static readonly Color32[] ElfSkinTones =
+    {
+        new(0xF4, 0xDC, 0xC8, 0xFF), new(0xEC, 0xCD, 0xB4, 0xFF), new(0xDE, 0xBA, 0x9E, 0xFF), new(0xC8, 0x9E, 0x80, 0xFF),
+    };
+    static readonly string[] ElfMaleNames   = { "아엘렌", "실바렌", "카엘린", "텔라르", "엘리안", "피에렌", "아론딜", "세레안", "알렌디스", "나이렌", "이살렌" };
+    static readonly string[] ElfFemaleNames = { "이리엘", "미렐", "나엘라", "시에나", "아리안", "엘레스", "라이엔", "셀린", "아에라", "피오넬" };
+
+    static UnitData EnsureElfData()
+    {
+        var d = AssetDatabase.LoadAssetAtPath<UnitData>(ElfData);
+        if (d == null)
+        {
+            var human = AssetDatabase.LoadAssetAtPath<UnitData>("Assets/Resources/Data/Units/Human.asset");
+            if (human == null) { Debug.LogWarning("[엘프] 바탕 종족(사람)이 없다 — 종족 데이터를 못 만든다."); return null; }
+            d = ScriptableObject.CreateInstance<UnitData>();
+            EditorUtility.CopySerialized(human, d);   // 사람의 나머지 값(성장 · 도축 · 배경)을 바탕으로
+            d.Id = "Elf"; d.RaceName = "엘프";
+            d.NamePool = new List<string>();
+            d.MaleNames = new List<string>(ElfMaleNames);
+            d.FemaleNames = new List<string>(ElfFemaleNames);
+            d.HairTones = new List<Color>(); d.SkinTones = new List<Color>();
+            AssetDatabase.CreateAsset(d, ElfData);
+        }
+        bool dirty = false;
+        if (d.HairTones == null || d.HairTones.Count == 0) { d.HairTones = new List<Color>(Array.ConvertAll(ElfHairTones, c => (Color)c)); dirty = true; }
+        if (d.SkinTones == null || d.SkinTones.Count == 0) { d.SkinTones = new List<Color>(Array.ConvertAll(ElfSkinTones, c => (Color)c)); dirty = true; }
+        if (dirty) { EditorUtility.SetDirty(d); AssetDatabase.SaveAssets(); }
+        return d;
+    }
     const float ElfHeadStep = 0.006f, ElfFineStep = 0.0025f, ElfHairStep = 0.0055f;
 
     static readonly string[] ElfEars  = { "Leaf", "Long", "Sweep" };
-    static readonly string[] ElfHairs = { "Straight", "HalfUp", "Tail", "Bangs", "BangsM", "BangsArch" };
+    static readonly string[] ElfHairs = { "Straight", "HalfUp", "Tail", "BangsM", "BangsArch" };
 
     static List<Part> _elfHead;
 
@@ -54,8 +97,12 @@ public static partial class ChibiPawnCreator
         public readonly Vector3[] FrontLockPts;          // 앞 판 마디(옆으로 늘인 좌표)
         public readonly Vector3[][] TailPaths;           // 꽁지 다발 여섯
 
-        public ElfFrame(HeadShape h)
+        // 몸(팔을 내린 묶은 자세) — 머리카락이 비켜 갈 몸통 · 위팔. 머리 좌표 y + `BodyY0` = 몸 좌표 y · 몸 z = 머리 z + `HeadZ`.
+        readonly BodyDims B; readonly float BodyY0;
+
+        public ElfFrame(HeadShape h, BodyDims body)
         {
+            B = body; BodyY0 = body.Top + HeadGap + h.Size.y * 0.5f;
             D = new DwarfFrame(h);
             EY = D.EY; MY = D.MY; NY = D.NY; EX = D.EX; ER = D.ER; ZE = D.ZE; ZN = D.ZN; ZM = D.ZM;
             EXn = EX * 0.94f;                                  // 눈은 덜 좁힌다 — 좁은 얼굴에 눈이 몰리면 어려 보인다
@@ -67,12 +114,42 @@ public static partial class ChibiPawnCreator
                                V3(0.22f, EY + 0.11f, -0.22f), V3(0.13f, EY + 0.09f, -0.30f), V3(0.03f, EY + 0.07f, -0.33f) };
             HalfUpPlait = Array.ConvertAll(path, t => OnCap(t.x, t.y, t.z, 0.062f));
             float x1 = Curl1.x, z1 = Curl1.z; var sc = V3(ElfPanelF, 1, 1);
-            FrontLockPts = Array.ConvertAll(new[] { Curl0, Curl1, V3(x1 + 0.020f, EY - 0.08f, z1 - 0.04f), V3(x1 + 0.030f, MY - 0.12f, z1 - 0.07f), V3(x1 + 0.030f, -0.62f, z1 - 0.10f) },
+            // 앞 판의 아래 두 마디는 몸 앞으로 비킨다(`OffBody` — 판은 앞뒤로 넓어 반지름을 크게 잡는다).
+            FrontLockPts = Array.ConvertAll(new[] { Curl0, Curl1, V3(x1 + 0.020f, EY - 0.08f, z1 - 0.04f),
+                                                    OffBody(V3(x1 + 0.030f, MY - 0.12f, z1 - 0.07f), 0.08f, front: true, anyHeight: true),
+                                                    OffBody(V3(x1 + 0.030f, -0.62f, z1 - 0.10f), 0.08f, front: true) },
                                             t => Vector3.Scale(t, sc));
             var tails = new List<Vector3[]>();
             foreach (var (dx, dz, s) in new[] { (-0.05f, 0.00f, 0.88f), (-0.025f, -0.03f, 1.0f), (0.0f, 0.02f, 1.06f), (0.025f, -0.02f, 1.0f), (0.05f, 0.01f, 0.88f), (0.0f, -0.05f, 0.95f) })
                 tails.Add(Bez(ElfTie, ElfTie + V3(dx * 0.3f, 0.13f, -0.05f), ElfTie + V3(dx * 0.9f, 0.10f, -0.34f), ElfTie + V3(dx * 2.0f, -0.90f * s, -0.20f + dz), 8));   // 끈에서 위로 솟았다가 휘어 내린다
             TailPaths = tails.ToArray();
+        }
+
+        // **머리카락 마디를 몸 밖으로**(2026-11-06, 사용자: *"엘프 머리카락에 외곽선땜에 어깨쪽이 좀 이상하게 보여"*) — 몸을 사람 폭으로
+        // 넓힌 뒤로(`ElfShape`) 귀 뒤로 곧게 떨어지던 가닥이 위팔(x 0.19~0.32)을 꿰뚫어, 겹친 자리에 외곽선이 지저분하게 번졌다.
+        // 위팔(위팔 관절에서 곧게 내린 통)을 앞 판은 앞으로 · 뒷머리는 뒤로 비키고, 몸통(타원 단면)은 바깥으로 비킨다. `r` — 마디 반지름(+ 틈 12mm).
+        // `anyHeight` — 위팔 위(목 높이) 마디도 민다. 몸은 움직이니(팔 휘두르기) 머리카락을 몸 모양으로 파내지는 않는다 — 마디만 옮긴다.
+        Vector3 OffBody(Vector3 q, float r, bool front, bool anyHeight = false)
+        {
+            const float Gap = 0.012f;
+            float my = q.y + BodyY0;
+            if (anyHeight || my < B.ShoulderY + B.ArmR + r)
+            {
+                float need = B.ArmR + r + Gap, dx = Mathf.Abs(q.x) - B.ArmX;
+                if (Mathf.Abs(dx) < need)
+                {
+                    float dz = Mathf.Sqrt(need * need - dx * dx), az = -HeadZ;
+                    q.z = front ? Mathf.Max(q.z, az + dz) : Mathf.Min(q.z, az - dz);
+                }
+            }
+            if (my > B.Lift && my < B.Top + r)
+            {
+                float w = BodyTorsoRadius(B.Half, Mathf.Clamp01((my - B.Lift) / B.TorsoH), B.TorsoH, B.TopR);
+                float rx = w + r + Gap, rz = w * B.Depth + r + Gap, zz = q.z + HeadZ;
+                float e = Mathf.Sqrt(q.x * q.x / (rx * rx) + zz * zz / (rz * rz));
+                if (e < 1f && e > 1e-4f) { q.x /= e; q.z = zz / e - HeadZ; }
+            }
+            return q;
         }
 
         public float Head(Vector3 p) => OrcBase(V3(p.x / ElfNar, p.y, p.z), D.O) * ElfNar;
@@ -115,8 +192,9 @@ public static partial class ChibiPawnCreator
                 float yEnd = L + 0.14f * Mathf.Pow((180f - a) / 80f, 2f);
                 all[k * 4 + 0] = OnCap(dx * 0.3f, 0.17f, dz * 0.3f, -0.004f);
                 all[k * 4 + 1] = V3(c.x, 0.04f, c.z);
-                all[k * 4 + 2] = V3(c.x, -0.30f, c.z) + nrm * 0.004f;
-                all[k * 4 + 3] = V3(c.x, yEnd, c.z) + nrm * 0.012f;
+                // 아래 두 마디는 몸 뒤로 비킨다(`OffBody`) — 위 마디(목 높이)는 위팔 위라도 밀어 둔다(아래 마디까지 곧게 내리면 그 사이가 어깨를 뚫는다).
+                all[k * 4 + 2] = OffBody(V3(c.x, -0.30f, c.z) + nrm * 0.004f, 0.05f, front: false, anyHeight: true);
+                all[k * 4 + 3] = OffBody(V3(c.x, yEnd, c.z) + nrm * 0.012f, 0.04f, front: false);
             }
             return all;
         }
@@ -304,13 +382,10 @@ public static partial class ChibiPawnCreator
     // 커튼 앞머리의 아랫단 — 이마를 감싸는 매끈한 한 장(다발을 띄워 붙이면 옆에서 볼록볼록 혹이 선다). 두께는 뿌리에서 숱과 같고 아랫단으로 얇아진다.
     static float ElfHem(string style, float ang, ElfFrame f)
     {
-        var (xs, ys) = style switch { "Bangs" => (HemAx, HemAy), "BangsArch" => (HemRx, HemRy), _ => (HemMx, HemMy) };
+        var (xs, ys) = style == "BangsArch" ? (HemRx, HemRy) : (HemMx, HemMy);
         return f.EY + Interp(ang, xs, ys);
     }
     // 둘레 각도 → 눈 높이(EY)에서 올린 높이.
-    // A자 — 가운데(가르마)가 높고 바깥으로 갈수록 길어져 눈썹 바깥께로 · 꼭지는 둥글게.
-    static readonly float[] HemAx = { 0f, 8f, 18f, 30f, 44f, 58f, 72f };
-    static readonly float[] HemAy = { 0.17f, 0.155f, 0.125f, 0.10f, 0.08f, 0.065f, 0.05f };
     // ∧ — 가르마에서 둥글게 흘러내린다(숱 이마선이 단 아래까지 덮어 이 모양이 된다).
     static readonly float[] HemRx = { 0f, 3f, 8f, 14f, 26f, 38f, 46f, 54f, 64f, 72f };
     static readonly float[] HemRy = { 0.235f, 0.215f, 0.165f, 0.148f, 0.14f, 0.145f, 0.12f, 0.06f, -0.02f, -0.06f };
@@ -318,61 +393,65 @@ public static partial class ChibiPawnCreator
     static readonly float[] HemMx = { 0f, 2f, 4f, 8f, 11f, 13f, 14.5f, 15.5f, 16.5f, 18f, 21f, 26f, 34f, 45f, 55f, 64f, 72f };
     static readonly float[] HemMy = { 0.24f, 0.25f, 0.262f, 0.265f, 0.26f, 0.245f, 0.22f, 0.18f, 0.13f, 0.10f, 0.08f, 0.07f, 0.065f, 0.065f, 0.04f, -0.02f, -0.06f };
 
-    static float ElfBangs(Vector3 p, string style, ElfFrame f, float tip)
+    static float ElfBangs(Vector3 p, string style, ElfFrame f)
     {
         float ang = AngleOf(p); float h = ElfHem(style, ang, f);
-        if (tip > 0f)   // 다발 끝 — 둥근 물결로 아주 얕게 · 가르마 자리는 물결을 안 탄다
-        {
-            float ph = (ang + 160f * (f.EY + 0.30f - p.y)) / 15f;
-            h -= tip * (0.5f - 0.5f * Mathf.Cos(ph * 2f * Mathf.PI)) * Ease(ang / 10f);
-        }
         float th = 0.010f + 0.022f * Ease((p.y - h) / 0.10f);
         float d = ElfScalp(p, f, th, h);
         return SMax(d, (ang - 72f) * Mathf.Deg2Rad * 0.28f, 0.01f);   // 앞에만 — 옆은 숱 · 구레나룻이 든다
     }
 
-    // (머리카락, 쇠붙이, 땋은 장식) — 없으면 9. 머리카락은 귀(`e`) 모양대로 파인다.
-    static (float hair, float metal, float plait) ElfHair(string style, Vector3 p, ElfFrame f, (float, float, float, float, float) e)
+    // 머리카락(`ElfHairPart`) · 쇠붙이(`ElfMetalPart`) · 땋은 장식 중 **물은 것 하나만** 잰다 — 없으면 9. 머리카락은 귀(`e`) 모양대로 파인다.
+    // (2026-11-06 — 셋을 한 번에 재 돌려주면 쇠붙이 · 땋은 장식을 구울 때도 무거운 숱을 매 점 쟀다. 식은 그대로라 결과는 같다.)
+    const int ElfHairPart = 0, ElfMetalPart = 1, ElfPlaitPart = 2;
+    static float ElfHair(string style, Vector3 p, ElfFrame f, (float, float, float, float, float) e, int part)
     {
         float ang = AngleOf(p);
         switch (style)
         {
             case "Straight":   // 가운데 가르마 긴 생머리 — 뒤는 허리께 · 앞 두 가닥
             {
+                if (part != ElfHairPart) return 9f;
                 float cap = ElfScalp(p, f, 0.030f, ElfCurtainLine(ang, f)) + ElfPart(p);
                 float d = SMin(cap, ElfBackFall(p, f), 0.04f);
                 d = SMin(d, ElfFrontLocks(p, f), 0.03f);
-                return (ElfEarGap(p, d, f, e) + Strands(p, 0.0015f, 55f), 9f, 9f);
+                return ElfEarGap(p, d, f, e) + Strands(p, 0.0015f, 55f);
             }
             case "HalfUp":     // 긴 생머리 — 관자놀이에서 땋은 두 가닥이 뒤통수에서 만난다
             {
+                var pts = f.HalfUpPlait;
+                if (part == ElfPlaitPart) return ElfPlait(Mirror(p), pts, 0.026f, 0.020f);
+                if (part == ElfMetalPart) return Ell(p, V3(0f, pts[^1].y, pts[^1].z - 0.012f), V3(0.05f, 0.034f, 0.024f));   // 걸쇠
                 float cap = ElfScalp(p, f, 0.030f, ElfFrontLine(ang, f)) + ElfPart(p);
                 float d = SMin(cap, ElfBackFall(p, f, -0.72f), 0.04f);
-                var pts = f.HalfUpPlait;
-                float br = ElfPlait(Mirror(p), pts, 0.026f, 0.020f);
-                float clasp = Ell(p, V3(0f, pts[^1].y, pts[^1].z - 0.012f), V3(0.05f, 0.034f, 0.024f));
-                return (ElfEarGap(p, d, f, e) + Strands(p, 0.0012f, 45f), clasp, br);
+                return ElfEarGap(p, d, f, e) + Strands(p, 0.0012f, 45f);
             }
             case "Tail":       // 뒤로 빗어 넘겨 높이 묶은 꽁지 + 이마 띠(서클릿) · 끝이 말꼬리처럼 갈라진다
             {
+                if (part == ElfPlaitPart) return 9f;
+                if (part == ElfMetalPart)   // 묶은 고리 · 이마 띠 · 보석
+                {
+                    float tie = DwarfRing(p, ElfTie + V3(0, 0.01f, 0.005f), ElfTie + V3(0, 0.045f, -0.01f), 0.040f);
+                    float circ = SMax(Mathf.Abs(f.Head(p) - 0.034f) - 0.006f, Mathf.Abs(p.y - (f.EY + 0.17f - 0.25f * Mathf.Max(-p.z, 0f))) - 0.014f, 0.003f);
+                    float gem = Sph(p, V3(0, f.EY + 0.175f, f.D.O.Front(f.D.O.EyeT + 0.25f) + 0.032f), 0.022f);
+                    return Mathf.Min(Mathf.Min(tie, circ), gem);
+                }
                 float cap = ElfScalp(p, f, 0.028f, ElfFrontLine(ang, f) + 0.02f) + Strands(p, 0.003f, 90f);
                 float tail = 9f;
                 foreach (var pts in f.TailPaths) tail = SMin(tail, LockR(p, pts, ElfTailR), 0.03f);
                 float d = SMin(cap, tail + Strands(p, 0.002f, 60f), 0.03f);
-                float tie = DwarfRing(p, ElfTie + V3(0, 0.01f, 0.005f), ElfTie + V3(0, 0.045f, -0.01f), 0.040f);
-                float circ = SMax(Mathf.Abs(f.Head(p) - 0.034f) - 0.006f, Mathf.Abs(p.y - (f.EY + 0.17f - 0.25f * Mathf.Max(-p.z, 0f))) - 0.014f, 0.003f);
-                float gem = Sph(p, V3(0, f.EY + 0.175f, f.D.O.Front(f.D.O.EyeT + 0.25f) + 0.032f), 0.022f);
-                return (ElfEarGap(p, d, f, e), Mathf.Min(Mathf.Min(tie, circ), gem), 9f);
+                return ElfEarGap(p, d, f, e);
             }
-            default:           // 앞머리 생머리(A · M · ∧) — 뒤 · 옆은 생머리 그대로, 앞 판 대신 커튼 앞머리
+            default:           // 앞머리 생머리(M · ∧) — 뒤 · 옆은 생머리 그대로, 앞 판 대신 커튼 앞머리
             {
+                if (part != ElfHairPart) return 9f;
                 float low = ElfCurtainLine(ang, f);
                 // M자는 숱 이마선이 단보다 내려오지 않는다 — 내려오면 평평한 단을 가려 다시 비스듬한 A가 된다.
                 if (style == "BangsM" && ang < 90f) low = Mathf.Max(low, ElfHem(style, ang, f));
                 float cap = ElfScalp(p, f, 0.030f, low) + ElfPart(p);
                 float d = SMin(cap, ElfBackFall(p, f), 0.04f);
-                d = SMin(d, ElfBangs(p, style, f, style == "Bangs" ? 0.006f : 0f), 0.015f);
-                return (ElfEarGap(p, d, f, e) + (ang > 70f ? Strands(p, 0.0012f, 55f) : 0f), 9f, 9f);   // 앞머리에는 결 골이 없다(선으로 읽힌다)
+                d = SMin(d, ElfBangs(p, style, f), 0.015f);
+                return ElfEarGap(p, d, f, e) + (ang > 70f ? Strands(p, 0.0012f, 55f) : 0f);   // 앞머리에는 결 골이 없다(선으로 읽힌다)
             }
         }
     }
@@ -384,7 +463,7 @@ public static partial class ChibiPawnCreator
     {
         if (_elfHead != null) return _elfHead;
         var h = Array.Find(Heads, x => x.Name == ElfBasis);
-        var f = new ElfFrame(h);
+        var f = new ElfFrame(h, DimsOf(ElfShape));
         var pos = HeadPos(h);
         var parts = new List<Part>();
         Func<Vector3, float> face = p => ElfFace(p, f);
@@ -393,8 +472,12 @@ public static partial class ChibiPawnCreator
         Mesh Sculpt(string name, Func<Vector3, float> sdf, Bounds b, float step, float keep, bool relax = false)
         {
             var surf = SurfaceNets(sdf, b, step, face, p => p, 0.03f, 4f, keep);
+            NetsLap(-1);
             if (relax) Relax(surf.Verts, surf.Tris, 6);
-            return SaveSkull($"Chibi_Elf_{name}", surf);
+            NetsLap(5);
+            var m = SaveSkull($"Chibi_Elf_{name}", surf);
+            NetsLap(6);
+            return m;
         }
         void Add(string name, Mesh mesh, string mat, string line, bool on = true)
             => parts.Add(new Part(name, mesh, pos, Vector3.one, mat, on, outerMat: line));
@@ -430,14 +513,14 @@ public static partial class ChibiPawnCreator
             foreach (var en in ElfEars)
             {
                 var spec = ElfEarSpecs[en];
-                Add($"Head.Pick.Hair.{s}@Ear.{en}", Sculpt($"Hair_{s}_{en}", p => ElfHair(s, p, f, spec).hair, hairB, ElfHairStep, 0.35f, relax: true),
+                Add($"Head.Pick.Hair.{s}@Ear.{en}", Sculpt($"Hair_{s}_{en}", p => ElfHair(s, p, f, spec, ElfHairPart), hairB, ElfHairStep, 0.35f, relax: true),
                     "HairFine", HangLine, on: s == "Straight" && en == "Leaf");
             }
             var any = ElfEarSpecs["Leaf"];
             if (s is "HalfUp" or "Tail")
-                Add($"Head.Pick.Hair.{s}.Metal", Sculpt($"Hair_{s}_Metal", p => ElfHair(s, p, f, any).metal, hairB, ElfFineStep, 0.4f), "Metal", HangLine, on: false);
+                Add($"Head.Pick.Hair.{s}.Metal", Sculpt($"Hair_{s}_Metal", p => ElfHair(s, p, f, any, ElfMetalPart), hairB, ElfFineStep, 0.4f), "Metal", HangLine, on: false);
             if (s == "HalfUp")
-                Add($"Head.Pick.Hair.{s}.Plait", Sculpt($"Hair_{s}_Plait", p => ElfHair(s, p, f, any).plait, hairB, ElfFineStep, 0.4f, relax: true), "HairFine", HangLine, on: false);
+                Add($"Head.Pick.Hair.{s}.Plait", Sculpt($"Hair_{s}_Plait", p => ElfHair(s, p, f, any, ElfPlaitPart), hairB, ElfFineStep, 0.4f, relax: true), "HairFine", HangLine, on: false);
         }
 
         // 투구 — 사람 투구 껍데기 그대로(머리 크기가 사람과 같다).
@@ -452,9 +535,12 @@ public static partial class ChibiPawnCreator
     // ── 굽기 ────────────────────────────────────────────────────────────────
 
     // 보기 몸 하나 — 종족 데이터가 아직 없어 **어디서도 안 가리키는** 프리팹(`Elf/Chibi_Elf`)에 굽는다(드워프와 같은 길).
+    static long _elfT0; static double _elfHeadSecs;   // 굽기 시간 진단 — 머리를 빚는 데 든 시간(나머지는 몸 · 프리팹)
+
     static bool DressElf(Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases, Dictionary<string, Mesh> hairs)
     {
         _elfHead = null;
+        _elfT0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var parts = new Dictionary<string, List<Part>> { ["Male"] = ElfHeadParts(hairs) };
         string dp = PawnPrefabPaths.PathOf(ElfPreview);
         PawnPrefabPaths.Ensure(PawnPrefabPaths.FolderOf(ElfPreview));
@@ -462,6 +548,7 @@ public static partial class ChibiPawnCreator
         else                           { AssetDatabase.CopyAsset(Source, dp); AssetDatabase.ImportAsset(dp); }
         var eMats = OutfitMaterials(mats, "Elf", new Color32(0x47, 0x61, 0x42, 0xFF), new Color32(0x46, 0x3A, 0x2C, 0xFF), null, null);
         eMats["ElfLip"] = Variant(mats["Bone"], "Chibi_ElfLip", "_BaseColor", new Color(0.72f, 0.45f, 0.42f));
+        _elfHeadSecs = (System.Diagnostics.Stopwatch.GetTimestamp() - _elfT0) / (double)System.Diagnostics.Stopwatch.Frequency;
         return Dress(dp, ElfShape, parts, eMats, atlases, isSource: false, ElfLook);
     }
 
@@ -470,6 +557,7 @@ public static partial class ChibiPawnCreator
     [MenuItem("DungeonColony/Pawn/12. Create Elf Only (엘프만 — 다른 폰은 안 건드린다)")]
     public static void CreateElfOnly()
     {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var toon = Shader.Find(ToonShader); var faceSh = Shader.Find(FaceShader); var outer = Shader.Find(OuterShader);
         if (toon == null || faceSh == null || outer == null) { Debug.LogError("[엘프] 셰이더를 못 찾았다."); return; }
         var atlases = new Dictionary<string, ChibiFaceAtlas>();
@@ -489,8 +577,11 @@ public static partial class ChibiPawnCreator
         var mats = EnsureMaterials(toon, faceSh, outer, atlases);
 
         _saved.Clear();
+        NetsTimeReport();
         Heads = MakeHeads(ChibiFaceLayout.LoadOrCreate());
+        double prep = watch.Elapsed.TotalSeconds;
         bool ok = DressElf(mats, atlases, hairs);
+        double dressed = watch.Elapsed.TotalSeconds;
 
         foreach (var guid in AssetDatabase.FindAssets("t:Mesh", new[] { MeshDir }))
         {
@@ -498,7 +589,8 @@ public static partial class ChibiPawnCreator
             if (!_saved.Contains(path) && System.IO.Path.GetFileName(path).StartsWith("Chibi_Elf_")) AssetDatabase.DeleteAsset(path);
         }
         AssetDatabase.SaveAssets();
-        if (ok) Debug.Log($"[엘프] {PawnPrefabPaths.PathOf(ElfPreview)} — 머리 · 몸만 다시 구웠다(다른 폰은 그대로).");
+        if (ok) Debug.Log($"[엘프] {PawnPrefabPaths.PathOf(ElfPreview)} — 머리 · 몸만 다시 구웠다(다른 폰은 그대로) · {watch.Elapsed.TotalSeconds:F0}초.\n" +
+            $"[엘프 시간] 준비 {prep:F1}s · 머리 빚기 {_elfHeadSecs:F1}s(그중 {NetsTimeReport()}) · 몸 · 프리팹 {dressed - prep - _elfHeadSecs:F1}s · 정리 · 저장 {watch.Elapsed.TotalSeconds - dressed:F1}s");
     }
 
     // 엘프 — 머리는 빚은 머리 한 벌이다(눈 · 입 판 없음). 사람 머리 시절의 못 박음을 비운다. 털 색은 `MarkingLook`.
@@ -513,6 +605,15 @@ public static partial class ChibiPawnCreator
         so.FindProperty("fittedTo").stringValue = "";
         so.ApplyModifiedPropertiesWithoutUndo();
         if (!root.TryGetComponent(out MarkingLook _)) root.AddComponent<MarkingLook>();
+        // 종족은 엘프(털 색 · 살색 후보를 든다 — `EnsureElfData`). 베낀 원본(방랑자)은 사람을 가리킨다.
+        var elf = EnsureElfData();
+        if (elf != null && root.TryGetComponent(out UnitBrain brain))
+        {
+            var bso = new SerializedObject(brain);
+            bso.FindProperty("unitData").objectReferenceValue = elf;
+            bso.ApplyModifiedPropertiesWithoutUndo();
+        }
+        if (!root.TryGetComponent(out SkinLook _)) root.AddComponent<SkinLook>();
         look.Apply();
     }
 }

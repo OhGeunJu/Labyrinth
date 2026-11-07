@@ -36,6 +36,8 @@ Shader "DungeonColony/ToonOutlineOuter"
         _OutlineWidth("외곽선 굵기(m)", Range(0,0.12)) = 0.06
         _OutlineMin("외곽선 최소 굵기(px)", Range(0,4)) = 1
         _OutlineGroundPush("땅 이기기 여유(배)", Range(0,3)) = 1.3
+        // 당기기 시작하는 내려다보는 각(시선의 높이 성분 V.y — 0이면 수평 위로 다, 0.5면 30°부터). 늘어진 털 선(`Chibi_OutlineOuterBeard`)만 올린다.
+        _OutlinePushFrom("당기기 시작 각(V.y)", Range(0,1)) = 0
         [IntRange] _StencilRef("스텐실 번호(폰마다)", Range(0,255)) = 1
         // 얼굴의 선인가(코) — 켜면 번호 + 128과 비교해 **제 얼굴 위에서만** 비킨다(`PawnOutlineId`가 읽는다).
         [ToggleUI] _StencilFace("얼굴(번호 + 128)", Float) = 0
@@ -66,11 +68,12 @@ Shader "DungeonColony/ToonOutlineOuter"
                 float  _OutlineWidth;
                 float  _OutlineMin;
                 float  _OutlineGroundPush;
+                float  _OutlinePushFrom;
             CBUFFER_END
 
             #include "ToonOutlineHull.hlsl"
 
-            OutlineOut OutlineVert(OutlineIn v) { return OutlineHull(v, _OutlineGroundPush); }
+            OutlineOut OutlineVert(OutlineIn v) { return OutlineHull(v, _OutlineGroundPush, _OutlinePushFrom); }
             half4 OutlineFrag(OutlineOut i) : SV_Target { return _OutlineColor; }
             ENDHLSL
         }

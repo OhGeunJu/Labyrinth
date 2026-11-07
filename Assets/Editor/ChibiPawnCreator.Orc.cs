@@ -448,19 +448,19 @@ public static partial class ChibiPawnCreator
         foreach (var style in OrcHairs)
         {
             string st = style;
-            Add($"Head.Pick.Hair.{st}@Hair.!Bald", OrcSculpt($"Hair_{st}", p => OrcHair(st, p).hair, hairB, OrcHairStep, 0.35f), "HairFine", "OutlineOuterFine", on: false);
+            Add($"Head.Pick.Hair.{st}@Hair.!Bald", OrcSculpt($"Hair_{st}", p => OrcHair(st, p).hair, hairB, OrcHairStep, 0.35f), "HairFine", HangLine, on: false);
             if (st != "Mohawk")
                 Add($"Head.Pick.Hair.{st}.Cuff@Hair.!Bald", OrcSculpt($"Hair_{st}_Cuff", p => OrcHair(st, p).deco, hairB, OrcFineStep * 1.3f, 0.4f),
-                    "Bone", "OutlineOuterFine", on: false);
+                    "Bone", HangLine, on: false);
         }
         var beardB = new Bounds(new Vector3(0f, o.ChinY - 0.075f, 0.17f), new Vector3(0.72f, 0.78f, 0.62f));
         foreach (var style in OrcBeards)
         {
             string st = style;
-            Add($"Head.Pick.Beard.{st}@Beard.!None", OrcSculpt($"Beard_{st}", p => OrcBeard(st, p, o).hair, beardB, OrcHairStep * 0.8f, 0.35f), "HairFine", "OutlineOuterFine", on: false);
+            Add($"Head.Pick.Beard.{st}@Beard.!None", OrcSculpt($"Beard_{st}", p => OrcBeard(st, p, o).hair, beardB, OrcHairStep * 0.8f, 0.35f), "HairFine", HangLine, on: false);
             if (st is "Braid" or "TwinBraid")
                 Add($"Head.Pick.Beard.{st}.Cuff@Beard.!None", OrcSculpt($"Beard_{st}_Cuff", p => OrcBeard(st, p, o).deco, beardB, OrcFineStep * 1.3f, 0.4f),
-                    "Bone", "OutlineOuterFine", on: false);
+                    "Bone", HangLine, on: false);
         }
 
         // 문신 — 겹마다 따로 켜고 끈다(`Head.Pick.TatChin.On` · 끈 벌 `Off`는 조건에만). 색은 `MarkingLook`.

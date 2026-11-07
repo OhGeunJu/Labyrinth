@@ -20,7 +20,9 @@ def cap(p, th=0.030, front=0.0):
     ang = np.abs(np.arctan2(p[..., 0], p[..., 2]))
     above = p[..., 1] - (np.interp(ang, LINE_A, LINE_Y) + front)
     k = np.clip(above / 0.025, 0, 1); k = k * k * (3 - 2 * k)
-    hair = head(p) - th * k
+    # 머리를 고르게 키운 껍데기 — `head - 두께`로 부풀리면 원뿔꼴 정수리에서 두께가 안 붙어 살이 비쳤다(탈모 · 11-07 사용자 · 엘프와 같은 함정)
+    sc = 1 + th * k / 0.30
+    hair = head(p / sc[..., None]) * sc
     return smax(hair, -above, 0.006)
 
 def chain(p, pts, r0, r1): return O.chain(p, pts, r0, r1)

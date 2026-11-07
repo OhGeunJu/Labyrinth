@@ -262,6 +262,11 @@ public class UnitData : ScriptableObject
     [Tooltip("이 종족의 살색 후보. 비우면 프리팹 재질 그대로. 개체마다 씨앗이 하나를 고른다.")]
     public List<Color> SkinTones = new();
 
+    // **털 색도 종족이 든다**(2026-11-06 — 드워프: 붉은 · 생강 수염은 사람 기본 셋에 없다). 머리카락 · 수염 · 눈썹이 한 색이고,
+    // 칠하는 것은 `MarkingLook`이다(모양은 `PawnLook`). 비우면 `MarkingLook`의 기본 후보(`SeededHairs` — 검정 · 갈색 · 금발 · 적갈 · 잿빛).
+    [Tooltip("이 종족의 털 색 후보(머리카락 · 수염 · 눈썹). 비우면 `MarkingLook`의 기본 후보. 개체마다 씨앗이 하나를 고른다.")]
+    public List<Color> HairTones = new();
+
     // **얼굴 문신 — 부족마다 다르다**(2026-11-01, 사용자: *"일반 오크는 그냥 초록색에 노 타투 or 대장만 빨간 타투"*). 문신을 그리는 머리
     // (오크 — `ChibiPawnCreator.Orc`)만 읽는다(`MarkingLook`). 모양(어느 겹)은 씨앗이 고르고, 여기는 *지니나*와 *무슨 색*만 정한다.
     [Tooltip("대장이 아닌 개체가 얼굴 문신을 지닐 확률(0이면 대장만).")]

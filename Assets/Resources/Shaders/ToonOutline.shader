@@ -113,7 +113,7 @@ Shader "DungeonColony/ToonOutline"
             #include "ToonOutlineHull.hlsl"
             OutlineOut OutlineVert(OutlineIn v)
             {
-                OutlineOut o = OutlineHull(v, 0);
+                OutlineOut o = OutlineHull(v, 0, 0);
                 if (_OutlineBack > 0)
                 {
                     // **깊이만** 뒤로 — 시선 반대로 민 자리의 z/w를 원래 w에 싣는다(화면 자리는 그대로 · `OutlineHull`의 땅 당기기와 거꾸로).

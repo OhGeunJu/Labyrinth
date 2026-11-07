@@ -33,7 +33,7 @@ using UnityEngine;
 //
 // **고르는 축이 여럿인 머리**(2026-10-27 — 해골: 두개골 · 턱 · 이 · 빠진 이) — `Head.Pick.{축}.{벌}`. 축마다 씨앗이 따로 하나를
 // 고르고(축 이름을 씨앗에 섞는다), 못 박을 수도 있다(`pickOverrides`). 벌이 다른 축에 매이면 이름 뒤에 `@{축}.{벌}`을 붙인다 —
-// `@Jaw.!None`은 *턱이 없지 않을 때만*. 축과 벌은 렌더러 이름에서 모은다(조건에만 나오는 벌도 — 턱 `None`은 렌더러가 없다).
+// `@Jaw.!None`은 *턱이 없지 않을 때만* · `@Hair.Long|Mane`은 *둘 중 하나일 때만*. 축과 벌은 렌더러 이름에서 모은다(조건에만 나오는 벌도 — 턱 `None`은 렌더러가 없다).
 // 몸 관절에 붙은 조각도 같은 규칙이다(`Spine.Pick.Sash.On` — 2026-11-01 오우거). 살색은 축이 아니라 `SkinLook`이 고른다.
 public class PawnLook : MonoBehaviour
 {
@@ -75,6 +75,9 @@ public class PawnLook : MonoBehaviour
 
     public const string None = "-";
     public const string PickHair = "Hair";   // 고르는 축 중 머리카락 — 투구가 끈다(`ApplyPicks`)
+    // **조건에 머리 모양을 건다**(2026-11-07 — 사람 빚은 얼굴) — `@Shape.Male_SlimSoft`는 *지금 머리가 그것일 때만*. 머리 모양은 고르기 축이
+    // 아니라(`Shape` — 씨앗 · `shapeOverride`) 이 이름은 축으로 안 모은다. 머리 모양마다 따로 빚은 조각(코 · 눈썹)이 고른 벌 하나만 켠다.
+    public const string ShapeAxis = "Shape";
     public static readonly string[] FaceFeatures = { "EyeL", "EyeR", "Mouth" };
 
     [Tooltip("고르는 축을 못 박는다 — `축=벌`(예: `Jaw=None`). 없는 축이면 씨앗이 고른다.")]
@@ -355,9 +358,22 @@ public class PawnLook : MonoBehaviour
             // **투구를 쓰면 고른 머리카락(`Hair` 축 — 오크의 묶은 머리)도 끈다** — 사람 머리카락 묶음과 같은 규칙(투구 밑으로 뚫고 나온다).
             if (_helmeted && axis == PickHair) on = false;
             foreach (var (a, o, not) in when)
-                if (on && a != null && _picked.TryGetValue(a, out var got)) on = not ? got != o : got == o;
+            {
+                if (!on || a == null) continue;
+                if (a == ShapeAxis) on = not != AnyOf(o, Shape);
+                else if (_picked.TryGetValue(a, out var got)) on = not != AnyOf(o, got);
+            }
             r.enabled = on;
         }
+    }
+
+    // 조건의 벌 — `Long|Mane`이면 둘 중 하나(2026-11-08 — 사람 앞머리는 앞머리를 얹을 수 있는 머리카락에서만 켠다).
+    static bool AnyOf(string options, string got)
+    {
+        if (got == null) return false;
+        if (options.IndexOf('|') < 0) return options == got;
+        foreach (var o in options.Split('|')) if (o == got) return true;
+        return false;
     }
 
     // `Hook*` → `Hook`으로 시작하는 벌 중 하나(씨앗 · 축 이름으로 갈라 귀와 코가 따로 굴린다). 묶음이 아니거나 벌이 없으면 null.
@@ -486,7 +502,7 @@ public class PawnLook : MonoBehaviour
             string axis = segs[i].Substring(0, dot), opt = segs[i].Substring(dot + 1);
             bool not = opt.StartsWith("!");
             if (not) opt = opt.Substring(1);
-            Option(axis, opt);
+            if (axis != ShapeAxis) foreach (var o in opt.Split('|')) Option(axis, o);
             when[i - 1] = (axis, opt, not);
         }
         _pickParts.Add((r, head[2], head[3], when));
