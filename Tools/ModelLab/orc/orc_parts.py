@@ -146,25 +146,33 @@ def braid3(p, pts, r0, r1, n=16, side=(1.0, 0.0, 0.0)):   # 세 가닥 땋은 �
         c = c + sd * r * 0.32 * (1 if i % 2 == 0 else -1)
         d = smin(d, smin(seg(p, a, c, r * 0.58, r), seg(p, c, b, r, r * 0.58), 0.004), 0.008)
     return d
+def braid_ring(p, pts, r0, r1, frac, w=0.032):   # 땋은 가닥 위 고리 — 길을 따라 frac 자리 · 그 자리 굵기의 1.45배(엇갈린 마디까지 감싼다)
+    # 옛 사슬 굵기에 맞춘 고리는 세 가닥 땋기의 엇갈린 마디 속에 묻혀 흰 조각만 삐져나왔다(11-08 사용자 "수염 장신구가 이상해졌어")
+    P = np.array(pts, np.float32); L = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
+    at = lambda u: np.array([np.interp(u, L, P[:, k]) for k in range(3)], np.float32)
+    u = frac * L[-1]; c = at(u); ax = at(min(u + 0.006, L[-1])) - at(max(u - 0.006, 0)); ax /= np.linalg.norm(ax)
+    r = r0 + (r1 - r0) * frac
+    return cuff(p, c - ax * w * 0.5, c + ax * w * 0.5, (1.45 * r - 0.006) / 0.8)
 def h_warknot(p):   # 정수리 상투에서 등으로 땋아 내린 한 가닥 — v52까지는 마디(타원)가 떨어져 보였다(사용자) → 세 가닥 땋기 결로 촘촘히
     root = seg(p, V(0, 0.30, -0.10), V(0, 0.40, -0.13), 0.06, 0.05)
     pts = [V(0, 0.40, -0.14), V(0, 0.36, -0.30), V(0, 0.24, -0.40), V(0, 0.10, -0.44), V(0, -0.04, -0.46), V(0, -0.18, -0.47), V(0, -0.32, -0.47)]
     d = smin(root, braid3(p, pts, 0.046, 0.032, 18), 0.02)
     d = smin(d, seg(p, V(0, -0.32, -0.47), V(0, -0.40, -0.47), 0.026, 0.008), 0.01)               # 끝 술
-    return d, np.minimum(cuff(p, V(0, 0.345, -0.115), V(0, 0.385, -0.125), 0.058),
-                         cuff(p, V(0, -0.20, -0.47), V(0, -0.23, -0.47), 0.042))
+    return d, np.minimum(cuff(p, V(0, 0.345, -0.115), V(0, 0.385, -0.125), 0.058), braid_ring(p, pts, 0.046, 0.032, 0.82))
 def h_warknot_old(p):
     root = seg(p, V(0, 0.30, -0.10), V(0, 0.40, -0.13), 0.06, 0.05)
     pts = [V(0, 0.40, -0.14), V(0, 0.36, -0.30), V(0, 0.24, -0.40), V(0, 0.10, -0.44), V(0, -0.04, -0.46), V(0, -0.18, -0.47), V(0, -0.32, -0.47)]
     return smin(root, chain(p, pts, 0.045, 0.032), 0.02), np.minimum(cuff(p, V(0, 0.345, -0.115), V(0, 0.385, -0.125), 0.058),
                                                                     cuff(p, V(0, -0.20, -0.47), V(0, -0.23, -0.47), 0.038))
-def h_braids(p):   # 관자놀이에서 늘인 땋은 머리 두 가닥 + 뒤로 넘긴 머리
-    m = mirror(p); c = seg(m, V(0.20, 0.17, -0.18), V(0.25, 0.08, -0.17), 0.045, 0.042)
-    pts = [V(0.25, 0.08, -0.17), V(0.29, -0.02, -0.14), V(0.31, -0.12, -0.08), V(0.32, -0.22, -0.02),
-           V(0.32, -0.32, 0.04), V(0.31, -0.42, 0.10), V(0.30, -0.52, 0.15)]
-    br = chain(m, pts, 0.035, 0.026)
-    deco = np.minimum(cuff(m, V(0.31, -0.32, 0.095), V(0.31, -0.345, 0.105), 0.036), cuff(m, V(0.30, -0.52, 0.175), V(0.30, -0.545, 0.185), 0.031))
-    return smin(c, br, 0.02), deco
+def h_braids(p):   # 관자놀이 뒤에서 땋은 두 가닥 — 귀 뒤로 내려가 귀 밑을 크게 돌아 어깨 앞으로
+    # 귀 위를 지나 앞으로 내리면 귀 처리에 지워졌고(11-08 사용자 게임 화면), 타원 사슬은 마디가 끊겨 보였다 → 세 가닥 땋기 · 귀 처리(귀 밑 12cm)보다 아래로 돈다
+    m = mirror(p)
+    pts = [V(0.20, 0.18, -0.20), V(0.25, 0.08, -0.23), V(0.28, -0.05, -0.24), V(0.29, -0.20, -0.23), V(0.30, -0.34, -0.18),
+           V(0.31, -0.42, -0.06), V(0.30, -0.50, 0.06), V(0.29, -0.58, 0.13)]
+    br = braid3(m, pts, 0.036, 0.027, 24, side=(0.0, 0.0, 1.0))
+    br = smin(br, seg(m, V(0.29, -0.58, 0.13), V(0.285, -0.66, 0.16), 0.024, 0.008), 0.01)   # 끝 술
+    deco = np.minimum(braid_ring(m, pts, 0.036, 0.027, 0.62), braid_ring(m, pts, 0.036, 0.027, 0.93))
+    return br, deco
 
 # ── 숱이 있는 머리 셋(2026-11-06 — 사용자 그림 `_refs/2026-11-06_orc/`) ──
 # 위의 다섯은 민머리에 가닥만 얹었다. 이 셋은 **머리 전체를 덮는 숱 껍데기**(`cap`)에서 시작한다.
@@ -191,10 +199,13 @@ def ear_gap(p, d, ear_fn):   # **귀는 머리카락에 안 가린다**(사용�
             cut = np.minimum(cut, ear_fn(q))
     return smax(d, -(cut - 0.004), 0.004)
 def ear_cut(p, d): return ear_gap(p, d, ear)
-def with_ear_gap(h):   # (머리카락, 장식) 함수의 머리카락만 귀 자리를 덜어 낸다
+def with_ear_gap(h):   # (머리카락, 장식) 함수의 머리카락만 귀 자리를 덜어 낸다 · 민 층(`stubble`)도 같이
     def f(p):
         r = h(p); return (ear_cut(p, r[0]),) + tuple(r[1:])
-    f.__name__ = h.__name__; return f
+    f.__name__ = h.__name__
+    st = getattr(h, 'stubble', None)
+    if st is not None: f.stubble = lambda p, st=st: ear_cut(p, st(p))
+    return f
 def poly(p, pts, radii, k=0.02):
     d = NONE(p)
     for i in range(len(pts) - 1): d = smin(d, seg(p, pts[i], pts[i + 1], radii[i], radii[i + 1]), k)
@@ -246,7 +257,9 @@ def h_mane(p, flat=False):
         d = oscalp(p, lift, low, k=0.02)
     w = ease((np.abs(p[..., 0]) - 0.16) / 0.12)                                           # 위 → 옆
     comb = (1 - w) * np.sin(p[..., 0] * 70) + w * np.sin((p[..., 1] - 0.25 * p[..., 2]) * 60)
-    d = d + 0.0035 * comb
+    # 결 골은 이마선에서 0 → 안쪽으로 깊어진다 — 얇은 숱 끝까지 파면 이마선이 톱니가 되고 한가운데가 V로 파였다(11-08 사용자 '구멍')
+    fade = ease(-mask / 0.06) if low is None else ease((p[..., 1] - low) / 0.06)
+    d = d + 0.0035 * comb * fade
     back = ell(p, V(0, -0.08, -0.10), V(0.36, 0.40, 0.25))
     back = smax(back, (105 - ang) * 0.004, 0.03)
     back = smax(back, -(p[..., 1] + 0.36), 0.03)
@@ -274,7 +287,7 @@ def h_hookknot(p, hook=True):
     low = np.interp(ang, [0, 40, 75, 100, 140, 180], [EY + 0.24, EY + 0.24, EY + 0.11, EY + 0.04, -0.18, -0.26])   # 앞은 평평하게(가르마 금지)
     d = oscalp(p, 0.022, low)
     phi = np.arctan2(p[..., 0], p[..., 2] - KNOT[2])
-    d = d + 0.0035 * np.sin(phi * 22) * ease((0.36 - np.linalg.norm(p - KNOT, axis=-1)) / 0.25 + 0.3)   # 상투로 모이는 결
+    d = d + 0.0035 * np.sin(phi * 22) * ease((0.36 - np.linalg.norm(p - KNOT, axis=-1)) / 0.25 + 0.3) * ease((p[..., 1] - low) / 0.06)   # 상투로 모이는 결 — 이마선에서는 0(얇은 숱을 뚫어 V로 파였다)
     d = smin(d, ell(p, V(0, 0.33, -0.05), V(0.10, 0.07, 0.10)), 0.05)                     # 모인 숱이 부풀어 오른 밑동
     d = smin(d, seg(p, V(0, 0.34, -0.05), V(0, 0.44, -0.07), 0.080, 0.072), 0.03)
     if hook:
@@ -310,9 +323,112 @@ def h_hightail(p):
     d = smin(d, tail + 0.002 * np.sin(p[..., 0] * 60), 0.03)
     tie = cuff(p, TIE + V(0, 0.010, 0.005), TIE + V(0, 0.048, -0.010), 0.046)   # 끈 — 잘록한 목보다 살짝만 굵다
     return ear_cut(p, d), tie
+
+# ── 남자 새 머리 여섯(2026-11-08 사용자: "오크 남자 머리 6개 정도 더 — 밸런스") ──
+# 규칙: 꽁지는 끈 잘록 · TAIL_R · 말꼬리 / 풀어 내린 뒷머리는 겉면에 붙은 납작 가닥 / 숱은 고르게 키운 껍데기 · 결 골은 이마선에서 0 / 귀 처리.
+def surf_pt(a_deg, y, out=0.0):   # 방위각 a(앞 0 · 뒤 180) · 높이 y의 머리 겉면 점 + 바깥 out
+    a = np.radians(a_deg); dx, dz = np.sin(a), np.cos(a); lo, hi = 0.0, 0.6
+    for _ in range(40):
+        r = (lo + hi) * 0.5
+        if float(head(np.array([[dx * r, y, dz * r]], np.float32))[0]) < 0: lo = r
+        else: hi = r
+    return V(dx * (lo + out), y, dz * (lo + out))
+def surf_yz(x0, th_deg, out=0.0):   # x = x0 평면에서 각도 th(앞 0 · 위 90 · 뒤 180)의 머리 겉면 점 + 바깥 out
+    t = np.radians(th_deg); dy, dz = np.sin(t), np.cos(t); lo, hi = 0.0, 0.6
+    for _ in range(40):
+        r = (lo + hi) * 0.5
+        if float(head(np.array([[x0, dy * r, dz * r]], np.float32))[0]) < 0: lo = r
+        else: hi = r
+    n = np.array([x0 * 0.5, dy, dz], np.float32); n /= np.linalg.norm(n)
+    return V(x0, dy * lo, dz * lo) + n * out
+def nflat(p, pts, radii, n, F=2.2):   # 납작한 가닥 — 바깥 방향(n)으로 얇다(엘프 `nlock`)
+    n = np.asarray(n, np.float32)
+    def sq(q): return q + (F - 1) * (q @ n)[..., None] * n
+    return poly(sq(p), [sq(t) for t in pts], [r * F for r in radii], 0.02) / F
+M_LINE = ([0, 40, 75, 100, 140, 180], [EY + 0.24, EY + 0.24, EY + 0.10, EY + 0.04, -0.18, -0.26])   # 남자 기본 이마선(평평한 앞)
+def m_low(p): return np.interp(angle(p), *M_LINE)
+def shell(p, th, low, k=0.012, grow=True):   # 고르게 키운 숱 — 두께는 경계에서 차오른다(투구 턱 방지)
+    g = (0.25 + 0.75 * ease((p[..., 1] - low) / 0.07)) if grow else 1.0
+    sc = 1 + th * g / 0.30
+    sc3 = sc[..., None] if np.ndim(sc) else sc
+    return smax(head(p / sc3) * sc, low - p[..., 1], k)
+
+def buzz_layer(p):   # 짧게 민 층 — 살 위 얇은 층(색은 살과 머리색 사이 — 머리색이면 투구 같았다 · v71)
+    low = m_low(p)
+    return shell(p, 0.007, low, 0.006, grow=False)
+def h_buzz(p):   # 짧게 민 머리 — 민 층 하나뿐
+    return NONE(p), NONE(p)
+h_buzz.stubble = buzz_layer
+
+def h_undercut(p):   # 옆 · 뒤는 밀고(얇은 층) 윗머리만 길게 남겨 뒤로 넘긴다 — 정수리 뒤에서 목덜미 쪽으로 살짝 뻗친다
+    low = m_low(p)
+    ax = np.abs(p[..., 0])
+    band = 0.17 + 0.03 * ease(-p[..., 2] / 0.25)                                  # 위 띠 반폭(뒤로 조금 넓다)
+    top_low = np.where(p[..., 2] > -0.12, EY + 0.24, EY + 0.24 - 0.9 * (-0.12 - p[..., 2]))   # 뒤로 갈수록 내려간다
+    top = shell(p, 0.050, np.maximum(top_low, low), 0.012)
+    top = smax(top, ax - band, 0.02)
+    w = ease((p[..., 1] - (EY + 0.24)) / 0.06)
+    top = top + 0.003 * np.sin(p[..., 0] * 70) * w                                 # 뒤로 빗은 결(이마선에서 0)
+    flick = poly(p, [V(0, 0.10, -0.30), V(0, 0.0, -0.34), V(0, -0.07, -0.31)], [0.075, 0.06, 0.02], 0.02)   # 목덜미 쪽 뻗친 끝
+    return smin(top, flick, 0.03), NONE(p)
+h_undercut.stubble = buzz_layer   # 민 옆 · 뒤는 민 층 색으로(윗머리와 갈린다)
+
+def h_loose_dreads(p):   # 굵은 레게 다발을 묶지 않고 어깨까지 풀어 내린다 — 다발은 따로따로(울퉁불퉁한 줄)
+    hair = shell(p, 0.016, m_low(p), 0.01)
+    k = 0
+    # 내려오는 자리는 다발마다 따로 — 위 줄 열은 귀 뒤 128°~232°에 고르게, 아래 줄 여섯은 그 사이사이 조금 바깥(같은 길로 몰면 둘이 겹쳤다 · v74 사용자)
+    top_a = (100, 118, 135, 155, 170, 190, 205, 225, 242, 260); cols = np.linspace(128, 232, 10)
+    low_a = (135, 155, 170, 190, 205, 225); mids = ((cols[:-1] + cols[1:]) * 0.5)[[1, 2, 3, 5, 6, 7]]
+    for a, ac, y0, out in [(a, c, 0.18, 0.035) for a, c in zip(top_a, cols)] + [(a, c, 0.04, 0.060) for a, c in zip(low_a, mids)]:
+            s = surf_pt(a, y0, 0.010); c = surf_pt(ac, -0.06, out)
+            e = V(c[0] * 1.08, -0.44 + 0.04 * ((k * 5) % 3) / 2, c[2] * 1.08)
+            pts = [s, V((s[0] + c[0]) * 0.5, (y0 - 0.06) * 0.5, (s[2] + c[2]) * 0.5) * 1.04, c, e]
+            rr = [0.026 * (1 + 0.12 * np.sin(k * 1.7 + i)) for i in range(4)]
+            hair = smin(hair, poly(p, pts, rr, 0.006), 0.012); k += 1
+    return hair, NONE(p)
+
+def h_cornrows(p):   # 이마에서 목덜미까지 두피를 따라 줄지어 땋고(다섯 줄), 끝은 짧은 땋은 가닥으로 늘어뜨린다
+    hair = shell(p, 0.008, m_low(p), 0.006, grow=False)
+    for x0 in (-0.13, -0.065, 0.0, 0.065, 0.13):
+        path = [surf_yz(x0, th, 0.018) for th in np.linspace(38, 205, 14)]
+        end = path[-1]
+        path += [end + V(0, -0.10, -0.02), end + V(0, -0.20, -0.02)]
+        hair = smin(hair, braid3(p, path, 0.026, 0.020, 26, side=(1.0, 0.0, 0.0)), 0.006)
+    return hair, NONE(p)
+
+def h_spikes(p):   # 짧은 머리가 사방으로 뾰족하게 뻗친다 — 숱 위에 짧은 뿔 가닥
+    hair = shell(p, 0.022, m_low(p), 0.01)
+    k = 0
+    for a in range(0, 360, 40):
+        for y0 in (0.30, 0.20, 0.08):
+            if y0 == 0.08 and (a < 60 or a > 300): continue
+            if y0 == 0.30 and a % 80: continue
+            s = surf_pt(a, y0, 0.0); n = np.array([s[0], s[1] * 1.6, s[2]], np.float32); n /= np.linalg.norm(n)
+            L = 0.08 + 0.03 * ((k * 7) % 3) / 2
+            tip = s + n * L + V(0, 0.02, -0.03)
+            hair = smin(hair, seg(p, s, tip, 0.032, 0.003), 0.014); k += 1
+    return hair, NONE(p)
+
+def h_halfup(p):   # 반묶음 — 윗머리만 정수리 뒤에서 묶어 짧은 꽁지 · 아랫머리는 어깨까지 풀어 내린다(겉면에 붙은 납작 가닥)
+    hair = shell(p, 0.024, m_low(p), 0.012)
+    R = surf_pt(180, 0.24, 0.04)
+    for dx, dz, sc in ((-0.03, 0.0, 0.9), (0.0, 0.02, 1.0), (0.03, -0.01, 0.92), (0.0, -0.03, 0.95)):
+        pts = bez(R, R + V(dx * 0.3, 0.08, -0.05), R + V(dx * 0.8, 0.02, -0.17), R + V(dx * 1.6, -0.30 * sc, -0.18 + dz), 8)
+        hair = smin(hair, poly(p, pts, [r * 0.8 for r in TAIL_R], 0.006), 0.03)        # 짧은 꽁지(규칙대로)
+    for a in np.linspace(125, 235, 9):   # 귀 뒤에서만 — 귀 쪽 가닥(105° · 120°)은 귀에 걸려 끊겼다(11-08 덩어리 세기)
+        n = np.array([np.sin(np.radians(a)), 0.0, np.cos(np.radians(a))], np.float32)
+        top = surf_pt(a, 0.10, -0.004); mid = surf_pt(a, -0.06, 0.012)
+        y_end = -0.46 + 0.14 * ((a - 180) / 75) ** 2                                   # 가운데가 길고 옆으로 짧다(네모 판처럼 뭉뚝했다 · v71)
+        pts = [top, mid, V(mid[0], (y_end - 0.06) * 0.5, mid[2]) + n * 0.006, V(mid[0], y_end, mid[2]) + n * 0.014]
+        hair = smin(hair, nflat(p, pts, [0.050, 0.052, 0.042, 0.014], n), 0.02)
+    tie = cuff(p, R + V(0, 0.012, 0.004), R + V(0, -0.025, -0.012), 0.050)
+    return hair, tie
+
 h_topknot, h_warknot, h_ponytail, h_mohawk, h_braids = (with_ear_gap(h) for h in (h_topknot, h_warknot, h_ponytail, h_mohawk, h_braids))   # 귀 B
+h_buzz, h_undercut, h_loose_dreads, h_cornrows, h_spikes, h_halfup = (with_ear_gap(h) for h in (h_buzz, h_undercut, h_loose_dreads, h_cornrows, h_spikes, h_halfup))
 HAIRS = [('Bald', h_bald), ('Topknot', h_topknot), ('WarKnot', h_warknot), ('Ponytail', h_ponytail), ('Mohawk', h_mohawk), ('Braids', h_braids),
-         ('Mane', h_mane), ('KnotTail', h_knottail), ('HighTail', h_hightail)]
+         ('Mane', h_mane), ('KnotTail', h_knottail), ('HighTail', h_hightail),
+         ('Buzz', h_buzz), ('Undercut', h_undercut), ('LooseDreads', h_loose_dreads), ('Cornrows', h_cornrows), ('Spikes', h_spikes), ('HalfUp', h_halfup)]
 
 # ── 수염 ── (수염, 장식) — 턱 앞(아랫입술 밑)에서 시작한다
 CHIN_Y = MY - 0.10; CHIN_Z = LIP_Z - 0.03
@@ -324,16 +440,16 @@ def b_braid(p):
     root = patch(p)
     pts = [V(0, CHIN_Y, CHIN_Z), V(0, CHIN_Y - 0.08, CHIN_Z + 0.01), V(0, CHIN_Y - 0.16, CHIN_Z + 0.03),
            V(0, CHIN_Y - 0.24, CHIN_Z + 0.06), V(0, CHIN_Y - 0.31, CHIN_Z + 0.09)]
-    br = chain(p, pts, 0.055, 0.035)
+    br = braid3(p, pts, 0.055, 0.036, 14, side=(1.0, 0.0, 0.0))   # 타원 사슬은 마디가 끊겨 보였다(11-08) → 세 가닥 땋기
     tuft = seg(p, V(0, CHIN_Y - 0.31, CHIN_Z + 0.09), V(0, CHIN_Y - 0.41, CHIN_Z + 0.12), 0.04, 0.012)
-    return smin(smin(root, br, 0.025), tuft, 0.02), cuff(p, V(0, CHIN_Y - 0.26, CHIN_Z + 0.07), V(0, CHIN_Y - 0.285, CHIN_Z + 0.078), 0.045)
+    return smin(smin(root, br, 0.025), tuft, 0.02), braid_ring(p, pts, 0.055, 0.036, 0.80)
 def b_twin(p):
     m = mirror(p)
     root = patch(p, 0.12)
     pts = [V(0.06, CHIN_Y, CHIN_Z), V(0.065, CHIN_Y - 0.08, CHIN_Z + 0.01), V(0.07, CHIN_Y - 0.16, CHIN_Z + 0.03),
            V(0.07, CHIN_Y - 0.24, CHIN_Z + 0.06)]
-    br = chain(m, pts, 0.042, 0.032)
-    return smin(root, br, 0.025), cuff(m, V(0.07, CHIN_Y - 0.19, CHIN_Z + 0.04), V(0.07, CHIN_Y - 0.21, CHIN_Z + 0.048), 0.038)
+    br = braid3(m, pts, 0.042, 0.032, 10, side=(1.0, 0.0, 0.0))   # 세 가닥 땋기(11-08)
+    return smin(root, br, 0.025), braid_ring(m, pts, 0.042, 0.032, 0.78)
 def b_shaggy(p):   # 입술 바로 밑에서 턱을 덮는 짧은 수염(v25 L)
     d = smax(jaw(p) - 0.03, p[..., 1] - (MY - 0.05), 0.02)
     d = smax(d, -p[..., 2], 0.03)
@@ -371,12 +487,9 @@ def b_braidfull(p):   # 덥수룩한 수염(구레나룻 → 턱 → 목께) + �
     m = mirror(p)
     pts = [V(0.13, CHIN_Y - 0.02, CHIN_Z + 0.01), V(0.14, CHIN_Y - 0.12, CHIN_Z + 0.03), V(0.145, CHIN_Y - 0.21, CHIN_Z + 0.05),
            V(0.15, CHIN_Y - 0.30, CHIN_Z + 0.06), V(0.15, CHIN_Y - 0.39, CHIN_Z + 0.07), V(0.15, CHIN_Y - 0.47, CHIN_Z + 0.075)]
-    d = smin(d, chain(m, pts, 0.050, 0.038), 0.025)
+    d = smin(d, braid3(m, pts, 0.050, 0.038, 18, side=(1.0, 0.0, 0.0)), 0.025)   # 세 가닥 땋기(11-08)
     d = smin(d, seg(m, V(0.15, CHIN_Y - 0.47, CHIN_Z + 0.075), V(0.15, CHIN_Y - 0.56, CHIN_Z + 0.08), 0.038, 0.012), 0.015)
-    deco = NONE(p)
-    for y, r in ((CHIN_Y - 0.25, 0.050), (CHIN_Y - 0.34, 0.046), (CHIN_Y - 0.43, 0.042)):
-        zc = CHIN_Z + 0.03 + (CHIN_Y - y) * 0.10
-        deco = np.minimum(deco, cuff(m, V(0.15, y + 0.014, zc), V(0.15, y - 0.014, zc + 0.004), r))
+    deco = np.minimum(np.minimum(braid_ring(m, pts, 0.050, 0.038, 0.50), braid_ring(m, pts, 0.050, 0.038, 0.68)), braid_ring(m, pts, 0.050, 0.038, 0.86))
     return d, deco
 def b_tied(p):   # 묶은 세 묶음 — 덥수룩한 수염 아래가 세 묶음으로(가운데가 길다 · 고리 하나씩) · v32는 너무 굵었다
     d = smin(full_beard(p, 0.18, 0.22, 0.10), moustache(p, 0.07), 0.02)
@@ -451,6 +564,8 @@ SHIRT = (0.35, 0.27, 0.18); STUBBLE = (0.28, 0.34, 0.21); WHITE = (0.95, 0.95, 0
 
 def pieces(hair=h_topknot, bd=b_braid, tat=None):
     extra = [(tattoo(tat[0]), tat[1])] if tat else []
+    st = getattr(hair, 'stubble', None)
+    if st is not None: extra.append((st, STUBBLE))   # 민 층 — 살과 머리색 사이
     return extra + [(orc_head, SKIN), (mouth, RED), (teeth, BONE), (tusks, BONE), (eyes, DARK), (glint, WHITE), (body, SHIRT),
             (lambda p: hair(p)[0], HAIR), (lambda p: hair(p)[1], BONE),
             (lambda p: bd(p)[0], HAIR), (lambda p: bd(p)[1], BONE)]

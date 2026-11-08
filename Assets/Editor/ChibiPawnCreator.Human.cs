@@ -16,7 +16,21 @@ public static partial class ChibiPawnCreator
 {
     const float HumanSlimH = 0.88f, HumanEyeSpread = 0.82f;
     static bool HumanDropped(string head) => head.EndsWith("BroadSharp");
-    static readonly string[] HumanNoses = { "Button", "Straight", "Broad" };
+    // 코 일곱(11-08 사용자: *"다른 종족 코들에 비해 디테일이 떨어져"* · *"코 세개는 너무 적은데"*) — 모두 같은 뼈대(콧대 · 코끝 · 콧방울 · 콧구멍)의
+    // 크기 · 자리만 바꾼다(미리보기 `human.nose` · 덩어리를 따로 얹은 매부리 · 들창코는 *"너무 못만들었어"*). 파인 자리는 그늘(`SkinShaded`).
+    // tip 코끝 반지름(가로 · 세로 · 앞뒤) · tipZ 앞으로 · drop 아래로 · ala 콧방울(옆 · 크기) · alaZ · bridge 콧대 굵기(위 · 아래, 0이면 없음) · nos 콧구멍(옆 · 크기)
+    static readonly (string Name, Vector3 Tip, float TipZ, float Drop, Vector2 Ala, float AlaZ, Vector2 Bridge, Vector2 Nos)[] HumanNoseSpecs =
+    {
+        ("Button",   new(0.022f, 0.021f, 0.021f), 0.020f, -0.004f, new(0.020f, 0.015f), 0.004f, Vector2.zero,           new(0.011f, 0.0065f)),
+        ("Straight", new(0.020f, 0.019f, 0.020f), 0.026f,  0.000f, new(0.019f, 0.014f), 0.006f, new(0.010f, 0.016f),   new(0.010f, 0.0060f)),
+        ("Broad",    new(0.026f, 0.024f, 0.024f), 0.020f,  0.000f, new(0.031f, 0.019f), 0.004f, new(0.013f, 0.019f),   new(0.014f, 0.0075f)),
+        ("Pointed",  new(0.015f, 0.015f, 0.022f), 0.030f, -0.002f, new(0.015f, 0.012f), 0.006f, new(0.008f, 0.012f),   new(0.008f, 0.0050f)),
+        ("Bulb",     new(0.030f, 0.027f, 0.026f), 0.020f,  0.004f, new(0.024f, 0.017f), 0.004f, new(0.010f, 0.015f),   new(0.012f, 0.0070f)),
+        ("Long",     new(0.019f, 0.021f, 0.020f), 0.028f,  0.012f, new(0.018f, 0.014f), 0.006f, new(0.011f, 0.016f),   new(0.010f, 0.0060f)),
+        ("Flat",     new(0.024f, 0.016f, 0.016f), 0.010f,  0.000f, new(0.030f, 0.015f), 0.002f, Vector2.zero,           new(0.014f, 0.0070f)),
+    };
+    // 입 여섯(11-08 사용자: *"입이 종류가 하나밖에 없어서 look에서 입을 바꾸는 곳이 안보였다"* · *"입 좀 더 크게"*) — 고르기 축 `Head.Pick.Mouth.*`.
+    static readonly string[] HumanMouths = { "Line", "Smile", "Small", "Frown", "Smirk", "Open" };
     // 이름: 굵기 안 · 밖, 아치 높이, 기울기(미리보기 `BROWS`)
     static readonly (string Name, float Th0, float Th1, float Arch, float Tilt)[] HumanBrows =
     {
@@ -59,19 +73,19 @@ public static partial class ChibiPawnCreator
 
     // ── 얼굴 ────────────────────────────────────────────────────────────────
 
-    static float HumanNose(Vector3 p, HumanFrame f, string kind)
+    static float HumanNose(Vector3 p, HumanFrame f, int k)
     {
+        var n = HumanNoseSpecs[k];
         var m = Mirror(p); float z = f.ZN, ny = f.NY;
-        switch (kind)
-        {
-            case "Button":     // 작고 둥근 코끝 — 콧대는 거의 없다
-                return SMin(Sph(p, V3(0, ny + 0.004f, z + 0.016f), 0.024f), Sph(m, V3(0.020f, ny - 0.006f, z + 0.002f), 0.016f), 0.010f);
-            case "Straight":   // 곧은 콧대 · 작은 끝
-                return SMin(Seg(p, V3(0, f.EY - 0.005f, f.ZE), V3(0, ny + 0.004f, z + 0.026f), 0.011f, 0.018f),
-                            Ell(p, V3(0, ny - 0.002f, z + 0.024f), V3(0.024f, 0.019f, 0.020f)), 0.012f);
-            default:           // 넓고 둥근 코 — 콧방울이 벌어진다
-                return SMin(Ell(p, V3(0, ny - 0.002f, z + 0.014f), V3(0.040f, 0.026f, 0.028f)), Sph(m, V3(0.032f, ny - 0.010f, z + 0.002f), 0.020f), 0.012f);
-        }
+        var tc = V3(0, ny - n.Drop, z + n.TipZ);
+        float d = Ell(p, tc, n.Tip);
+        if (n.Bridge.x > 0f) d = SMin(d, Seg(p, V3(0, f.EY - 0.005f, f.ZE), tc + V3(0, 0.010f, -0.004f), n.Bridge.x, n.Bridge.y), 0.012f);
+        float ax = n.Ala.x, ay = n.Ala.y, aly = ny - 0.006f - n.Drop * 0.5f;
+        d = SMin(d, Ell(m, V3(ax, aly, z + n.AlaZ), V3(ay, ay * 0.85f, ay * 0.9f)), 0.008f);                       // 콧방울
+        d = SMax(d, -Ell(m, V3(ax - 0.008f, aly, z + n.AlaZ + ay * 0.55f), V3(0.004f, 0.006f, 0.004f)), 0.004f);  // 콧방울 주름(코끝과 가른다)
+        float nr = n.Nos.y;
+        d = SMax(d, -Ell(m, V3(n.Nos.x, tc.y - n.Tip.y * 0.75f, z + n.TipZ * 0.55f), V3(nr, nr * 0.6f, nr * 1.4f)), 0.003f);   // 콧구멍 — 밑에서 판다
+        return d;
     }
 
     static float HumanEar(Vector3 p, HumanFrame f)   // 둥근 사람 귀 — 머리 옆에 세운 납작한 콩 · 안쪽은 오목
@@ -106,8 +120,22 @@ public static partial class ChibiPawnCreator
         => OnFace(p, f, Ell(Mirror(p), V3(f.EX, f.EY - 0.004f, f.ZE), V3(f.ER * 0.80f, f.ER * 0.92f, 0.3f)), 0.004f);
     static float HumanGlint(Vector3 p, HumanFrame f)
         => OnFace(p, f, Ell(Mirror(p), V3(f.EX - f.ER * 0.25f, f.EY + f.ER * 0.25f, f.ZE), V3(f.ER * 0.25f, f.ER * 0.25f, 0.3f)), 0.007f);
-    static float HumanMouth(Vector3 p, HumanFrame f)
-        => OnFace(p, f, Mathf.Max(Mathf.Abs(p.y - (f.MY + 0.004f)) - 0.004f, Mathf.Abs(p.x) - 0.040f), 0.003f);
+    static float HumanMouth(Vector3 p, HumanFrame f, string kind)   // 얼굴 살에 칠한 띠 — 폭 5.2cm · 굵기 8mm(미리보기 `human.mouth`)
+    {
+        float x = p.x, y = p.y - (f.MY + 0.004f), th = 0.0040f, w = 0.052f, yc;
+        switch (kind)
+        {
+            case "Smile": yc = 3.5f * x * x - 0.003f; w = 0.056f; break;
+            case "Small": yc = 0f; w = 0.032f; break;
+            case "Frown": yc = -3.2f * x * x + 0.003f; w = 0.048f; break;
+            case "Smirk": { float a = Mathf.Max(x, 0f), b = Mathf.Min(x, 0f); yc = 4.2f * a * a + 0.5f * b * b; break; }
+            case "Open":  return OnFace(p, f, Ell(p, V3(0, f.MY + 0.001f, f.ZM), V3(0.027f, 0.015f, 0.3f)), 0.003f);   // 벌린 입 — 타원
+            default:      yc = 0.25f * x * x; break;
+        }
+        float r = Mathf.Abs(x) / w;
+        th *= 1f - 0.45f * r * r;                                                                             // 입꼬리로 가늘게
+        return OnFace(p, f, Mathf.Max(Mathf.Abs(y - yc) - th, Mathf.Abs(x) - w), 0.003f);
+    }
 
     static float HumanBrow(Vector3 p, HumanFrame f, (string, float Th0, float Th1, float Arch, float Tilt) b)   // 살갗에 칠한 눈썹 띠
     {
@@ -140,6 +168,12 @@ public static partial class ChibiPawnCreator
             if (relax) Relax(surf.Verts, surf.Tris, 6);
             return SaveSkull($"Chibi_Human_{h.Name}_{name}", surf);
         }
+        Mesh SculptIn(string name, Func<Vector3, float> sdf, Bounds b, float step, float keep, Func<Vector3, float> scene)
+        {
+            var surf = SurfaceNets(sdf, b, step, scene, p => p, 0.02f, 4f, keep);
+            Relax(surf.Verts, surf.Tris, 6);
+            return SaveSkull($"Chibi_Human_{h.Name}_{name}", surf);
+        }
         void Add(string name, Mesh mesh, string mat, string line, bool on = true)
             => parts.Add(new Part(name, mesh, pos, Vector3.one, mat, on, outerMat: line));
 
@@ -149,8 +183,12 @@ public static partial class ChibiPawnCreator
         var eyeB = new Bounds(new Vector3(0f, f.EY, f.ZE - 0.02f), new Vector3(2f * (f.EX + f.ER) + 0.04f, 2f * f.ER + 0.04f, 0.10f));
         Add($"Head.Shape.{h.Name}.Eyes",  Sculpt("Eyes",  p => HumanEyes(p, f),  eyeB, 0.002f, 0.5f),  "NoseDark", null);
         Add($"Head.Shape.{h.Name}.Glint", Sculpt("Glint", p => HumanGlint(p, f), eyeB, 0.0015f, 0.5f), "Bone", null);
-        var mouthB = new Bounds(new Vector3(0f, f.MY + 0.004f, f.ZM - 0.01f), new Vector3(0.12f, 0.04f, 0.08f));
-        Add($"Head.Shape.{h.Name}.Mouth", Sculpt("Mouth", p => HumanMouth(p, f), mouthB, 0.0015f, 0.5f), "HumanLip", null);
+        var mouthB = new Bounds(new Vector3(0f, f.MY + 0.002f, f.ZM - 0.015f), new Vector3(0.14f, 0.06f, 0.09f));
+        foreach (var mk in HumanMouths)
+        {
+            string k = mk;
+            Add($"Head.Pick.Mouth.{k}{sh}", Sculpt($"Mouth_{k}", p => HumanMouth(p, f, k), mouthB, 0.0015f, 0.5f), "HumanLip", null, on: k == HumanMouths[0]);
+        }
 
         // 귀 — 둥근 사람 귀 하나(머리 살에 녹인다).
         var earB = new Bounds(new Vector3(0f, (f.EY + f.NY) * 0.5f, -0.03f), new Vector3(2f * f.R0 + 0.16f, 0.22f, 0.18f));
@@ -158,11 +196,13 @@ public static partial class ChibiPawnCreator
 
         // 코 셋 · 눈썹 셋 — 고르기 축(이 머리일 때만).
         var noseB = new Bounds(new Vector3(0f, (f.EY + f.NY) * 0.5f, f.ZN), new Vector3(0.16f, f.EY - f.NY + 0.12f, 0.14f));
-        foreach (var n in HumanNoses)
+        for (int ni = 0; ni < HumanNoseSpecs.Length; ni++)
         {
-            string k = n;
-            Add($"Head.Pick.Nose.{k}{sh}", Sculpt($"Nose_{k}", p => HumanMelt(p, f, HumanNose(p, f, k), 0.010f), noseB, 0.002f, 0.4f, relax: true),
-                "SkinFine", "OutlineOuterFine", on: k == HumanNoses[0]);
+            int k = ni; string nn = HumanNoseSpecs[k].Name;
+            Func<Vector3, float> nose = p => HumanMelt(p, f, HumanNose(p, f, k), 0.010f);
+            // 그늘(정점 색 — `SkinShaded`)은 코 자신을 장면으로 잰다 — 머리만 재면 콧구멍 · 콧방울 주름이 안 어두워진다.
+            Add($"Head.Pick.Nose.{nn}{sh}", SculptIn($"Nose_{nn}", nose, noseB, 0.002f, 0.4f, nose),
+                "SkinShaded", "OutlineOuterFine", on: k == 0);
         }
         var browB = new Bounds(new Vector3(0f, f.EY + f.ER + 0.05f, f.ZE - 0.04f), new Vector3(2f * (f.EX + f.ER * 1.5f) + 0.04f, 0.12f, 0.20f));
         foreach (var b in HumanBrows)

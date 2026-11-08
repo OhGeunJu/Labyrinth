@@ -122,6 +122,22 @@ public class UnitData : ScriptableObject
              "살아온 내력이라는 것이 없다.")]
     public bool UsesBackstory;
 
+    // **종족의 배경 갈래**(2026-11-09, 사용자: *"배경도 따로 두면 좋긴하지 공유할만한 건 공유하고 · 오크는 종족 배경"*).
+    // 세력의 묶음(`FactionData.BackstoryGroup`)에 종족이 얹는다 — 답은 `StoryGroupFor` 하나(`PawnSpec`이 굴릴 때 부른다).
+    [Tooltip("종족 배경 뿌리 — 적으면 세력과 상관없이 이 묶음에서 굴린다(오크 `orc`). 세력 묶음이 이 뿌리의 갈래(`orc.frost`)면 그것을 쓴다.")]
+    public string BackstoryRoot;
+    [Tooltip("종족 배경 갈래 — 세력 묶음 뒤에 붙인다(엘프 `elf` → `civilian.elf`: 일반 배경을 함께 쓰고 엘프 배경이 더해진다).")]
+    public string BackstoryBranch;
+
+    public string StoryGroupFor(string factionGroup)
+    {
+        string g = string.IsNullOrWhiteSpace(factionGroup) ? BackstoryPool.DefaultGroup : factionGroup;
+        if (!string.IsNullOrWhiteSpace(BackstoryRoot))
+            return g == BackstoryRoot || g.StartsWith(BackstoryRoot + ".") ? g : BackstoryRoot;
+        if (!string.IsNullOrWhiteSpace(BackstoryBranch)) return g + "." + BackstoryBranch;
+        return factionGroup;
+    }
+
     [Header("등급 (기본)")]
     [Tooltip("오버라이드되지 않은 모든 스탯의 기본 등급 범위")]
     public StatGrade DefaultMinGrade = StatGrade.D;

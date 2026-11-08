@@ -444,6 +444,11 @@ public static partial class ChibiPawnCreator
                 "SkinFine", "OutlineOuterFine", on: name == "Big");
 
         // 머리카락 · 수염 — 없는 벌(민머리 · 없음)은 렌더러가 없어 조건에만 적는다(`@Hair.!Bald`).
+        // **파이썬이 뽑은 메시가 있으면 그것을 쓴다**(`Pawn/14` · `ChibiPawnCreator.OrcHairBaked`) — 아래 수식은 뽑기를 안 돌린 체크아웃의 옛 판.
+        var bakedHair = OrcBakedHairParts("Male", pos);
+        if (bakedHair != null) parts.AddRange(bakedHair);
+        else
+        {
         var hairB = new Bounds(new Vector3(0f, -0.01f, -0.08f), new Vector3(0.80f, 1.24f, 0.98f));
         foreach (var style in OrcHairs)
         {
@@ -461,6 +466,7 @@ public static partial class ChibiPawnCreator
             if (st is "Braid" or "TwinBraid")
                 Add($"Head.Pick.Beard.{st}.Cuff@Beard.!None", OrcSculpt($"Beard_{st}_Cuff", p => OrcBeard(st, p, o).deco, beardB, OrcFineStep * 1.3f, 0.4f),
                     "Bone", HangLine, on: false);
+        }
         }
 
         // 문신 — 겹마다 따로 켜고 끈다(`Head.Pick.TatChin.On` · 끈 벌 `Off`는 조건에만). 색은 `MarkingLook`.

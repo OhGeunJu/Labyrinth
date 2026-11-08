@@ -89,12 +89,20 @@ public class MarkingLook : MonoBehaviour
 
     public void Apply() => Apply(gate: true);
 
+    // 고른 머리색(`Seeded`면 종족 · 씨앗) — 캐릭터 창이 고르고 태어날 폰에 못 박는다. 칠만 한다(겹은 그대로).
+    public HairTone HairPick => hair;
+    public void SetHair(HairTone t) { hair = t; Apply(gate: false); }
+
+    // 두뇌가 없는 몸(캐릭터 창 미리보기 — 스크립트를 뗀다)에 종족을 알려 준다 — 씨앗 색이 태어날 폰과 같게.
+    UnitData _raceHint;
+    public void SetRaceHint(UnitData data) { _raceHint = data; Apply(gate: false); }
+
     // `gate` — 문신 겹을 켜고 끄기까지 하나(거짓이면 칠만).
     void Apply(bool gate)
     {
         if (!TryGetComponent(out PawnLook look)) return;
         int seed = look.Seed;
-        var data = TryGetComponent(out UnitBrain brain) ? brain.Data : null;
+        var data = TryGetComponent(out UnitBrain brain) ? brain.Data : _raceHint;
         bool leader = brain != null && brain.Adulthood != null && brain.Adulthood.Leads;
 
         // 지니나 — 못 박은 것 > 종족의 규칙(대장 · 확률). 종족을 모르면(프리팹을 열었을 때) 씨앗의 겹 그대로.
@@ -180,11 +188,11 @@ public class MarkingLook : MonoBehaviour
             var parts = r.name.Split('@')[0].Split('.');
             if (parts.Length < 4 || parts[0] != "Head" || parts[1] != "Pick") continue;
             if (parts[2].StartsWith("Tat")) _ink.Add(r);
-            else if (parts[2] == PawnLook.PickHair || parts[2] == "Beard" || parts[2] == "Brow")   // 눈썹(드워프 — `Head.Pick.Brow.*`)도 털 색
+            else if (parts[2] == PawnLook.PickHair || parts[2] == PawnLook.PickBangs || parts[2] == "Beard" || parts[2] == "Brow")   // 눈썹(드워프 — `Head.Pick.Brow.*`)도 털 색
             {
                 // 머리카락 덩어리(조각 이름 없음) · 짧은 머리(`.Short`)는 머리색 · 반삭(`.Buzz`)은 살과 섞은 색 · 땋은 장식(`.Plait`)은 한 톤 어둡게 · 뼈 고리 · 가죽 · 쇠(`.Cuff` · `.Leather` · `.Metal` · `.Ring`)는 안 칠한다.
                 string piece = parts.Length > 4 ? parts[4] : null;
-                if (piece == null || piece == "Short") _hair.Add(r);
+                if (piece == null || piece == "Short" || piece == "Tie") _hair.Add(r);   // `.Tie` — 사람 머리카락의 끈 · 묶음(머리색)
                 else if (piece == "Buzz") _buzz.Add(r);
                 else if (piece == "Plait") _plait.Add(r);
             }

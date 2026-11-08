@@ -87,6 +87,7 @@ public class PawnPreviewStage : MonoBehaviour
         hold.SetActive(false);
         _pawn = Instantiate(bodyPrefab, hold.transform);
         BuildModeManager.StripScripts(_pawn, b => b is PawnLook || b is ChibiFacePart || b is PawnOutlineId
+                                                  || b is MarkingLook || b is SkinLook   // 머리색 · 살색(캐릭터 창에서 고른다 — 11-08)
                                                   || b is PawnRig || b is PawnBody);
         foreach (var c in _pawn.GetComponentsInChildren<Collider>(true)) c.enabled = false;
 

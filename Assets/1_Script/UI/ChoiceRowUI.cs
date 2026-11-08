@@ -23,6 +23,9 @@ public class ChoiceRowUI : MonoBehaviour
         if (next != null) next.onClick.AddListener(() => OnStep?.Invoke(this, +1));
     }
 
+    // 이름표 — 복제한 줄(고르기 축 줄 · `CharacterCreationUI`)이 제 축 이름을 단다.
+    public void SetLabel(string text) { if (label != null) label.text = text; }
+
     public void Show(string text, bool canStep)
     {
         if (value != null) value.text = text;

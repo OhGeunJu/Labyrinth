@@ -1,6 +1,6 @@
-"""오크 머리카락 전부를 한 장에(남자 `orc_parts` · 여성 `../orc_female/hair_v2`) — 머리마다 게임 카메라(앞 위)와 뒤 3/4.
+"""오크 머리카락 전부를 한 장에(남자 `orc_parts` · 여성 `../orc_female/hair_v2`) — 머리마다 두 칸(기본: 게임 카메라 앞 위 · 뒤 3/4).
 
-    python all_hair_sheet.py renders/all_hair.png [S]
+    python all_hair_sheet.py renders/all_hair.png [S] ["yaw,pitch;yaw,pitch"]
 """
 import os as _os, sys as _sys
 _here = _os.path.dirname(_os.path.abspath(__file__))
@@ -13,10 +13,14 @@ def male():
     import orc_parts as o
     return [('M Topknot', o.h_topknot, o.b_none, 1.45), ('M WarKnot', o.h_warknot, o.b_none, 1.45), ('M Ponytail', o.h_ponytail, o.b_none, 1.45),
             ('M Mohawk', o.h_mohawk, o.b_none, 1.45), ('M Braids', o.h_braids, o.b_none, 1.45), ('M Mane', o.h_mane, o.b_braidfull, 1.6),
-            ('M KnotTail', o.h_knottail, o.b_bushy, 2.2), ('M HighTail', o.h_hightail, o.b_none, 1.6)]
+            ('M KnotTail', o.h_knottail, o.b_bushy, 2.2), ('M HighTail', o.h_hightail, o.b_none, 1.6),
+            ('M Buzz', o.h_buzz, o.b_none, 1.45), ('M Undercut', o.h_undercut, o.b_none, 1.45), ('M LooseDreads', o.h_loose_dreads, o.b_none, 1.6),
+            ('M Cornrows', o.h_cornrows, o.b_none, 1.45), ('M Spikes', o.h_spikes, o.b_none, 1.45), ('M HalfUp', o.h_halfup, o.b_none, 1.6)]
 
-FEMALE = ['h_high_pony', 'h_pony_no_temple', 'h_pony_a_back', 'h_pony_b_back', 'h_pony_back_up', 'h_mohawk', 'h_twin_tails', 'h_long_braids', 'h_spiky_bob', 'h_crest_tail']
-FNAMES = ['F PonyA', 'F PonyB', 'F PonyA2', 'F PonyB2', 'F PonyC', 'F Mohawk', 'F TwinTails', 'F LongBraids', 'F SpikyBob', 'F CrestTail']
+FEMALE = ['h_high_pony', 'h_pony_no_temple', 'h_pony_a_back', 'h_pony_b_back', 'h_pony_back_up', 'h_mohawk', 'h_twin_tails', 'h_long_braids', 'h_spiky_bob', 'h_crest_tail',
+          'h_side_sweep', 'h_dreads', 'h_crown_braid', 'h_top_bun', 'h_shag', 'h_long_straight', 'h_low_pony', 'h_bob', 'h_back_braid', 'h_low_bun']
+FNAMES = ['F PonyA', 'F PonyB', 'F PonyA2', 'F PonyB2', 'F PonyC', 'F Mohawk', 'F TwinTails', 'F LongBraids', 'F SpikyBob', 'F CrestTail',
+          'F SideSweep', 'F Dreads', 'F CrownBraid', 'F TopBun', 'F Shag', 'F LongStraight', 'F LowPony', 'F Bob', 'F BackBraid', 'F LowBun']
 
 def tile(job):
     kind, i, yaw, pitch, S = job
@@ -34,8 +38,9 @@ def tile(job):
 
 if __name__ == '__main__':
     out = sys.argv[1]; S = int(sys.argv[2]) if len(sys.argv) > 2 else 200
+    VIEWS = [tuple(map(float, v.split(','))) for v in sys.argv[3].split(';')] if len(sys.argv) > 3 else [(20, 35), (150, 25)]   # 'yaw,pitch;yaw,pitch'
     names = [n for n, *_ in male()] + FNAMES
-    jobs = [('M', i, y, p, S) for i in range(8) for y, p in ((20, 35), (150, 25))] + [('F', i, y, p, S) for i in range(10) for y, p in ((20, 35), (150, 25))]
+    jobs = [('M', i, y, p, S) for i in range(len(male())) for y, p in VIEWS] + [('F', i, y, p, S) for i in range(len(FEMALE)) for y, p in VIEWS]
     with Pool(4) as pool: tiles = pool.map(tile, jobs)
     cols = 6   # 머리 셋씩 한 줄(머리마다 두 칸)
     rows = (len(names) + 2) // 3

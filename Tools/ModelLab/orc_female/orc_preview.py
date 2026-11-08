@@ -128,10 +128,20 @@ def render(P, yaw_deg, Wpx=320, Hpx=320, center_y=0.0, span=1.1, pitch=0.0):
     X, Y = np.meshgrid(xs, ys)
     org = (np.array([0, center_y, 0], np.float32) - fwd * 4 + X[..., None] * right + Y[..., None] * up).astype(np.float32)
     t = np.zeros((Hpx, Wpx), np.float32); hit = np.zeros((Hpx, Wpx), bool)
+    t_prev = t.copy()
     for _ in range(220):
         d, _ = scene(org + fwd * t[..., None])
         hit |= d < 0.0015
+        t_prev = np.where(hit, t_prev, t)
         t = np.where(hit, t, np.minimum(t + np.maximum(d * 0.8, 0.001), 30))
+    # 겉면을 지나쳤으면 되짚는다 — 정확한 거리가 아닌 거리장(결 골 · 두께 변화)은 얇은 숱을 한 걸음에 넘어 뒤 살에 떨어져 살색으로 칠했다(11-08)
+    lo, hi = t_prev.copy(), t.copy()
+    for _ in range(12):
+        mid = (lo + hi) * 0.5
+        dm, _ = scene(org + fwd * mid[..., None])
+        inside = dm < 0.0
+        hi = np.where(hit & inside, mid, hi); lo = np.where(hit & ~inside, mid, lo)
+    t = np.where(hit, hi, t)
     p = org + fwd * t[..., None]
     _, idx = scene(p)
     e = 0.002

@@ -138,10 +138,32 @@ MonoBehaviour:
   IsConstruct: 0
   Resistances: []
   UsesBackstory: 1
+  BackstoryRoot: 
+  BackstoryBranch: 
   DefaultMinGrade: 7
   DefaultMaxGrade: 7
   StatGrades: []
-  StatGrowthRates: []
+  StatGrowthRates:
+  - Stat: 43
+    Multiplier: 1.2
+  - Stat: 35
+    Multiplier: 1.15
+  - Stat: 34
+    Multiplier: 1.1
+  - Stat: 30
+    Multiplier: 1.1
+  - Stat: 33
+    Multiplier: 1.1
+  - Stat: 15
+    Multiplier: 1.1
+  - Stat: 21
+    Multiplier: 0.85
+  - Stat: 29
+    Multiplier: 0.9
+  - Stat: 32
+    Multiplier: 0.9
+  - Stat: 1
+    Multiplier: 0.9
   ButcherYield:
   - Item: {fileID: 0}
     ItemId: res_rawhide

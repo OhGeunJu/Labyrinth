@@ -50,6 +50,8 @@ MonoBehaviour:
   - Type: 5
     Amount: 0.2
   UsesBackstory: 1
+  BackstoryRoot: 
+  BackstoryBranch: dwarf
   DefaultMinGrade: 7
   DefaultMaxGrade: 7
   StatGrades:
@@ -88,8 +90,20 @@ MonoBehaviour:
     Multiplier: 1.15
   - Stat: 11
     Multiplier: 1.15
+  - Stat: 1
+    Multiplier: 1.1
   - Stat: 27
     Multiplier: 0.6
+  - Stat: 26
+    Multiplier: 0.8
+  - Stat: 25
+    Multiplier: 0.8
+  - Stat: 14
+    Multiplier: 0.75
+  - Stat: 32
+    Multiplier: 0.85
+  - Stat: 21
+    Multiplier: 0.85
   ButcherYield:
   - Item: {fileID: 0}
     ItemId: res_rawhide

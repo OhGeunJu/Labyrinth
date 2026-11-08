@@ -600,6 +600,18 @@ def _human_family(h, human_ear):
     # 가르마에서 이마를 덮으며 흘러내리는 앞이라 깐 머리의 가는 가닥이 그 숱에 묻힌다.
     SAME_AS_NONE = ('Straight+Open', 'Shoulder+Open')
     for k in SAME_AS_NONE: banged.pop(k, None)
+    # 게임용 조각(`bake_hair.py`) — 앞머리는 따로 고르는 축이라 앞머리 한 장과 '앞을 덜어 낸 뒷머리'를 따로 뽑는다(11-08 사용자: A안).
+    # 다듬기(귀 · 볼 · 귀 밑)는 위 `with_bangs`와 같다.
+    def trimmed(back):
+        def f(p):
+            ang = dw.angle(p)
+            front = np.maximum(np.maximum((ang - 46) * np.pi / 180 * 0.30, (EY - 0.03) - p[..., 1]), p[..., 1] - (TOP - 0.04))
+            return [(cut(p, off_cheek(p, no_under_ear(p, smax(BACKS[back](p), -front, 0.02)))), 'hair')]
+        return f
+    def bangs_only(kind):
+        return lambda p: [(cut(p, off_cheek(p, no_under_ear(p, bangs_piece(p, kind)))), 'hair')]
+    banged.update({f'Trim:{b}': trimmed(b) for b in BACKS})
+    banged.update({f'Bangs:{k}': bangs_only(k) for k in BANG_SETS})
     return {'Long': h_long12, 'LongOld': h_long, 'Mane': h_mane14, 'ManeOld': h_mane, 'LongBraids': h_longbraids7, 'TwinBraids': h_twinbraids16, 'TwinBraidsOld': h_twinbraids,
             'Slick': h_slick, 'SidePart': h_sidepart, 'TwoBlock': h_twoblock, 'ShortFringe': h_shortfringe, 'Messy': h_messy, 'Spiky': h_spiky, 'Dandy': h_dandy, 'Comma': h_comma, 'Dreads': h_dreads, 'FauxHawk': h_fauxhawk, 'Pixie': h_pixie, 'Crop': h_crop, 'BaldWings': h_baldwings, 'SlickMullet': h_slickmullet,
             'BuzzCut': h_buzzcut, 'LowTail': h_lowtail, 'HalfBun': h_halfup, 'Military': h_military, 'Pomp': h_pomp, 'ManBun': h_manbun, 'Shoulder': h_shoulder, 'Curtain': h_curtain, 'BangsMShort': h_mshort,

@@ -14,7 +14,8 @@ using UnityEngine.UI;
 //             ├ TitleBar          ← #0D0D0D 풀폭 · 레이아웃 그룹 없음
 //             ├ TabBar            ← 캐릭터 탭 — `TabTemplate`을 런타임이 인원 수만큼 복제한다(한 명이면 안 보인다)
 //             ├ Preview           ← 폰 미리보기(RawImage) — 끌면 돈다
-//             ├ Choices           ← 이름 칸 + 고르는 줄 여덟(`ChoiceRowUI`)
+//             ├ Choices           ← 이름 칸 + 고르는 줄 아홉(`ChoiceRowUI`) + 고르기 축 줄 템플릿(`PickRowTemplate` — 꺼 둔다 ·
+//             │                     런타임이 종족의 축 수만큼 복제하고, 고를 것이 없는 옛 줄은 숨겨 차례로 다시 놓는다)
 //             ├ Stats             ← 스탯 여섯 열(`StatColumnUI` — 스탯 창과 같은 표) · 열정 `+` `++`
 //             ├ Story             ← 성장 배경 · 특성
 //             └ BottomBar         ← [다시 굴리기] [시작]
@@ -26,6 +27,9 @@ public static class CharacterCreationUICreator
 {
     const string FontPath     = "Assets/NanumGothic SDF.asset";
     static readonly string WandererPath = PawnPrefabPaths.PathOf("Wanderer_Human");
+    // 고를 수 있는 종족(2026-11-08) — 내 편 세력 · 종족 데이터가 붙은 몸. 드워프 · 엘프는 몸 목록 없는 한 벌(`CharacterCreationUI.AllBodiesOf`).
+    // 오크는 적 몸(`Enemy_Orc` — 남녀 몸 목록)이다 — 세울 때 내 편으로 바꾼다(`CharacterCreationUI.Begin` · `ChangeFaction`).
+    static readonly string[] RacePaths = { WandererPath, PawnPrefabPaths.PathOf("Chibi_Elf"), PawnPrefabPaths.PathOf("Chibi_Dwarf"), PawnPrefabPaths.PathOf("Enemy_Orc") };
 
     static readonly Color Dim      = new(0f, 0f, 0f, 0.86f);
     static readonly Color WindowBg = new(0.10f, 0.10f, 0.12f, 1f);
@@ -124,6 +128,10 @@ public static class CharacterCreationUICreator
         var rowComps = new List<ChoiceRowUI>();
         for (int i = 0; i < Rows.Length; i++)
             rowComps.Add(MakeRow(choices.transform, Rows[i].key, Rows[i].label, 52 + i * 44));
+        // 고르기 축 줄 템플릿 — 런타임이 복제한다(이름표는 축 이름으로 갈아 단다).
+        var pickTpl = MakeRow(choices.transform, "pick", "항목", 52 + Rows.Length * 44);
+        pickTpl.name = "PickRowTemplate";
+        pickTpl.gameObject.SetActive(false);
 
         // 오른쪽 위 — 스탯 여섯 열(스탯 창과 **같은 표**와 **같은 줄 부품** — 따로 그리면 두 창이 다른 말을 한다).
         float rightW = W - RightX - 16;
@@ -168,6 +176,16 @@ public static class CharacterCreationUICreator
         so.FindProperty("startButton").objectReferenceValue      = start;
         so.FindProperty("wandererPrefab").objectReferenceValue   = AssetDatabase.LoadAssetAtPath<GameObject>(WandererPath);
         so.FindProperty("tabTemplate").objectReferenceValue      = tabTemplate;
+        so.FindProperty("pickRowTemplate").objectReferenceValue  = pickTpl;
+        var racesProp = so.FindProperty("racePrefabs");
+        var races = new List<GameObject>();
+        foreach (var rp in RacePaths)
+        {
+            var g = AssetDatabase.LoadAssetAtPath<GameObject>(rp);
+            if (g != null) races.Add(g); else Debug.LogWarning($"[캐릭터 생성] 종족 프리팹이 없다 — {rp}");
+        }
+        racesProp.arraySize = races.Count;
+        for (int i = 0; i < races.Count; i++) racesProp.GetArrayElementAtIndex(i).objectReferenceValue = races[i];
         var colsProp = so.FindProperty("statColumns");
         colsProp.arraySize = cols.Count;
         for (int i = 0; i < cols.Count; i++) colsProp.GetArrayElementAtIndex(i).objectReferenceValue = cols[i];

@@ -153,6 +153,7 @@ public class PawnSpec
         // *"거리에서 자랐다"*가 뜬다.
         if (data != null && data.UsesBackstory)
         {
+            storyGroup = data.StoryGroupFor(storyGroup);   // 종족 배경(오크 뿌리 · 엘프 · 드워프 갈래)
             spec.Childhood = BackstoryPool.Roll(BackstorySlot.Childhood, rng, storyGroup);
             spec.Adulthood = BackstoryPool.Roll(BackstorySlot.Adulthood, rng, storyGroup);
 
@@ -165,6 +166,21 @@ public class PawnSpec
         spec.GradeAverage = count > 0 ? sum / (float)count : 0f;
 
         return spec;
+    }
+
+    // **영입할 수 있는 방랑자는 F ~ F+**(2026-11-09, 사용자: *"방랑자는 초반 스탯이 쪼금 더 좋은 얘가 나올 수 있긴하지 F나 F+"*) —
+    // 내 폰은 F-에서 시작하므로 영입한 사람이 한참 위에서 들어오면 안 된다. 종족 시작 등급은 안 쓴다(종족 차이는 성장 배율).
+    // 씨앗에서 따로 낸 난수로 굴린다 — 명세의 난수열(꼬리 규칙)을 건드리지 않는다. 한 번만(`Wanderer`).
+    public bool Wanderer;
+    public void MakeWanderer()
+    {
+        if (Wanderer) return;
+        Wanderer = true;
+        var rng = new System.Random(unchecked(Seed * 7919 + 104729));
+        int tier = rng.Next((int)StatGrade.F, (int)StatGrade.FPlus + 1);
+        foreach (StatName s in Enum.GetValues(typeof(StatName)))
+            Grades[s] = (StatGrade)Mathf.Clamp(tier + rng.Next(-1, 2), (int)StatGrade.FMinus, (int)StatGrade.FPlus);
+        RecomputeAverage();
     }
 
     // 등급을 밖에서 못 박은 뒤 평균을 다시 센다(`PawnSpecData.Build`). 값·표시가 평균을

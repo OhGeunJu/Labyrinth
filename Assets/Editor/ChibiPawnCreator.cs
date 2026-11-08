@@ -451,7 +451,7 @@ public static partial class ChibiPawnCreator
     static string LineFor(string partName, string given)
     {
         if (given == null) return null;
-        return partName.StartsWith("Head.Pick.Hair.") || partName.StartsWith("Head.Pick.Beard.") ? HangLine : given;
+        return partName.StartsWith("Head.Pick.Hair.") || partName.StartsWith("Head.Pick.Beard.") || partName.StartsWith("Head.Pick.Bangs.") ? HangLine : given;
     }
 
     readonly struct Part
@@ -512,14 +512,18 @@ public static partial class ChibiPawnCreator
                 Hair(style, $"Shell.{fit}", hairs[$"{fit}.{sides}"], capPos, capSize, on && fit == basisFit);
         }
 
-        Shell("Short",    "Short", on: true);
-        Shell("Bob",      "Bob",   on: false);
-        Shell("Long",     "Long",  on: false);
-        Hair ("Long",     "Back",  null, bPos + new Vector3(0f, -0.32f, -0.26f), new Vector3(0.60f, 0.60f, 0.26f), on: false);
-        Shell("Ponytail", "Short", on: false);
-        Hair ("Ponytail", "Tail",  null, bPos + new Vector3(0f, -0.10f, -0.47f), new Vector3(0.17f, 0.48f, 0.17f), on: false);
-        Shell("Bun",      "Short", on: false);
-        Hair ("Bun",      "Knot",  null, bPos + new Vector3(0f, 0.30f, -0.26f), Vector3.one * 0.26f, on: false);
+        if (human) parts.AddRange(HumanHairParts(gender));   // 사람은 미리보기에서 뽑은 머리카락(`ChibiPawnCreator.HumanHair`)
+        else
+        {
+            Shell("Short",    "Short", on: true);
+            Shell("Bob",      "Bob",   on: false);
+            Shell("Long",     "Long",  on: false);
+            Hair ("Long",     "Back",  null, bPos + new Vector3(0f, -0.32f, -0.26f), new Vector3(0.60f, 0.60f, 0.26f), on: false);
+            Shell("Ponytail", "Short", on: false);
+            Hair ("Ponytail", "Tail",  null, bPos + new Vector3(0f, -0.10f, -0.47f), new Vector3(0.17f, 0.48f, 0.17f), on: false);
+            Shell("Bun",      "Short", on: false);
+            Hair ("Bun",      "Knot",  null, bPos + new Vector3(0f, 0.30f, -0.26f), Vector3.one * 0.26f, on: false);
+        }
 
         // **투구**(2026-10-23) — 머리카락보다 한 겹 크게, 머리카락처럼 윗머리 모양마다 한 벌. 꺼 두고 찬 장비가 켠다
         // (`PawnLook.Helmeted` — 켜면 머리카락이 다 꺼진다). 이름이 `Head.` 꼴이라 머리 관절에 붙고 `PawnLook`이 고른 머리로 옮긴다.
@@ -1290,6 +1294,7 @@ public static partial class ChibiPawnCreator
                 if (bv != null) UnityEngine.Object.DestroyImmediate(bv);
             }
 
+            if (headParts[s.Gender].Exists(p => p.Name.StartsWith("Head.Pick.Bangs."))) HumanHairLook(root);   // 사람 머리카락(앞머리 몫 · 털 색)
             finish?.Invoke(root);
             BakeOutlineNormals(root);
             PrefabUtility.SaveAsPrefabAsset(root, path);

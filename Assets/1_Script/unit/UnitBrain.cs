@@ -155,7 +155,21 @@ public partial class UnitBrain : MonoBehaviour
     // 켜는 곳은 세우는 쪽 둘이다: 이벤트(`GameEventData.Recruitable` — 거점을 찾아온 떠돌이)와
     // 야생 무리(`BiomeContentData.WildSpawnEntry.Recruitable` — 기본 꺼짐). 프리팹에는 없다 — 같은 떠돌이
     // 프리팹이 찾아오기도 하고 길에 있기도 하다. 읽는 곳은 `Conversation.AddRecruit` 하나.
-    public bool Recruitable { get; set; }
+    // 켜는 순간 명세를 방랑자 등급(F ~ F+)으로 다시 적는다 — 세우는 쪽 셋이 모두 세운 *뒤에* 켜므로 여기 한 곳(`PawnSpec.MakeWanderer`).
+    public bool Recruitable
+    {
+        get => _recruitable;
+        set
+        {
+            _recruitable = value;
+            if (value && Spec != null && !Spec.Wanderer && TryGetComponent(out Faction f) && !f.IsPlayer)
+            {
+                Spec.MakeWanderer();
+                ApplySpec(Spec);
+            }
+        }
+    }
+    bool _recruitable;
     public AiProfileData AiProfile => aiProfile;
 
     // ── 전투 성향 (런타임 조정 가능) ─────────────────────────────────────

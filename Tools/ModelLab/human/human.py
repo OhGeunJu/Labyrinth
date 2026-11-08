@@ -65,17 +65,31 @@ class Head:
         return np.maximum(d, np.abs(uy) - 0.5) * 0.6
 
 # ── 얼굴 ── 코 · 귀 · 눈 · 눈썹 · 입은 고르기 축(벌 이름)
+NOSES = ('Button', 'Straight', 'Broad', 'Pointed', 'Bulb', 'Long', 'Flat')
 def nose(h, kind, p):
+    """코 일곱(11-08 사용자: *"다른 종족 코들에 비해 디테일이 떨어져"* · *"코 세개는 너무 적은데"*) — 모두 같은 뼈대(콧대 · 코끝 · 콧방울 · 콧구멍)의
+    크기 · 자리만 바꾼다(파인 자리는 그늘 — 게임은 `SkinShaded`). 덩어리를 따로 얹은 매부리 · 끝을 든 들창코는 *"너무 못만들었어"* — 뺐다."""
     m = mirror(p); z = h.ZN; NY = h.NY
-    if kind == 'Button':     # 작고 둥근 코끝 — 콧대는 거의 없다
-        return smin(sph(p, V(0, NY + 0.004, z + 0.016), 0.024), sph(m, V(0.020, NY - 0.006, z + 0.002), 0.016), 0.010)
-    if kind == 'Straight':   # 곧은 콧대 · 작은 끝
-        bridge = seg(p, V(0, h.EY - 0.005, h.ZE + 0.000), V(0, NY + 0.004, z + 0.026), 0.011, 0.018)
-        return smin(bridge, ell(p, V(0, NY - 0.002, z + 0.024), V(0.024, 0.019, 0.020)), 0.012)
-    if kind == 'Broad':      # 넓고 둥근 코 — 콧방울이 벌어진다
-        base = ell(p, V(0, NY - 0.002, z + 0.014), V(0.040, 0.026, 0.028))
-        return smin(base, sph(m, V(0.032, NY - 0.010, z + 0.002), 0.020), 0.012)
-    return NONE(p)
+    # tip — 코끝 반지름(가로 · 세로 · 앞뒤) · tipz 앞으로 · drop 아래로 · ala 콧방울(옆 · 크기) · bridge 콧대 굵기(위 · 아래) · nos 콧구멍(옆 · 크기)
+    S = {'Button':   dict(tip=(0.022, 0.021, 0.021), tipz=0.020, drop=-0.004, ala=(0.020, 0.015), alaz=0.004, bridge=None,           nos=(0.011, 0.0065)),
+         'Straight': dict(tip=(0.020, 0.019, 0.020), tipz=0.026, drop=0.000,  ala=(0.019, 0.014), alaz=0.006, bridge=(0.010, 0.016), nos=(0.010, 0.0060)),
+         'Broad':    dict(tip=(0.026, 0.024, 0.024), tipz=0.020, drop=0.000,  ala=(0.031, 0.019), alaz=0.004, bridge=(0.013, 0.019), nos=(0.014, 0.0075)),
+         'Pointed':  dict(tip=(0.015, 0.015, 0.022), tipz=0.030, drop=-0.002, ala=(0.015, 0.012), alaz=0.006, bridge=(0.008, 0.012), nos=(0.008, 0.0050)),
+         'Bulb':     dict(tip=(0.030, 0.027, 0.026), tipz=0.020, drop=0.004,  ala=(0.024, 0.017), alaz=0.004, bridge=(0.010, 0.015), nos=(0.012, 0.0070)),
+         'Long':     dict(tip=(0.019, 0.021, 0.020), tipz=0.028, drop=0.012,  ala=(0.018, 0.014), alaz=0.006, bridge=(0.011, 0.016), nos=(0.010, 0.0060)),
+         'Flat':     dict(tip=(0.024, 0.016, 0.016), tipz=0.010, drop=0.000,  ala=(0.030, 0.015), alaz=0.002, bridge=None,           nos=(0.014, 0.0070))}[kind]
+    tc = V(0, NY - S['drop'], z + S['tipz'])
+    d = ell(p, tc, V(*S['tip']))
+    if S['bridge']:
+        r0, r1 = S['bridge']
+        d = smin(d, seg(p, V(0, h.EY - 0.005, h.ZE), tc + V(0, 0.010, -0.004), r0, r1), 0.012)
+    ax, ay = S['ala']
+    ay_ = NY - 0.006 - S['drop'] * 0.5
+    d = smin(d, ell(m, V(ax, ay_, z + S['alaz']), V(ay, ay * 0.85, ay * 0.9)), 0.008)          # 콧방울
+    d = smax(d, -ell(m, V(ax - 0.008, ay_, z + S['alaz'] + ay * 0.55), V(0.004, 0.006, 0.004)), 0.004)   # 콧방울 주름(코끝과 가른다)
+    nx, nr = S['nos']
+    d = smax(d, -ell(m, V(nx, tc[1] - S['tip'][1] * 0.75, z + S['tipz'] * 0.55), V(nr, nr * 0.6, nr * 1.4)), 0.003)   # 콧구멍 — 밑에서 판다
+    return d
 def ear(h, p):               # 둥근 사람 귀 — 머리 옆에 세운 납작한 콩 · 안쪽은 오목
     m = mirror(p)
     c = V(h.R0 - 0.004, (h.EY + h.NY) * 0.5 - 0.005, -0.03)
@@ -110,8 +124,20 @@ def brows(h, kind, p):       # 살갗에 칠한 눈썹 띠(엘프와 같은 길)
     th = th0 * (1 - t) + th1 * t
     band = np.maximum(np.abs(m[..., 1] - yc) - th, np.maximum(x0 - m[..., 0], m[..., 0] - x1))
     return on_face(h, p, band, 0.003)
-def mouth(h, p):
-    return on_face(h, p, np.maximum(np.abs(p[..., 1] - (h.MY + 0.004)) - 0.004, np.abs(p[..., 0]) - 0.040), 0.003)
+MOUTHS = ('Line', 'Smile', 'Small', 'Frown', 'Smirk', 'Open')   # 입 여섯(11-08 사용자: *"입 모양 종류가 하나뿐"*) — 고르기 축
+def mouth(h, p, kind='Line'):
+    """입 — 얼굴 살에 칠한 띠. 굵기 6mm(4mm는 게임 크기에서 묻혔다 · 11-08)."""
+    x, y = p[..., 0], p[..., 1] - (h.MY + 0.004)
+    th, w = 0.0040, 0.052                                                                       # 크게(11-08 사용자: *"입 좀 더 크게"* — 폭 4cm → 5.2cm)
+    if kind == 'Line':  yc = 0.25 * x * x
+    elif kind == 'Smile': yc = 3.5 * x * x - 0.003; w = 0.056
+    elif kind == 'Small': yc = 0.0 * x; w = 0.032
+    elif kind == 'Frown': yc = -3.2 * x * x + 0.003; w = 0.048
+    elif kind == 'Smirk': yc = 4.2 * np.maximum(x, 0) ** 2 + 0.5 * np.minimum(x, 0) ** 2; w = 0.052
+    else:                 # 벌린 입 — 타원
+        return on_face(h, p, ell(p, V(0, h.MY + 0.001, h.ZM), V(0.027, 0.015, 0.3)), 0.003)
+    th = th * (1 - 0.45 * (np.abs(x) / w) ** 2)                                                  # 입꼬리로 가늘게
+    return on_face(h, p, np.maximum(np.abs(y - yc) - th, np.abs(x) - w), 0.003)
 
 # ── 머리카락 ── 숱 = 머리를 고르게 키운 껍데기 + 아랫선(엘프 `scalp`와 같은 길 — `머리 - 두께`면 정수리가 바늘처럼 솟는다)
 def scalp(h, p, th, low):
@@ -289,10 +315,10 @@ BROWN = (0.33, 0.22, 0.15); BLACK = (0.15, 0.13, 0.14); BLOND = (0.82, 0.66, 0.3
 TUNIC = (0.30, 0.38, 0.28)
 def body(p): return ell(p, V(0, -0.80, -0.04), V(0.36, 0.40, 0.21))   # 몸통 — 게임 몸(사람 남성 `BodyDims`)의 어깨 폭 · 깊이(전에는 깊이 0.33으로 두꺼워 뒤로 내린 가닥이 몸에 묻혔다)
 
-def pieces(head, nose_kind, brow, hair, col):
+def pieces(head, nose_kind, brow, hair, col, mouth_kind='Line'):
     h = Head(head)
     P = [(face(h, nose_kind), SKIN), (lambda p: eyes(h, p), DARK), (lambda p: glint(h, p), WHITE),
-         (lambda p: brows(h, brow, p), tuple(c * 0.85 for c in col)), (lambda p: mouth(h, p), LIP), (body, TUNIC)]
+         (lambda p: brows(h, brow, p), tuple(c * 0.85 for c in col)), (lambda p: mouth(h, p, mouth_kind), LIP), (body, TUNIC)]
     if hair: P.append((lambda p: HAIRS[hair](h, p), col))
     return P
 

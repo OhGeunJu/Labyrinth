@@ -187,10 +187,18 @@ def braid3(p, pts, r0, r1, n=14, side=(1.0, 0.0, 0.0)):   # 세 가닥 땋기 �
     return d
 
 TWIN_R = [0.018, 0.022, 0.030, 0.042, 0.052, 0.050, 0.040, 0.026, 0.010]   # 끈 쪽을 가늘게 · 불룩한 곳은 꼬리 중간(TAIL_R 그대로면 묶은 자리가 혹처럼 두꺼웠다 · 11-07)
+def braid_ring(p, pts, r0, r1, frac, w=0.032):   # 땋은 가닥 위 고리 — 길을 따라 frac 자리 · 그 자리 굵기의 1.45배(엇갈린 마디까지 감싼다)
+    # 옛 사슬 굵기에 맞춘 고리는 세 가닥 땋기의 엇갈린 마디 속에 묻혀 흰 조각만 삐져나왔다(11-08 사용자 "수염 장신구가 이상해졌어")
+    P = np.array(pts, np.float32); L = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
+    at = lambda u: np.array([np.interp(u, L, P[:, k]) for k in range(3)], np.float32)
+    u = frac * L[-1]; c = at(u); ax = at(min(u + 0.006, L[-1])) - at(max(u - 0.006, 0)); ax /= np.linalg.norm(ax)
+    r = r0 + (r1 - r0) * frac
+    return O.cuff(p, c - ax * w * 0.5, c + ax * w * 0.5, (1.45 * r - 0.006) / 0.8)
+def ease_f(x): x = np.clip(x, 0, 1); return x * x * (3 - 2 * x)
 def h_twin_tails(p):  # 머리를 덮고(앞 가르마) 귀 뒤 높이 묶어 양옆으로 내리는 꼬리 둘 · 고리
     m = mirror(p)
     full = cap(p, 0.026)
-    groove = 0.010 * np.exp(-(p[..., 0] / 0.012) ** 2) * (p[..., 2] > 0.02) * (p[..., 1] > 0.10)
+    groove = 0.008 * np.exp(-(p[..., 0] / 0.012) ** 2) * (p[..., 2] > 0.02) * ease_f((p[..., 1] - 0.20) / 0.07)   # 이마선 근처는 얕게 — 얇은 숱을 뚫어 이마 살이 쐐기로 파고들었다(11-08 사용자 '구멍')
     hair = full + groove   # 가르마는 얕은 골로만 — 숱째 잘라 내면 정수리 앞에 구멍이 났다(11-07)
     # 꼬리는 꽁지 규칙대로(끈 잘록 · TAIL_R · 말꼬리 갈라짐) — 옆으로 뻗었다 처지는 촉수 같았다(11-07)
     T = on_head(138, 0.20, 0.05)   # 귀 뒤에서 묶는다 — 귀 위에서 묶으면 꼬리가 귀에 걸렸다(11-07 사용자)
@@ -230,12 +238,12 @@ def h_long_braids(p): # 머리를 덮고 등까지 풀어 내린 머리 + 관자
     m = mirror(p); hair = cap(p, 0.026)
     # 등 뒤는 한 장으로 흘러내린다 — 가는 가닥이 빗살처럼 늘어섰다(11-07) → 굵게 겹치고 끝만 갈라진다
     hair = smin(hair, back_fall(p), 0.03)
-    bp = [on_head(76, 0.13, 0.03), on_head(84, 0.03, 0.05), on_head(92, -0.10, 0.06)]
-    bp += [bp[-1] + V(0.015, -0.12, 0.07), bp[-1] + V(0.02, -0.24, 0.12), bp[-1] + V(0.02, -0.34, 0.15)]
+    # 귀 앞으로만 — 92°까지 내려오면 귀 앞 가장자리에 걸려 끊겼다(11-08 덩어리 세기)
+    bp = [on_head(68, 0.13, 0.03), on_head(72, 0.02, 0.04), on_head(74, -0.10, 0.05)]
+    bp += [bp[-1] + V(0.010, -0.12, 0.06), bp[-1] + V(0.015, -0.24, 0.11), bp[-1] + V(0.015, -0.34, 0.14)]
     hair = smin(hair, braid3(m, bp, 0.042, 0.030, 14, side=(0.0, 0.0, 1.0)), 0.012)   # 마디가 떨어진 사슬 → 세 가닥 땋기
-    leather = np.minimum(O.cuff(m, bp[2] + V(0, 0.02, 0), bp[2] + V(0.004, -0.05, 0.02), 0.048),
-                         O.cuff(m, bp[4] + V(0, 0.03, -0.01), bp[4] + V(0, -0.03, 0.02), 0.042))
-    metal = O.cuff(m, bp[3] + V(0, 0.018, -0.006), bp[3] + V(0, -0.018, 0.006), 0.046)
+    leather = np.minimum(braid_ring(m, bp, 0.042, 0.030, 0.38, 0.05), braid_ring(m, bp, 0.042, 0.030, 0.80, 0.045))
+    metal = braid_ring(m, bp, 0.042, 0.030, 0.60)
     return hair, leather, metal
 
 def h_spiky_bob(p):   # 머리를 덮고 이마를 덮는 뾰족 앞머리 · 턱까지 오는 옆 다발 · 위로 뻗친 끝
@@ -329,7 +337,7 @@ def h_shag(p):   # 짧고 덥수룩한 단발 — 정수리 가마에서 사방�
             q = C * (1 - t) + e * t
             pts.append(proj(q, 0.018 + 0.030 * np.sin(np.pi * min(t * 1.2, 1.0))))
         hair = smin(hair, lock(p, pts, 0.034, 0.040), 0.018)                     # 가마 쪽 가늘게 · 끝으로 굵게(층이 쌓인다)
-    for a in range(70, 300, 20):
+    for a in (70, 130, 150, 170, 190, 210, 230, 290):   # 귀를 덮는 옆 가닥(90 · 110 · 250 · 270)은 뺐다 — 귀에 걸려 끊겼다(11-08 덩어리 세기)
         s = on_head(a, 0.16, 0.02)
         e = on_head(a, -0.16 if 120 < a < 240 else -0.14, 0.0)
         out = nrm(V(e[0], 0, e[2])) * 0.06
@@ -339,6 +347,82 @@ def h_shag(p):   # 짧고 덥수룩한 단발 — 정수리 가마에서 사방�
         b0 = proj(C + V(0.04 * np.sin(np.radians(a)), 0, 0.04 * np.cos(np.radians(a))), 0.01)
         hair = smin(hair, seg(p, b0, b0 + V(0.05 * np.sin(np.radians(a)), ln, 0.05 * np.cos(np.radians(a)) - 0.02), 0.030, 0.004), 0.012)   # 정수리 뻗친 가닥
     return hair, NONE(p), NONE(p)
+
+
+# ── 단정한 머리 다섯(2026-11-08 사용자: "여자 머리카락 좀 정상적인 느낌으로 더") ──
+def _part(p, fade_y=0.20):   # 가운데 가르마 — 얕은 골 · 이마선 근처는 0(얇은 숱을 뚫는다)
+    return 0.008 * np.exp(-(p[..., 0] / 0.012) ** 2) * (p[..., 2] > 0.02) * ease_f((p[..., 1] - fade_y) / 0.07)
+def _front_locks(p, L=-0.55):   # 관자놀이에서 귀 앞으로 내려 가슴께까지 — 납작한 판(얼굴 옆으로 얇다)
+    m = mirror(p)
+    a0 = on_head(48, 0.17, 0.010); a1 = on_head(62, 0.05, 0.020)
+    pts = [a0, a1, a1 + V(0.020, -0.12, -0.02), a1 + V(0.030, -0.30, -0.05), a1 + V(0.030, L - 0.05, -0.07)]
+    q = m * np.array([1.8, 1, 1], np.float32)
+    return lock_r(q, [t * np.array([1.8, 1, 1], np.float32) for t in pts], [r * 1.8 for r in (0.030, 0.040, 0.046, 0.042, 0.020)], 0.02) / 1.8
+
+def h_long_straight(p):   # 가운데 가르마 긴 생머리 — 뒤는 등까지(겉면에 붙은 납작 가닥) · 앞 두 가닥은 귀 앞으로 가슴께까지
+    hair = HF._cap0(p, 0.026) + _part(p)
+    hair = smin(hair, back_fall(p, L=-0.66), 0.03)
+    return smin(hair, _front_locks(p), 0.03), NONE(p), NONE(p)
+
+def h_low_pony(p):   # 목덜미에서 낮게 묶은 꽁지 — 앞은 가르마 · 사방에서 뒤로 빗어 모은다(꽁지는 규칙대로)
+    R = on_head(180, -0.10, 0.040)
+    side_part = 0.008 * np.exp(-((p[..., 0] - 0.07) / 0.012) ** 2) * (p[..., 2] > 0.02) * ease_f((p[..., 1] - 0.20) / 0.07)
+    hair = smin(HF._cap0(p, 0.024) + side_part, HF.bangs(p, 'Swept'), 0.012)       # 옆 가르마 + 한쪽으로 쓸어 넘긴 앞머리(앞모습을 다른 둘과 가른다 · v76)
+    for dx, dz, sc in ((-0.03, 0.0, 0.92), (-0.012, -0.02, 1.0), (0.012, 0.015, 1.04), (0.03, -0.01, 0.95), (0.0, -0.035, 0.98)):
+        pts = bez(R, R + V(dx * 0.4, -0.05, -0.05), R + V(dx * 0.9, -0.20, -0.07), R + V(dx * 1.8, -0.50 * sc, -0.05 + dz), 8)
+        hair = smin(hair, lock_r(p, pts, [r * 0.82 for r in TAIL_R]), 0.03)
+    tie = O.cuff(p, R + V(0, 0.020, 0.006), R + V(0, -0.012, -0.010), 0.040)   # 끈 — 잘록
+    return hair, tie, NONE(p)
+
+def h_bob(p):   # 앞머리 있는 턱선 단발 — 옆 · 뒤는 겉면에 붙은 납작 가닥이 턱선 높이에서 안으로 살짝 말린다
+    hair = HF.cap(p, 0.030)
+    m = mirror(p)
+    # 뒤는 두 겹 · 길이를 들쭉날쭉 · 끝은 안으로 말린다 — 한 겹이면 둥근 투구 같았다(v76)
+    for layer, (out, base_y) in enumerate(((0.016, -0.17), (0.030, -0.12))):
+        for i, a in enumerate(np.linspace(100 + layer * 6, 180, 8 - layer)):
+            dx, dz = np.sin(np.radians(a)), np.cos(np.radians(a)); n = V(dx, 0, dz)
+            side = p if a >= 179.9 else m
+            y_end = base_y + (0.025 if (i + layer) % 2 else 0.0)
+            top = on_head(a, 0.16 - layer * 0.06, -0.004 + layer * 0.01); mid = on_head(a, -0.02, out)
+            end = V(mid[0] * 0.95, y_end, mid[2] * 0.95)
+            hair = smin(hair, nlock(side, [top, mid, V(mid[0], (y_end - 0.02) * 0.6, mid[2]) + n * 0.008, end], 0.052, 0.034, n), 0.018)
+    hair = hair + 0.0025 * np.sin(np.arctan2(p[..., 0], p[..., 2]) * 30) * ease_f((0.10 - p[..., 1]) / 0.08)   # 아래쪽 결
+    for a in (64, 76):                                                             # 귀 앞 옆머리 — 턱께까지
+        s = on_head(a, 0.10, 0.012); e = on_head(a, -0.14, 0.022)
+        q = m * np.array([1.8, 1, 1], np.float32)
+        hair = smin(hair, lock_r(q, [t * np.array([1.8, 1, 1], np.float32) for t in (s, (s + e) * 0.5, e)], [0.054, 0.060, 0.040]) / 1.8, 0.02)
+    return hair, NONE(p), NONE(p)
+
+def h_back_braid(p):   # 뒤로 땋아 내린 한 갈래 — 가르마 · 사방에서 목덜미로 모아 땋고 끝을 묶는다
+    R = on_head(180, -0.06, 0.035)
+    hair = HF._cap0(p, 0.024) + _part(p)
+    m = mirror(p)
+    t0 = on_head(56, 0.15, 0.008); t1 = on_head(64, 0.02, 0.018)                    # 귀 앞 잔머리 — 얼굴선을 따라 턱께까지(앞모습을 가른다 · v76)
+    tend = [t0, t1, t1 + V(0.012, -0.09, 0.01), t1 + V(-0.004, -0.15, 0.02)]
+    hair = smin(hair, lock_r(m, tend, [0.020, 0.022, 0.016, 0.006]), 0.012)
+    pts = [R, R + V(0, -0.10, -0.03), R + V(0, -0.22, -0.04), R + V(0, -0.36, -0.03), R + V(0, -0.50, -0.02)]
+    hair = smin(hair, braid3(p, pts, 0.046, 0.034, 16), 0.02)
+    end = pts[-1]
+    tuft = [end, end + V(0, -0.04, 0), end + V(0, -0.10, 0.005)]
+    hair = smin(hair, lock_r(p, tuft, [0.024, 0.030, 0.010]), 0.01)              # 묶은 끝 술
+    tie = np.minimum(O.cuff(p, R + V(0, 0.015, 0.004), R + V(0, -0.015, -0.008), 0.052), braid_ring(p, pts, 0.046, 0.034, 0.97, 0.026))
+    return hair, tie, NONE(p)
+
+def h_low_bun(p):   # 목덜미에 틀어 올린 쪽머리 — 가르마 · 사방에서 뒤로 빗어 모은다
+    R = on_head(180, 0.00, 0.030)
+    c = R + V(0, -0.02, -0.065)
+    lift = 0.024 + 0.010 * ease_f((p[..., 2] - 0.05) / 0.20) * ease_f((p[..., 1] - 0.15) / 0.10)   # 이마 위가 살짝 부푼다
+    hair = HF._cap0(p, 0.024, front=0.035)                                         # 뒤로 바짝 당겨 이마선이 조금 높다
+    sc = 1 + lift / 0.30
+    hair = np.minimum(hair, smax(head(p / sc[..., None]) * sc, (0.205 - p[..., 1]), 0.012))
+    phi = np.arctan2(p[..., 0], p[..., 2] - c[2])
+    hair = hair + 0.0060 * np.sin(phi * 22) * ease_f((p[..., 1] - 0.23) / 0.07)      # 가르마 없이 뒤로 빗어 쪽으로 모인 결 — 깊게(v77은 밋밋했다) · 이마선에서 0
+    bun = ell(p, c, V(0.090, 0.075, 0.070))
+    q = p - c; ang = np.arctan2(q[..., 0], q[..., 1])
+    bun = bun + 0.006 * np.sin(ang * 3 + np.linalg.norm(q, axis=-1) * 60)      # 틀어 감은 결
+    hair = smin(hair, bun, 0.02)
+    tie = O.cuff(p, R + V(0, 0, -0.012), R + V(0, 0, -0.036), 0.060)             # 쪽 밑 끈
+    return hair, tie, NONE(p)
 
 # **귀는 머리카락에 안 가린다**(2026-11-07 사용자 · B) — 남자 오크와 같은 셈(`orc/orc_parts.ear_gap`): 귀 모양을 바깥 · 아래 · 카메라 쪽으로 밀어 낸 자국을 덜어 낸다.
 # 머리카락 · 반삭 층에 씌운다(장식은 그대로).
@@ -361,12 +445,13 @@ def with_ear_gap(h):
     st = getattr(h, 'stubble', None)
     if st is not None: f.stubble = lambda p, st=st: ear_gap(p, st(p))
     return f
-h_high_pony, h_pony_no_temple, h_pony_a_back, h_pony_b_back, h_pony_back_up, h_mohawk, h_twin_tails, h_long_braids, h_spiky_bob, h_crest_tail, h_side_sweep, h_dreads, h_crown_braid, h_top_bun, h_shag = (
+h_high_pony, h_pony_no_temple, h_pony_a_back, h_pony_b_back, h_pony_back_up, h_mohawk, h_twin_tails, h_long_braids, h_spiky_bob, h_crest_tail, h_side_sweep, h_dreads, h_crown_braid, h_top_bun, h_shag, h_long_straight, h_low_pony, h_bob, h_back_braid, h_low_bun = (
     with_ear_gap(h) for h in (h_high_pony, h_pony_no_temple, h_pony_a_back, h_pony_b_back, h_pony_back_up, h_mohawk, h_twin_tails, h_long_braids, h_spiky_bob, h_crest_tail,
-                              h_side_sweep, h_dreads, h_crown_braid, h_top_bun, h_shag))
+                              h_side_sweep, h_dreads, h_crown_braid, h_top_bun, h_shag, h_long_straight, h_low_pony, h_bob, h_back_braid, h_low_bun))
 HAIRS = [('HighPony', h_high_pony), ('Mohawk', h_mohawk), ('TwinTails', h_twin_tails),
          ('LongBraids', h_long_braids), ('SpikyBob', h_spiky_bob), ('CrestTail', h_crest_tail),
-         ('SideSweep', h_side_sweep), ('Dreads', h_dreads), ('CrownBraid', h_crown_braid), ('TopBun', h_top_bun), ('Shag', h_shag)]
+         ('SideSweep', h_side_sweep), ('Dreads', h_dreads), ('CrownBraid', h_crown_braid), ('TopBun', h_top_bun), ('Shag', h_shag),
+         ('LongStraight', h_long_straight), ('LowPony', h_low_pony), ('Bob', h_bob), ('BackBraid', h_back_braid), ('LowBun', h_low_bun)]
 
 HAIR = (0.22, 0.19, 0.42); LEATHER = (0.42, 0.26, 0.15); METAL = (0.58, 0.60, 0.64); COPPER = (0.80, 0.45, 0.20)
 def pieces(hair_fn, skin=None):

@@ -12,7 +12,7 @@
 | `skeleton/` | 해골 몸(뼈) · 방어구 · 선 | `ChibiPawnCreator.Bones` |
 | `troll/` | 트롤(`troll_preview.py` = v52 · 목걸이는 `necklace56.py`가 덮는다) | `ChibiPawnCreator.Troll` |
 | `ogre/` | 오우거(`ogre_v3.py`) · 여성 오우거(`ogre_female.py`) | `ChibiPawnCreator.Ogre` · `.OgreFemale` |
-| `orc/` | 남성 오크 머리 · 귀 · 머리카락 · 수염 · 문신 · 오크 머리카락 전부 한 장(`all_hair_sheet.py` — 남녀 · 귀 처리 B) | `ChibiPawnCreator.Orc` |
+| `orc/` | 남성 오크 머리 · 귀 · 머리카락 · 수염 · 문신 · 오크 머리카락 전부 한 장(`all_hair_sheet.py` — 남녀 · 귀 처리 B) · 게임 메시 뽑기(`bake_orc_hair.py` → `baked/` → 유니티 `Pawn/14`) | `ChibiPawnCreator.Orc` |
 | `orc_female/` | 여성 오크 머리 · 얼굴 · 머리 열(`hair_v2.py`) · 체형(`body_cmp.py`) | `ChibiPawnCreator.OrcFemale` |
 | `dwarf/` | 드워프 머리 · 수염 · 머리카락 · 눈썹(`dwarf.py` — `brows` 인자로 눈썹 보기) · 몸 비례(`body.py` — 사람 몸 식 그대로) | `ChibiPawnCreator.Dwarf` |
 | `dwarf/` | 드워프 머리 · 수염 · 머리카락(바탕 머리 `head_base.py`) | (아직) |

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,7 +9,9 @@ using TMPro;
 // 시작이야"* · *"특성 배경은 리롤돌리게 그리고 림월드처럼 열정을 추가해서"*).
 //
 // ## 무엇을 고르고 무엇을 굴리나
-// - **고른다(생김새)** — 이름 · 종족 · 성별 · 체형 · 머리형 · 머리카락 · 눈 · 입 · 귀 · 코.
+// - **고른다(생김새)** — 이름 · 종족 · 성별 · 체형 · 머리형 + **그 종족의 고르기 축**(머리카락 · 앞머리 · 수염 · 눈썹 · 귀 …
+//   `PawnLook.PickAxes` — 줄은 축 수만큼 템플릿을 복제한다 · 2026-11-08). 옛 줄(머리카락 · 귀 · 코 · 눈 · 입)은 그 종족에 고를 것이 있을 때만 보인다
+//   (빚은 얼굴 · 파이썬이 뽑은 머리카락은 축으로 고른다 — 옛 줄은 고블린 같은 옛 얼굴 몫).
 // - **굴린다(사람)** — 성장 배경 둘 · 특성 · 열정. `다시 굴리기`가 씨앗을 바꿔 셋을 한꺼번에 다시 뽑는다.
 // - **스탯은 전부 최하(F-)** — 굴린 등급을 버리고 F-로 못 박는다. 특성·배경의 보정은 그 **위에 얹힌다**
 //   (`UnitBrain.ApplySpec`이 등급 → 특성 → 배경 순서로 입힌다 — 굴림으로 고르는 이유가 거기 있다).
@@ -43,6 +46,9 @@ public class CharacterCreationUI : MonoBehaviour
     [Tooltip("고를 수 있는 종족 — 저마다 몸 목록(`BodyVariants`)을 든 프리팹. 비우면 `wandererPrefab` 하나.")]
     [SerializeField] GameObject[] racePrefabs;
 
+    [Tooltip("고르기 축 줄 템플릿 — 종족마다 축(`PawnLook.PickAxes`) 수만큼 복제한다(템플릿 자신은 꺼 둔다). 비면 머리카락 줄을 복제해 쓴다.")]
+    [SerializeField] ChoiceRowUI pickRowTemplate;
+
     [Tooltip("시작할 때 만드는 사람 수(탭 수).")]
     [SerializeField, Range(1, 6)] int startPawnCount = 1;
 
@@ -57,6 +63,8 @@ public class CharacterCreationUI : MonoBehaviour
         public int      Body;                   // 그 성별의 몸 중 몇 번째
         public string   Head = "", Hair = "", Ear = PawnLook.DefaultEar, Nose = PawnLook.None, Eyes = "", Mouth = "";
         public bool     LookSet;                // 기본 얼굴을 한 번 읽어 왔나
+        public readonly Dictionary<string, string> Picks = new();   // 고르기 축 → 벌(`PawnLook.SetPickOverride`)
+        public MarkingLook.HairTone HairTone = MarkingLook.HairTone.Seeded;   // 머리색(`MarkingLook.SetHair`)
         public int      Seed;
         public PawnSpec Spec;
         public string   Name = "";
@@ -71,12 +79,28 @@ public class CharacterCreationUI : MonoBehaviour
     PawnPreviewStage _stage;
     bool _open;
 
+    // 고르기 축 줄(복제본) — 몸이 바뀔 때마다 그 몸의 축으로 다시 짓는다.
+    readonly List<ChoiceRowUI> _pickRows = new();
+    const string PickKey = "pick:";
+    const string HairColorKey = "color:hair";
+    // 머리색 후보 — 종족 색(기본) + 이름 붙은 색(직접 고르는 `Custom`은 뺀다).
+    static readonly MarkingLook.HairTone[] HairTones =
+    {
+        MarkingLook.HairTone.Seeded, MarkingLook.HairTone.Black, MarkingLook.HairTone.DarkBrown, MarkingLook.HairTone.Brown,
+        MarkingLook.HairTone.Auburn, MarkingLook.HairTone.Red, MarkingLook.HairTone.Ginger, MarkingLook.HairTone.Honey,
+        MarkingLook.HairTone.Blonde, MarkingLook.HairTone.PaleBlonde, MarkingLook.HairTone.Platinum, MarkingLook.HairTone.Silver,
+        MarkingLook.HairTone.Grey, MarkingLook.HairTone.White,
+    };
+    // 줄로 안 내놓는 축 — 머리형은 `head` 줄이 고르고, 윗머리 모양(`Fit`)은 머리형을 따라간다.
+    static readonly HashSet<string> HiddenAxes = new() { PawnLook.FitAxis, PawnLook.ShapeAxis };
+
     public static bool IsOpen { get; private set; }
 
     void Start()
     {
         if (panel != null) panel.SetActive(false);
         if (tabTemplate != null) tabTemplate.gameObject.SetActive(false);
+        if (pickRowTemplate != null) pickRowTemplate.gameObject.SetActive(false);
         if (!showOnStart) return;
         if (FindFirstObjectByType<StartSpot>() == null)
         {
@@ -104,14 +128,42 @@ public class CharacterCreationUI : MonoBehaviour
         return b != null ? b.Data : null;
     }
 
-    List<PawnBody> BodiesOf(Draft d)
+    // 이 종족의 몸 전부 — 몸 목록(`BodyVariants`)이 없는 한 벌짜리 종족(드워프 · 엘프 보기 몸)은 그 몸 하나.
+    List<PawnBody> AllBodiesOf(Draft d)
     {
         var all = new List<PawnBody>();
         var p   = RacePrefab(d);
         var bv  = p != null ? p.GetComponent<BodyVariants>() : null;
         if (bv != null) foreach (var b in bv.Variants) if (b != null) all.Add(b);
+        if (all.Count == 0 && p != null && p.TryGetComponent(out PawnBody own)) all.Add(own);
+        return all;
+    }
+
+    List<PawnBody> BodiesOf(Draft d)
+    {
+        var all = AllBodiesOf(d);
         var fit = all.FindAll(b => b.Gender == d.Gender);
         return fit.Count > 0 ? fit : all;
+    }
+
+    // 내 편 세력 SO — 종족 프리팹 중 내 편인 것(사람 방랑자)에서 읽는다(씬 배선 없이).
+    FactionData PlayerFactionData()
+    {
+        foreach (var p in Races)
+            if (p != null && p.TryGetComponent(out Faction f) && f.Data != null && f.Data.PlayerControlled) return f.Data;
+        foreach (var f in Faction.All)
+            if (f != null && f.IsPlayer && f.Data != null) return f.Data;
+        Debug.LogWarning("[캐릭터 생성] 내 편 세력을 못 찾았다 — 적 몸 종족이 적으로 선다.");
+        return null;
+    }
+
+    // 이 종족에 있는 성별 — 남자 몸만 있는 종족은 성별을 못 바꾼다.
+    List<Gender> GendersOf(Draft d) => AllBodiesOf(d).Select(b => b.Gender).Distinct().ToList();
+
+    void FixGender(Draft d)
+    {
+        var g = GendersOf(d);
+        if (g.Count > 0 && !g.Contains(d.Gender)) d.Gender = g[0];
     }
 
     PawnBody BodyOf(Draft d)
@@ -157,6 +209,7 @@ public class CharacterCreationUI : MonoBehaviour
         for (int i = 0; i < Mathf.Max(1, startPawnCount); i++)
         {
             var d = new Draft { Gender = Random.value < 0.5f ? Gender.Male : Gender.Female, Seed = Random.Range(1, int.MaxValue) };
+            FixGender(d);
             _drafts.Add(d);
             RollSpec(d);
         }
@@ -212,6 +265,10 @@ public class CharacterCreationUI : MonoBehaviour
         _stage.Show(body != null ? body.gameObject : null);
         var look = _stage.Look;
         if (look == null) return;
+        // 미리보기 몸은 두뇌를 뗐다 — 종족 색(기본 머리색)을 알려 준다.
+        var rp = RacePrefab(D);
+        if (look.TryGetComponent(out MarkingLook mark) && rp != null && rp.TryGetComponent(out UnitBrain rb))
+            mark.SetRaceHint(rb.Data);
 
         // **기본 얼굴은 한 번 입힌 뒤에 읽는다** — 막 세운 사본은 `Start`가 안 돌아 머리형이 빈칸·머리카락이 민머리로
         // 읽혔다(스크린샷의 "기본 · 민머리").
@@ -220,13 +277,18 @@ public class CharacterCreationUI : MonoBehaviour
         if (resetLook || !heads.Contains(D.Head)) D.Head = look.Shape;
         if (resetLook)
         {
-            D.Hair = look.Hair;
-            D.Ear  = look.Ear;
-            D.Nose = PawnLook.None;
+            // 옛 칸은 그 종족에 고를 것이 있을 때만 못 박는다 — 없는 몸(빚은 얼굴)에 민머리를 박으면 축 머리카락과 엇갈린다.
+            D.Hair = look.HairNames.Any() ? look.Hair : "";
+            D.Ear  = look.EarNames.Any() ? look.Ear : "";
+            D.Nose = look.NoseNames.Any() ? PawnLook.None : "";
             D.Eyes = D.Mouth = "";
+            D.Picks.Clear();
+            foreach (var axis in look.PickAxes)
+                if (!HiddenAxes.Contains(axis)) D.Picks[axis] = look.Picked(axis);
             D.LookSet = true;
         }
         ApplyLook(look, D);
+        BuildPickRows(look);
         // **거리는 종족이 바뀔 때만 다시 잰다** — 체형마다 재면 모든 체형이 같은 크기로 보인다(`PawnPreviewStage.Fit`).
         if (_fittedRace != D.Race) { _stage.Fit(); _fittedRace = D.Race; }
         Refresh();
@@ -244,6 +306,125 @@ public class CharacterCreationUI : MonoBehaviour
         look.SetFaceOverride("EyeL", d.Eyes);
         look.SetFaceOverride("EyeR", d.Eyes);
         look.SetFaceOverride("Mouth", d.Mouth);
+        // 고른 축은 못 박는다 — 태어난 폰이 씨앗으로 다시 고르면 화면에서 고른 것과 달라진다.
+        foreach (var kv in d.Picks) look.SetPickOverride(kv.Key, kv.Value);
+        if (look.TryGetComponent(out MarkingLook mark)) mark.SetHair(d.HairTone);
+    }
+
+    // ── 고르기 축 줄 — 몸의 축 수만큼 템플릿을 복제한다(종족마다 축이 다르다) ──────────────
+
+    ChoiceRowUI PickTemplate()
+    {
+        if (pickRowTemplate != null) return pickRowTemplate;
+        foreach (var r in rows) if (r != null && r.Key == "hair") return r;   // 템플릿을 아직 안 세운 씬 — 머리카락 줄을 본뜬다
+        return null;
+    }
+
+    void BuildPickRows(PawnLook look)
+    {
+        foreach (var r in _pickRows) if (r != null) Destroy(r.gameObject);
+        _pickRows.Clear();
+        var tpl = PickTemplate();
+        if (tpl != null && look != null)
+        {
+            ChoiceRowUI Add(string key, string label)
+            {
+                var row = Instantiate(tpl, tpl.transform.parent);
+                row.gameObject.SetActive(true);
+                row.name = "Row_" + key;
+                row.Key = key;
+                row.SetLabel(label);
+                row.OnStep += Step;
+                _pickRows.Add(row);
+                return row;
+            }
+            bool colored = look.TryGetComponent(out MarkingLook _);
+            foreach (var axis in look.PickAxes.OrderBy(PawnLookLabels.AxisOrder).ThenBy(a => a))
+            {
+                if (HiddenAxes.Contains(axis) || look.PickOptions(axis).Count() < 2) continue;
+                Add(PickKey + axis, PawnLookLabels.Axis(axis));
+                // 머리색은 머리카락 바로 밑(머리카락이 없는 종족이면 축 줄 맨 앞 — 아래에서)
+                if (axis == PawnLook.PickHair && colored) { Add(HairColorKey, "머리색"); colored = false; }
+            }
+            if (colored) { var c = Add(HairColorKey, "머리색"); _pickRows.Remove(c); _pickRows.Insert(0, c); }
+        }
+        LayoutRows(look);
+    }
+
+    // 보이는 줄을 위에서부터 차례로 놓는다 — 고를 것이 없는 옛 줄은 숨기고, 줄이 많으면 간격을 줄인다.
+    void LayoutRows(PawnLook look)
+    {
+        var shown = new List<ChoiceRowUI>();
+        float top = TopOf(rows);
+        foreach (var r in rows)
+        {
+            if (r == null) continue;
+            bool on = r.Key switch
+            {
+                "head"  => look != null && look.ShapeNames.Count() > 1,
+                "hair"  => look != null && look.HairNames.Any(),
+                "ear"   => look != null && look.EarNames.Any(),
+                "nose"  => look != null && look.NoseNames.Any(),
+                "eyes"  => CellChoices(look, "EyeL").Count > 1,
+                "mouth" => CellChoices(look, "Mouth").Count > 1,
+                _       => true,
+            };
+            r.gameObject.SetActive(on);
+            if (on) shown.Add(r);
+        }
+        shown.AddRange(_pickRows);
+        if (shown.Count == 0) return;
+
+        var first = shown[0].GetComponent<RectTransform>();
+        var box   = first.parent as RectTransform;
+        float rowH = first.rect.height;
+        float room = box != null ? box.rect.height - top : 9999f;
+        float step = Mathf.Min(44f, Mathf.Max(rowH + 2f, room / shown.Count));
+        for (int i = 0; i < shown.Count; i++)
+        {
+            var rt = shown[i].GetComponent<RectTransform>();
+            rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, -(top + i * step));
+        }
+    }
+
+    // 이 축의 조각 중 하나라도 지금 고른 **다른 축**으로 켜질 수 있나 — 조각 이름의 조건(`@축.벌|벌` · `!` 아님)을 읽는다.
+    // 머리형(`Shape`) · 윗머리(`Fit`)는 머리형이 정하는 것이라 안 본다(그 줄을 흐리게 할 까닭이 아니다).
+    bool AxisUsable(PawnLook look, string axis)
+    {
+        bool any = false;
+        foreach (var rend in look.PickRenderers)
+        {
+            if (rend == null) continue;
+            var segs = rend.name.Split('@');
+            var head = segs[0].Split('.');
+            if (head.Length < 4 || head[2] != axis) continue;
+            any = true;
+            bool ok = true;
+            for (int i = 1; i < segs.Length && ok; i++)
+            {
+                int dot = segs[i].IndexOf('.');
+                if (dot <= 0) continue;
+                string a = segs[i].Substring(0, dot), o = segs[i].Substring(dot + 1);
+                if (a == PawnLook.ShapeAxis || a == PawnLook.FitAxis || a == axis) continue;
+                bool not = o.StartsWith("!");
+                if (not) o = o.Substring(1);
+                if (!D.Picks.TryGetValue(a, out var got) || string.IsNullOrEmpty(got)) got = look.Picked(a);
+                ok = not != System.Array.IndexOf(o.Split('|'), got) >= 0;
+            }
+            if (ok) return true;
+        }
+        return !any;   // 조각이 하나도 없는 축(조건에만 나오는 벌)은 막지 않는다
+    }
+
+    // 첫 줄의 위 끝(창 안 위에서부터 잰 거리) — 씬에 놓인 그대로를 기준으로 쓴다(처음 한 번 잰다).
+    float _rowsTop = -1f;
+    float TopOf(ChoiceRowUI[] fixedRows)
+    {
+        if (_rowsTop >= 0f) return _rowsTop;
+        foreach (var r in fixedRows)
+            if (r != null) { _rowsTop = -r.GetComponent<RectTransform>().anchoredPosition.y; break; }
+        if (_rowsTop < 0f) _rowsTop = 52f;
+        return _rowsTop;
     }
 
     // ── 한 줄 넘기기 ────────────────────────────────────────────────────────
@@ -256,10 +437,13 @@ public class CharacterCreationUI : MonoBehaviour
             case "race":
                 D.Race = Wrap(D.Race + dir, Races.Length);
                 D.Body = 0;
+                FixGender(D);
+                _fittedRace = -1;
                 ShowBody(resetLook: true);
                 RollSpec(D);             // 종족이 스탯 범위·이름 풀·이력을 바꾼다
                 return;
             case "gender":
+                if (GendersOf(D).Count < 2) return;   // 한 성별뿐인 종족
                 D.Gender = D.Gender == Gender.Male ? Gender.Female : Gender.Male;
                 D.Body   = 0;
                 ShowBody(resetLook: true);
@@ -275,6 +459,17 @@ public class CharacterCreationUI : MonoBehaviour
             case "nose":  D.Nose  = Cycle(D.Nose,  NoseChoices(look), dir); break;
             case "eyes":  D.Eyes  = Cycle(D.Eyes,  CellChoices(look, "EyeL"), dir); break;
             case "mouth": D.Mouth = Cycle(D.Mouth, CellChoices(look, "Mouth"), dir); break;
+            case HairColorKey:
+                D.HairTone = HairTones[Wrap(System.Array.IndexOf(HairTones, D.HairTone) + dir, HairTones.Length)];
+                break;
+            default:
+                if (row.Key != null && row.Key.StartsWith(PickKey) && look != null)
+                {
+                    string axis = row.Key.Substring(PickKey.Length);
+                    D.Picks.TryGetValue(axis, out var cur);
+                    D.Picks[axis] = Cycle(cur ?? "", look.PickOptions(axis).ToList(), dir);
+                }
+                break;
         }
         ApplyLook(look, D);
         Refresh();
@@ -368,7 +563,7 @@ public class CharacterCreationUI : MonoBehaviour
             switch (r.Key)
             {
                 case "race":   r.Show(data != null && !string.IsNullOrEmpty(data.RaceName) ? data.RaceName : "사람", Races.Length > 1); break;
-                case "gender": r.Show(D.Gender.DisplayName(), true); break;
+                case "gender": r.Show(D.Gender.DisplayName(), GendersOf(D).Count > 1); break;
                 case "body":   r.Show(body != null ? body.ShapeLabel : "", BodiesOf(D).Count > 1); break;
                 case "head":   r.Show(PawnLookLabels.Head(D.Head), true); break;
                 case "hair":   r.Show(PawnLookLabels.Hair(D.Hair), true); break;
@@ -377,6 +572,18 @@ public class CharacterCreationUI : MonoBehaviour
                 case "eyes":   r.Show(CellLabel(D.Eyes,  CellChoices(look, "EyeL")), true); break;
                 case "mouth":  r.Show(CellLabel(D.Mouth, CellChoices(look, "Mouth")), true); break;
             }
+        }
+        foreach (var r in _pickRows)
+        {
+            if (r == null || look == null) continue;
+            if (r.Key == HairColorKey) { r.Show(PawnLookLabels.HairTone(D.HairTone), true); continue; }
+            string axis = r.Key.Substring(PickKey.Length);
+            var opts = look.PickOptions(axis).ToList();
+            D.Picks.TryGetValue(axis, out var cur);
+            if (string.IsNullOrEmpty(cur)) cur = look.Picked(axis);
+            // 지금 고른 다른 축으로는 이 축의 조각이 하나도 안 켜지면 흐리게(앞머리를 못 얹는 머리카락 — 사용자 11-08)
+            if (!AxisUsable(look, axis)) { r.Show("이 머리에는 없음", false); continue; }
+            r.Show(PawnLookLabels.Option(axis, cur, Mathf.Max(0, opts.IndexOf(cur)), opts.Count), opts.Count > 1);
         }
 
         if (storyText != null && D.Spec != null) storyText.text = StoryOf(D.Spec);
@@ -474,6 +681,12 @@ public class CharacterCreationUI : MonoBehaviour
 
             var brain = go.GetComponent<UnitBrain>();
             if (brain != null) brain.ApplySpec(d.Spec);
+            // 적 세력 몸으로 세운 종족(오크)은 내 편으로 — 트리 · 레이어는 세력을 보고 다시 갈린다(`ChangeFaction` 한 문).
+            if (brain != null && go.TryGetComponent(out Faction fac) && !fac.IsPlayer)
+            {
+                var mine = PlayerFactionData();
+                if (mine != null) brain.ChangeFaction(mine);
+            }
             ApplyLook(go.GetComponent<PawnLook>(), d);
 
             var mover = go.GetComponent<PawnMover>();

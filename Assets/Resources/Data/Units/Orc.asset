@@ -38,6 +38,8 @@ MonoBehaviour:
   IsConstruct: 0
   Resistances: []
   UsesBackstory: 1
+  BackstoryRoot: orc
+  BackstoryBranch: 
   DefaultMinGrade: 7
   DefaultMaxGrade: 7
   StatGrades:
@@ -50,7 +52,33 @@ MonoBehaviour:
   - Stat: 3
     Min: 7
     Max: 7
-  StatGrowthRates: []
+  StatGrowthRates:
+  - Stat: 11
+    Multiplier: 1.25
+  - Stat: 0
+    Multiplier: 1.2
+  - Stat: 1
+    Multiplier: 1.2
+  - Stat: 4
+    Multiplier: 1.2
+  - Stat: 12
+    Multiplier: 1.2
+  - Stat: 28
+    Multiplier: 1.15
+  - Stat: 35
+    Multiplier: 0.7
+  - Stat: 21
+    Multiplier: 0.7
+  - Stat: 43
+    Multiplier: 0.75
+  - Stat: 34
+    Multiplier: 0.8
+  - Stat: 42
+    Multiplier: 0.8
+  - Stat: 6
+    Multiplier: 0.85
+  - Stat: 33
+    Multiplier: 0.85
   ButcherYield:
   - Item: {fileID: 0}
     ItemId: res_orchide

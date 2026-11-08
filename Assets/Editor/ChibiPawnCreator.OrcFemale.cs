@@ -530,7 +530,11 @@ public static partial class ChibiPawnCreator
         }
 
         // 머리 열 — 첫 벌만 켜 둔다(프리팹 · 씬 뷰). 판에서는 씨앗이 고른다.
+        // **파이썬이 뽑은 메시가 있으면 그것을 쓴다**(`Pawn/14` · `ChibiPawnCreator.OrcHairBaked`) — 아래 수식은 뽑기를 안 돌린 체크아웃의 옛 판.
+        var bakedHair = OrcBakedHairParts("Female", pos, "Head.Pick.Hair.PonyA");
+        if (bakedHair != null) parts.AddRange(bakedHair);
         bool first = true;
+        if (bakedHair == null)
         foreach (var fh in OrcFemaleHairs(o))
         {
             string n = $"Head.Pick.Hair.{fh.Name}";

@@ -49,10 +49,42 @@ MonoBehaviour:
   IsConstruct: 0
   Resistances: []
   UsesBackstory: 1
+  BackstoryRoot: 
+  BackstoryBranch: elf
   DefaultMinGrade: 7
   DefaultMaxGrade: 7
   StatGrades: []
-  StatGrowthRates: []
+  StatGrowthRates:
+  - Stat: 14
+    Multiplier: 1.3
+  - Stat: 6
+    Multiplier: 1.25
+  - Stat: 25
+    Multiplier: 1.2
+  - Stat: 21
+    Multiplier: 1.2
+  - Stat: 30
+    Multiplier: 1.15
+  - Stat: 2
+    Multiplier: 1.15
+  - Stat: 41
+    Multiplier: 1.15
+  - Stat: 1
+    Multiplier: 0.75
+  - Stat: 0
+    Multiplier: 0.8
+  - Stat: 29
+    Multiplier: 0.7
+  - Stat: 39
+    Multiplier: 0.75
+  - Stat: 10
+    Multiplier: 0.8
+  - Stat: 11
+    Multiplier: 0.8
+  - Stat: 12
+    Multiplier: 0.8
+  - Stat: 28
+    Multiplier: 0.85
   ButcherYield:
   - Item: {fileID: 0}
     ItemId: res_rawhide

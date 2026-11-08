@@ -78,6 +78,10 @@ public class PawnLook : MonoBehaviour
     // **조건에 머리 모양을 건다**(2026-11-07 — 사람 빚은 얼굴) — `@Shape.Male_SlimSoft`는 *지금 머리가 그것일 때만*. 머리 모양은 고르기 축이
     // 아니라(`Shape` — 씨앗 · `shapeOverride`) 이 이름은 축으로 안 모은다. 머리 모양마다 따로 빚은 조각(코 · 눈썹)이 고른 벌 하나만 켠다.
     public const string ShapeAxis = "Shape";
+    // **윗머리 모양 조건**(2026-11-08 — 사람 머리카락) — `@Fit.Round`는 *지금 머리의 윗머리 모양이 둥글 때만*(`HairFitOf`). 이 조건을 단 조각은
+    // 기준 머리 틀에 놓여 있어 머리카락처럼 **고른 머리로 옮긴다**(`Fit` — 성별 둘 × 윗머리 둘만 굽고 나머지 머리에는 늘려 씌운다).
+    public const string FitAxis = "Fit";
+    public const string PickBangs = "Bangs";   // 앞머리 — 머리카락처럼 투구가 끈다
     public static readonly string[] FaceFeatures = { "EyeL", "EyeR", "Mouth" };
 
     [Tooltip("고르는 축을 못 박는다 — `축=벌`(예: `Jaw=None`). 없는 축이면 씨앗이 고른다.")]
@@ -112,6 +116,7 @@ public class PawnLook : MonoBehaviour
     readonly SortedDictionary<string, SortedSet<string>> _pickAxes = new();
     readonly List<(Renderer r, string axis, string option, (string axis, string option, bool not)[] when)> _pickParts = new();
     readonly Dictionary<string, string> _picked = new();
+    readonly List<Renderer> _pickFitted = new();   // `@Fit.` 조각 — 고른 머리로 옮긴다
     // 판에서 다른 컴포넌트가 정하는 축(`ForcePick` — 종족의 문신 규칙 · `MarkingLook`). 저장하지 않는다 — 인스펙터로 못 박은 것이 이긴다.
     readonly Dictionary<string, string> _forced = new();
 
@@ -320,7 +325,9 @@ public class PawnLook : MonoBehaviour
         if (chosen != null && frame != null && chosen != frame)
         {
             Vector3 fP = frame.localPosition, cP = chosen.localPosition;
-            Vector3 k  = Div(chosen.localScale, frame.localScale);
+            // 크기 비에 **덮개 배수**(`CoverOf`)를 곱한다 — 갸름한 머리는 틀(상자)이 같아도 정수리 · 모서리가 더 차 있어
+            // 비로만 줄이면 정수리가 머리카락을 뚫는다(2026-11-08 — 사용자: 머리형에 따라 대머리 · 남자 갸름한 각진 턱 정수리 41% 드러남).
+            Vector3 k  = Div(chosen.localScale * CoverOf(Shape), frame.localScale * CoverOf(FrameKey(frame)));
             // **귀도 같은 셈으로 옮긴다** — 기준 머리에 맞춰 구웠으므로 머리카락과 같은 틀을 탄다(따로 셈하면 한쪽만 어긋난다).
             // 투구도 같은 틀이다.
             void Fit(Renderer r)
@@ -334,6 +341,7 @@ public class PawnLook : MonoBehaviour
             foreach (var kv in map)
             foreach (var r in kv.Value) Fit(r);
             foreach (var r in _helmets) Fit(r);
+            foreach (var r in _pickFitted) Fit(r);
         }
         if (chosen != null) fittedTo = Shape;
 
@@ -356,11 +364,12 @@ public class PawnLook : MonoBehaviour
             if (r == null) continue;
             bool on = _picked[axis] == option;
             // **투구를 쓰면 고른 머리카락(`Hair` 축 — 오크의 묶은 머리)도 끈다** — 사람 머리카락 묶음과 같은 규칙(투구 밑으로 뚫고 나온다).
-            if (_helmeted && axis == PickHair) on = false;
+            if (_helmeted && (axis == PickHair || axis == PickBangs)) on = false;
             foreach (var (a, o, not) in when)
             {
                 if (!on || a == null) continue;
                 if (a == ShapeAxis) on = not != AnyOf(o, Shape);
+                else if (a == FitAxis) on = not != AnyOf(o, HairFitOf(Shape));
                 else if (_picked.TryGetValue(a, out var got)) on = not != AnyOf(o, got);
             }
             r.enabled = on;
@@ -422,6 +431,80 @@ public class PawnLook : MonoBehaviour
         }
     }
 
+    // ── 덮개 배수 — 머리카락을 구운 머리(둥근 = 기준 머리 · 네모 = 넓은 네모) 대비 이 머리가 바깥으로 얼마나 더 나오나 ──
+    // 둘 다 고른 머리의 크기로 맞춘 뒤 방향마다 가장 먼 점을 견줘 가장 큰 비를 쓴다(머리 중심 기준 — 머리 피벗이 중심이다).
+    // `@Fit.` 조각이 있는 몸(사람)만 잰다. 메시 짝마다 한 번만 잰다(정적 캐시).
+    static readonly Dictionary<(int, int), float> _coverCache = new();
+    readonly Dictionary<string, float> _cover = new();
+
+    string FrameKey(Transform frame)
+    {
+        foreach (var kv in _shapeHead) if (kv.Value == frame) return kv.Key;
+        return "";
+    }
+
+    float CoverOf(string shape)
+    {
+        if (_pickFitted.Count == 0 || string.IsNullOrEmpty(shape)) return 1f;
+        if (_cover.TryGetValue(shape, out var c)) return c;
+        c = 1f;
+        string want = HairFitOf(shape) == FitBox ? "BroadSquare" : BasisShape;
+        int us = shape.IndexOf('_');
+        string prefix = us >= 0 ? shape.Substring(0, us + 1) : "";
+        string refKey = null;
+        foreach (var key in _shapes.Keys) if (key.StartsWith(prefix) && key.EndsWith(want)) { refKey = key; break; }
+        if (refKey != null && refKey != shape
+            && _shapeHead.TryGetValue(shape, out var t) && _shapeHead.TryGetValue(refKey, out var rt)
+            && t.TryGetComponent(out MeshFilter mf) && rt.TryGetComponent(out MeshFilter rf)
+            && mf.sharedMesh != null && rf.sharedMesh != null)
+        {
+            var id = (mf.sharedMesh.GetInstanceID(), rf.sharedMesh.GetInstanceID());
+            if (!_coverCache.TryGetValue(id, out c))
+                _coverCache[id] = c = MeasureCover(mf.sharedMesh, rf.sharedMesh, t.localScale);
+        }
+        _cover[shape] = c;
+        return c;
+    }
+
+    // 방향 칸(위도 24 × 경도 48)마다 기준 머리의 가장 먼 거리(이웃 칸까지) → 고른 머리의 점(아래를 깊게 보는 것 빼고)이 그 몇 배인가.
+    static float MeasureCover(Mesh chosen, Mesh basis, Vector3 size)
+    {
+        if (!chosen.isReadable || !basis.isReadable) return 1f;
+        const int LatN = 24, LonN = 48;
+        var far = new float[LatN, LonN];
+        static (int, int) Cell(Vector3 d)
+        {
+            float lat = Mathf.Acos(Mathf.Clamp(d.y, -1f, 1f)) / Mathf.PI;            // 0 위 · 1 아래
+            float lon = (Mathf.Atan2(d.z, d.x) / (2f * Mathf.PI) + 1f) % 1f;
+            return (Mathf.Min(LatN - 1, (int)(lat * LatN)), Mathf.Min(LonN - 1, (int)(lon * LonN)));
+        }
+        foreach (var v0 in basis.vertices)
+        {
+            var v = Vector3.Scale(v0, size);
+            float r = v.magnitude;
+            if (r < 1e-5f) continue;
+            var (a, b) = Cell(v / r);
+            if (r > far[a, b]) far[a, b] = r;
+        }
+        float worst = 1f;
+        foreach (var v0 in chosen.vertices)
+        {
+            var v = Vector3.Scale(v0, size);
+            float r = v.magnitude;
+            if (r < 1e-5f || v.y / r < -0.2f) continue;   // 턱 밑은 머리카락이 안 덮는다
+            var (a, b) = Cell(v / r);
+            float m = 0f;
+            for (int da = -1; da <= 1; da++)
+            for (int db = -1; db <= 1; db++)
+            {
+                int ia = a + da, ib = (b + db + LonN) % LonN;
+                if (ia >= 0 && ia < LatN) m = Mathf.Max(m, far[ia, ib]);
+            }
+            if (m > 0f) worst = Mathf.Max(worst, r / m);
+        }
+        return Mathf.Min(worst, 1.3f);
+    }
+
     string BasisKey()
     {
         foreach (var key in _shapes.Keys) if (key.EndsWith(BasisShape)) return key;
@@ -444,7 +527,7 @@ public class PawnLook : MonoBehaviour
     {
         _gathered = true;
         _shapes.Clear(); _hairs.Clear(); _ears.Clear(); _noses.Clear(); _tusks.Clear(); _shapeHead.Clear(); _faceParts.Clear(); _helmets.Clear();
-        _pickAxes.Clear(); _pickParts.Clear();
+        _pickAxes.Clear(); _pickParts.Clear(); _pickFitted.Clear(); _cover.Clear();
 
         // 머리 관절 아래를 본다. 리그가 없으면(아직 안 세운 프리팹) 이름으로 찾는다.
         var rig  = GetComponentInChildren<PawnRig>(true);
@@ -495,6 +578,7 @@ public class PawnLook : MonoBehaviour
         if (head.Length < 4) return;
         Option(head[2], head[3]);
         var when = new (string, string, bool)[segs.Length - 1];
+        bool fitted = false;
         for (int i = 1; i < segs.Length; i++)
         {
             int dot = segs[i].IndexOf('.');
@@ -502,10 +586,12 @@ public class PawnLook : MonoBehaviour
             string axis = segs[i].Substring(0, dot), opt = segs[i].Substring(dot + 1);
             bool not = opt.StartsWith("!");
             if (not) opt = opt.Substring(1);
-            if (axis != ShapeAxis) foreach (var o in opt.Split('|')) Option(axis, o);
+            if (axis == FitAxis) fitted = true;
+            else if (axis != ShapeAxis) foreach (var o in opt.Split('|')) Option(axis, o);
             when[i - 1] = (axis, opt, not);
         }
         _pickParts.Add((r, head[2], head[3], when));
+        if (fitted) _pickFitted.Add(r);
 
         void Option(string axis, string opt)
         {
