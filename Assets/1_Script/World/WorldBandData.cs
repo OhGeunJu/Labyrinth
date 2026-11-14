@@ -42,6 +42,12 @@ public class WorldBandData : ScriptableObject
                  "같은 고블린이라도 소굴 잡졸이냐 두목이냐가 갈린다.")]
         public StatGrade MinGrade = StatGrade.FMinus;
         public StatGrade MaxGrade = StatGrade.E;
+
+        // **층이 다른 무리는 프리팹이 아니라 이 칸으로 가른다**(2026-11-11, 사용자: *"데이터 중심으로 가자"*).
+        // 프리팹을 층마다 복제하면 몸을 고칠 때마다 층 수만큼 다시 굽는다. 새 몸일 때만 프리팹을 늘린다.
+        [Tooltip("이 자리에 서는 사람이 **차고 지니는 것**. 비우면 프리팹의 것 — " +
+                 "같은 해골이라도 1층 무리는 청동, 4층 무리는 미스릴.")]
+        public LoadoutData Loadout;
     }
 
     [Header("표시")]
@@ -102,6 +108,12 @@ public class WorldBandData : ScriptableObject
              "**장비를 여기로 대신한다** — 무리는 실제 장비를 안 들기 때문이다. 한쪽만 장비를 " +
              "세면 플레이어가 늘 이긴다. 잘 무장한 무리는 1.3, 굶주린 도적떼는 0.8쯤.")]
     [Min(0.1f)] public float PowerMultiplier = 1f;
+
+    // **층마다 따로 지은 무리는 근거지 층 배율을 또 받지 않는다**(2026-11-11, 사용자: *"굳이 두 번 세질 필요없지"*).
+    // 층 배율(`BiomeTier.PowerMultOf`)은 *한 무리가 여러 층에 서던 시절*에 "깊은 데서 온 것은 세다"를 대신하던 값이다.
+    // 층 무리(`Band_Undead_F*` · `Band_Cult_F*`)는 그것을 이미 등급으로 들고 있고, 장비는 위 `PowerMultiplier`가 층마다 든다.
+    [Tooltip("켜면 근거지 층 배율을 안 곱한다 — 등급 · 장비를 층마다 따로 적은 무리(`Pawn/15`가 켠다).")]
+    public bool ScaledByFloor;
 
     public string            BandName  => string.IsNullOrEmpty(bandName) ? name : bandName;
     public Color             TokenColor => tokenColor;

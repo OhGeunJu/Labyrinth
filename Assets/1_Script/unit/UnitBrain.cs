@@ -245,6 +245,9 @@ public partial class UnitBrain : MonoBehaviour
         // 생김새 — 크기 · 재질 · 전용 모델. 늘어나면 여기에 줄이 는다.
         if (spec.BodyScale > 0f) transform.localScale = Vector3.one * spec.BodyScale;
         ApplyLook(spec);
+
+        // 장비는 `Start`의 `ApplyLoadout`이 입힌다 — 세우는 쪽은 그 전에 여기를 부른다(`PawnSpawn` 직후).
+        if (spec.LoadoutOverride != null) loadout = spec.LoadoutOverride;
     }
 
     // ── 성장 배경 ─────────────────────────────────────────────────────────────

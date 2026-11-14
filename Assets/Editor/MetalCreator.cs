@@ -166,6 +166,9 @@ public static class MetalCreator
         EditorUtility.SetDirty(mithrilVein);
         EditorUtility.SetDirty(titaniumVein);
 
+        // **마력석이 풀보다 먼저다** — 아래 `WireBiomes`가 그 광맥을 이름으로 찾는다.
+        bool magic = MagicLadder();
+
         WireBiomes(titaniumVein, mithrilVein, uraniumVein);
         WireFloorVeins();
 
@@ -173,7 +176,250 @@ public static class MetalCreator
         AssetDatabase.Refresh();
         Debug.Log("[금속] 미스릴·티타늄을 만들고 지하 여덟 층의 광맥 풀을 다시 배선했습니다. " +
                   "굴 바닥에 광맥을 뿌리는 규칙도 씬에 물렸습니다 — **씬을 저장할 것.**\n" +
-                  "이어서 `World → 9. Set Wild Yields`를 돌려 야생 매장량을 규칙에서 다시 내세요.");
+                  (magic ? "마력석 네 등급(약한 · 마력석 · 정제 · 심연)의 아이템 · 광맥 · 이식 건물 · 배양 연구를 맞췄습니다.\n" : "") +
+                  "이어서 `Building → 0. Dress All`(새 결정에 소품을 입힌다) · `Bake Research Graph`(새 연구 넷을 판에) · " +
+                  "`World → 9. Set Wild Yields`를 돌릴 것.");
+    }
+
+    // ── 마력석 사다리 ───────────────────────────────────────────────────────
+    //
+    // **마력석도 층마다 하나다**(2026-11-10, 사용자 설계). 결정 일곱이 전부 *전용 보석 + 마력석*인데
+    // 그 마력석이 3층(용암층 · 수정동)에서만 나서, 마법 축 전체가 3층에 묶여 있었다.
+    //
+    // | 층 | 바이옴 | 마력석 | 광맥 |
+    // |---|---|---|---|
+    // | 1 | 균사림 · 이끼굴 | 약한 마력석 | `Node_WeakMagicCrystal` |
+    // | 2 | 지저늪 | 마력석 | `Node_MagicCrystal` |
+    // | 3 | 용암층 · 수정동 | 정제 마력석(옛 `Res_MagicStone`) | `Node_RefinedMagicCrystal` |
+    // | 4 | 심연 | 심연 마력석 | `Node_AbyssMagicCrystal` |
+    //
+    // ## 등급은 닿는 층만 가른다 — 결정은 같다
+    //
+    // 사용자 결정이다(*"차이 없음"*). 결정에는 품질이 없고(`ItemData.HasQuality`는 장비만), 금속처럼
+    // 등급마다 장비를 따로 둘 자리도 아니다. **무엇으로 깎든 같은 결정이 나온다.**
+    //
+    // ## 묶는 자리는 맨 아래다 — 위의 것이 아래 것으로 쳐 준다
+    //
+    // `ItemData.CountsAs`는 **한 칸**이다(늑대 고기 → 생고기). 그래서 묶음의 이름이 될 물건이
+    // 넷 중 하나여야 하는데, **약한 마력석**으로 잡는다: 레시피는 *약한 마력석*을 적고 위 셋이
+    // 그것으로 쳐 준다. 가운데(마력석)로 잡으면 **약한 것이 마력석으로 쳐져** 2층 광맥 배양을
+    // 1층 돌로 치를 수 있게 된다 — 등급마다 연구를 따로 둔 뜻이 없어진다. 맨 아래로 잡으면
+    // *더 좋은 돌은 약한 돌 자리에 쓸 수 있다*는 말 그대로이고, 등급을 콕 집는 자리(배양 연구 ·
+    // 이식 비용 · 충전대 연료)는 그 등급만 받는다.
+    //
+    // ## 3층 것의 이름을 바꿨다 — guid는 그대로다
+    //
+    // 옛 `Res_MagicStone`이 **정제 마력석**(`Res_RefinedMagicStone`)이 되고, 그 이름은 2층의 새
+    // 물건이 받는다(사용자: *"같이 바꿔"* — 표시 이름만 바꾸면 `마력석`이라는 ID가 정제 마력석을
+    // 가리키는 채로 남는다). 광맥 · 이식 건물 · 프리팹 · 배양 연구도 같이 옮긴다. 가리키는 쪽
+    // (충전대 연료 · 교단 전리품 · 용암층 풀)은 guid라 따라온다.
+    //
+    // **옮기기는 한 번만 돈다** — 새 이름이 이미 있으면 건너뛴다. 이 줄들은 옮긴 것을 커밋한
+    // 뒤에는 할 일이 없다(그때 지울 것).
+    //
+    // ## 등급을 내린 연구 둘
+    //
+    // 1층에서 결정을 깎아도 쓸 데가 없으면 내린 뜻이 없다(사용자: *"내려 더 내려도 괜찮아"*).
+    // 보석 세공과 원소 공학을 I로 내리고, 길을 막던 3층 재료를 걷는다: 보석 세공의 루비 ·
+    // 원소 공학의 선행(귀금속 제련 — 은 광석을 먹는다). 연금술의 마력석 줄도 약한 것으로 받는다.
+    // 등급 값 자체는 `ResearchTierCreator`의 표가 든다.
+    //
+    // ## 안 건드린 것
+    //
+    // **충전대 연료는 정제 마력석 그대로다** — 골렘을 쓸지 자체가 미정이라(사용자) 연료를 넓히지
+    // 않았다. 공허석 · 에테르석도 벽에 안 넣는다 — 그 둘은 몹이 떨어뜨리는 쪽이다(사용자).
+    const string BuildingDir   = "Assets/Resources/Data/Buildings";
+    const string ResearchDir   = "Assets/Resources/Data/Research";
+    const string MagicTemplate = "Node_RefinedMagicCrystal";   // 옛 한 벌 — 새 등급은 여기서 떠 온다
+
+    const int MagicPlantCost    = 25;   // 이식 광맥 하나를 심는 데 드는 그 등급의 돌
+    const int MagicResearchCost = 15;   // 배양 연구가 먹는 그 등급의 돌
+
+    static bool MagicLadder()
+    {
+        RenameOnce(ItemDir,     "Res_MagicStone",    "Res_RefinedMagicStone",    ".asset");
+        RenameOnce(NodeDir,     "Node_MagicCrystal", MagicTemplate,              ".asset");
+        RenameOnce(BuildingDir, "Node_MagicCrystal", MagicTemplate,              ".asset");
+        RenameOnce(PrefabDir,   "Node_MagicCrystal", MagicTemplate,              ".prefab");
+        RenameOnce(ResearchDir, "Res_Vein_Magic",    "Res_Vein_RefinedMagic",    ".asset");
+
+        if (AssetDatabase.LoadAssetAtPath<BuildingData>(BuildingDir + "/" + MagicTemplate + ".asset") == null ||
+            AssetDatabase.LoadAssetAtPath<GameObject>(PrefabDir + "/" + MagicTemplate + ".prefab") == null)
+        {
+            Debug.LogWarning($"[금속] 마력석 사다리를 못 지었습니다 — 본보기(`{MagicTemplate}`)의 건물이나 프리팹이 없습니다.");
+            return false;
+        }
+
+        // 값은 사다리다 — 정제가 70으로 이미 서 있고(결정 값 314가 거기서 나왔다) 그 위아래를 채운다.
+        var weak    = MagicStone("Res_WeakMagicStone",    "약한 마력석", 25, null,
+            "빛이 옅은 마력석. 균사림과 이끼굴의 벽에 박혀 있다. 힘은 약해도 결정 하나를 깎기에는 모자라지 않다.");
+        var plain   = MagicStone("Res_MagicStone",        "마력석",      45, weak,
+            "마력이 고인 돌. 지저늪의 벽에서 난다.");
+        var refined = MagicStone("Res_RefinedMagicStone", "정제 마력석", 70, weak,
+            "깊은 열에 오래 눌려 맑아진 마력석. 용암층과 수정동에서 난다.");
+        var abyss   = MagicStone("Res_AbyssMagicStone",   "심연 마력석", 110, weak,
+            "심연의 어둠을 머금은 마력석. 오래 쥐고 있으면 손끝이 저리다.");
+
+        // 게이지 · 요구 숙련은 그 층의 금속 광맥과 나란하다(구리 120/4 · 철 150/8 · 티타늄 260/18 · 미스릴 400/30).
+        // 정제는 옛 값 그대로다. 선행은 사슬이고, 정제만 옛 선행(철 광맥 이식)을 같이 든다.
+        var transplant = Research("Res_VeinTransplant");
+        var veinIron   = Research("Res_Vein_Iron");
+
+        var r1 = MagicGrade("Node_WeakMagicCrystal", "Res_Vein_WeakMagic", weak, "약한 마력석 결정",
+            gauge: 120f, skill: 4f, order: 108, time: 250f, col: 1, row: 3,
+            where: "균사림과 이끼굴의 벽에서 옅은 보랏빛으로 돋는다.", transplant);
+        var r2 = MagicGrade("Node_MagicCrystal", "Res_Vein_Magic", plain, "마력석 결정",
+            gauge: 180f, skill: 10f, order: 109, time: 400f, col: 2, row: 3,
+            where: "지저늪의 벽에서 보랏빛으로 돋는다.", r1);
+        var r3 = MagicGrade(MagicTemplate, "Res_Vein_RefinedMagic", refined, "정제 마력석 결정",
+            gauge: 260f, skill: 18f, order: 110, time: 600f, col: 4, row: 2,
+            where: "용암층과 수정동의 벽에서 짙은 보랏빛으로 돋는다.", veinIron, r2);
+        MagicGrade("Node_AbyssMagicCrystal", "Res_Vein_AbyssMagic", abyss, "심연 마력석 결정",
+            gauge: 400f, skill: 30f, order: 111, time: 1000f, col: 5, row: 2,
+            where: "심연의 벽에서만 푸른 보랏빛으로 돋는다. 캐는 데 오래 걸린다.", r3);
+
+        RewireMagicResearch(weak, refined);
+        return true;
+    }
+
+    // 등급 하나의 한 벌 — 광맥 데이터 · 이식 건물 · 프리팹 · 배양 연구. 돌려주는 것은 그 연구다(다음 등급의 선행).
+    //
+    // **건물과 프리팹은 본보기에서 떠 온다** — 처음부터 지으면 프리팹 루트의 `PlacedBuilding` · `PowerUser` ·
+    // `PropVariant`와 건물의 갈래 · 청사진 값을 여기서 다시 적어야 하고, 그 목록은 반드시 뒤처진다(`VeinArt.Build` 머리글).
+    static ResearchData MagicGrade(string nodeName, string researchName, ItemData stone, string displayName,
+                                   float gauge, float skill, int order, float time, int col, int row,
+                                   string where, params ResearchData[] prerequisites)
+    {
+        var node = Vein(nodeName, stone, gauge, skill, displayName, where);
+        node.DropMax    = 1;   // 마법 결정은 한 번에 하나다(옛 마력 결정 그대로)
+        node.MaxWorkers = 2;
+
+        string title    = displayName + " 배양";
+        var    research = LoadOrCreate<ResearchData>(ResearchDir + "/" + researchName + ".asset", out bool freshResearch);
+        research.ResearchName      = title;
+        research.Description       = "광물이 아니라 자란다 — 심는 것이 아니라 기른다.";
+        research.Ingredients       = new List<ResearchData.Ingredient>
+                                     { new ResearchData.Ingredient { Item = stone, Amount = MagicResearchCost } };
+        research.ResearchTime      = time;
+        research.SkillGrowthAmount = 1f;
+        research.RequiredBenchTier = ResearchTierCreator.TierOf(researchName);
+        research.Prerequisites     = new List<ResearchData>();
+        foreach (var p in prerequisites)
+            if (p != null) research.Prerequisites.Add(p);
+        // **있던 연구의 자리는 안 건드린다** — 씬에 구운 판이 그 자리를 들고 있다(`ResearchGraphBaker`).
+        if (freshResearch) { research.GraphColumn = col; research.GraphRow = row; }
+        EditorUtility.SetDirty(research);
+
+        string buildingPath = BuildingDir + "/" + nodeName + ".asset";
+        var building = AssetDatabase.LoadAssetAtPath<BuildingData>(buildingPath);
+        if (building == null)
+        {
+            AssetDatabase.CopyAsset(BuildingDir + "/" + MagicTemplate + ".asset", buildingPath);
+            building = AssetDatabase.LoadAssetAtPath<BuildingData>(buildingPath);
+        }
+        building.BuildingName     = displayName;
+        building.Description      = $"채굴하면 {stone.ItemName}이(가) 나오는 광맥. 폰을 배정해야 캔다.";
+        building.SortOrder        = order;
+        building.RequiredResearch = research;
+        building.Costs            = new List<RecipeData.Ingredient>
+                                    { new RecipeData.Ingredient { Item = stone, Amount = MagicPlantCost } };
+        // 옛 한 칸 비용(`CostItem`)은 `Costs`가 비었을 때만 읽히지만, 떠 온 사본에 정제 마력석이 남는다.
+        var bso = new SerializedObject(building);
+        bso.FindProperty("CostItem").objectReferenceValue = stone;
+        bso.FindProperty("CostAmount").intValue           = MagicPlantCost;
+        bso.ApplyModifiedPropertiesWithoutUndo();
+
+        string prefabPath = PrefabDir + "/" + nodeName + ".prefab";
+        if (AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) == null)
+            AssetDatabase.CopyAsset(PrefabDir + "/" + MagicTemplate + ".prefab", prefabPath);
+
+        // 모양과 `ResourceNode.data`는 `VeinArt`가 맞춘다. 건물 쪽(`PlacedBuilding.data`)은 떠 온 사본이
+        // 아직 본보기의 건물을 가리키므로 여기서 돌려 놓는다.
+        VeinArt.BuildOne(nodeName, node);
+        var root = PrefabUtility.LoadPrefabContents(prefabPath);
+        try
+        {
+            if (root.TryGetComponent(out PlacedBuilding placed))
+                SerializedWrite.Set(placed, so => so.FindProperty("data").objectReferenceValue = building);
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+        }
+        finally { PrefabUtility.UnloadPrefabContents(root); }
+
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        node.Prefab     = prefab;
+        building.Prefab = prefab;
+        EditorUtility.SetDirty(node);
+        EditorUtility.SetDirty(building);
+        return research;
+    }
+
+    static void RewireMagicResearch(ItemData weak, ItemData refined)
+    {
+        // 연금술 — 등급 I인데 3층 돌을 먹고 있었다. 약한 것으로 받는다(위 등급도 쳐 준다).
+        var alchemy = Research("Res_Alchemy");
+        if (alchemy != null)
+        {
+            for (int i = 0; i < alchemy.Ingredients.Count; i++)
+            {
+                var e = alchemy.Ingredients[i];
+                if (e.Item != refined) continue;
+                e.Item = weak;
+                alchemy.Ingredients[i] = e;   // 구조체라 되돌려 넣어야 한다
+                EditorUtility.SetDirty(alchemy);
+            }
+        }
+
+        // 보석 세공 — 루비(3층)를 걷고 약한 마력석만 먹는다.
+        var gem = Research("Res_Gemcutting");
+        if (gem != null)
+        {
+            gem.Ingredients       = new List<ResearchData.Ingredient>
+                                    { new ResearchData.Ingredient { Item = weak, Amount = 6 } };
+            gem.RequiredBenchTier = ResearchTierCreator.TierOf("Res_Gemcutting");
+            EditorUtility.SetDirty(gem);
+        }
+
+        // 원소 공학 — 선행이 귀금속 제련(은 광석 = 3층)이라 등급만 내려서는 안 열린다. 보석 세공 뒤로 옮긴다.
+        var elemental = Research("Res_ElementalCraft");
+        if (elemental != null && gem != null)
+        {
+            elemental.Prerequisites     = new List<ResearchData> { gem };
+            elemental.RequiredBenchTier = ResearchTierCreator.TierOf("Res_ElementalCraft");
+            EditorUtility.SetDirty(elemental);
+        }
+    }
+
+    static ResourceItemData MagicStone(string id, string name, int value, ItemData countsAs, string desc)
+    {
+        var r = Res(id, name, value, weight: 0.3f, group: ResourceGroup.Ore, desc: desc);
+        r.CountsAs = countsAs;
+        EditorUtility.SetDirty(r);
+        return r;
+    }
+
+    static void RenameOnce(string dir, string from, string to, string ext)
+    {
+        string src = dir + "/" + from + ext, dst = dir + "/" + to + ext;
+        if (AssetDatabase.LoadMainAssetAtPath(dst) != null) return;   // 이미 옮겼다
+        if (AssetDatabase.LoadMainAssetAtPath(src) == null) return;
+
+        string err = AssetDatabase.RenameAsset(src, to);
+        if (!string.IsNullOrEmpty(err)) Debug.LogWarning($"[금속] {src} → {to} 이름을 못 바꿨습니다 — {err}");
+    }
+
+    static ResearchData Research(string name) =>
+        AssetDatabase.LoadAssetAtPath<ResearchData>(ResearchDir + "/" + name + ".asset");
+
+    static T LoadOrCreate<T>(string path, out bool fresh) where T : ScriptableObject
+    {
+        var a = AssetDatabase.LoadAssetAtPath<T>(path);
+        fresh = a == null;
+        if (fresh)
+        {
+            a = ScriptableObject.CreateInstance<T>();
+            AssetDatabase.CreateAsset(a, path);
+        }
+        return a;
     }
 
     // ── 굴 바닥에도 광맥이 난다 ─────────────────────────────────────────────
@@ -284,7 +530,11 @@ public static class MetalCreator
         var sapph  = Node("Node_SapphireVein");
         var topaz  = Node("Node_TopazVein");
         var emer   = Node("Node_EmeraldVein");
-        var magic  = Node("Node_MagicCrystal");
+        // 마력석은 층마다 하나다(위 `MagicLadder`) — 약한 것 1층 · 마력석 2층 · 정제 3층 · 심연 4층.
+        var magicWeak    = Node("Node_WeakMagicCrystal");
+        var magicPlain   = Node("Node_MagicCrystal");
+        var magic        = Node(MagicTemplate);
+        var magicAbyss   = Node("Node_AbyssMagicCrystal");
         var ether  = Node("Node_EtherCrystal");
         var voidc  = Node("Node_VoidCrystal");
 
@@ -300,8 +550,8 @@ public static class MetalCreator
         //
         //   · **폐광**  — 광물의 굴. **석탄이 1층에서 여기서만 난다**
         //   · **동굴**  — 구리·주석. 평범한 굴
-        //   · **균사림** — 벽은 돌뿐. 여기는 **균류**의 층이다(갓버섯·거대버섯)
-        //   · **이끼굴** — 벽은 돌뿐. 여기는 **흙**의 층이다(나무·이끼)
+        //   · **균사림** — 금속은 없다. 여기는 **균류**의 층이다(갓버섯·거대버섯)
+        //   · **이끼굴** — 금속은 없다. 여기는 **흙**의 층이다(나무·이끼)
         //
         // **석탄을 폐광에 몰아준 것은 1층 안에서다** — 온 세상에서 폐광만이면 2~4층에
         // 석탄이 없어져 **제련 넷이 통째로 막힌다**(*"석탄은 모든 층에"*가 그 규칙이다).
@@ -309,16 +559,19 @@ public static class MetalCreator
         // **벽이 돌뿐인 바이옴에는 바닥 광맥도 안 선다** — 바닥 뿌리기가 같은 풀을 읽고
         // `IsVein`으로 거르기 때문이다(`Stone`은 광맥이 아니다). 그게 맞는 그림이다:
         // **광물의 층이 아닌 곳은 파도 돌만 나온다.**
+        //
+        // **균사림 · 이끼굴에 약한 마력석이 든다**(2026-11-10) — 금속의 굴이 아닌 두 곳이 마법 축의
+        // 첫 층이 된다. 덩어리 셋에 하나꼴이고, 풀에 들었으니 바닥에도 드문드문 선다.
         Pool(Biome.Mine,       copper, copper, tin, tin, coal, coal, stone);
         Pool(Biome.Cavern,     stone, copper, tin);
-        Pool(Biome.Fungal,     stone);
-        Pool(Biome.Mossgrotto, stone);
+        Pool(Biome.Fungal,     stone, stone, magicWeak);
+        Pool(Biome.Mossgrotto, stone, stone, magicWeak);
 
         // ── 2층 — 철과 금. 구리·주석도 계속 난다(끊기면 내려가는 것이 벌칙이다). ──
         Pool(Biome.Desert,     iron, iron, coal, stone, gold, tin);
         Pool(Biome.Ossuary,    iron, coal, stone, gold, copper);
-        // 지저늪 — **여기는 단단한 나무의 자리다.** 광맥은 얇다(균사림과 같은 규칙).
-        Pool(Biome.Swamp,      iron, coal, stone);
+        // 지저늪 — **여기는 단단한 나무의 자리다.** 광맥은 얇다. **2층의 마력석이 여기서 난다.**
+        Pool(Biome.Swamp,      iron, coal, stone, magicPlain);
         // 지저밀림 — 늪과 같다. **여기는 나무의 자리다**(광맥은 얇다).
         Pool(Biome.Jungle,     iron, coal, stone);
         // 기생림 — 벽은 돌뿐. 균사림과 같은 규칙이다(여기는 균류의 자리다).
@@ -337,7 +590,7 @@ public static class MetalCreator
         Pool(Biome.Irradiated, uranium, uranium, uranium, titanium, silver, coal, stone, ether);
 
         // ── 4층 — 미스릴. 아래 것도 나야 **내려와서도 계속 만들 수 있다.** ──
-        Pool(Biome.Abyss,      mithril, mithril, voidc, ether, titanium, silver, coal);
+        Pool(Biome.Abyss,      mithril, mithril, voidc, ether, magicAbyss, titanium, silver, coal);
 
         // ── 잠재운 넷 — **풀을 비운다** ────────────────────────────────────
         //

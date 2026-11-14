@@ -433,7 +433,8 @@ public static partial class ChibiPawnCreator
     const float NetsBand   = 2f;    // 성긴 칸 대각선의 몇 배 안이면 다 재나 — 거리장 기울기가 2까지는 표면을 안 놓친다
 
     static Surface SurfaceNets(Func<Vector3, float> f, Bounds b, float step, Func<Vector3, float> scene,
-                               Func<Vector3, Vector3> place = null, float aoStep = 0.04f, float aoGain = 4.5f, float keep = 1f)
+                               Func<Vector3, Vector3> place = null, float aoStep = 0.04f, float aoGain = 4.5f, float keep = 1f,
+                               float tol = 0f)
     {
         int nx = Mathf.CeilToInt(b.size.x / step) + 1, ny = Mathf.CeilToInt(b.size.y / step) + 1, nz = Mathf.CeilToInt(b.size.z / step) + 1;
         var min = b.min;
@@ -582,8 +583,31 @@ public static partial class ChibiPawnCreator
         {
             // **줄인 점은 다시 표면으로 당기지 않는다** — 접은 자리는 이차 오차가 이미 둘레 면 위에 두었다. 당기면 큰 세모의 꼭짓점만
             // 곡면으로 끌려가 면이 울퉁불퉁해졌다(쇄골 · 껍데기). 법선만 그 자리의 기울기로 잰다.
-            pts = Decimate(pts, tris, Mathf.Max(64, Mathf.RoundToInt(pts.Length * keep)));
+            pts = Decimate(pts, tris, Mathf.Max(64, Mathf.RoundToInt(pts.Length * keep)), tol > 0f ? f : null, tol);
             normals = Settle(pts, 0f);
+        }
+        if (tol > 0f)
+        {
+            // **표면에서 `tol`보다 뜬 점만 다시 당긴다**(2026-11-09) — 첫 당기기(`Settle`)가 못 닿은 점(가지 · 블렌드 골)은 칸 평균 자리에
+            // 남아 살이 5~11mm 가시로 솟았다(오크 눈 · 문신을 뚫었다). 줄이기는 `tol`을 지키므로 여기 걸리는 것은 그런 점뿐이다.
+            var stray = new List<int>();
+            for (int v = 0; v < pts.Length; v++)
+            {
+                float g = Grad(f, pts[v], step * 0.25f).magnitude;
+                if (Mathf.Abs(f(pts[v])) / Mathf.Max(g, 0.05f) > tol) stray.Add(v);
+            }
+            foreach (int v in stray)
+            {
+                var p = pts[v];
+                for (int it = 0; it < 8; it++)
+                {
+                    var g = Grad(f, p, step * 0.25f); float gl = g.sqrMagnitude;
+                    if (gl < 1e-10f) break;
+                    p -= g * (f(p) / gl);
+                }
+                if ((p - pts[v]).sqrMagnitude < 4f * step * step) { pts[v] = p; normals[v] = Grad(f, p, step * 0.5f).normalized; }
+            }
+            if (stray.Count > 0) Debug.Log($"[표면] 뜬 점 {stray.Count}개를 다시 당겼다(tol {tol * 1000f:F1}mm).");
         }
 
         NetsLap(3);
@@ -602,7 +626,12 @@ public static partial class ChibiPawnCreator
     // 사용자: *"보통 몹 하나의 정점이 어느정도여야하는데?"*). 점마다 둘레 면의 평면을 모아 두고(이차 오차), **모양을 덜 바꾸는 변부터**
     // 접는다. 접어서 둘레 면이 뒤집히거나 납작해지면 그 변은 건너뛴다. 법선 · 그늘은 줄인 뒤 거리장에서 다시 잰다(`Settle`).
     // `tris`는 제자리에서 고쳐 쓰고, 살아남은 점만 새 번호로 돌려준다.
-    static Vector3[] Decimate(Vector3[] pos, List<int> tris, int target)
+    //
+    // **`tol` — 표면에서 이만큼(m)보다 벗어나는 접기는 건너뛴다**(2026-11-09, 사용자: 오크 눈이 가까이서 보면 뜯겨 보인다). 이차 오차는
+    // 오목한 자리(눈두덩 · 눈썹뼈 밑)에서 큰 세모의 현을 표면 **밖**으로 띄운다 — 오크 머리 살이 거리장보다 6.6mm까지 떠서,
+    // 거리장 위 2~4mm에 얹은 눈 판 · 2.5mm 문신 껍데기를 군데군데 뚫었다. 옮길 자리와 바뀌는 세모의 무게중심을 거리장으로 잰다.
+    // 0이면 재지 않는다(살 위에 얇은 것을 얹지 않는 메시).
+    static Vector3[] Decimate(Vector3[] pos, List<int> tris, int target, Func<Vector3, float> f = null, float tol = 0f)
     {
         int nv = pos.Length, nt = tris.Count / 3;
         if (nv <= target) return pos;
@@ -697,6 +726,27 @@ public static partial class ChibiPawnCreator
             return false;
         }
         // 두 점의 이웃 중 둘 다와 닿는 것은 그 변을 낀 면의 맞은편 꼭짓점 둘뿐이어야 한다 — 더 있으면 접는 순간 면이 겹쳐 붙는다(얇은 판 · 고리).
+        float Off(Vector3 p)
+        {
+            float d = f(p), g = Grad(f, p, 0.002f).magnitude;
+            return Mathf.Abs(d) / Mathf.Max(g, 0.05f);
+        }
+        // `v`를 `at`으로 옮기면(`w`는 사라진다) 그 점이나 남는 세모의 무게중심이 표면에서 `tol`보다 뜨나.
+        bool Strays(int v, int w, Vector3 at)
+        {
+            if (f == null) return false;
+            if (Off(at) > tol) return true;
+            foreach (int x in new[] { v, w })
+                foreach (int t in vtris[x])
+                {
+                    if (dead[t] || (Has(t, v) && Has(t, w))) continue;
+                    var c = Vector3.zero;
+                    for (int k = 0; k < 3; k++) { int n = tv[3 * t + k]; c += n == v || n == w ? at : pos[n]; }
+                    if (Off(c / 3f) > tol) return true;
+                }
+            return false;
+        }
+
         var mark = new int[nv];
         int markGen = 0;
         bool Pinches(int v, int w)
@@ -726,7 +776,7 @@ public static partial class ChibiPawnCreator
         {
             var e = Pop();
             if (gone[e.v] || gone[e.w] || stamp[e.v] != e.sv || stamp[e.w] != e.sw) continue;
-            if (Pinches(e.v, e.w) || Folds(e.v, e.w, e.at) || Folds(e.w, e.v, e.at)) continue;
+            if (Pinches(e.v, e.w) || Folds(e.v, e.w, e.at) || Folds(e.w, e.v, e.at) || Strays(e.v, e.w, e.at)) continue;
 
             int keep = e.v, drop = e.w;
             pos[keep] = e.at;

@@ -16,10 +16,10 @@ using UnityEngine;
 //
 // | 등급 | 수 | 성격 |
 // |---|---|---|
-// | I   | 16 | 판이 열리자마자 — 목공·석공·요리·직조와 그 바로 뒤 |
+// | I   | 19 | 판이 열리자마자 — 목공·석공·요리·직조와 그 바로 뒤 · 보석 세공과 원소 공학(2026-11-10에 내려왔다) |
 // | II  | 12 | 연금·주조가 열린다(제련술은 2026-09-30에 I로 내려갔다) |
-// | III | 10 | 주조·야금·정밀 단조 — 상위 금속의 층 |
-// | IV  |  6 | 보석과 마법 광물 |
+// | III |  9 | 주조·야금·정밀 단조 — 상위 금속의 층 |
+// | IV  |  7 | 보석과 마법 광물 |
 // | V   |  0 | **비워 둔다** — 올릴 곳이 남아 있다는 것이 끝이 아니라는 표시다 |
 //
 // **V가 빈 것은 실수가 아니다**(사용자 결정). 다섯째 등급은 있는데 거기서만 배우는 것이
@@ -72,13 +72,20 @@ public static class ResearchTierCreator
         // 여는 것이 제련술이다. II로 옮기면 **II가 있어야 강철을, 강철이 있어야 II를** 만든다.
         ["Res_Smelting"]       = 1,
 
+        // **마법 축의 첫 층이 1층이다**(2026-11-10, 사용자: *"내려 더 내려도 괜찮아"*) — 약한 마력석이
+        // 균사림 · 이끼굴에서 나는데 결정을 깎는 연구와 지팡이를 여는 연구가 II · III이면 캔 돌을 쓸 데가 없다.
+        // 길을 막던 3층 재료(루비 · 선행의 은 광석)는 `MetalCreator.RewireMagicResearch`가 걷는다.
+        ["Res_Gemcutting"]     = 1,
+        ["Res_ElementalCraft"] = 1,
+        ["Res_Vein_WeakMagic"] = 1,
+
         // ── II — 연금과 주조 ─────────────────────────────────────────────────
         //
         ["Res_Vein_Tin"]       = 2,
         ["Res_CompositeBow"]   = 2,
         ["Res_Furniture"]      = 2,
         ["Res_Architecture"]   = 2,
-        ["Res_Gemcutting"]     = 2,
+        ["Res_Vein_Magic"]     = 2,   // 2층의 마력석(지저늪). 옛 `Res_Vein_Magic`은 정제 쪽으로 이름을 옮겼다
         ["Res_Medicine"]       = 2,
         ["Res_Refining"]       = 2,
         ["Res_Vein_Iron"]      = 2,
@@ -92,8 +99,7 @@ public static class ResearchTierCreator
         // **`Res_Metallurgy`가 여기 있어야 한다** — 등급 V에 미스릴이 들고 미스릴 주괴를
         // 여는 것이 야금학이다(V로 올릴 때 연구대는 IV이므로 III에서 이미 보인다).
         ["Res_Vein_Silver"]    = 3,
-        ["Res_Vein_Magic"]     = 3,
-        ["Res_ElementalCraft"] = 3,
+        ["Res_Vein_RefinedMagic"] = 3,
         ["Res_Metallurgy"]     = 3,
         ["Res_Platemail"]      = 3,
         ["Res_Chainmail"]      = 3,
@@ -109,7 +115,11 @@ public static class ResearchTierCreator
         ["Res_Vein_Ether"]     = 4,
         ["Res_Vein_Emerald"]   = 4,
         ["Res_Vein_Void"]      = 4,
+        ["Res_Vein_AbyssMagic"] = 4,
     };
+
+    // 연구를 **만드는** 도구가 묻는다 — 등급을 저쪽에 또 적으면 표가 두 벌이 된다. 표에 없으면 0.
+    public static int TierOf(string research) => Table.TryGetValue(research, out int tier) ? tier : 0;
 
     [MenuItem("DungeonColony/World/H. Wire Research Tiers (연구대 등급)")]
     static void Wire()

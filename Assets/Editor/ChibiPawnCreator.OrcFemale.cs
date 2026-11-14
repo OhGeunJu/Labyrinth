@@ -495,14 +495,14 @@ public static partial class ChibiPawnCreator
         var parts = new List<Part>();
         Func<Vector3, float> head = p => OrcFHead(p, o);
 
-        Surface Nets(Func<Vector3, float> f, Bounds b, float step, float keep) => SurfaceNets(f, b, step, head, p => p, 0.03f, 4f, keep);
-        Mesh Sculpt(string name, Func<Vector3, float> f, Bounds b, float step, float keep) => SaveSkull($"Chibi_OrcF_{name}", Nets(f, b, step, keep));
+        Surface Nets(Func<Vector3, float> f, Bounds b, float step, float keep, float tol = 0f) => SurfaceNets(f, b, step, head, p => p, 0.03f, 4f, keep, tol);
+        Mesh Sculpt(string name, Func<Vector3, float> f, Bounds b, float step, float keep, float tol = 0f) => SaveSkull($"Chibi_OrcF_{name}", Nets(f, b, step, keep, tol));
         void Add(string name, Mesh mesh, string mat, string line, bool on = true) => parts.Add(new Part(name, mesh, pos, Vector3.one, mat, on, outerMat: line));
 
         parts.Add(new Part("Head", null, pos, h.Size, "HeadSkin", on: false));
 
         var hb = new Bounds(new Vector3(0f, -0.01f, 0.03f), new Vector3(h.Size.x + 0.06f, h.Size.y + 0.08f, h.Size.z + 0.22f));
-        Add($"Head.Shape.{h.Name}", Sculpt("Head", head, hb, OrcHeadStep, 0.3f), "SkinFine", "OutlineOuterFine");
+        Add($"Head.Shape.{h.Name}", Sculpt("Head", head, hb, OrcHeadStep, 0.3f, OrcSkinTol), "SkinFine", "OutlineOuterFine");
         foreach (var f in Features)
             parts.Add(new Part($"Head.Shape.{h.Name}.{f.Name}", features[(h.Name, f.Name)], pos, h.Size, "Face" + f.Kind, true, cell: f.DefaultCell, kind: f.Kind));
 

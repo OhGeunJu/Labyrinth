@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Wall
   m_EditorClassIdentifier: Assembly-CSharp::BuildingData
   Id: 
-  BuildingName: "외곽벽"
+  BuildingName: "\uC678\uACFD\uBCBD"
   Description: "\uAE38\uC744 \uB9C9\uB294\uB2E4. \uD3F0\uB3C4 \uC801\uB3C4 \uD1B5\uACFC\uD558\uC9C0
     \uBABB\uD55C\uB2E4."
   Category: 1
@@ -22,6 +22,7 @@ MonoBehaviour:
   Costs:
   - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
     Amount: 5
+  MaxHealth: 0
   CostItem: {fileID: 0}
   CostAmount: 0
   DragBuild: 1
@@ -36,3 +37,4 @@ MonoBehaviour:
   Stairs: 0
   OccupiesTile: 1
   BlockMask: []
+  EdgeWall: 0

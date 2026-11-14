@@ -125,7 +125,12 @@ public static class VeinArt
         new Vein { Name = "Node_SapphireVein", Shape = Shape.Crystal, Ore = C(0x2E6BE8), Gloss = 0.85f },
         new Vein { Name = "Node_TopazVein",    Shape = Shape.Crystal, Ore = C(0xF0B81E), Gloss = 0.85f },
         new Vein { Name = "Node_EmeraldVein",  Shape = Shape.Crystal, Ore = C(0x23C46B), Gloss = 0.85f },
-        new Vein { Name = "Node_MagicCrystal", Shape = Shape.Crystal, Ore = C(0x8A5CF0), Gloss = 0.90f, Glow = true },
+        // 마력석 넷 — 층마다 하나(`MetalCreator.MagicLadder`). **깊을수록 짙다**: 약한 것은 옅은 연보라,
+        // 심연 것은 푸른 쪽으로 돌린다(같은 굴의 공허 결정이 검보라라 보라로 두면 둘이 안 갈린다).
+        new Vein { Name = "Node_WeakMagicCrystal",    Shape = Shape.Crystal, Ore = C(0xC8B4F5), Gloss = 0.85f, Glow = true },
+        new Vein { Name = "Node_MagicCrystal",        Shape = Shape.Crystal, Ore = C(0xA884F5), Gloss = 0.90f, Glow = true },
+        new Vein { Name = "Node_RefinedMagicCrystal", Shape = Shape.Crystal, Ore = C(0x8A5CF0), Gloss = 0.90f, Glow = true },
+        new Vein { Name = "Node_AbyssMagicCrystal",   Shape = Shape.Crystal, Ore = C(0x5560F0), Gloss = 0.92f, Glow = true },
         new Vein { Name = "Node_EtherCrystal", Shape = Shape.Crystal, Ore = C(0xFFE9A8), Gloss = 0.90f, Glow = true },
         // 공허는 검보라인데 **너무 어두우면 아예 안 보인다** — 명도를 올리고 색으로 가른다.
         new Vein { Name = "Node_VoidCrystal",  Shape = Shape.Crystal, Ore = C(0x6B2FA0), Gloss = 0.90f, Glow = true },
@@ -144,6 +149,15 @@ public static class VeinArt
             // **바닥 돌은 `Forageable`이라 노드 데이터가 없다** — 없다고 건너뛰면
             // 그것만 옛 모양으로 남는다.
             var data = AssetDatabase.LoadAssetAtPath<ResourceNodeData>(NodeDir + "/" + v.Name + ".asset");
+
+            // **데이터도 프리팹도 없으면 아직 안 만든 광맥이다 — 여기서 짓지 않는다**(2026-11-10).
+            // 이 문은 *다시 굽는* 문이다. 빈 프리팹을 먼저 세워 버리면 만드는 도구(`MetalCreator`)가
+            // 본보기에서 떠 올 자리와 옮길 이름을 잃는다(루트에 `PlacedBuilding`이 없는 광맥이 남는다).
+            if (data == null && AssetDatabase.LoadAssetAtPath<GameObject>(PrefabDir + "/" + v.Name + ".prefab") == null)
+            {
+                Debug.LogWarning($"[광맥] {v.Name}은(는) 아직 없습니다 — `World → B. Create Metal Ladder`를 먼저 돌릴 것.");
+                continue;
+            }
 
             var prefab = Build(v, data);
             if (prefab == null) continue;
@@ -224,7 +238,19 @@ public static class VeinArt
     public static GameObject BuildOne(string name, ResourceNodeData data)
     {
         foreach (var v in All)
-            if (v.Name == name) return Build(v, data);
+        {
+            if (v.Name != name) continue;
+
+            // **벽에 박힌 얼굴도 여기서 적는다**(2026-11-10). 전체 굽기(`Rebuild`)만 적던 동안에는 새로 만든
+            // 광맥이 `World → D`를 돌리기 전까지 `VeinColor`가 비어 **광맥이 아닌 것**으로 읽혔다(`IsVein`) —
+            // 풀에는 들었는데 바닥에 안 서고 벽에 알갱이도 안 보인다. 마력석 셋을 만들고 에셋에서 봤다.
+            if (data != null)
+            {
+                WriteVeinLook(data, v);
+                EditorUtility.SetDirty(data);
+            }
+            return Build(v, data);
+        }
 
         Debug.LogWarning($"[광맥] {name}이(가) `VeinArt.All` 표에 없습니다 — 모양을 못 짓습니다.");
         return null;

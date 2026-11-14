@@ -21,6 +21,8 @@ public static partial class ChibiPawnCreator
 {
     const string OrcBasis = "Male_BroadSquare";
     const float OrcHeadStep = 0.007f, OrcFineStep = 0.0035f, OrcHairStep = 0.006f, OrcInkStep = 0.003f;
+    // 머리 살을 줄일 때 거리장에서 벗어나도 되는 한계(m) — 눈 판은 거리장 위 1.6mm부터 · 문신 껍데기는 2.5mm 위에 얹는다(`Decimate`).
+    const float OrcSkinTol = 0.001f;
 
     static List<Part> _orcHead;
 
@@ -400,7 +402,18 @@ public static partial class ChibiPawnCreator
         float shell = Mathf.Max(h - 0.0025f, -(h + 0.010f));
         if (shell > 0.01f) return shell;   // 껍데기에서 멀면 붓질을 안 잰다(빠르게)
         float u = Mathf.Atan2(p.x, p.z) * InkR;
-        return SMax(Mathf.Max(shell, OrcInk(shape, u, p.y, o)), -p.z - 0.15f, 0.002f);
+        float d = SMax(Mathf.Max(shell, OrcInk(shape, u, p.y, o)), -p.z - 0.15f, 0.002f);
+        return Mathf.Max(d, -OrcEyeHole(p, o));
+    }
+
+    // 눈 판이 덮는 자리 — 문신은 여기를 비운다(2026-11-09). 눈 판은 거리장 위 1.6~4mm, 문신은 2.5mm라 눈 위를 지나는 붓질
+    // (TatClaw)이 눈과 엇갈려 줄무늬로 비쳤다. 판 속 동그란 눈은 한 변의 0.30(`ink_eye`) · 가로세로 비는 `EyeAspect`.
+    static float OrcEyeHole(Vector3 p, OrcFrame o)
+    {
+        float r = 0.30f * o.H.EyeSize * 1.06f, a = Mathf.Sqrt(Mathf.Max(0.3f, o.H.EyeAspect));
+        float rx = r * a, ry = r / a;
+        float qx = (Mathf.Abs(p.x) - o.EX) / rx, qy = (p.y - o.EY) / ry;
+        return (Mathf.Sqrt(qx * qx + qy * qy) - 1f) * Mathf.Min(rx, ry);
     }
 
     // ── 부위 ────────────────────────────────────────────────────────────────
@@ -415,8 +428,8 @@ public static partial class ChibiPawnCreator
         var parts = new List<Part>();
         Func<Vector3, float> head = p => OrcHead(p, o);
 
-        Mesh OrcSculpt(string name, Func<Vector3, float> f, Bounds b, float step, float keep)
-            => SaveSkull($"Chibi_Orc_{name}", SurfaceNets(f, b, step, head, p => p, 0.03f, 4f, keep));
+        Mesh OrcSculpt(string name, Func<Vector3, float> f, Bounds b, float step, float keep, float tol = 0f)
+            => SaveSkull($"Chibi_Orc_{name}", SurfaceNets(f, b, step, head, p => p, 0.03f, 4f, keep, tol));
         void Add(string name, Mesh mesh, string mat, string line, bool on = true)
             => parts.Add(new Part(name, mesh, pos, Vector3.one, mat, on, outerMat: line));
 
@@ -426,7 +439,7 @@ public static partial class ChibiPawnCreator
         var hb = new Bounds(new Vector3(0f, -0.01f, 0.03f), new Vector3(h.Size.x + 0.06f, h.Size.y + 0.08f, h.Size.z + 0.22f));
         // **제 선을 끄고 바깥 선만**(`SkinFine` + `OutlineOuterFine`) — 사람 머리 살(`HeadSkin`)은 제 선(6cm 껍데기)을 두는데, 그것은 볼록한
         // 돌림 머리에서나 맞다. 눈썹뼈 · 코 · 입술이 파인 오크 머리에서는 껍데기가 오목한 자리마다 살을 뚫고 나와 얼굴이 검은 점투성이였다(첫 Play).
-        Add($"Head.Shape.{h.Name}", OrcSculpt("Head", head, hb, OrcHeadStep, 0.3f), "SkinFine", "OutlineOuterFine");
+        Add($"Head.Shape.{h.Name}", OrcSculpt("Head", head, hb, OrcHeadStep, 0.3f, OrcSkinTol), "SkinFine", "OutlineOuterFine");
         foreach (var f in Features)
             parts.Add(new Part($"Head.Shape.{h.Name}.{f.Name}", features[(h.Name, f.Name)], pos, h.Size, "Face" + f.Kind, true,
                                cell: f.DefaultCell, kind: f.Kind));

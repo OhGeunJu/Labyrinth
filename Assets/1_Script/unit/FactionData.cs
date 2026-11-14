@@ -67,6 +67,15 @@ public class FactionData : ScriptableObject
              "살점이 남은 몸은 프리팹이 필요 없다(그 사람이 그대로 일어난다).")]
     [SerializeField] GameObject risenBones;
 
+    // **몸에서 나오는 돌을 세력이 덮어쓴다**(2026-11-11, 사용자: *"드랍을 세력이 정해도 괜찮으려나?
+    // 다시 생각해보니깐 그게 맞을 거 같기도"*). 기본은 종족이 답하고(`UnitData.Stone`) 여기는
+    // **예외만** 적는다 — 교단원은 몸이 사람이라도 공허석이 나온다(크툴루 쪽 교단이 신성석을
+    // 주면 안 된다). 교단원이 나중에 다른 종족이 되면 그 종족에 적고 이 칸을 비우면 된다.
+    [Header("몸에서 나오는 돌")]
+    [Tooltip("비우면(Default) 종족이 정한다. 교단처럼 몸과 다른 돌이 나와야 하는 세력만 적는다. " +
+             "답은 `Butchering.StoneOf` 하나.")]
+    [SerializeField] BodyStone stone;
+
     [Tooltip("이 세력이 **나를 어떻게 보고 시작하는가**(−100 ~ +100). 적대 세력이라도 정도가 다르다 — " +
              "산적은 돈이 목적이라 무를 여지가 있고, 망자와는 애초에 말이 통하지 않는다.\n" +
              "**0이면 아래 태도에서 뽑는다**(적대 −70 / 아군 +75 / 중립 0) — 안 적어 둔 세력이 " +
@@ -96,6 +105,7 @@ public class FactionData : ScriptableObject
     public bool   RaisesDead      => raisesDead;
     public bool   ExhumesGraves   => exhumesGraves;
     public GameObject RisenBones  => risenBones;
+    public BodyStone  Stone       => stone;
 
     // 이 세력이 other를 어떻게 대하는가 (방향별 — other가 나를 어떻게 보는지와 다를 수 있다).
     public FactionStance StanceTo(FactionData other)

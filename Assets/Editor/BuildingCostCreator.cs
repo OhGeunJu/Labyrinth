@@ -138,12 +138,17 @@ public static class BuildingCostCreator
     internal static void Wire()
     {
         var items = new Dictionary<string, ItemData>();
-        foreach (var id in new[] { Stone, Cut, Wood, Plank, Bone })
-        {
-            var a = AssetDatabase.LoadAssetAtPath<ItemData>($"{ItemDir}/{id}.asset");
-            if (a == null) { Debug.LogError($"[건설 비용] {id} 아이템이 없습니다 — 아무것도 안 했습니다."); return; }
-            items[id] = a;
-        }
+        // **표가 쓰는 재료를 표에서 모은다 — 목록을 따로 적지 않는다**(2026-11-10). 따로 적어 뒀더니 쇠창살 우리에
+        // 청동을 넣은 날 그 목록이 뒤처져, 표 중간에서 `KeyNotFoundException`으로 멎었다(우리의 비용을 비운 채로 ·
+        // 그 뒤 줄은 손도 못 대고). 이 문은 `Dress All`의 끝(`BridgeCreator`)에서도 돈다.
+        foreach (var row in Table.Values)
+            foreach (var (id, _) in row)
+            {
+                if (items.ContainsKey(id)) continue;
+                var a = AssetDatabase.LoadAssetAtPath<ItemData>($"{ItemDir}/{id}.asset");
+                if (a == null) { Debug.LogError($"[건설 비용] {id} 아이템이 없습니다 — 아무것도 안 했습니다."); return; }
+                items[id] = a;
+            }
 
         int wired = 0, missing = 0;
         var lines = new List<string>();

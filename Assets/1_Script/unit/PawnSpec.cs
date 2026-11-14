@@ -39,6 +39,11 @@ public class PawnSpec
     public Material   MaterialOverride;
     public GameObject ModelOverride;
 
+    // **무엇을 차고 지니고 나오나 — 프리팹의 것을 덮는다**(2026-11-11, 사용자: *"데이터 중심으로"*).
+    // 같은 해골 프리팹이 1층 무리에서는 청동, 4층 무리에서는 미스릴로 선다(`WorldBandData.MemberEntry.Loadout`).
+    // 굴리지 않으므로 씨앗 열과 무관하다. 비우면 프리팹 그대로.
+    public LoadoutData LoadoutOverride;
+
     // 굴린 등급. 값이 아니라 **등급**을 든다 — 화면에 뜨는 것도, 값을 매기는 것도 등급이다.
     public readonly Dictionary<StatName, StatGrade> Grades = new();
 

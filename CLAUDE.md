@@ -16,6 +16,7 @@ Guidance for Claude Code in this repository.
 
 - **습격대의 뜻은 폰 밖에 산다** — `RaidLord`(접근 → 돌격 → 후퇴)가 어디로 갈지·떠날지만 정한다 · 후퇴는 `LeavingMap` 하나 · 갈래 수는 `ProngsFor` · 머리 위 표식은 `PawnMark` 한 벌. → `docs/design_raid_lord.md`
 - **금속은 넷, 층 하나에 하나씩** — 광석 → 주괴 → 장비 · 값은 재료비 × 1.65 · 광맥 모양은 `VeinArt`. → `docs/design_metals.md`
+- **마력석도 넷, 층 하나에 하나씩** — 약한(균사림 · 이끼굴) · 마력석(지저늪) · 정제(용암층 · 수정동) · 심연 · 위 셋이 약한 것으로 쳐 준다(`CountsAs` — 레시피는 `Res_WeakMagicStone`) · 결정은 등급을 안 탄다 · 등급을 집는 자리(배양 연구 · 이식 · 충전대)는 그 등급만 · 짓는 문 `MetalCreator.MagicLadder`. → `docs/design_metals.md`
 - **목재도 층을 탄다 · 건설 비용은 목록(`BuildingData.Costs`) · 작업대 등급(`BenchTier`)이 속도·레시피·연구를 한 값으로** — 등급은 같은 건물의 상태(`BenchUpgrade`) · 얼굴을 입히는 문은 둘(`BenchArtCreator`·`PropDresser`) · 연구는 목록에서 거르지 않는다(`HandlesTier`) · 올리는 재료는 다음 층의 금속 + 나무(V는 비움, `CanRaiseTo`) · Play 시작 때 `BenchTierCheck`가 대조한다. → `docs/build.md`
 - **전장의 안개** — 셋 상태 · 여는 것은 플레이어 폰의 눈 · 바위가 막는다 · 화면을 한 번 덮는다 · 찍은 표시는 안개를 안 탄다. → `docs/world.md`
 - **층 넷은 한 평면에 2×2**(`Floors` — 1 남서 · 2 남동 · 3 북서 · 4 북동 · 층 하나 2,048m · 사이 기반암 `IsSeam`) — 지금 층은 카메라가 답한다(`Floors.Current`) · 스트리밍은 보는 층만 · 카메라는 층 안에 묶인다 · 무거운 표(광역 그래프·안개·지도)는 층 단위 · 층을 넘는 길은 통로(`FloorPassage`)와 핵 포탈뿐 · 무리·습격·배치·절벽 생성은 층 밖으로 안 나간다. → `docs/world.md` "층 넷"
@@ -24,6 +25,7 @@ Guidance for Claude Code in this repository.
 - **절벽 · 다리** — 답은 `Chasm` 하나(`ChasmData` · 칠하기·자동 생성 `World → I` · 다리 만드는 문 `World → J`) · 지형에 구멍을 뚫는다(2m 덩어리) · 땅 고르기는 절벽을 거절한다 · 다리는 양 끝 높이로 비스듬히(`Bridge.SpanOf`), 윗면은 `Chasm`이 든다(등록 `Start` · 해제 `OnDestroy`). → `docs/world.md` "절벽 · 다리"
 - **세계 저작은 씬에서 하고 청크로 굽는다** — 저작 씬은 `Awake`에서 스스로 꺼진다 · 청크 에셋에 쓰는 문은 `5. Bake World` 하나 · 에디터 틱에서 런타임 물건을 건드리지 않는다(`isPlaying`) · 런타임 오브젝트 플래그는 `SelfStanding.RuntimeObject`. → `docs/design_world_editor.md`
 - **짐승·떠도는 적은 청크가 설 때 선다**(`WildSpawner` · 표는 `BiomeContentData.WildSpawns`) — 청크가 설 때마다 새로 굴리고 서 있는 동안은 그 답을 든다 · 떠도는 동안은 레일(`PawnMover.OnRails`) · 내 폰 40m 안과 핵 영역 · 마을·쉼터 60m 안(`QuietAt` · 장소 `Haven`)에는 안 선다 · 카메라와 내 폰 둘 다에서 250m 넘으면 거둔다 · 핵 영역 밖 시체는 하루 뒤 사라진다(`Corpse.CheckVanish`) · 갇힌·업힌 폰은 무리에서 빠진다. → `docs/world.md`
+- **층이 다른 무리는 프리팹이 아니라 데이터로 가른다** — 같은 프리팹 · 무리 에셋의 구성원 칸이 등급 · 인원 · 장비(`MemberEntry.Loadout` → `PawnSpec.LoadoutOverride`)를 든다 · 프리팹은 새 몸일 때만 · 망자 · 교단은 `Pawn/15`(`FloorBandCreator` — `Band_Undead_F1~4` · `Band_Cult_F2~4`).
 - **에디터 메뉴 번호는 겹치면 컴파일 직후 에러다**(`MenuOrderCheck`) · `1. Rebuild Underworld`는 메뉴를 이름으로 부르니 번호를 바꾸면 거기도 · **끝난 일회성 도구는 지운다**.
 - **상단 · 포탈 · 첫 마을** — 핵은 포탈(`PortalTravel` — 걸어서 닿아야 넘어간다) · 상단은 출발 핵에 다 모였다가 포탈 너머로 빠지는 추상 여정(`Caravan` · `CaravanManager` · 창 `T` · 짐은 실제 창고에서 빠지고 든다 · 길 위 습격은 `WorldBattle.ResolveAmbush`) · 첫 마을이 상단을 연다(`TownSite` · `Caravans.Unlock`) · 세력 창은 만난 세력만(`FactionRelations.Meet`). → `docs/world.md` "상단"
 - **탐험은 이어진 세계를 걸어서 한다** — 옛 3D 월드맵·원정대·화면 전환(`GameModeManager`)은 없다. 필드인지 묻지 않는다. 고용 후보 표 `BiomeContentData.TownRecruits`는 읽는 곳이 없다(마을 고용을 다시 열 때 쓴다). → `docs/world.md` 끝
@@ -34,7 +36,8 @@ Guidance for Claude Code in this repository.
 - **먹는 종족은 쓰러진 사람을 굴로 메고 간다**(`UnitData.Devours` — 고블린 · 트롤 · `Abduction`) — 곁에 깨어 있는 그 편이 없을 때만 · 굴이 없으면 안 멘다 · 굴에 기둥을 세워 묶는다(`CaptivePost` — 갇힘 한 벌 `Imprisonment.Bind`) · 먹히는 것 · 탈출은 `Devoured`(끼니마다 `DevourNode`가 뜯는 동안 부위가 차례로 준다 — `BodyPartSystem.Gnaw`) · 부서진 팔다리는 안 낫고 몸에서 접힌다 · 기절한 어깨는 업은 것을 떨어뜨린다.
 - **드워프는 사람 치비 몸 + 빚은 머리**(`ChibiPawnCreator.Dwarf`) — 체형은 `Shapes` 밖 한 줄(`DwarfShape` — 안에 두면 방랑자 몸 목록에 든다) · 수염 · 머리카락 · 눈썹은 따로 고른다(`Head.Pick.*`) · 눈은 빚는다(사람 눈 판은 눈썹뼈에 묻힌다) · 드워프만 굽는 문은 `Pawn/10` · 종족은 `Dwarf`(털 색 후보는 종족이 든다 — `UnitData.HairTones` → `MarkingLook`) · 씨족 · 역할 · 여성은 아직. → `docs/units.md` 치비 절
 - **감염자는 사람 치비 몸 + 버섯 — 버섯은 고르기 축**(`ChibiPawnCreator.Fungal`) — 몸 자리 · 틈은 저마다 켜고 끄는 축(`SiteNN` · `WoundN` — 표 순서가 축 번호라 끝에만 붙일 것) · 몸에 붙는 조각은 `Dress`의 `extra` · 감염자만 굽는 문은 `Pawn/11`. → `docs/units.md` 치비 절
-- **엘프는 사람 치비 몸(긴 다리) + 좁힌 사람 머리**(`ChibiPawnCreator.Elf`) — 체형은 `Shapes` 밖 한 줄(`ElfShape`) · 귀는 조각 축(`Head.Pick.Ear.*`) · 머리카락은 귀마다 한 벌(`@Ear.*` — 귀 모양대로 파인다) · 땋은 장식 `.Plait`는 한 톤 어둡게(`MarkingLook`) · 종족은 `Elf`(털 색 후보 — `Pawn/12`가 없으면 만든다) · 엘프만 굽는 문은 `Pawn/12`. **종족만 굽는 문(`Pawn/10~12`)을 새로 내면 `Pawn/3`에도 한 줄** — `Pawn/3`의 끝 청소가 그 판에 안 만든 `Chibi_` 메시를 지운다. → `docs/units.md` 치비 절
+- **엘프는 사람 치비 몸(긴 다리) + 좁힌 사람 머리**(`ChibiPawnCreator.Elf`) — 체형은 `Shapes` 밖 한 줄(`ElfShape`) · 귀는 조각 축(`Head.Pick.Ear.*`) · 머리카락은 귀마다 한 벌(`@Ear.*` — 귀 모양대로 파인다) · 땋은 장식 `.Plait`는 한 톤 어둡게(`MarkingLook`) · 종족은 `Elf`(털 색 후보 — `Pawn/12`가 없으면 만든다) · 엘프만 굽는 문은 `Pawn/12`. **종족만 굽는 문(`Pawn/10~12` · `16`)을 새로 내면 `Pawn/3`에도 한 줄** — `Pawn/3`의 끝 청소가 그 판에 안 만든 `Chibi_` 메시를 지운다. → `docs/units.md` 치비 절
+- **리자드맨은 큰 짐승처럼 따로 빚은 몸**(`ChibiPawnCreator.Lizard` · 미리보기 `Tools/ModelLab/lizard/`) — 굽은 등 · 짐승 다리(뼈대는 사람 것 · 모양만) · 꼬리는 엉덩이 뼈의 굳은 조각 · 잎 비늘은 잎마다 지은 메시(`LizLeaf`) · **색은 정점 색**(흰 살 재질 `Chibi_LizSkin` — `SkinLook` 안 탄다 · 색마다 메시와 프리팹이 따로) · 가는 줄은 살 위 덧판 · 눈 여덟 · 도마뱀 볏은 고르기 축 · 리자드맨만 굽는 문은 `Pawn/16`(보기 몸 열 벌 — 종족 데이터 · 무리는 아직). → `docs/units.md` 치비 절
 - **사람 얼굴은 빚는다**(`ChibiPawnCreator.Human` · `HeadParts(human: true)`) — 머리 모양 표는 그대로 · 머리마다 눈 · 반짝임 · 입 · 귀는 `Head.Shape.{머리}.*`, 코 · 눈썹은 고르기 축을 머리에 매단다(`@Shape.{머리}` — `PawnLook.ShapeAxis`) · 넓은 날카로운 머리는 뺀다 · 좁은 머리 세로 0.88 · 여자 이목구비 자리는 같은 모양의 남자 값 · 고블린은 옛 얼굴(`headParts`). **사람 머리카락은 파이썬이 뽑는다**(`Tools/ModelLab/human/bake_hair.py` → `baked/`(깃 밖) → `Pawn/13`이 메시 에셋으로 · 수식을 C#으로 옮기지 않는다) · 성별 둘 × 윗머리 둘만 굽고 늘려 씌운다(`@Fit.` — `PawnLook.FitAxis`) · 앞머리는 따로 고르는 축(`Head.Pick.Bangs.*` · 덮는 앞머리면 앞을 덜어 낸 판). 머리를 고치면 뽑기 → `Pawn/13`, 목록이 바뀌면 `Pawn/3`. **오크 머리카락 · 수염도 같은 길**(`Tools/ModelLab/orc/bake_orc_hair.py male|female` → `orc/baked/` → `Pawn/14` · 이름은 옛 C# 판 그대로 · 목록이 없으면 옛 C# 수식). → `docs/units.md` 치비 절
 - **미룬 것**(건물 에셋 대기) — 마을 건설 · 마을=핵 · 건물 2층(층 넷과 다른 장치 — 같은 XZ에 바닥 둘). **남은 미결** — 월드 에디터의 퀘스트.
 
@@ -192,6 +195,7 @@ Guidance for Claude Code in this repository.
 | 지금 얼마나 보이나 · 저것이 보이나(바위 가림) | `Vision` · `Vision.CanSee` |
 | 얼마나 질 수 있나 | `CarryCapacity` |
 | 재료가 어디 있나 | `MaterialPool` |
+| 몸에서 무슨 돌이 나오나(신성 · 공허 · 층의 마력석) | `Butchering.StoneOf`(일으켜진 몸 → 세력 `FactionData.Stone` → 종족 `UnitData.Stone`) |
 | 무엇을 그 재료로 쳐 주나 | `ItemData.CountsAs` → `Inventory.CountSatisfying`/`RemoveSatisfying` |
 | 자리가 든 일감 하나 | `SiteJobSlot` |
 | 무엇이 등급을 갖나 | `ItemData.HasQuality` |

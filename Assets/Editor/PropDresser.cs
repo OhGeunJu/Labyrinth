@@ -218,8 +218,21 @@ public static class PropDresser
             Props = new[]{ "C/Special/Crystals/fire/fire_crystal2", "C/Special/Crystals/fire/fire_crystal4" } },
 
         // 마법 광물 셋은 **원래도 빛나는 것**이라(`Glow`) 발광을 세게 준다.
+        // 마력석은 층마다 하나다(`MetalCreator.MagicLadder`) — 같은 마나 결정을 색으로 가른다. 깊을수록 짙고 세게 빛난다.
+        new Dress { Building = "Node_WeakMagicCrystal", Folder = "Node", Variants = true, KeepHeight = true,
+            Tint = new Color(0.78f, 0.70f, 0.96f), Glow = new Color(0.28f, 0.22f, 0.46f),
+            Props = new[]{ "C/Special/Crystals/mana/mana_crystal2", "C/Special/Crystals/mana/mana_crystal4" } },
+
         new Dress { Building = "Node_MagicCrystal", Folder = "Node", Variants = true, KeepHeight = true,
+            Tint = new Color(0.66f, 0.52f, 0.96f), Glow = new Color(0.38f, 0.26f, 0.66f),
+            Props = new[]{ "C/Special/Crystals/mana/mana_crystal2", "C/Special/Crystals/mana/mana_crystal4" } },
+
+        new Dress { Building = "Node_RefinedMagicCrystal", Folder = "Node", Variants = true, KeepHeight = true,
             Tint = new Color(0.55f, 0.35f, 0.95f), Glow = new Color(0.45f, 0.28f, 0.80f),
+            Props = new[]{ "C/Special/Crystals/mana/mana_crystal1", "C/Special/Crystals/mana/mana_crystal3" } },
+
+        new Dress { Building = "Node_AbyssMagicCrystal", Folder = "Node", Variants = true, KeepHeight = true,
+            Tint = new Color(0.33f, 0.38f, 0.95f), Glow = new Color(0.22f, 0.26f, 0.80f),
             Props = new[]{ "C/Special/Crystals/mana/mana_crystal1", "C/Special/Crystals/mana/mana_crystal3" } },
 
         new Dress { Building = "Node_EtherCrystal", Folder = "Node", Variants = true, KeepHeight = true,

@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d13d35e6dc2c0884e8b3d2720a332b61, type: 3}
+  m_Name: Band_Undead_F1
+  m_EditorClassIdentifier: Assembly-CSharp::WorldBandData
+  bandName: "\uB9DD\uC790 \uBB34\uB9AC (1\uCE35)"
+  tokenColor: {r: 0.78, g: 0.78, b: 0.7, a: 1}
+  faction: {fileID: 11400000, guid: d74c8f6cfbca0174caf307041b87b0aa, type: 2}
+  behavior: 0
+  members:
+  - Prefab: {fileID: 6894885055828391614, guid: 5671e81eeb996f945a446dde1026f49c, type: 3}
+    MinCount: 2
+    MaxCount: 4
+    MinGrade: 0
+    MaxGrade: 3
+    Loadout: {fileID: 11400000, guid: 5cfc1a2011badf44886b2a985cfbc27b, type: 2}
+  - Prefab: {fileID: 6894885055828391614, guid: 894c704904e9bae4cb340ac15618cffa, type: 3}
+    MinCount: 0
+    MaxCount: 1
+    MinGrade: 0
+    MaxGrade: 3
+    Loadout: {fileID: 11400000, guid: 963d36ebf454bd645952c89730145cf3, type: 2}
+  speed: 3.4
+  ChaseRadius: 10
+  merchant: {fileID: 0}
+  loot:
+  - Item: {fileID: 11400000, guid: 1bbfcbce39cb01d4fa76acec6a0b64a0, type: 2}
+    ItemId: 
+    MinPerKill: 1
+    MaxPerKill: 2
+    Chance: 0.4
+  PowerMultiplier: 0.9
+  ScaledByFloor: 1

@@ -249,8 +249,7 @@ public class ButcherJob : JobBase
     // 한도(`CarryCapacity`)를 지키므로 무거운 가죽을 지면 느려지는 것도 그대로 걸린다.
     void Finish(UnitBrain unit)
     {
-        var race = _brain != null ? _brain.Data : null;
-        var at   = _target.transform.position;
+        var at = _target.transform.position;
 
         // 산 것은 **시작할 때 이미 죽였다**(위 `_started`) — 여기 오면 늘 시체다.
         var corpse = _corpse;
@@ -259,7 +258,7 @@ public class ButcherJob : JobBase
         var stage = corpse.Stage;
 
         int kinds = 0;
-        foreach (var (item, count) in Butchering.Roll(race, stage))
+        foreach (var (item, count) in Butchering.Roll(_brain, corpse.Faction, stage, at))
         {
             GiveOrDrop(unit, item, count, at);
             kinds++;

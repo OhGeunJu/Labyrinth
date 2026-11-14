@@ -80,7 +80,9 @@ public class WorldBand
             // **어디서 나온 무리인가가 전력을 가른다**(2026-08-23) — 같은 고블린이라도
             // 용암지대에서 나온 것은 다르다. 근거지(`Home`)의 바이옴 티어를 곱한다.
             // 무리 에셋을 티어마다 복제하면 바이옴 × 무리의 곱셈이 된다.
-            sum *= BiomeTier.PowerMultOf(WorldMap.BiomeAtWorld(Home));
+            // 층마다 따로 지은 무리는 이미 등급 · 장비로 세다 — 두 번 곱하지 않는다(`ScaledByFloor`).
+            if (Data == null || !Data.ScaledByFloor)
+                sum *= BiomeTier.PowerMultOf(WorldMap.BiomeAtWorld(Home));
 
             return sum;
         }
@@ -128,6 +130,7 @@ public class WorldBand
                                          entry.MinGrade, entry.MaxGrade,
                                          storyGroup: data != null && data.Faction != null
                                                    ? data.Faction.BackstoryGroup : null);
+                spec.LoadoutOverride = entry.Loadout;
                 band.Members.Add(new BandMember { Prefab = entry.Prefab, Unit = unit, Spec = spec });
             }
         }

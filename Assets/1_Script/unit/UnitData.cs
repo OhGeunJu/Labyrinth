@@ -172,6 +172,14 @@ public class UnitData : ScriptableObject
     // 무엇이 나올지는 종족이 저작한다 — 사람도 예외가 아니다(생가죽·생고기·뼈).
     public List<LootEntry> BoneYield = new();
 
+    // **몸에서 나오는 돌**(2026-11-11, 사용자 설계) — 말이 통하는 종족은 신성석(에테르석),
+    // 미궁 몹은 그 층의 마력석. 해골 · 일으켜진 몸은 종족과 상관없이 공허석이다
+    // (`UnitBrain.IsUndead` — 좀비의 종족은 여전히 사람이라 여기에 못 적는다). 세력이 덮어쓸 수 있다
+    // (`FactionData.Stone` — 교단). 몇 개가 나오나는 `Butchering`이 든다.
+    [Tooltip("도축하면 나오는 돌. Default = 마력석(죽은 층의 등급). 신성 = 에테르석(스탯이 높을수록 많이). " +
+             "공허 = 공허석. 해골 · 일으켜진 몸은 이 값과 상관없이 공허석.")]
+    public BodyStone Stone;
+
     public float GetGrowthRate(StatName stat)
     {
         for (int i = 0; i < StatGrowthRates.Count; i++)
