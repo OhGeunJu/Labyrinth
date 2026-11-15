@@ -12,6 +12,7 @@ public static class PawnPrefabPaths
 
     public static string RaceOf(string name)
     {
+        if (name.StartsWith("Chibi_Ent")) return "Ent";
         if (name.Contains("Lizard"))   return "Lizard";
         if (name.Contains("Goblin"))   return "Goblin";
         if (name.Contains("Orc"))      return "Orc";

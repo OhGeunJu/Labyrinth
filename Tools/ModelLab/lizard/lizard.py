@@ -101,19 +101,29 @@ LEATHER = (0.34, 0.22, 0.13); CLOTH = (0.42, 0.14, 0.11)
 #          이름      반폭(밑 엉덩이 허리 가슴 어깨)          깊이  손    팔K   다리K  몸통K 팔굵기 다리굵기 머리 어깨둥글림
 LIZARD = ('Lizard', [0.23, 0.26, 0.27, 0.33, 0.35], 0.88, 0.32, 1.12, 1.37, 1.05, 1.15, 1.12, 1.0, 0.42)
 CROC   = ('Croc',   [0.29, 0.33, 0.36, 0.44, 0.47], 1.02, 0.39, 1.12, 1.30, 1.12, 1.45, 1.32, 1.0, 0.34)
+# **공룡 악어**(`brute` — 11-14 사용자: *"악어 버전을 좀 더 공룡 느낌으로 · 덩치가 컸으면 · 일반 리자드맨이랑 따로 빼서"* — 그림은 깃 밖
+# `_refs/2026-11-14_lizard_Croc/`). 리자드맨과 다른 큰 종족으로 갈 몸이다 — 더 굽은 등 · 넓은 어깨 · 굵은 팔뚝과 큰 손 · 굵고 짧은 다리 · 굵은 꼬리.
+# 몸 전체를 `BRUTE_S`배로 키워 짓는다(크기는 메시가 든다 — 엔트와 같다).
+BRUTE  = ('Brute',  [0.30, 0.33, 0.33, 0.50, 0.58], 0.90, 0.42, 1.15, 1.95, 1.10, 1.40, 1.05, 1.0, 0.30)   # 사용자가 고쳐 그린 비율 · 굵은 팔다리 · **다리를 더 길게**(v12 — 다리K 1.70 → 1.95 · 몸통은 그대로 — v11은 골반을 넓혀 허리가 굵어졌다)
+BRUTE_S = 1.45
 #           체형     머리 배수  굽힘    목 굵기  꼬리 굵기
-BODY = {'lizard': (LIZARD, 1.00, 0.30, 0.150, 1.00),
+BODY = {'brute':  (BRUTE,  0.95, 0.42, 0.250, 1.50),
+        'lizard': (LIZARD, 1.00, 0.30, 0.150, 1.00),
         'python': (LIZARD, 1.00, 0.30, 0.160, 1.10),
         'viper':  (LIZARD, 1.00, 0.30, 0.122, 0.95),
         'croc':   (CROC,   1.16, 0.34, 0.215, 1.38)}
 HEAD_FWD, HEAD_DROP = 0.17, 0.17   # 머리가 굽은 어깨보다 앞으로 · 아래로
+HEAD_POSE = {'brute': (0.30, 0.12)}   # 종류마다 다른 머리 자리(앞으로 · 아래로) — 공룡 악어는 굵은 목 끝에 머리가 낮게 앞으로 나온다
 
+NECK_TAPER = {'brute': 0.78}   # 목이 머리 쪽으로 가늘어지는 비(없으면 1) — 공룡 악어는 머리가 작아 목이 머리통보다 굵으면 얼굴이 목에 묻힌다(v6 · 사용자)
 def set_body(kind):
     """그 종류의 몸 수치를 모듈 전역에 세운다 — 아래 몸 함수들이 읽는다(한 프로세스가 한 그림만 그린다)."""
-    global D, HK, LEAN, NECK_R, TAIL_K, Y0, TOP, HO, TAIL, TAIL_R, _TZ, _TY, _TR
+    global D, HK, LEAN, NECK_R, TAIL_K, Y0, TOP, HO, TAIL, TAIL_R, _TZ, _TY, _TR, NECK_TIP
+    NECK_TIP = NECK_TAPER.get(kind, 1.0)
     shape, HK, LEAN, NECK_R, TAIL_K = BODY[kind]
     D = bd.dims(shape); TOP = D['top']; Y0 = D['lift'] + 0.22 * D['torsoH']
-    HO = V(0, TOP + bd.HeadGap + hb.H * 0.5 - HEAD_DROP, bd.HeadZ + float(zs(TOP)) + HEAD_FWD)
+    fwd, drop = HEAD_POSE.get(kind, (HEAD_FWD, HEAD_DROP))
+    HO = V(0, TOP + bd.HeadGap + hb.H * 0.5 - drop, bd.HeadZ + float(zs(TOP)) + fwd)
     # 꼬리 — 엉덩이에서 뒤로 내려가 땅 가까이에서 눕는다. 3차 곡선 열두 마디 · 굵기는 뿌리에서 끝까지 한 번에 준다.
     tp = np.array([[D['lift'] + 0.115, -0.08], [D['lift'] - 0.02, -0.48 * TAIL_K ** 0.5], [0.11 * TAIL_K, -0.78 * TAIL_K ** 0.5], [0.10 * TAIL_K, -1.26 * TAIL_K ** 0.5]], np.float32)
     t = np.linspace(0, 1, 13)
@@ -136,7 +146,7 @@ def torso(p):
 def back_z(y):
     t = (y - D['lift']) / D['torsoH']; return -float(bd.torso_r(D['half'], t, D['torsoH'], D['topR'])) * D['depth'] + float(zs(y))
 def neck(p):   # 굽은 어깨에서 앞 · 위로 뻗어 머리통 뒤 밑으로
-    return seg(p, V(0, TOP - 0.08, float(zs(TOP)) - 0.05), HO + V(0, -0.07, -0.13) * HK, NECK_R * 1.18, NECK_R)
+    return seg(p, V(0, TOP - 0.08, float(zs(TOP)) - 0.05), HO + V(0, -0.07, -0.13) * HK, NECK_R * 1.18, NECK_R * NECK_TIP)
 def arm_z(): return float(zs(D['shY']))
 def arms(p): return capsule(mir(p), V(D['armX'], D['handY'], arm_z() + 0.04), V(D['armX'], D['shY'], arm_z()), D['armR'])
 def hand_c(): return V(D['armX'], D['handY'] - D['hand'] * 0.25, arm_z() + 0.04)
@@ -167,6 +177,180 @@ def foot_claws(p):
 def tail(p):
     d = seg(p, TAIL[0], TAIL[1], TAIL_R[0], TAIL_R[1])
     for i in range(1, len(TAIL) - 1): d = smin(d, seg(p, TAIL[i], TAIL[i + 1], TAIL_R[i], TAIL_R[i + 1]), 0.02)
+    return d
+SPINE_GAP = 0.030   # 가시 사이 — 머리 가시 테 · 목 · 등 · 꼬리가 다 같다(11-14 사용자: *"꼬리 · 등 · 머리 쪽 뿔 간격이 너무 다르다"*)
+def fringe_rows():
+    """가시 테가 이어지는 등의 가시 두 줄(볏도마뱀붙이 · 11-14 사용자: *"등이랑 이어지는 뿔들도 두 갈래짜리가 아니라 다른 한 줄"*) —
+    머리 가시 테 끝(뒤통수 옆 아래)에서 목 뒤를 지나 등 양쪽으로, 꼬리 윗면 양옆을 따라 끝까지(*"꼬리까지 쭉"*). 오른쪽(+x)만 적고 거울로 쓴다.
+    줄을 촘촘히 짚어 겉면 위의 길을 만든 뒤 그 길을 따라 `SPINE_GAP`마다 하나씩 놓는다. (밑동, 끝, 굵기) 목록."""
+    body = lambda q: smin(torso(q), neck(q), 0.05)
+    skin_tail = lambda q: smin(torso(q), tail(q), 0.06)
+    na, nb = HO + V(0, -0.07, -0.13) * HK, V(0, TOP - 0.08, float(zs(TOP)) - 0.05)   # 목 축(머리 쪽 → 어깨)
+    guide = []   # (속 점, 나가는 쪽, 크기, 눕는 쪽, 겉면 함수)
+    for t in np.linspace(0.15, 1.0, 14):                                 # 목
+        guide.append((na + (nb - na) * t, nrm([0.78, 0.15, -0.60]), 1.0, None, body))
+    for y in np.linspace(TOP - 0.12, D['lift'] + 0.28, 24):             # 등 — 엉덩이로 갈수록 작다
+        guide.append((V(0, y, float(zs(y))), nrm([0.62, 0.05, -0.78]), 0.55 + 0.45 * (y - D['lift']) / D['torsoH'], None, body))
+    for i in range(1, len(TAIL) - 1):                                    # 꼬리 — 윗면 양옆 · 꼬리 끝 쪽으로 눕는다
+        for u in np.linspace(0, 1, 6, endpoint=False):
+            c = TAIL[i] + (TAIL[i + 1] - TAIL[i]) * u; r = TAIL_R[i] + (TAIL_R[i + 1] - TAIL_R[i]) * u
+            ax = nrm(TAIL[min(i + 1, len(TAIL) - 1)] - TAIL[i - 1]); up = nrm(np.cross(np.cross(ax, UP), ax)); side = nrm(np.cross(up, ax))
+            if side[0] < 0: side = -side
+            guide.append((c, nrm(up * 0.70 + side * 0.72), 0.35 + 0.65 * r / TAIL_R[0], ax, skin_tail))
+    path = []   # 겉면 위의 길 — (점, 나가는 쪽, 크기, 눕는 쪽)
+    for a, dr, k, lay, f in guide:
+        b = surf(f, a, dr)
+        if b is not None: path.append((b, dr, k, lay))
+    out, acc = [], SPINE_GAP * 0.5
+    for (b0, d0, k0, l0), (b1, d1, k1, l1) in zip(path[:-1], path[1:]):
+        L = float(np.linalg.norm(b1 - b0))
+        while acc <= L:
+            t = acc / max(L, 1e-6); b = b0 + (b1 - b0) * t; dr = nrm(d0 + (d1 - d0) * t); k = k0 + (k1 - k0) * t
+            lay = l0 if l0 is not None else l1
+            tip = nrm(dr * 0.70 + lay * 0.65) if lay is not None else nrm(dr * 0.75 + V(0, 0.15, -0.55))   # 꼬리는 꼬리 끝으로 · 몸은 뒤로 눕는다
+            out.append((b - dr * 0.006, b + tip * (0.040 * k), 0.016 * k))
+            acc += SPINE_GAP
+        acc -= L
+    return out
+FROWS = None
+def torso_rad(y):   # 그 높이의 몸통 반지름(굽기 전)
+    return float(bd.torso_r(D['half'], (y - D['lift']) / D['torsoH'], D['torsoH'], D['topR']))
+def brute_muscles(p):
+    """몸통의 살 — **덩이를 붙이지 않는다**(v5는 가슴근 두 덩이가 여자 가슴 같았다 — 사용자: *"몸은 자연스럽게 · 억지로 근육 붙이니깐"*).
+    가슴 전체가 하나의 두꺼운 통으로 부풀고(가운데 하나 · 넓게 녹인다) 목에서 어깨로 승모근이 완만하게 흐른다."""
+    q = mir(p)
+    y1 = TOP - 0.24; chest = ell(p, V(0, y1, float(zs(y1)) + torso_rad(y1) * D['depth'] * 0.30), V(torso_rad(y1) * 1.02, 0.24, torso_rad(y1) * D['depth'] * 0.92))
+    sh = brute_arm_pts()[0]   # 승모근 — 목 옆에서 높이 솟아 올라간 어깨로 흐른다(트롤처럼 — 사용자: *"승모근을 더 올리고 어깨 위치를 더 올려도"*). 머리보다 뒤에 선다
+    trap = seg(q, V(0.11, TOP + 0.14, float(zs(TOP)) - 0.08), V(float(sh[0]) - 0.04, float(sh[1]) + 0.07, float(sh[2]) - 0.02), 0.165, 0.115)   # v10 — 더 크고 높게(사용자: *"승모근 더 키워봐"*)
+    return smin(chest, trap, 0.08)
+BRUTE_SH_UP = 0.09   # 어깨 관절을 이만큼 올린다(트롤처럼 솟은 어깨)
+def brute_arm_pts():
+    az = arm_z(); r = D['armR']
+    sh = V(D['armX'], D['shY'] + BRUTE_SH_UP, az); wr = V(D['armX'] + 0.025, D['hem'] + 0.03, az + 0.15)   # 손목이 허리띠 높이 · 조금 앞
+    el = sh + (wr - sh) * 0.50 + V(0.050, 0.0, -0.075)   # 팔꿈치 — 뒤 · 바깥(힘을 뺀 팔이 살짝 굽어 늘어진다)
+    return sh, el, wr, r
+def brute_arms(p):
+    """굵은 팔 — **한 줄기로 흐른다**(v9는 삼각근 · 이두 · 삼두 · 팔뚝 덩이가 따로 불거져 울퉁불퉁했다 — 사용자: *"팔 좀 더 자연스럽게"*):
+    둥근 어깨 → 팔꿈치로 가늘어지는 위팔 → 다시 굵어지는 팔뚝 → 손목. 살 덩이는 둘만(위팔 앞 · 팔뚝) 넓게 녹인다."""
+    q = mir(p); sh, el, wr, r = brute_arm_pts(); lu = float(np.linalg.norm(el - sh)); ll = float(np.linalg.norm(wr - el))
+    d = seg(q, sh, el, r * 1.04, r * 0.84)
+    d = smin(d, seg(q, el, wr, r * 0.84, r * 0.66), 0.06)                                                # 아래팔 뼈대
+    d = smin(d, ell(q, sh + V(0.02, 0.015, 0.0), V(r * 1.26, r * 1.12, r * 1.26)), 0.10)                # 둥근 어깨
+    d = smin(d, ell(q, sh + (el - sh) * 0.50 + V(0, 0, r * 0.20), V(r * 0.88, lu * 0.40, r * 0.92)), 0.09)   # 위팔 앞의 살
+    return smin(d, ell(q, el + (wr - el) * 0.34 + V(r * 0.05, 0, r * 0.04), V(r * 1.02, ll * 0.40, r * 1.02)), 0.09)   # 팔뚝
+BRUTE_HAND_TURN = -35.0   # 손을 세로축으로 돌리는 각(도) — 0이면 손바닥이 몸 쪽을 곧게 본다 · 음수면 손바닥이 몸 쪽 · 뒤로 비스듬히(힘을 뺀 손 · 정면에서 손가락이 어긋나 보인다 · v16)
+BRUTE_PALM_T = 0.48      # 손바닥 두께(반폭 × 손 반지름) — v15 0.34는 너무 얇았다
+def _hand_rot():
+    a = np.radians(BRUTE_HAND_TURN); ca, sa = np.cos(a), np.sin(a)
+    return np.array([[ca, 0, sa], [0, 1, 0], [-sa, 0, ca]], np.float32)   # 손 좌표 → 몸 좌표(세로축 둘레)
+def brute_fingers():
+    """손가락 셋 + 엄지(오른손 · 거울로 쓴다 · +x가 바깥) — 저마다 (밑동, 첫 마디, 둘째 마디, 끝). **손바닥이 몸 쪽(허벅지)을 본다**(v15 — 사용자:
+    *"그냥 손바닥이 몸 쪽을 보게 해 놓으면 안 됐던 거야?"*): 손가락은 앞뒤로 나란히 서고 몸 쪽(손바닥 쪽)으로 살짝 말린다 · 가운데가 조금 길다 ·
+    엄지는 손 앞 가장자리에서 손바닥 쪽으로 붙어 내려온다(앞으로 안 튀어나온다)."""
+    _, _, wr, _ = brute_arm_pts(); h = D['hand'] * 0.5; c = wr + V(0, -h * 0.60, 0.0)
+    R = _hand_rot(); T = lambda v: c + R @ (np.asarray(v, np.float32) - c)   # 손 둘레로 돌린다
+    fs = []
+    for dz, k in ((-0.60, 0.92), (0.0, 1.06), (0.60, 0.94)):
+        a = c + V(0, -h * 0.50, dz * h * 0.60)
+        m1 = a + V(-h * 0.10, -h * 0.58 * k, dz * h * 0.10)
+        m2 = m1 + V(-h * 0.18, -h * 0.40 * k, dz * h * 0.04)
+        fs.append((a, m1, m2, m2 + V(-h * 0.22, -h * 0.26 * k, 0)))
+    a = c + V(-h * 0.22, -h * 0.02, h * 0.70); m1 = a + V(-h * 0.22, -h * 0.36, h * 0.04); m2 = m1 + V(-h * 0.10, -h * 0.28, -h * 0.04)
+    fs.append((a, m1, m2, m2 + V(-h * 0.04, -h * 0.16, -h * 0.06)))   # 엄지 — 앞 가장자리에서 손바닥 쪽으로
+    return c, h, [tuple(T(v) for v in f) for f in fs]
+def brute_hands(p):
+    q = mir(p); c, h, fs = brute_fingers(); _, _, wr, r = brute_arm_pts()
+    ql = c + (q - c) @ _hand_rot()                                                                       # 손 좌표로(돌림을 되돌린다)
+    d = ell(ql, c, V(h * BRUTE_PALM_T, h * 0.74, h * 0.84))                                               # 손바닥 — 넓적한 판(몸 쪽을 본다)
+    d = smin(d, ell(q, (wr + c) * 0.5, V(r * 0.52, h * 0.55, r * 0.62)), 0.05)                          # 손목 → 손바닥으로 넓어진다
+    for a, m1, m2, t in fs:
+        f = np.minimum(np.minimum(seg(q, a, m1, h * 0.25, h * 0.22), seg(q, m1, m2, h * 0.22, h * 0.19)), seg(q, m2, t, h * 0.19, h * 0.15))
+        d = smin(d, f, 0.03)
+    return d
+def brute_hand_claws(p):   # 손톱 — 손가락이 말리는 쪽으로 뻗고 끝이 굽는다
+    q = mir(p); _, h, fs = brute_fingers(); d = far(p)
+    for a, m1, m2, t in fs:
+        dr = nrm(t - m2); c1 = t + dr * h * 0.28 + V(0, -h * 0.06, 0)
+        d = np.minimum(d, np.minimum(seg(q, t - dr * h * 0.04, c1, h * 0.15, h * 0.09), seg(q, c1, c1 + nrm(dr + V(0, -0.8, 0)) * h * 0.24, h * 0.09, 0.004)))
+    return d
+BRUTE_LEG_X = 0.215   # 다리 자리 — 엉덩이 폭에서 안 낸다(좁은 허리에 다리가 가운데로 붙어 두 발이 겹쳤다)
+def brute_leg_pts():
+    """**역관절**(v13 — 사용자: *"다리 역관절을 더 확실하게"*) — 엉덩이(몸통 밑) → 무릎(앞으로 크게) → 뒤꿈치(뒤 · 위로 높이 — 땅에 안 닿는다) →
+    발볼(발가락으로 선다). 발등뼈가 뒤꿈치에서 비스듬히 길게 내려온다. v8~12는 앞에서 곧은 기둥으로 보이게 꺾임을 줄였었다."""
+    L_, r = D['lift'], D['legR']; x = BRUTE_LEG_X
+    return (V(x, L_ - 0.01, 0.0), V(x, L_ * 0.64, 0.240), V(x, L_ * 0.25, -0.150), V(x, 0.062, 0.060)), r   # v14 — 무릎을 더 앞 · 위로, 뒤꿈치를 조금 내려 종아리가 길다
+def brute_legs(p):
+    (h, k, a, b), r = brute_leg_pts(); q = mir(p); lt = float(np.linalg.norm(k - h)); ls = float(np.linalg.norm(a - k))
+    d = seg(q, h, k, r * 1.12, r * 0.94)
+    d = smin(d, ell(q, h + (k - h) * 0.50 + V(r * 0.06, 0, r * 0.26), V(r * 0.96, lt * 0.44, r * 1.06)), 0.06)   # 넓적다리 근육(앞으로 — 옆으로 부풀면 두 다리가 붙는다)
+    d = smin(d, seg(q, k, a, r * 0.86, r * 0.56), 0.04)                                                # 정강이 — 뒤꿈치로 가늘어진다
+    d = smin(d, ell(q, k + (a - k) * 0.32 + V(0, r * 0.10, -r * 0.30), V(r * 0.78, ls * 0.30, r * 0.80)), 0.05)   # 장딴지 — 정강이 뒤
+    d = smin(d, sph(q, a, r * 0.60), 0.03)                                                             # 뒤꿈치 마디
+    return smin(d, seg(q, a, b, r * 0.56, r * 0.62), 0.03)                                             # 발등뼈 — 비스듬히 길게
+# 공룡 발 — 발가락 셋이 **앞을 향해 조금만 벌어진다**(앞에서 보면 발톱 셋이 W로 — 사용자가 고쳐 그린 그림).
+# **마디가 있다**(v9는 곧은 막대였다 — 사용자: *"발가락 좀 더 자연스럽게"*): 발등에서 부채꼴로 갈라져 → 가운데 마디가 솟고 → 끝이 땅으로 내려간다.
+# 발톱은 발가락 끝 위에서 나와 갈고리처럼 굽어 땅에 닿는다. (밑동 x, 끝 x, 길이 z)
+BTOES = ((-0.075, -0.150, 0.225), (0.0, 0.0, 0.265), (0.075, 0.150, 0.225))
+def brute_toe_pts():
+    (_, _, a, b), r = brute_leg_pts(); out = []
+    for x0, x1, z in BTOES:
+        base = b + V(x0, 0.004, 0.035); tip = b + V(x1, -0.020, z)
+        knuck = base + (tip - base) * 0.52 + V(0, 0.034, 0)   # 가운데 마디 — 솟는다
+        out.append((base, knuck, tip))
+    return a, b, r, out
+def brute_feet(p):
+    a, b, r, toes = brute_toe_pts(); q = mir(p)
+    d = ell(q, b + V(0, 0.000, -0.005), V(0.120, 0.058, 0.105))                                  # 발볼
+    d = smin(d, seg(q, b + V(0, 0.030, -0.03), b + V(0, 0.012, 0.075), 0.085, 0.095), 0.04)      # 발등 — 발가락으로 넓어진다
+    for base, kn, tip in toes:
+        d = smin(d, np.minimum(seg(q, base, kn, 0.054, 0.048), seg(q, kn, tip, 0.048, 0.038)), 0.035)
+    return d
+def brute_foot_claws(p):   # 갈고리 발톱 — 발가락 끝 위에서 나와 앞으로 뻗다 굽어 내려온다
+    a, b, r, toes = brute_toe_pts(); q = mir(p); d = far(p)
+    for base, kn, tip in toes:
+        dr = nrm(V(float(tip[0] - kn[0]), 0, float(tip[2] - kn[2])))
+        c0 = tip + V(0, 0.016, 0) - dr * 0.015; c1 = c0 + dr * 0.085 + V(0, 0.012, 0); c2 = c1 + dr * 0.070 + V(0, -0.050, 0)
+        d = np.minimum(d, np.minimum(seg(q, c0, c1, 0.042, 0.030), seg(q, c1, c2, 0.030, 0.005)))
+    return d
+def brute_plates():
+    """공룡 악어의 골판 — 목 뒤 · 등 · 꼬리 한가운데로 큰 판 한 줄(어깨에서 가장 크고 꼬리 끝으로 작아진다) + 꼬리 양옆 작은 가시.
+    **판은 다 등뼈에서 바깥으로 선다**(꼬리 쪽으로 조금만 쓸린다) — v3는 등의 판만 아래로 누워 목 · 꼬리의 판과 방향이 달랐다
+    (사용자: *"등에 혼자 반대 방향으로 나온 뿔도 좀 걸려"*). 등 양옆 가시 줄 · 혹 비늘은 걷었다. (한가운데 판, 옆 가시) — 저마다 (밑동, 끝, 굵기)."""
+    body = lambda q: smin(torso(q), neck(q), 0.05)
+    skin_tail = lambda q: smin(torso(q), tail(q), 0.06)
+    na, nb = HO + V(0, -0.07, -0.13) * HK, V(0, TOP - 0.08, float(zs(TOP)) - 0.05)
+    mid, side = [], []
+    def plate(b, n, lay, ln, r): mid.append((b - n * 0.03, b + n * ln + lay * ln * 0.18, r))
+    for t in np.linspace(0.10, 0.95, 4):                                  # 목 뒤
+        a = na + (nb - na) * t; n = nrm([0, 0.80, -0.60]); b = surf(body, a, n)
+        if b is not None: plate(b, n, nrm([0, -0.5, -0.85]), 0.09 + 0.07 * t, 0.056)
+    for i, y in enumerate(np.linspace(TOP - 0.06, D['lift'] + 0.22, 6)):  # 등 — 어깨에서 가장 크다
+        a = V(0, y, float(zs(y))); n = nrm([0, 0.45 - 0.07 * i, -1.0]); b = surf(body, a, n)
+        if b is not None: plate(b, n, V(0, -1, 0), 0.175 - 0.016 * i, 0.060)
+    for i in range(1, len(TAIL) - 1):                                      # 꼬리 — 윗면 한가운데 · 끝으로 작아진다
+        ax = nrm(TAIL[i + 1] - TAIL[i - 1]); up = nrm(np.cross(np.cross(ax, UP), ax)); k = TAIL_R[i] / TAIL_R[0]
+        b = surf(skin_tail, TAIL[i], up)
+        if b is not None: plate(b, up, ax, 0.05 + 0.10 * k, 0.020 + 0.042 * k)
+        sd = nrm(np.cross(up, ax)); sd = sd if sd[0] > 0 else -sd
+        if 2 <= i < 8:
+            dr = nrm(up * 0.75 + sd * 0.66); bs = surf(skin_tail, TAIL[i], dr)
+            if bs is not None: side.append((bs - dr * 0.01, bs + nrm(dr + ax * 0.3) * (0.03 + 0.05 * k), 0.012 + 0.022 * k))
+    return mid, side
+BPLATES = None
+def brute_plates_f(p):
+    global BPLATES
+    if BPLATES is None: BPLATES = brute_plates()
+    mid, side = BPLATES; d = far(p)
+    q = thin(p, 0.34)                                                      # 판은 옆으로 납작하다
+    for a, b, r in mid: d = np.minimum(d, seg(q, a, b, r, 0.008) * 0.34)
+    m = mir(p)
+    for a, b, r in side: d = np.minimum(d, seg(m, a, b, r, 0.004))
+    return d
+def fringe_rows_f(p):
+    global FROWS
+    if FROWS is None: FROWS = fringe_rows()
+    m = mir(p); d = far(p)
+    for a, b, r in FROWS: d = np.minimum(d, seg(m, a, b, r, 0.003))
     return d
 def ridge(p):   # 등줄기에서 꼬리로 낮은 돌기 한 줄 — 끝으로 갈수록 작아지다 사라진다
     d = far(p)
@@ -252,20 +436,33 @@ class Head:
         s.name, s.skin, s.belly, s.eye_default = name, skin, belly, eye
         s.teeth = s.tongue = None
 
-# 도마뱀의 가시 테 — 눈 위(속눈썹 자리)에서 머리 윗면 가장자리를 따라 뒤통수로. 살은 테두리 둑, 그 위에 잔가시가 촘촘하다.
-FRINGE = [V(0.070, 0.135, 0.240), V(0.185, 0.172, 0.130), V(0.215, 0.215, -0.020), V(0.185, 0.225, -0.160), V(0.110, 0.200, -0.270)]
+# 도마뱀의 가시 테 — 볏도마뱀붙이처럼(11-14 사용자 사진: *"뿔이 눈을 따라 쭉 내려가잖아 — 지금은 머리 위에 있는 뿔 같다"*).
+#   ① 속눈썹 — 눈알 윗선을 따라 앞에서 뒤로 감싼다(가시는 눈 중심에서 바깥으로 · 둑 없음)
+#   ② 머리 옆 가장자리 — 눈 뒤에서 뒤통수 옆까지(살은 테두리 둑)
+#   ③ 뒤통수 옆에서 아래로 꺾여 목으로 내려간다 — 그대로 등 양쪽 두 줄로 이어진다(`fringe_rows` — 몸)
+EYE_C = V(0.172, 0.085, 0.135)                                                                         # 머리의 눈 자리(`lizard_head`)
+LASH = [V(0.118, 0.142, 0.212), V(0.168, 0.166, 0.160), V(0.206, 0.160, 0.100), V(0.226, 0.140, 0.052)]   # ① 눈알 윗선
+FRINGE = [V(0.226, 0.150, 0.052), V(0.238, 0.178, -0.040), V(0.232, 0.180, -0.140),                      # ② 가장자리
+          V(0.212, 0.128, -0.200), V(0.188, 0.050, -0.236), V(0.160, -0.040, -0.262)]                     # ③ 뒤통수 옆에서 아래로
 def fringe_bank(p):
     m = mirror(p); d = far(p)
-    for a, b in zip(FRINGE[:-1], FRINGE[1:]): d = np.minimum(d, capsule(m, a, b, 0.033))
+    for a, b in zip(FRINGE[:-1], FRINGE[1:]): d = np.minimum(d, capsule(m, a, b, 0.030))
     return d
 def fringe_spines(p):
     m = mirror(p); d = far(p)
-    for (a, b), n in zip(zip(FRINGE[:-1], FRINGE[1:]), (3, 5, 5, 4)):
+    for (a, b), n in zip(zip(LASH[:-1], LASH[1:]), (3, 3, 2)):          # ① 속눈썹 — 짧고 가늘다
+        for i in range(n):
+            # 바깥(머리 옆)으로 젖혀진다(11-14 사용자: *"속눈썹은 안쪽 말고 바깥쪽으로"*) — 눈에서 나가는 쪽 + 옆 + 조금 위
+            c = a + (b - a) * ((i + 0.5) / n); out = nrm(nrm(c - EYE_C) * 0.55 + V(1, 0, 0) * 0.80 + UP * 0.15)
+            d = np.minimum(d, seg(m, c - out * 0.004, c + out * 0.030, 0.010, 0.002))
+    for a, b in zip(FRINGE[:-1], FRINGE[1:]):                                 # ② · ③ 가장자리 — 바깥 · 뒤로(몸과 같은 간격 `SPINE_GAP`)
+        n = max(1, int(round(float(np.linalg.norm(b - a)) * HK / SPINE_GAP)))
         for i in range(n):
             c = a + (b - a) * ((i + 0.5) / n)
-            out = nrm([c[0], 0, (c[2] + 0.05) * 0.5]) * 0.92 + UP * 0.34
-            ln = 0.040 + 0.018 * np.sin(np.pi * (i + 0.5) / n)
-            d = np.minimum(d, seg(m, c + out * 0.015, c + out * (0.03 + ln), 0.017, 0.003))
+            down = sstep(0.17, 0.05, float(c[1]))                               # 내려가는 자리에선 뒤 · 바깥으로 눕는다
+            out = nrm(nrm([c[0], 0, (c[2] + 0.05) * 0.5]) * 0.92 + UP * (0.34 - 0.40 * down) + V(0, 0, -0.30 * down))
+            ln = 0.034 + 0.014 * np.sin(np.pi * (i + 0.5) / n)
+            d = np.minimum(d, seg(m, c + out * 0.012, c + out * (0.026 + ln), 0.015, 0.003))
     return d
 def seat_eye(h, depth=0.42, exact=False):
     """눈알을 살 겉면에 앉힌다 — 눈 방향으로 밀어 눈알 중심이 살 속 `depth × 반지름`에 오게(손으로 맞춘 자리가 살에 묻히거나 떴다)."""
@@ -290,7 +487,7 @@ def comb(c, r):   # 이구아나 볏 — 정수리에서 목 뒤로, 옆으로 �
 def lizard_head(crest='fringe'):
     h = Head('lizard', (0.36, 0.50, 0.27), (0.80, 0.76, 0.52), 'bigslit')
     C, R = (0, 0.04, -0.05), (0.245, 0.255, 0.28)
-    flat = crest == 'fringe'   # 가시 테 머리는 윗면이 납작한 쐐기다
+    flat = crest in ('fringe', 'bare')   # 가시 테 머리는 윗면이 납작한 쐐기다 · `bare` — 같은 머리통에 가시만 없다(11-14 사용자: *"저 두개골 그대로 뿔 없는 모습으로도"*)
     h.cran = lambda p: smax(ell(p, V(*C), V(*R)), p[..., 1] - 0.238, 0.05) if flat else ell(p, V(*C), V(*R))
     h.upper = lambda p: seg(squash(p, -0.01, 0.72), V(0, 0.0, 0.08), V(0, -0.035, 0.42), 0.190, 0.105) * 0.72
     h.lower = lambda p: seg(squash(p, -0.10, 0.60), V(0, -0.10, 0.02), V(0, -0.105, 0.39), 0.165, 0.088) * 0.60
@@ -302,7 +499,7 @@ def lizard_head(crest='fringe'):
         if flat: return smin(fringe_bank(p), cheek, 0.03)
         return smin(seg(m, V(0.075, 0.120, 0.220), V(0.228, 0.172, 0.01), 0.038, 0.040), cheek, 0.03)
     h.extra = extra
-    h.spikes = {'fringe': fringe_spines, 'comb': comb(C, R), 'none': far}[crest]
+    h.spikes = {'fringe': fringe_spines, 'comb': comb(C, R), 'none': far, 'bare': far}[crest]
     h.spike_col = (0.74, 0.76, 0.50) if flat else (0.24, 0.36, 0.20)
     h.nostril, h.nostril_r = V(0.045, 0.028, 0.452), 0.016
     h.jaw_w = 0.19; h.reach = 0.66
@@ -517,7 +714,56 @@ def croc_head(crest=None):
     h.jaw_w = 0.225; h.reach = 0.90
     return h
 
-HEADS = {'lizard': lizard_head, 'python': python_head, 'viper': viper_head, 'croc': croc_head}
+def brute_head(crest=None):
+    """공룡 악어 — **짧고 깊은 턱**(v5는 주둥이가 길고 납작했다 — 사용자: *"주둥이가 너무 길고 · 공룡은 저 정도로 납작하지 않다 · 좀 더 두꺼워도"*):
+    폭보다 높이가 큰 머리 · 위아래로 두꺼운 주둥이 · 깊은 아래턱 · 눈 위 뼈 능선 밑의 눈 · 능선 끝에서 뒤로 누운 뿔 · 드러난 이빨 ·
+    정수리에서 뒤로 누운 골판. 턱 옆은 **납작한 면**이다(둥근 턱 근육 공은 *"두꺼비 같다"* — 걷었다)."""
+    h = Head('brute', (0.28, 0.40, 0.50), (0.80, 0.76, 0.62), 'glare')
+    h.eye_col = (0.95, 0.60, 0.14)
+    h.cran = lambda p: smax(ell(p, V(0, 0.03, -0.08), V(0.238, 0.225, 0.25)), p[..., 1] - 0.200, 0.05)   # 좌우로 넓다(v8 — 사용자: *"얼굴도 살짝 더 늘어나면 — 좌우로"*)
+    SW = lambda z: 0.196 + (0.146 - 0.196) * np.clip((z - 0.04) / 0.34, 0, 1)   # 위턱 반폭
+    h.upper = lambda p: seg(squash(p, 0.01, 0.90), V(0, 0.01, 0.04), V(0, -0.005, 0.38), 0.196, 0.146) * 0.90   # 넓고 두껍다
+    h.lower = lambda p: seg(squash(p, -0.135, 0.74), V(0, -0.135, -0.01), V(0, -0.130, 0.372), 0.186, 0.128) * 0.74
+    h.mouth_y = lambda p: -0.070 + 0.008 * np.sin(p[..., 2] * 22.0) + 0.6 * np.clip(0.08 - p[..., 2], 0, 1) ** 2
+    h.eye, h.eye_r, h.eye_n = V(0.178, 0.122, 0.095), 0.040, nrm([0.86, 0.12, 0.50])
+    def base(p):
+        m = mirror(p)
+        ramus = ell(m, V(0.152, -0.085, -0.055), V(0.060, 0.170, 0.115))               # 턱뼈 뒤 — 옆으로 납작한 면(공이 아니다)
+        snout = seg(m, V(0.060, 0.110, 0.400), V(0.106, 0.150, 0.180), 0.020, 0.032)   # 콧등에서 눈으로 오르는 능선
+        return smin(ramus, snout, 0.03)
+    h.extra = base
+    seat_eye(h)
+    t = nrm(np.cross(UP, h.eye_n))
+    b0 = h.eye + UP * (h.eye_r * 1.05) - t * 0.072 + h.eye_n * 0.012 - UP * 0.020   # 앞(안쪽)이 낮다 — 노려본다
+    b1 = h.eye + UP * (h.eye_r * 1.05) + t * 0.064 - h.eye_n * 0.018 + UP * 0.012
+    h.extra = lambda p: smin(base(p), seg(mirror(p), b0, b1, 0.027, 0.036), 0.03)
+    def spikes(p):
+        m = mirror(p); d = far(p)
+        d = np.minimum(d, seg(m, b1 - UP * 0.010, b1 + nrm([0.22, 0.50, -0.84]) * 0.110, 0.030, 0.004))          # 능선 끝의 뿔 — 뒤로 눕는다
+        q = thin(p, 0.36)                                                                                        # 정수리 골판 — 뒤로 누워 뒤로 갈수록 크다
+        for i, (z, y) in enumerate(((0.02, 0.190), (-0.10, 0.196), (-0.21, 0.170))):
+            ln = 0.055 + 0.028 * i
+            d = np.minimum(d, seg(q, V(0, y - 0.03, z), V(0, y + ln * 0.80, z - 0.050 - 0.020 * i), 0.046, 0.008) * 0.36)
+        return d
+    h.spikes, h.spike_col = spikes, (0.80, 0.76, 0.62)
+    h.nostril, h.nostril_r = V(0.060, 0.086, 0.462), 0.015
+    def teeth(p):   # 위는 아래로 · 아래 큰 것들은 윗입술 밖으로 솟는다(입을 다물어도 보인다)
+        m = mirror(p); d = far(p)
+        for z, ln, r in ((0.08, 0.050, 0.018), (0.15, 0.086, 0.025), (0.22, 0.058, 0.019), (0.29, 0.088, 0.025), (0.36, 0.056, 0.018)):
+            w = SW(z) * 0.975
+            d = np.minimum(d, seg(m, V(w, -0.058, z), V(w + 0.005, -0.058 - ln, z + 0.004), r, 0.003))
+        for z, ln, r in ((0.115, 0.066, 0.021), (0.185, 0.094, 0.026), (0.255, 0.074, 0.022), (0.325, 0.060, 0.019)):
+            w = SW(z) + 0.003
+            d = np.minimum(d, seg(m, V(w, -0.092, z), V(w + 0.008, -0.092 + ln, z), r, 0.003))
+        for x in (0.040, 0.105):
+            z = 0.516 - x * x * 3.0
+            d = np.minimum(d, seg(m, V(x, -0.058, z), V(x, -0.124, z + 0.005), 0.019, 0.003))
+        return d
+    h.teeth = teeth
+    h.jaw_w = 0.20; h.reach = 0.95
+    return h
+
+HEADS = {'lizard': lizard_head, 'python': python_head, 'viper': viper_head, 'croc': croc_head, 'brute': brute_head}
 
 # ── 눈 — 고르기 축. 날카로운 쪽에서 둥근 쪽으로 ────────────────────────────────────────────────────────────
 #   이름       눈동자   크기   윗꺼풀 높이 · 앞으로 기운 정도   아랫꺼풀(없으면 None)   색
@@ -600,26 +846,45 @@ def pieces(kind, body=True, eye=None, crest=None, eye_col=None):
     if h.teeth: P.append((hd(h.teeth), BONE))
     if h.tongue: P.append((hd(h.tongue), TONGUE))
     bc = body_col(h.skin, h.belly)
-    def skin_body(p): return union([smin(torso(p), neck(p), 0.05), arms(p), hands(p), legs(p), feet(p), smin(torso(p), tail(p), 0.06)])
+    if kind == 'brute':   # 근육질 몸 — 몸통에 근육 덩이를 얕게 녹이고 팔 · 손 · 다리 · 발을 따로 빚는다
+        def skin_body(p):
+            tn = smin(smin(torso(p), neck(p), 0.05), brute_muscles(p), 0.09)
+            return union([smin(tn, brute_arms(p), 0.03), brute_hands(p), brute_legs(p), brute_feet(p), smin(torso(p), tail(p), 0.06)])
+    else:
+        def skin_body(p): return union([smin(torso(p), neck(p), 0.05), arms(p), hands(p), legs(p), feet(p), smin(torso(p), tail(p), 0.06)])
     if body:
         bcol = (lambda p: h.body_paint(p, bc(p))) if hasattr(h, 'body_paint') else bc
-        P += [(skin_body, bcol), (hand_claws, BONE), (foot_claws, BONE), (belt, LEATHER), (flap, CLOTH)]
+        claws = (brute_hand_claws, brute_foot_claws) if kind == 'brute' else (hand_claws, foot_claws)
+        P += [(skin_body, bcol), (claws[0], BONE), (claws[1], BONE), (belt, LEATHER), (flap, CLOTH)]
         sc = getattr(h, 'scaly', None)
         if sc:
             for lv in body_leaves(sc['lift']): P.append((lv.dist, lv.tint(sc['dark'], sc['tip'], *sc['ramp'])))
+        elif kind == 'lizard' and (crest or 'fringe') == 'fringe': P.append((fringe_rows_f, h.spike_col))   # 가시 테 — 등 양쪽 두 줄(한가운데 줄 대신)
+        elif kind == 'lizard' and crest == 'bare': pass                                                        # 뿔 없는 가시 테 머리 — 등도 매끈
+        elif kind == 'brute': P.append((brute_plates_f, h.spike_col))   # 골판
         elif kind != 'python': P.append((ridge, (0.24, 0.36, 0.20) if kind == 'lizard' else h.spike_col))
     else:
         cut = HO[1] - 0.52 * HK
         P += [(lambda p: np.maximum(smin(torso(p), neck(p), 0.05), cut - p[..., 1]), bc)]
+    if kind == 'brute':   # 몸 전체를 키운다 — 크기는 메시가 든다
+        S = BRUTE_S
+        P = [((lambda f: lambda p: f(p / S) * S)(f), ((lambda g: lambda p: g(p / S))(col) if callable(col) else col)) for f, col in P]
     return P
 
 KINDS = ('lizard', 'python', 'viper', 'croc')
 SNAKES = ('viper', 'viper:slate', 'viper:coal', 'viper:amber', 'python', 'python:kingrat', 'python:indigo', 'python:red')
 FULL = ((0, 380), (40, 500), (90, 760), (150, 560))                  # 보기 각도 · 폭
 CLOSE = ((0, 360, 0), (35, 440, 0), (90, 600, 0), (25, 480, 50))    # 각도 · 폭 · 내려다보기(게임 카메라 쪽)
-CRESTS = ('fringe', 'comb', 'none')
+CRESTS = ('fringe', 'comb', 'none', 'bare')
+BRUTE_VIEW = (1.50, 3.40)   # 공룡 악어 판의 보기 — 가운데 높이 · 세로 범위(m). 도마뱀도 같은 눈금으로 그려 크기를 견준다
 def job(a):
     mode, kind, i = a
+    if mode == 'brute':
+        if i < len(FULL):
+            yaw, w = FULL[i]; return np.asarray(hb.render(pieces('brute'), yaw, (700, 760, 1000, 820)[i], 760, *BRUTE_VIEW))
+        if i == len(FULL): return np.asarray(hb.render(pieces('lizard'), 40, 420, 760, *BRUTE_VIEW))
+        yaw, w, pitch = CLOSE[i - len(FULL) - 1]; P = pieces('brute', body=False)
+        return np.asarray(shifted(P, yaw, w, 400, 1.30 * HK * BRUTE_S, pitch, BRUTE_S))
     if mode == 'full':
         yaw, w = FULL[i]
         return np.asarray(hb.render(pieces(kind), yaw, w, 640, 1.08, 2.62))
@@ -632,9 +897,9 @@ def job(a):
     yaw, w, pitch = ((35, 440, 0), (90, 560, 0), (25, 480, 50))[i]   # crest — kind 자리에 볏 이름
     P = pieces('lizard', body=False, crest=kind)
     return np.asarray(shifted(P, yaw, w, 360, 1.15, pitch))
-def shifted(P, yaw, w, h, span, pitch):
-    """머리가 굽은 어깨 앞에 있어 원점 둘레로 돌리면 그림 밖으로 나간다 — 머리 자리를 원점으로 옮겨 그린다."""
-    c = HO + V(0, 0.0, 0.10 * HK)
+def shifted(P, yaw, w, h, span, pitch, k=1.0):
+    """머리가 굽은 어깨 앞에 있어 원점 둘레로 돌리면 그림 밖으로 나간다 — 머리 자리를 원점으로 옮겨 그린다. `k` — 키운 몸의 배수."""
+    c = (HO + V(0, 0.0, 0.10 * HK)) * k
     Q = [((lambda f: lambda p: f(p + c))(f), ((lambda g: lambda p: g(p + c))(col) if callable(col) else col)) for f, col in P]
     return hb.render(Q, yaw, w, h, 0.0, span, pitch=pitch)
 
@@ -662,6 +927,7 @@ if __name__ == '__main__':
     if on('eyes'):  jobs += [('eyes', k, i) for k in KINDS for i in range(len(EYE_ORDER))]
     if on('crest'): jobs += [('crest', c, i) for c in CRESTS for i in range(3)]
     if on('snakes'): jobs += [(m, k, i) for m, V_ in (('full', FULL), ('close', CLOSE)) for k in SNAKES for i in range(len(V_))]
+    if only == 'brute': jobs += [('brute', 'brute', i) for i in range(len(FULL) + 1 + len(CLOSE))]
     jobs = list(dict.fromkeys(jobs))
     with Pool(min(14, len(jobs))) as pool: res = pool.map(job, jobs)
     ims = dict(zip(jobs, res))
@@ -669,6 +935,23 @@ if __name__ == '__main__':
     if on('heads'): sheet('close', KINDS, [v[1] for v in CLOSE], 360, ims, stem + '_heads.png')
     if on('eyes'):  sheet('eyes', KINDS, [300] * len(EYE_ORDER), 280, ims, stem + '_eyes.png', EYE_ORDER)
     if on('crest'): sheet('crest', CRESTS, [440, 560, 480], 360, ims, stem + '_crest.png')
+    if only == 'brute':   # 윗줄 — 온몸 넷 + 같은 눈금의 도마뱀 · 아랫줄 — 머리 넷
+        top = [ims[('brute', 'brute', i)] for i in range(len(FULL) + 1)]; low = [ims[('brute', 'brute', i)] for i in range(len(FULL) + 1, len(FULL) + 1 + len(CLOSE))]
+        wd = max(sum(t.shape[1] for t in top), sum(t.shape[1] for t in low))
+        im = Image.new('RGB', (wd, 760 + 400), (40, 40, 44)); dr = ImageDraw.Draw(im); x = 0
+        for i, t in enumerate(top):
+            im.paste(Image.fromarray(t), (x, 0))
+            if i == len(FULL): dr.text((x + 6, 6), 'lizard (same scale)', fill=(200, 200, 210))
+            x += t.shape[1]
+        x = 0
+        for t in low: im.paste(Image.fromarray(t), (x, 760)); x += t.shape[1]
+        dr.text((6, 4), 'brute x%.2f' % BRUTE_S, fill=(255, 220, 120))
+        im.save(stem + '_brute.png'); print('saved', stem + '_brute.png')
+        ref = _os.path.join(_here, '..', '_refs', '2026-11-14_lizard_Croc', 'user_markup_v7.png')
+        if _os.path.exists(ref):   # 사용자가 고쳐 그린 그림(왼쪽 · 깃 밖)과 정면을 나란히 — 보낸 그림이 목표다
+            r = Image.open(ref).convert('RGB'); r = r.resize((int(r.width * 760 / r.height), 760), Image.LANCZOS)
+            cm = Image.new('RGB', (r.width + top[0].shape[1], 760), (40, 40, 44)); cm.paste(r, (0, 0)); cm.paste(Image.fromarray(top[0]), (r.width, 0))
+            cm.save(stem + '_cmp.png'); print('saved', stem + '_cmp.png')
     if on('snakes'):
         sheet('full', SNAKES, [w for _, w in FULL], 640, ims, stem + '_snakes_full.png')
         sheet('close', SNAKES, [v[1] for v in CLOSE], 360, ims, stem + '_snakes_heads.png')

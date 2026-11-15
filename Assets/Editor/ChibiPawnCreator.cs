@@ -921,6 +921,8 @@ public static partial class ChibiPawnCreator
         if (DressElf(mats, atlases, hairs)) made.Add($"엘프({ElfPreview})");
         // **리자드맨 — 보기 몸 열 벌**(`ChibiPawnCreator.Lizard` — 리자드맨만 다시 굽는 문은 `Pawn/16`). 빼먹으면 아래 청소가 리자드맨 메시를 지운다.
         { int liz = DressLizards(mats, atlases); if (liz > 0) made.Add($"리자드맨 {liz}벌"); }
+        // **엔트 — 보기 몸 여덟 벌**(`ChibiPawnCreator.Ent` — 파이썬이 뽑은 메시 · 엔트만 다시 굽는 문은 `Pawn/17`). 빼먹으면 아래 청소가 엔트 메시를 지운다.
+        { int ents = DressEnts(mats, atlases); if (ents > 0) made.Add($"엔트 {ents}벌"); }
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
         // 성별에 맞는 몸을 여기서 고른다. 원본 자신의 몸(남성)은 씬에 직접 놓을 때만 쓰인다.

@@ -631,7 +631,7 @@ public static partial class ChibiPawnCreator
     // 오목한 자리(눈두덩 · 눈썹뼈 밑)에서 큰 세모의 현을 표면 **밖**으로 띄운다 — 오크 머리 살이 거리장보다 6.6mm까지 떠서,
     // 거리장 위 2~4mm에 얹은 눈 판 · 2.5mm 문신 껍데기를 군데군데 뚫었다. 옮길 자리와 바뀌는 세모의 무게중심을 거리장으로 잰다.
     // 0이면 재지 않는다(살 위에 얇은 것을 얹지 않는 메시).
-    static Vector3[] Decimate(Vector3[] pos, List<int> tris, int target, Func<Vector3, float> f = null, float tol = 0f)
+    static Vector3[] Decimate(Vector3[] pos, List<int> tris, int target, Func<Vector3, float> f = null, float tol = 0f, List<int> kept = null)
     {
         int nv = pos.Length, nt = tris.Count / 3;
         if (nv <= target) return pos;
@@ -805,7 +805,9 @@ public static partial class ChibiPawnCreator
 
         var remap = new int[nv];
         var outP = new List<Vector3>(live);
-        for (int v = 0; v < nv; v++) { remap[v] = gone[v] ? -1 : outP.Count; if (!gone[v]) outP.Add(pos[v]); }
+        // `kept` — 남은 점마다 원래 번호(옮겨 온 점이 원래 점의 색 · 뼈 가중치를 그대로 받는다 — 가장 가까운 점을 찾으면 맞닿은 다른 조각의 것을 집는다).
+        kept?.Clear();
+        for (int v = 0; v < nv; v++) { remap[v] = gone[v] ? -1 : outP.Count; if (!gone[v]) { outP.Add(pos[v]); kept?.Add(v); } }
         tris.Clear();
         for (int t = 0; t < nt; t++)
         {

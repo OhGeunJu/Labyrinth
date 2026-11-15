@@ -43,6 +43,8 @@ public static partial class ChibiPawnCreator
         public float ArmX;                // 관절(m)
         public float ArmZ;                // 팔 관절의 앞뒤(m) — 굽은 등 앞에 팔이 선 트롤(`ChibiPawnCreator.Troll`) · 나머지는 0
         public bool  HeadInPlace;         // 머리 부위가 이미 몸과 한 좌표에 있다(큰 짐승) — `DressSkinned`가 안 옮긴다
+        // 관절 자리 덮어쓰기(Model 좌표 · 이름은 `B`) — **아바타를 짓기 전에** 옮겨야 엉덩이 높이(사람 눈금)가 몸과 맞는다(엔트 — `ChibiPawnCreator.Ent`).
+        public Dictionary<string, Vector3> Joints;
     }
 
     static readonly Dictionary<string, BoneBody> _boneBodies = new();

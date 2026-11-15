@@ -130,7 +130,7 @@ public static partial class ChibiPawnCreator
 
         // 관절 — 팔을 내린 자세로 세운다(몸을 그 자세로 지었으니 바인드 포즈도 그 자세다). T자는 맨 끝에.
         if (!model.TryGetComponent(out PawnRig rig)) rig = model.gameObject.AddComponent<PawnRig>();
-        var bones = BodyJoints(model, rig, d, neckY, skeleton?.ArmX, skeleton?.ArmZ ?? 0f);
+        var bones = BodyJoints(model, rig, d, neckY, skeleton?.ArmX, skeleton?.ArmZ ?? 0f, skeleton?.Joints);
 
         // 굳은 살은 이름의 앞머리(`관절.무엇`)가 붙을 관절이다 — `PawnRigBuilder.RigBiped`와 같은 규칙.
         foreach (var p in rigid)
@@ -228,7 +228,9 @@ public static partial class ChibiPawnCreator
     // 관절 — `PawnRig` 규격의 계층(Model/Hips/{Spine/{Head, ArmL/…}, LegL/…}). 돌려주는 배열은 `B` 순서다.
     // `armX` — 팔 자리(m)를 몸 치수 대신(해골 — `BoneArmX`).
     // `armZ` — 팔 뼈의 앞뒤 자리(굽은 등 앞에 팔이 선 트롤 — `BoneBody.ArmZ`). 사람은 0.
-    static Transform[] BodyJoints(Transform model, PawnRig rig, BodyDims d, float neckY, float? armX = null, float armZ = 0f)
+    // `at` — 관절 자리 덮어쓰기(`BoneBody.Joints`). `B` 순서가 부모 → 자식이라 그 순서로 옮기면 자식이 제자리에 남는다.
+    static Transform[] BodyJoints(Transform model, PawnRig rig, BodyDims d, float neckY, float? armX = null, float armZ = 0f,
+                                  Dictionary<string, Vector3> at = null)
     {
         float ax = armX ?? d.ArmX;
         Transform J(Transform parent, string name, Vector3 at)
@@ -256,6 +258,10 @@ public static partial class ChibiPawnCreator
             b[(int)B.LowerLegL + o] = J(b[(int)B.LegL + o],      "LowerLeg" + side, new Vector3(s * d.LegX, d.KneeY, 0f));
             b[(int)B.FootL + o]     = J(b[(int)B.LowerLegL + o], "Foot" + side,     new Vector3(s * d.LegX, d.FootY, 0f));
         }
+
+        if (at != null)
+            for (int i = 0; i < (int)B.Count; i++)
+                if (at.TryGetValue(((B)i).ToString(), out var p)) b[i].position = model.TransformPoint(p);
 
         rig.Kind = PawnRig.BodyKind.Biped;
         rig.Hips = b[(int)B.Hips]; rig.Spine = b[(int)B.Spine]; rig.Head = b[(int)B.Head];

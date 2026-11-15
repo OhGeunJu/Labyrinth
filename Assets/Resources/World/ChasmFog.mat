@@ -21,7 +21,10 @@ Material:
   m_CustomRenderQueue: 3000
   stringTagMap:
     RenderType: Transparent
-  disabledShaderPasses: []
+  disabledShaderPasses:
+  - DepthOnly
+  - SHADOWCASTER
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3

@@ -81,6 +81,9 @@ public class PawnLook : MonoBehaviour
     // **윗머리 모양 조건**(2026-11-08 — 사람 머리카락) — `@Fit.Round`는 *지금 머리의 윗머리 모양이 둥글 때만*(`HairFitOf`). 이 조건을 단 조각은
     // 기준 머리 틀에 놓여 있어 머리카락처럼 **고른 머리로 옮긴다**(`Fit` — 성별 둘 × 윗머리 둘만 굽고 나머지 머리에는 늘려 씌운다).
     public const string FitAxis = "Fit";
+    // **팔레트 조건**(2026-11-14 — 리자드맨) — `@Palette.Kingrat`은 *그 팔레트일 때만*(`PaletteLook.Chosen`). 팔레트는 고르기 축이 아니라(색은
+    // `PaletteLook`이 고른다) 축으로 안 모은다. 누런 구렁이의 비늘 · 색마다 다른 줄 덧판처럼 색에 딸린 모양을 한 프리팹에 담는다.
+    public const string PaletteAxis = "Palette";
     public const string PickBangs = "Bangs";   // 앞머리 — 머리카락처럼 투구가 끈다
     public static readonly string[] FaceFeatures = { "EyeL", "EyeR", "Mouth" };
 
@@ -370,6 +373,7 @@ public class PawnLook : MonoBehaviour
                 if (!on || a == null) continue;
                 if (a == ShapeAxis) on = not != AnyOf(o, Shape);
                 else if (a == FitAxis) on = not != AnyOf(o, HairFitOf(Shape));
+                else if (a == PaletteAxis) on = not != AnyOf(o, TryGetComponent(out PaletteLook pl) ? pl.Chosen : null);
                 else if (_picked.TryGetValue(a, out var got)) on = not != AnyOf(o, got);
             }
             r.enabled = on;
@@ -587,7 +591,7 @@ public class PawnLook : MonoBehaviour
             bool not = opt.StartsWith("!");
             if (not) opt = opt.Substring(1);
             if (axis == FitAxis) fitted = true;
-            else if (axis != ShapeAxis) foreach (var o in opt.Split('|')) Option(axis, o);
+            else if (axis != ShapeAxis && axis != PaletteAxis) foreach (var o in opt.Split('|')) Option(axis, o);
             when[i - 1] = (axis, opt, not);
         }
         _pickParts.Add((r, head[2], head[3], when));

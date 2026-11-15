@@ -60,6 +60,31 @@ Shader "DungeonColony/ToonOutline"
         // 계단 음영은 빛의 방향만 봐서 깊은 구멍의 바닥도 밝게 칠한다 — 구운 그늘이 그것을 누른다. 0이면 정점 색을 안 본다
         // (다른 메시는 정점 색이 없다). 눈구멍 속을 뼈색으로 둘 개체는 `BoneLook`이 렌더러마다 낮춘다.
         _VertexAO("정점 색 그늘", Range(0,1)) = 0
+        // **정점 알파만큼 다른 색으로**(2026-11-14 — 엔트 껍질의 이끼 얼룩) — 바탕색(`_BaseColor` — 개체마다 `SkinLook`이 고른다)을 정점 알파만큼
+        // `_AltColor`로 섞는다. 바탕색이 개체마다 바뀌어도 이끼 색은 그대로 남는다(정점 색 곱하기로는 바탕색에 끌려간다). 0이면 끈다(다른 폰).
+        _VertexAlt("정점 알파 → 다른 색", Range(0,1)) = 0
+        _AltColor("다른 색(정점 알파)", Color) = (0.38, 0.46, 0.20, 1)
+
+        // **팔레트 — 정점은 칸마다 몫만 든다**(2026-11-14 — 엔트의 계절 색 · 리자드맨 색. 사용자: *"색만 다른데 왜 프리팹으로 나뉘어"*).
+        // 켜면 바탕색 = Σ 몫 × 칸 색(**바탕 칸 0~3** — 정점 색 rgba). 그 위에 **덧칠 칸 4~7**(둘째 UV xyzw가 그 무늬의 몫)을 차례로 얹는다 —
+        // `lerp(색, 칸 색, 몫 × 칸 알파)`. 칸 알파가 0이면 그 무늬가 없는 팔레트다(리자드맨 — 보엘렌의 빗금은 붉은 뱀에서 꺼진다. 섞는 칸으로 두면
+        // 그 자리가 다른 색의 그러데이션 위에 얼룩으로 남는다). 칸 색은 개체마다 `PaletteLook`이 고른다(재질 값은 기본 팔레트).
+        // 켠 재질은 정점 색을 그늘(`_VertexAO`)이나 다른 색(`_VertexAlt`)으로 안 쓴다(0으로 둘 것).
+        _VertexPal("정점 = 팔레트 몫", Range(0,1)) = 0
+        _Pal0("칸 0", Color) = (1,1,1,1)
+        _Pal1("칸 1", Color) = (1,1,1,1)
+        _Pal2("칸 2", Color) = (1,1,1,1)
+        _Pal3("칸 3", Color) = (1,1,1,1)
+        _Pal4("칸 4", Color) = (1,1,1,1)
+        _Pal5("칸 5", Color) = (1,1,1,1)
+        _Pal6("칸 6", Color) = (1,1,1,1)
+        _Pal7("칸 7", Color) = (1,1,1,1)
+        // **반점 배치 8벌은 구울 때 찍어 둔다**(2026-11-14 — 리자드맨 도마뱀, 사용자: *"반점 위치를 8개 정도로 정해 놓고 돌려쓰면"*).
+        // `_SpotBaked`면 덧칠 칸 4의 몫 = 셋째 · 넷째 UV(배치 8벌)에서 고른 벌(`_SpotPickA` · `_SpotPickB` — 한 칸만 1). 고르는 것은 개체마다
+        // `PaletteLook`(씨앗 · 못 박기). 매 프레임 반점을 셈하지 않는다. 0이면 둘째 UV x를 그대로 쓴다(다른 무늬).
+        _SpotBaked("반점 = 구운 배치", Range(0,1)) = 0
+        _SpotPickA("반점 배치 1~4", Vector) = (1,0,0,0)
+        _SpotPickB("반점 배치 5~8", Vector) = (0,0,0,0)
 
         // **형태 그늘**(2026-11-01, 사용자: *"캐릭터에 그림자를 넣을 수 없나"* → 몸 명암) — 아래를 보는 면일수록 어둡게.
         // 굴에는 해가 없어 불빛이 안 닿으면 몸 전체가 그늘색 한 가지였다(평평한 종이 인형). 빛과 상관없이 위는 밝고 아래(턱 밑 · 배 밑 ·
@@ -84,7 +109,13 @@ Shader "DungeonColony/ToonOutline"
             float  _OutlineMin;
             float  _OutlineBack;
             float  _VertexAO;
+            float  _VertexAlt;
+            float4 _AltColor;
             float  _FormShade;
+            float  _VertexPal;
+            float4 _Pal0, _Pal1, _Pal2, _Pal3, _Pal4, _Pal5, _Pal6, _Pal7;
+            float  _SpotBaked;
+            float4 _SpotPickA, _SpotPickB;
         CBUFFER_END
 
         // 폰의 최저 밝기 — **재질이 아니라 세계가 든다**(`UnderworldLighting`). 상수(0.35)였을 때는 굴을
@@ -148,13 +179,15 @@ Shader "DungeonColony/ToonOutline"
             #pragma multi_compile_fragment _ _SHADOWS_SOFT
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
-            struct LitIn  { float4 positionOS : POSITION; float3 normalOS : NORMAL; half4 color : COLOR; };
+            struct LitIn  { float4 positionOS : POSITION; float3 normalOS : NORMAL; half4 color : COLOR; float4 uv1 : TEXCOORD1; float4 uv2 : TEXCOORD2; float4 uv3 : TEXCOORD3; };
             struct LitOut
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
                 half3  ao         : TEXCOORD2;
+                half   alt        : TEXCOORD3;
+                half3  pal        : TEXCOORD4;   // 팔레트 색(`_VertexPal`) — 몫이 선형이라 정점에서 섞어도 같다
             };
 
             LitOut LitVert(LitIn v)
@@ -164,6 +197,13 @@ Shader "DungeonColony/ToonOutline"
                 o.normalWS   = TransformObjectToWorldNormal(v.normalOS);
                 o.positionCS = TransformWorldToHClip(o.positionWS);
                 o.ao         = lerp(half3(1, 1, 1), v.color.rgb, _VertexAO);
+                o.alt        = v.color.a * _VertexAlt;
+                half3 pc     = v.color.r * _Pal0.rgb + v.color.g * _Pal1.rgb + v.color.b * _Pal2.rgb + v.color.a * _Pal3.rgb;
+                float spot   = _SpotBaked > 0.5 ? dot(v.uv2, _SpotPickA) + dot(v.uv3, _SpotPickB) : v.uv1.x;
+                pc           = lerp(pc, _Pal4.rgb, saturate(spot * _Pal4.a));
+                pc           = lerp(pc, _Pal5.rgb, saturate(v.uv1.y * _Pal5.a));
+                pc           = lerp(pc, _Pal6.rgb, saturate(v.uv1.z * _Pal6.a));
+                o.pal        = lerp(pc, _Pal7.rgb, saturate(v.uv1.w * _Pal7.a));
                 return o;
             }
 
@@ -208,8 +248,9 @@ Shader "DungeonColony/ToonOutline"
                     bright = max(bright, reach * max(extra.color.r, max(extra.color.g, extra.color.b)));
                 LIGHT_LOOP_END
 
-                half3 shade = _BaseColor.rgb * _ShadeColor.rgb;
-                half3 col   = lerp(shade, _BaseColor.rgb, lit) * i.ao;
+                half3 baseC = _VertexPal > 0.5 ? i.pal : lerp(_BaseColor.rgb, _AltColor.rgb, i.alt);
+                half3 shade = baseC * _ShadeColor.rgb;
+                half3 col   = lerp(shade, baseC, lit) * i.ao;
                 // 형태 그늘 — 위를 보는 면은 그대로 · 아래를 보는 면은 (1 − _FormShade)배. 경계는 부드러운 계단(툰).
                 col *= lerp(1 - _FormShade, 1, smoothstep(-0.35, 0.25, n.y));
 

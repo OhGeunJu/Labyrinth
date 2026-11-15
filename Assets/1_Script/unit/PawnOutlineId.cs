@@ -44,6 +44,7 @@ public class PawnOutlineId : MonoBehaviour
     static int _next;
 
     readonly List<Material> _clones = new();
+    readonly Dictionary<Material, Material> _sourceOf = new();   // 사본 → 원본(되돌릴 원본을 적을 때 사본을 원본으로 바꿔 적는다)
     readonly Dictionary<Renderer, Material[]> _originals = new();   // 에디터에서만 — 저장 · 끌 때 되돌릴 원본
     public int Id { get; private set; }
 
@@ -66,12 +67,18 @@ public class PawnOutlineId : MonoBehaviour
         {
             var mats = r.sharedMaterials;
             var before = (Material[])mats.Clone();
+            // **원본 기록에 사본이 들어가면 안 된다**(2026-11-14 — 엔트를 다시 구운 뒤 판에서 재질 41칸이 통째로 비어 분홍이었다). 저장 안 하는 사본을
+            // 원본이라 적어 두면 Play 직전 되돌리기가 사본으로 되돌리고, 유니티가 씬을 백업하며 그 칸을 비운다.
+            for (int i = 0; i < before.Length; i++)
+                if (before[i] != null && _sourceOf.TryGetValue(before[i], out var orig)) before[i] = orig;
             bool changed = false;
 #if UNITY_EDITOR
             // 에디터 — 원본은 프리팹이 답한다 · 지워진 사본을 가리키는 빈 칸은 그것으로 메운다(위 머리말).
-            if (!Application.isPlaying && SourceMats(r) is Material[] src && src.Length == mats.Length)
+            // **Play에서도 메운다**(2026-11-14 — `Pawn/17`로 엔트를 다시 구운 뒤 씬의 엔트가 판에서 통째로 분홍이었다: 씬 뷰에서는 메웠는데
+            // 판은 저장된 빈 칸 그대로 섰다). 판에서는 원본 기록(`before`)은 안 쓴다.
+            if (SourceMats(r) is Material[] src && src.Length == mats.Length)
             {
-                before = (Material[])src.Clone();
+                if (!Application.isPlaying) before = (Material[])src.Clone();
                 for (int i = 0; i < mats.Length; i++)
                     if (mats[i] == null && src[i] != null) { mats[i] = src[i]; changed = true; healed++; }
             }
@@ -80,7 +87,9 @@ public class PawnOutlineId : MonoBehaviour
             {
                 var m = mats[i];
                 if (m == null || !Uses(m)) continue;
-                if (_clones.Contains(m)) { m.SetInt(StencilRef, RefFor(m, Id)); continue; }   // 이미 제 사본이다
+                // 이미 제 사본이다 — 그래도 바뀐 칸으로 센다. 안 세면 원본 기록이 비워진 뒤(`prefabInstanceUpdated`) 다시 적히지 않아
+                // Play 직전에 이 칸이 원본으로 안 돌아간다(위 — 판에서 통째로 분홍이던 원인).
+                if (_clones.Contains(m)) { m.SetInt(StencilRef, RefFor(m, Id)); changed = true; continue; }
                 if (!copies.TryGetValue(m, out var c))
                 {
                     c = new Material(m) { name = m.name + $" (폰 {Id})" };
@@ -88,6 +97,7 @@ public class PawnOutlineId : MonoBehaviour
                     c.SetInt(StencilRef, RefFor(c, Id));
                     copies[m] = c;
                     _clones.Add(c);
+                    _sourceOf[c] = m;
                 }
                 mats[i] = c;
                 changed = true;
@@ -97,6 +107,27 @@ public class PawnOutlineId : MonoBehaviour
             r.sharedMaterials = mats;
         }
         if (healed > 0) Debug.Log($"[외곽선] {name} — 빈 재질 {healed}칸을 프리팹 원본으로 메웠다(지워진 씬 뷰 사본을 가리키던 칸).", this);
+        if (Application.isPlaying) ReportBroken();
+    }
+
+    // **판에서 분홍으로 그려질 칸을 알린다**(2026-11-14 — 다시 구운 엔트가 판에서만 통째로 분홍이었다 · 빈 칸을 메워도 그대로라 정체를 모른다).
+    // 빈 재질 · 이 기기가 못 돌리는 셰이더 · 오류 셰이더 셋을 렌더러 이름과 함께 한 줄로.
+    void ReportBroken()
+    {
+        var bad = new List<string>();
+        foreach (var r in GetComponentsInChildren<Renderer>(true))
+        {
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++)
+            {
+                var m = mats[i];
+                string why = m == null ? "빈 칸" : m.shader == null ? "셰이더 없음"
+                           : !m.shader.isSupported ? $"못 돌리는 셰이더 {m.shader.name}"
+                           : m.shader.name.Contains("InternalErrorShader") ? "오류 셰이더" : null;
+                if (why != null) bad.Add($"{r.name}[{i}] {(m != null ? m.name : "-")} — {why}");
+            }
+        }
+        if (bad.Count > 0) Debug.LogWarning($"[외곽선] {name} — 깨진 재질 {bad.Count}칸: " + string.Join(" · ", bad.GetRange(0, Mathf.Min(8, bad.Count))), this);
     }
 
     void OnDestroy()
@@ -104,6 +135,7 @@ public class PawnOutlineId : MonoBehaviour
         if (!Application.isPlaying) { Restore(); return; }
         foreach (var c in _clones) if (c != null) Destroy(c);
         _clones.Clear();
+        _sourceOf.Clear();
     }
 
     // 원본 재질로 되돌리고 사본을 버린다(에디터에서만 부른다).
@@ -114,6 +146,7 @@ public class PawnOutlineId : MonoBehaviour
         _originals.Clear();
         foreach (var c in _clones) if (c != null) DestroyImmediate(c);
         _clones.Clear();
+        _sourceOf.Clear();
     }
 
 #if UNITY_EDITOR

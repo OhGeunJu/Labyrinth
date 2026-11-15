@@ -50,6 +50,7 @@ def accel(f, c, rad):
         res = gv - slack; nm = res < 0.03
         if nm.any(): res[nm] = f(q[nm])
         out[m] = res; return out
+    g.c, g.rad = c, rad   # 뽑기가 이 둘레만 훑는다
     return g
 
 DARK = (0.05, 0.04, 0.04); MOSS = (0.38, 0.46, 0.20); LEAF = (0.30, 0.50, 0.18); LEAF2 = (0.52, 0.68, 0.26); WILLOW = (0.46, 0.60, 0.22)
@@ -94,12 +95,14 @@ class Trunk:
             else: lo = mid
         return c[2] + lo
     def side(s, y): return float(np.interp(y, s.ys, s.rs))
-    def color(s, bark, moss=MOSS):
+    def color(s, bark, moss=MOSS, split=False):
+        """split이면 (껍질 몫 rgb, 이끼 몫 a) — 게임 셰이더가 `lerp(껍질 색, 이끼 색, a) × 몫`으로 칠한다(`_VertexAlt`). 몫은 이끼 쪽으로 1에 가깝게 당겨 둔다."""
         B = np.asarray(bark, np.float32)
         def c(p):
             _, th = s.polar(p)
             col = mixc(B * (1.0 + 0.12 * noise(p, 1.7)[..., None]), B * 0.42, np.clip(groove(th, p[..., 1], s.n) * 1.4, 0, 1))
             k = sstep(0.25, 0.60, noise(p, 2.9) - 1.6 * (p[..., 2] - s.zs(p[..., 1])) - 0.15)   # 이끼는 등 쪽 얼룩으로만
+            if split: a = k * 0.7; return np.concatenate([col * (1 - a[..., None]) + a[..., None], a[..., None]], -1)
             return mixc(col, moss, k * 0.7)
         return c
 
@@ -111,11 +114,12 @@ def limb(p, a, b, ra, rb, n=6, amp=0.012):
     ax = ba / np.linalg.norm(ba); e1 = nrm(np.cross(ax, [0.31, 0.2, 0.93])); e2 = np.cross(ax, e1)
     th = np.arctan2((rad * e2).sum(-1), (rad * e1).sum(-1)) + 2.2 * h
     return (d + amp * groove(th, h * 1.5, n)) * 0.8
-def bark_plain(bark):   # 가지 껍질 — 얼룩 + 가는 결
+def bark_plain(bark, split=False):   # 가지 껍질 — 얼룩 + 가는 결
     B = np.asarray(bark, np.float32)
     def c(p):
         streak = sstep(0.55, 0.95, np.sin(p[..., 0] * 70.0 + p[..., 2] * 55.0 + 2.0 * np.sin(p[..., 1] * 9.0)))
-        return mixc(B * (1.0 + 0.12 * noise(p, 1.7)[..., None]), B * 0.50, streak * 0.8)
+        col = mixc(B * (1.0 + 0.12 * noise(p, 1.7)[..., None]), B * 0.50, streak * 0.8)
+        return np.concatenate([col, np.zeros(col.shape[:-1] + (1,), np.float32)], -1) if split else col
     return c
 
 def grow(base, dr, ln, r, depth, rng, spread=0.75, shrink=0.72, up=0.25):
@@ -143,7 +147,8 @@ def twigs(segs):
             h = np.clip((pa * BA[None]).sum(-1) / BB[None], 0, 1)
             out[i:i + 16000] = (length(pa - BA[None] * h[..., None]) - (RA[None] + (RB - RA)[None] * h)).min(-1)
         return out
-    return accel(f, c, rad)
+    g = accel(f, c, rad); g.segs = segs   # 뽑기는 마디를 도형으로 직접 짓는다(가는 대는 표면 그물로 뭉개진다)
+    return g
 def root_foot(p, c, r, toes):
     """뿌리 발 — 발목에서 땅으로 벌어지는 뿌리. toes = (옆, 앞, 길이) 목록."""
     d = sph(p, c + V(0, 0.02, 0), r)
@@ -177,7 +182,8 @@ def leaves(L, cols):
         out = np.empty((p.shape[0], 3), np.float32)
         for i in range(0, p.shape[0], 8000): out[i:i + 8000] = CI[each(p[i:i + 8000]).argmin(-1)]
         return out
-    return accel(f, c, rad), col
+    g = accel(f, c, rad); g.leafdata = (A, Dr, Up, Sd, LN, WD, CI)   # 뽑기는 잎을 도형으로 직접 짓는다(종이처럼 얇다)
+    return g, col
 
 # 종류 넷 — 몸집과 관의 꼴. **계절은 종류에 안 묶인다 — 넷 다 봄 판 · 가을 판이 있다**(사용자 11-13: *"네 개의 나무 다 가을버전 봄버전 — 그냥 색만 바꾸면 되잖아"*).
 # 한 몸에 두 계절을 섞지는 않는다(11-12: *"봄 나무면 봄나무고 가을 나무면 가을나무지"*). 잎은 가지 끝에만 달린다(몸에 붙이면 *"중요부위를 가리는 털"* 같다).
@@ -208,7 +214,18 @@ SCLERA = (0.11, 0.065, 0.035); IRIS = (0.50, 0.31, 0.11); IRIS_Y = (0.44, 0.37, 
 # 계절의 색 한 벌 — 잎뿐 아니라 **이끼 · 덩굴 · 겨우살이도 계절을 탄다**(사용자 11-13: *"가을 나무에는 저렇게 푸릇푸릇한 색이면 안 되잖아"*).
 PAL = {'spring': dict(leaf=(LEAF, LEAF2, (0.40, 0.60, 0.20)), strand=(WILLOW, LEAF), moss=(MOSS, (0.28, 0.38, 0.15)), vine=(0.17, 0.34, 0.15), mistle=(0.48, 0.56, 0.22), lichen=(0.56, 0.62, 0.34)),
        'autumn': dict(leaf=((0.80, 0.42, 0.12), (0.60, 0.21, 0.10), (0.84, 0.66, 0.18)), strand=((0.80, 0.62, 0.18), (0.64, 0.40, 0.12)), moss=((0.42, 0.37, 0.16), (0.32, 0.26, 0.12)),
-                      vine=(0.48, 0.18, 0.11), mistle=(0.50, 0.46, 0.22), lichen=(0.62, 0.55, 0.28))}
+                      vine=(0.48, 0.18, 0.11), mistle=(0.50, 0.46, 0.22), lichen=(0.62, 0.55, 0.28)),
+       # 11-14 — 색은 게임에서 개체마다 돈다(팔레트 · `PaletteLook`). 여름(짙은 초록) · 늦가을(붉은 단풍)을 더했다.
+       'summer': dict(leaf=((0.16, 0.36, 0.12), (0.24, 0.46, 0.15), (0.12, 0.30, 0.10)), strand=((0.26, 0.44, 0.14), (0.18, 0.36, 0.12)), moss=((0.26, 0.38, 0.14), (0.18, 0.28, 0.10)),
+                      vine=(0.12, 0.28, 0.11), mistle=(0.36, 0.48, 0.16), lichen=(0.46, 0.54, 0.28)),
+       'late':   dict(leaf=((0.62, 0.14, 0.08), (0.42, 0.08, 0.06), (0.74, 0.30, 0.10)), strand=((0.56, 0.30, 0.12), (0.40, 0.18, 0.08)), moss=((0.36, 0.30, 0.14), (0.26, 0.20, 0.10)),
+                      vine=(0.36, 0.10, 0.08), mistle=(0.44, 0.40, 0.20), lichen=(0.56, 0.50, 0.30))}
+PALETTES = ('spring', 'summer', 'autumn', 'late')   # 게임이 개체마다 고르는 계절 색(`bake_ent.py`가 목록에 적는다)
+LEAF_SHAPES = ('A', 'B', 'C', 'D')                 # 잎 모양 — 고르기 축 `Leaf`
+# **뽑기용 기준 벡터** — 색 자리에 칸 번호를 넣고 뽑으면 정점 색이 곧 "칸마다 몫"이 된다(색 섞기가 다 선형이라 맞다). 칸은 재질마다 셋:
+#   잎 Leaf(잎 셋) · 이끼 Moss(이끼 둘 · 지의류) · 덩굴 Vine(버들가지 둘 · 덩굴) · 겨우살이 Mistle(하나). 조각이 어느 재질인가는 `Pieces.pal`.
+_E = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+PAL['code'] = dict(leaf=_E, strand=_E[:2], moss=_E[:2], lichen=_E[2], vine=_E[2], mistle=_E[0])
 FACES = {
     'oak':    dict(head=(0.80, 0.72, 0.62), eye=(0.088, 0.058, 0.030, -0.22, 0.10, 0.84), nose=('branch', 0.150, 0.070, 0.030), iris=IRIS,
                    mouth=([(-0.085, -0.010), (-0.040, 0.006), (0.005, -0.004), (0.050, 0.008), (0.090, -0.014)], 0.012)),
@@ -224,7 +241,17 @@ def masked(d, p, m, f):
     if m.any(): d = d.copy(); d[m] = f(d[m], p[m])
     return d
 
-def build(kind, season='spring', decor=None, bark='ash'):
+class Pieces(list):
+    """조각 목록 — 렌더러는 (거리, 색)만 읽고, 뽑기는 덧붙인 이름표를 읽는다: 장식 갈래(`tag` — 'core'면 늘 있는 몸) · 붙일 뼈(`bone` — None이면 정점마다 가까운 뼈)
+    · 고를 수 있는 뼈(`allow` — None이면 손을 뺀 전부). **손가락은 다리 옆까지 늘어진다** — 거리만 보면 손가락이 다리 뼈를, 다리가 손 뼈를 받아 걸을 때
+    둘이 붙어 늘어났다(11-14 사용자: *"다리하고 손이 붙어서 늘어나"*). 그래서 줄기(다리 포함)와 팔은 제 뼈만 고른다."""
+    def __init__(s): super().__init__(); s.tag, s.bone, s.allow, s.pal, s.meta = 'core', None, None, None, []
+    def append(s, x): super().append(x); s.meta.append((s.tag, s.bone, s.allow, s.pal))
+    def __iadd__(s, xs):
+        for x in xs: s.append(x)
+        return s
+
+def build(kind, season='spring', decor=None, bark='ash', split=False, leaf='A'):
     shape, lean, arm_k, fing, leg_k, crown, seed = KINDS[kind]; FC = FACES[kind]; PL = PAL[season]
     decor = DEFAULT_DECOR[kind] if decor is None else decor
     rng = np.random.default_rng(seed)
@@ -234,9 +261,10 @@ def build(kind, season='spring', decor=None, bark='ash'):
     prof = [(L + 0.02, W * 0.84), (L + 0.22, W * 0.94), (L + 0.50 * TH, W * 0.80), (TOP - 0.12, W * 0.98), (TOP + 0.14, W * h0), (TOP + 0.28, W * h1), (YT, W * h2)]
     if crown != 'snag': prof.append((YT + (0.06 if crown == 'up' else 0.16), W * h2 * 0.50))   # 꼭대기는 판판하게 끊지 않고 가지 사이로 오므라든다
     T = Trunk(prof, D['depth'], lean=lean, y_lean=L + 0.25)
-    BARK, HEART = BARKS[bark]
-    bc = bark_plain(BARK); tc = T.color(BARK, PL['moss'][0])
-    P = []; UP = V(0, 1, 0)
+    BARK, HEART = ((1.0, 1.0, 1.0), (1.5, 1.4, 1.2)) if split else BARKS[bark]   # split — 껍질은 몫만(색은 게임이 고른다)
+    bc = bark_plain(BARK, split); tc = T.color(BARK, PL['moss'][0], split)
+    P = Pieces(); UP = V(0, 1, 0)
+    SK = []   # 뼈대 선 — (뼈 이름, a, b, 반지름 a, 반지름 b). 뽑기가 정점마다 가장 가까운 뼈를 고른다(`bake_ent.py`)
     def on_trunk(y, a, off=0.0):   # 줄기 겉면의 점과 바깥 방향 — 둘레 각도 a(앞 0 · 옆 ±π/2)
         c = T.axis(y); r = T.side(y) + off
         return c + V(np.sin(a) * r, 0, np.cos(a) * r * T.depth), nrm([np.sin(a) * T.depth, 0, np.cos(a)])
@@ -346,13 +374,27 @@ def build(kind, season='spring', decor=None, bark='ash'):
         return d
     def trunk_col(p):   # 부러진 가지 코는 끝의 부러진 면이 밝다
         if kind_n != 'branch': return tc(p)
+        if split: c4 = tc(p); c4[..., :3] = mixc(c4[..., :3], HEART, sstep(n_r * 0.75, n_r * 0.45, length(p - nt)) * (((p - nt) * nrm(nt - nb)).sum(-1) > -0.004)); return c4
         return mixc(tc(p), HEART, sstep(n_r * 0.75, n_r * 0.45, length(p - nt)) * (((p - nt) * nrm(nt - nb)).sum(-1) > -0.004))
-    P += [(trunk, trunk_col), (near(inner_f, FCC, 0.26), DARK)]
+    TRUNK_B = ('Hips', 'Spine', 'LegL', 'LowerLegL', 'FootL', 'LegR', 'LowerLegR', 'FootR')   # 줄기 · 다리에 붙은 것이 고를 뼈
+    P.allow = TRUNK_B
+    P += [(trunk, trunk_col)]
+    P.allow = None
+    P.bone = 'Spine'
+    P += [(near(inner_f, FCC, 0.26), DARK)]
     P += [(eye_piece(ball), SCLERA), (eye_piece(iris), FC['iris']), (eye_piece(pupil), DARK), (eye_piece(glint), GLINT)]
     if crown == 'snag': P.append((near(lambda p: np.maximum(np.maximum(ell(p, hol_c - V(0, 0.03, 0), hol_r * 0.97), brk(p) + 0.012), p[..., 1] - (YT - 0.012)), hol_c, 0.4), DARK))
 
+    P.bone = None
+    # 뼈대 선 — 줄기(엉덩이 · 등), 다리(넓적 · 정강 · 발)
+    yh = D['hipY'] + 0.12; ys = np.linspace(L - 0.05, yh, 4).tolist() + np.linspace(yh, YT, 7)[1:].tolist()
+    for y0, y1 in zip(ys[:-1], ys[1:]): SK.append(('Hips' if y1 <= yh + 1e-6 else 'Spine', T.axis(y0), T.axis(y1), T.side(y0), T.side(y1)))
+    for (Hp, Kn, An, r, toes), sd in zip(legs, 'LR'):
+        SK += [('Leg' + sd, Hp, Kn, r * 1.20, r * 0.92), ('LowerLeg' + sd, Kn, An, r * 0.88, r * 1.05)]
+        for sx, sz, ln in toes: SK.append(('Foot' + sd, An, An + nrm([sx, 0, sz]) * (r * 0.9 + ln) + V(0, 0.022 - An[1], 0), r * 0.72, 0.016))
     # 팔 — 줄기 옆에서 뻗은 가지. 좌우 높이 · 굵기 · 길이가 다르다. 손은 늘어진 가지 손가락.
     extra, xtips, arms, arm_fs = [], [], [], []   # 곁가지 · 그 끝 · 팔 자리 · 팔의 거리 함수(장식이 읽는다)
+    ex_side, xt_side = {'L': [], 'R': []}, {'L': [], 'R': []}   # 팔마다 — 곁가지 조각은 제 팔 뼈만 고른다(뽑기)
     for i, (s_, k) in enumerate(((-1, arm_k[0]), (1, arm_k[1]))):
         dy = 0.05 * rng.uniform(-1, 1); sy = D['shY'] + dy; c = T.axis(sy); ax = T.side(sy) * 0.95
         C = c + V(s_ * ax * 0.30, -0.16, 0.0); S = c + V(s_ * (ax + 0.09), 0.03, 0.0)
@@ -373,48 +415,87 @@ def build(kind, season='spring', decor=None, bark='ash'):
             for a, m, b, r1, r2 in fs: d = smin(d, np.minimum(seg(p, a, m, r1, r2), seg(p, m, b, r2, 0.007)), 0.02)
             return d
         apts = np.array([C, S, E, Wr] + [f[2] for f in fs], np.float32); ac = (apts.min(0) + apts.max(0)) * 0.5
+        sd = 'L' if s_ < 0 else 'R'
+        P.allow = ('Spine', 'Arm' + sd, 'LowerArm' + sd, 'Hand' + sd)
         P.append((near(arm, ac, float(length(apts - ac).max()) + ra * 2.0), bc))
+        P.allow = None
         arms.append((S, E, Wr, ra, s_)); arm_fs.append(arm)
-        for sg, tp in (grow(E, V(s_ * 0.9, 0.5, -0.4), 0.15 * k, 0.020 * k, 2, rng), grow(S + V(0, ra, 0), V(s_ * 0.5, 1.0, -0.2), 0.20, 0.026, 2, rng)): extra += sg; xtips += tp
-    hip = legs[0][1]; extra += grow(hip, V(-1.0, 0.4, 0.3), 0.13, 0.018, 1, rng)[0]
-    P.append((twigs(extra), bc))
+        SK += [('Arm' + sd, S, E, ra * 1.30, ra * 0.92), ('LowerArm' + sd, E, Wr, ra * 0.90, ra * 1.08)] + [('Hand' + sd, a, b, r1, 0.007) for a, m, b, r1, r2 in fs]
+        for sg, tp in (grow(E, V(s_ * 0.9, 0.5, -0.4), 0.15 * k, 0.020 * k, 2, rng), grow(S + V(0, ra, 0), V(s_ * 0.5, 1.0, -0.2), 0.20, 0.026, 2, rng)):
+            extra += sg; xtips += tp; ex_side[sd] += sg; xt_side[sd] += tp; SK += [('Arm' + sd, a, b, ra_, rb_) for a, b, ra_, rb_ in sg]
+    hip = legs[0][1]; hs = grow(hip, V(-1.0, 0.4, 0.3), 0.13, 0.018, 1, rng)[0]; extra += hs; SK += [('LegL', a, b, ra_, rb_) for a, b, ra_, rb_ in hs]
+    # 곁가지는 난 자리마다 따로 조각 — 한 조각이면 왼 무릎 잔가지(바깥 위로 뻗어 늘어진 왼손 곁까지 간다)의 끝이 팔 뼈를 받아
+    # 걸을 때 팔과 무릎 사이로 늘어났다(11-14 사용자 — `Spine.Ent.BarkFine`).
+    for sd in 'LR':
+        P.allow = ('Spine', 'Arm' + sd, 'LowerArm' + sd); P.append((twigs(ex_side[sd]), bc))
+    P.allow = TRUNK_B; P.append((twigs(hs), bc)); P.allow = None
+    P.bone = 'Spine'   # 관은 등뼈에 통째로 — 늘어진 버들가지가 팔 곁을 지나도 팔을 따라 움직이지 않게
     if segs: P.append((twigs(segs), bc))
 
     # 잎 — 가지 끝에만 달린다. 가지 끝마다 잎 뭉치 하나에 낱잎이 삐져나온다(낱잎만으로는 *"수가 너무 적어 보인다"* — 사용자 11-13). 색은 계절 한 벌.
+    # **잎 모양은 넷 — 고르기 축**(11-14 사용자: *"잎 모양이 봄 가을 그리고 추가 두 개"* · 색은 따로 돈다 — 팔레트). `leaf`로 하나만 짓거나(미리보기) 전부(뽑기 — None).
+    #   A 지금 잎(둥근 뭉치 + 낱잎 셋 — 난수 순서를 그대로 둬 장식까지 예전 그대로) / B 무성한 잔잎(작은 뭉치 여럿이 흩어진다) /
+    #   C 늘어진 잎(뭉치가 처지고 긴 잎이 아래로) / D 뾰족 잎 다발(뭉치 없이 가는 잎이 부채처럼 뻗는다). 버드나무는 버들가지의 길이 · 수로 가른다.
+    #   A 말고는 제 난수(`seed`에서 낸다)를 써서 A와 뒤의 장식을 안 흔든다.
     def season_col(p):   # 잎 뭉치의 색 — 계절 색 셋이 얼룩으로
         c0, c1, c2 = PL['leaf']; n = noise(p, 3.3)
         return mixc(mixc(c0, c1, sstep(-0.22, -0.10, n)), c2, sstep(0.14, 0.26, n))
-    def tip_leaves(tp, per, size):   # 가지 끝마다 per장
-        out = []
+    def tip_leaves(tp, per, size, R=None, droop=0.35, spread=0.7, narrow=0.21, out_k=0.5):   # 가지 끝마다 per장
+        R = rng if R is None else R; out = []
         for b, d in tp:
             for _ in range(per):
-                dr = nrm(d * 0.5 + rng.normal(size=3) * 0.7 + V(0, -0.35, 0)); out.append((b - d * rng.uniform(0, 0.05) + dr * 0.03, dr, np.cross(dr, rng.normal(size=3)), size * rng.uniform(0.75, 1.2), size * 0.21))
+                dr = nrm(d * out_k + R.normal(size=3) * spread + V(0, -droop, 0)); out.append((b - d * R.uniform(0, 0.05) + dr * 0.03, dr, np.cross(dr, R.normal(size=3)), size * R.uniform(0.75, 1.2), size * narrow))
         return out
     def by_color(Lv, cols): P.append(leaves(Lv, cols))
-    def clumps(tp, r0, r1):
-        bl = [(b + d * 0.04, rng.uniform(r0, r1)) for b, d in tp]
+    def clumps(tp, r0, r1, R=None, per=1, scatter=0.0, drop=0.0):
+        R = rng if R is None else R; bl = []
+        for b, d in tp:
+            for _ in range(per):
+                off = R.normal(size=3) * scatter if scatter else 0.0
+                bl.append((b + d * 0.04 + off + V(0, -drop, 0), R.uniform(r0, r1)))
         pts = np.array([c for c, _ in bl], np.float32); cc = (pts.min(0) + pts.max(0)) * 0.5
         P.append((near(lambda q: leafy(q, bl, 0.022, 30.0), cc, float(length(pts - cc).max()) + r1 + 0.08), season_col))
-    if crown == 'willow':   # 가지 끝에서 늘어진 버들가지 — 가을에는 누렇게 든다
-        strands = []
-        for b, d in tips:
-            for _ in range(3):
-                a = b + V(*(rng.uniform(-0.04, 0.04, 3))); ln = rng.uniform(0.45, 0.95); sw = V(rng.uniform(-0.05, 0.05), 0, rng.uniform(-0.05, 0.05))
+    def strands_of(tp, R, per, l0, l1, k=1.0):   # 늘어진 버들가지
+        st = []
+        for b, d in tp:
+            for _ in range(per):
+                a = b + V(*(R.uniform(-0.04, 0.04, 3))); ln = R.uniform(l0, l1); sw = V(R.uniform(-0.05, 0.05), 0, R.uniform(-0.05, 0.05))
                 m1 = a + V(d[0] * 0.10, -ln * 0.30, d[2] * 0.10); m2 = m1 + sw + V(0, -ln * 0.35, 0); e = m2 + sw + V(0, -ln * 0.35, 0)
-                strands += [(a, m1, 0.016, 0.020), (m1, m2, 0.020, 0.018), (m2, e, 0.018, 0.006)]
+                st += [(a, m1, 0.016 * k, 0.020 * k), (m1, m2, 0.020 * k, 0.018 * k), (m2, e, 0.018 * k, 0.006 * k)]
         s0, s1 = PL['strand']
-        P.append((twigs(strands), lambda p: mixc(s0, s1, sstep(-0.3, 0.4, noise(p, 3.0)))))
-    else:
-        clumps(tips, 0.085, 0.135)
-        by_color(tip_leaves(tips, 3, 0.105), PL['leaf'])
-    clumps(xtips, 0.045, 0.070)
-    by_color(tip_leaves(xtips, 3, 0.085), PL['leaf'])
+        P.pal = 'vine'; P.append((twigs(st), lambda p: mixc(s0, s1, sstep(-0.3, 0.4, noise(p, 3.0))))); P.pal = 'leaf'
+    def crown_leaves(v, R):   # 관의 가지 끝
+        if crown == 'willow':
+            if v == 'A': strands_of(tips, R, 3, 0.45, 0.95)
+            elif v == 'B': strands_of(tips, R, 4, 0.22, 0.50); by_color(tip_leaves(tips, 3, 0.080, R), PL['leaf'])
+            elif v == 'C': strands_of(tips, R, 2, 0.85, 1.35, 0.8)
+            else: strands_of(tips, R, 3, 0.40, 0.80); clumps(tips, 0.050, 0.075, R)
+        elif v == 'A': clumps(tips, 0.085, 0.135, R); by_color(tip_leaves(tips, 3, 0.105, R), PL['leaf'])
+        elif v == 'B': clumps(tips, 0.050, 0.080, R, per=3, scatter=0.060); by_color(tip_leaves(tips, 6, 0.075, R), PL['leaf'])
+        elif v == 'C': clumps(tips, 0.055, 0.085, R, drop=0.05); by_color(tip_leaves(tips, 6, 0.150, R, droop=1.2, spread=0.4), PL['leaf'])
+        else: by_color(tip_leaves(tips, 12, 0.130, R, droop=-0.1, spread=0.9, narrow=0.10, out_k=1.0), PL['leaf'])
+    def side_leaves(v, R):   # 팔 곁가지 끝 — 팔마다 따로 조각(제 팔 뼈만). A는 예전 순서(뭉치 왼 · 오 → 낱잎 왼 · 오)
+        arm_b = lambda sd: ('Spine', 'Arm' + sd, 'LowerArm' + sd)
+        if v in ('A', 'B', 'C'):
+            r0, r1, kw = {'A': (0.045, 0.070, {}), 'B': (0.030, 0.050, dict(per=2, scatter=0.035)), 'C': (0.035, 0.050, dict(drop=0.03))}[v]
+            for sd in 'LR': P.allow = arm_b(sd); clumps(xt_side[sd], r0, r1, R, **kw)
+        n, size, kw = {'A': (3, 0.085, {}), 'B': (4, 0.060, {}), 'C': (4, 0.110, dict(droop=1.2, spread=0.4)), 'D': (7, 0.100, dict(droop=-0.1, spread=0.9, narrow=0.10, out_k=1.0))}[v]
+        for sd in 'LR': P.allow = arm_b(sd); by_color(tip_leaves(xt_side[sd], n, size, R, **kw), PL['leaf'])
+        P.allow = None
+    shapes = LEAF_SHAPES if leaf is None else (leaf,)
+    rv = {v: rng if v == 'A' else np.random.default_rng(seed * 97 + ord(v)) for v in LEAF_SHAPES}
+    P.pal = 'leaf'
+    for v in shapes: P.tag = 'leaf' + v; crown_leaves(v, rv[v])
+    P.bone = None
+    for v in shapes: P.tag = 'leaf' + v; side_leaves(v, rv[v])
+    P.tag, P.pal = 'core', None
 
     # ── 장식 — 붙은 개체도 있고 안 붙은 개체도 있다 ──
     def cushions(sites, col, bump=0.010, f=55.0):   # 겉면에 반쯤 묻힌 방석 덩이 — (겉면의 점, 바깥, 반지름)
         bl = [(pt - o * r * 0.45, r) for pt, o, r in sites]
         pts = np.array([c for c, _ in bl], np.float32); cc = (pts.min(0) + pts.max(0)) * 0.5
         P.append((near(lambda q: leafy(q, bl, bump, f), cc, float(length(pts - cc).max()) + 0.15), col))
+    P.tag, P.pal = 'moss', 'moss'
     if 'moss' in decor:      # 이끼 방석 — 윗면과 그늘진 쪽에 조금씩
         k = 1.5 if kind == 'willow' else 1.0; sites = []
         for S, E, Wr, ra, s_ in arms:
@@ -425,6 +506,7 @@ def build(kind, season='spring', decor=None, bark='ash'):
         for _ in range(int(7 * k)): sites.append((*on_trunk(rng.uniform(L + 0.25, TOP + 0.05), np.pi + rng.uniform(-1.3, 1.3)), rng.uniform(0.04, 0.075)))
         for Hp, Kn, An, r, toes in legs: sites += [(An + UP * r * 1.0, UP, 0.055), (Kn + nrm([0, 0.5, 1]) * r, nrm([0, 0.5, 1]), 0.045)]
         cushions(sites, lambda p, c0=PL['moss'][0], c1=PL['moss'][1]: mixc(c0, c1, sstep(-0.3, 0.4, noise(p, 6.0))))
+    P.tag, P.bone, P.pal = 'beard', 'Spine', 'moss'
     if 'beard' in decor:     # 이끼 수염 — 입 밑에 늘어진 실이끼(잎이 아니다)
         st = []
         for a in np.linspace(-0.55, 0.55, 10):
@@ -440,24 +522,18 @@ def build(kind, season='spring', decor=None, bark='ash'):
     kn_all = [(*on_trunk(L + 0.62 * TH, 0.25), 0.085), (*on_trunk(L + 0.30 * TH, -0.85), 0.060), (*on_trunk(TOP - 0.05, 2.4), 0.070),
               (Hp + (Kn - Hp) * 0.55 + nrm([0.4, 0, 1]) * r, nrm([0.4, 0, 1]), 0.055), (S + (E - S) * 0.5 + nrm([s_ * 0.3, 0, 1]) * ra, nrm([s_ * 0.3, 0, 1]), 0.045),
               (*on_trunk(L + 0.42 * TH, 1.05), 0.058)]
-    ks = [k for i, k in enumerate(kn_all) if 'knot%d' % (i + 1) in decor]
-    if ks:
-        def knot_q(p, pt, o):
-            q = p - pt; h = (q * o).sum(-1); return h, length(q - o * h[..., None])
-        def burl(p):
-            d = far(p)
-            for pt, o, R in ks:
-                h, rad = knot_q(p, pt, o)
-                d = np.minimum(d, smax(np.sqrt(rad ** 2 + (h / 0.55) ** 2) - R * 1.25, -(np.sqrt(rad ** 2 + (h - R * 0.70) ** 2) - R * 0.62), 0.012))
-            return d
-        def pit(p):
-            d = far(p)
-            for pt, o, R in ks:
-                h, rad = knot_q(p, pt, o)
-                d = np.minimum(d, np.maximum(np.sqrt(rad ** 2 + (h - R * 0.25) ** 2) - R * 0.55, np.sqrt(rad ** 2 + (h / 0.55) ** 2) - R * 1.20))
-            return d
-        kp = np.array([pt for pt, _, _ in ks], np.float32); kc = (kp.min(0) + kp.max(0)) * 0.5; kr = float(length(kp - kc).max()) + 0.18
-        P += [(near(burl, kc, kr), bc), (near(pit, kc, kr), DARK)]
+    P.bone = None
+    def knot_q(p, pt, o):
+        q = p - pt; h = (q * o).sum(-1); return h, length(q - o * h[..., None])
+    for i, (pt, o, R) in enumerate(kn_all):   # 자리마다 따로 조각 — 게임에서 자리마다 따로 켜진다(`knot1`~)
+        if 'knot%d' % (i + 1) not in decor: continue
+        P.tag, P.pal = 'knot%d' % (i + 1), None; P.allow = ('Spine', 'ArmL', 'LowerArmL') if i == 4 else TRUNK_B   # 다섯째는 왼팔 위 · 나머지는 줄기 · 다리
+        def burl(p, pt=pt, o=o, R=R):
+            h, rad = knot_q(p, pt, o); return smax(np.sqrt(rad ** 2 + (h / 0.55) ** 2) - R * 1.25, -(np.sqrt(rad ** 2 + (h - R * 0.70) ** 2) - R * 0.62), 0.012)
+        def pit(p, pt=pt, o=o, R=R):
+            h, rad = knot_q(p, pt, o); return np.maximum(np.sqrt(rad ** 2 + (h - R * 0.25) ** 2) - R * 0.55, np.sqrt(rad ** 2 + (h / 0.55) ** 2) - R * 1.20)
+        P += [(near(burl, pt, R * 1.6 + 0.05), bc), (near(pit, pt, R * 1.6 + 0.05), DARK)]
+    P.tag, P.allow, P.pal = 'vine', TRUNK_B, 'vine'   # 덩굴은 다리 · 줄기를 감는다 — 어깨 곁 마디가 팔 뼈를 받으면 팔이 흔들릴 때 다리까지 늘어났다(11-14 OakSpring)
     if 'vine' in decor:      # 덩굴 — 오른 다리를 감아 올라 몸통을 돌아 어깨까지. 몸 겉면을 찾아 그 위에 얹는다(어림한 둘레에 띄우면 굵은 허벅지 · 어깨 밑동 속에 묻힌다)
         def body(p):   # 덩굴이 타는 몸 — 줄기는 골을 메운 겉(골 속으로 들어가면 등성이에 가린다)
             d = np.minimum(T.raw(p), legs_f(p))
@@ -485,10 +561,15 @@ def build(kind, season='spring', decor=None, bark='ash'):
         for a, b in list(zip(pts[:-1], pts[1:]))[1::2]:
             o = nrm(V(a[0], 0, a[2]) + rng.normal(size=3) * 0.2); ln = rng.uniform(0.030, 0.046); iv.append((a, nrm(o * 0.6 + rng.normal(size=3) * 0.5 + V(0, 0.3, 0)), o, ln, ln * 0.36))
         P.append(leaves(iv, (PL['vine'],)))
+    P.tag, P.bone, P.allow, P.pal = 'mistle', 'Spine', None, 'mistle'
     if 'mistle' in decor:    # 겨우살이 — 관의 가지 갈림에 얹힌 둥근 덤불
         c = mains[min(1, len(mains) - 1)][1]; bl = [(c + V(*(rng.uniform(-0.05, 0.05, 3))), rng.uniform(0.07, 0.10)) for _ in range(5)]
         P.append((near(lambda q: leafy(q, bl, 0.020, 42.0), c, 0.30), PL['mistle']))
-    return dict(pieces=P, head=V(float(T.sway(TOP + 0.22)), TOP + 0.22, float(T.zs(TOP + 0.22)) + 0.08))
+    # 관절 자리 — 게임의 뼈를 여기로 옮긴다(`Pawn/17`). 사람 뼈 자리에 두면 벌어진 다리 · 팔이 엉뚱한 축으로 돌아 늘어난다.
+    joints = {'Hips': V(0, D['hipY'], 0), 'Spine': V(0, D['hipY'] + 0.05, 0), 'Head': V(0, TOP + 0.10, 0)}   # 몸통은 사람 자리(`BodyJoints`와 같다) — 크기를 키울 때 같이 큰다
+    for (Hp, Kn, An, r, toes), sd in zip(legs, 'LR'): joints.update({'Leg' + sd: Hp, 'LowerLeg' + sd: Kn, 'Foot' + sd: An})
+    for S, E, Wr, ra, s_ in arms: sd = 'L' if s_ < 0 else 'R'; joints.update({'Arm' + sd: S, 'LowerArm' + sd: E, 'Hand' + sd: Wr})
+    return dict(pieces=P, meta=P.meta, skel=SK, joints=joints, bark_cols=(bc, trunk_col), head=V(float(T.sway(TOP + 0.22)), TOP + 0.22, float(T.zs(TOP + 0.22)) + 0.08))
 
 FULL = (('spring', 0, 600), ('spring', 40, 600), ('spring', 150, 600), ('autumn', 0, 600), ('autumn', 40, 600))   # 계절 · 보기 각도 · 폭
 CLOSE = (('spring', 0, 420), ('spring', 35, 440), ('autumn', 0, 420))
@@ -496,8 +577,11 @@ CLOSE = (('spring', 0, 420), ('spring', 35, 440), ('autumn', 0, 420))
 DECOR_COLS = (('slim', 'spring', ()), ('slim', 'spring', ('moss',)), ('slim', 'spring', ('beard',)), ('slim', 'spring', ('knot1',)), ('slim', 'spring', ('knot2', 'knot4', 'knot6')),
               ('slim', 'spring', ('vine',)), ('slim', 'spring', ('mistle',)), ('slim', 'autumn', ('moss', 'beard', 'vine', 'mistle')))
 BARK_ROWS = (('oak', 'spring'), ('willow', 'spring'), ('slim', 'autumn'), ('snag', 'autumn')); BARK_ORDER = tuple(BARKS)
+LEAF_COLS = tuple(zip(LEAF_SHAPES, PALETTES))   # 잎 판 — 칸마다 잎 모양 하나 · 팔레트 하나(모양 넷 × 색 넷을 한 장에)
 def job(a):
     mode, kind, i = a
+    if mode == 'leaves':
+        lf, pal = LEAF_COLS[i]; return np.asarray(hb.render(build(kind, pal, DEFAULT_DECOR[kind], leaf=lf)['pieces'], 25, 430, 860, 1.52, 3.30))
     if mode == 'bark': return np.asarray(hb.render(build(kind[0], kind[1], None, BARK_ORDER[i])['pieces'], 20, 430, 860, 1.52, 3.30))
     if mode == 'decor':
         kd, season, dc = DECOR_COLS[i]; return np.asarray(hb.render(build(kd, season, dc)['pieces'], 25, 430, 860, 1.52, 3.30))
@@ -535,6 +619,7 @@ if __name__ == '__main__':
     if on('heads'): jobs += [('close', k, i) for k in ORDER for i in range(len(CLOSE))]
     if on('decor'): jobs += [('decor', '', i) for i in range(len(DECOR_COLS))]
     if on('bark'):  jobs += [('bark', r, i) for r in BARK_ROWS for i in range(len(BARK_ORDER))]
+    if on('leaves'): jobs += [('leaves', k, i) for k in ORDER for i in range(len(LEAF_COLS))]
     if jobs:
         with Pool(min(14, len(jobs))) as pool: res = pool.map(job, jobs)
         ims = dict(zip(jobs, res))
@@ -546,6 +631,12 @@ if __name__ == '__main__':
                 for i, bk in enumerate(BARK_ORDER):
                     im.paste(Image.fromarray(ims[('bark', row, i)]), (430 * i, 860 * r)); dr.text((430 * i + 8, 860 * r + 6), '%s %s: %s' % (row[0], row[1], bk), fill=(255, 220, 120))
             im.save(stem + '_bark.png'); print('saved', stem + '_bark.png')
+        if on('leaves'):   # 잎 모양 판 — 줄: 종류 · 칸: 잎 모양(팔레트)
+            im = Image.new('RGB', (430 * len(LEAF_COLS), 860 * len(ORDER)), (40, 40, 44)); dr = ImageDraw.Draw(im)
+            for r, kind in enumerate(ORDER):
+                for i, (lf, pal) in enumerate(LEAF_COLS):
+                    im.paste(Image.fromarray(ims[('leaves', kind, i)]), (430 * i, 860 * r)); dr.text((430 * i + 8, 860 * r + 6), '%s: leaf %s / %s' % (kind, lf, pal), fill=(255, 220, 120))
+            im.save(stem + '_leaves.png'); print('saved', stem + '_leaves.png')
         if on('decor'):
             im = Image.new('RGB', (430 * len(DECOR_COLS), 860), (40, 40, 44)); dr = ImageDraw.Draw(im)
             for i, (kd, season, dc) in enumerate(DECOR_COLS):
