@@ -30,6 +30,10 @@ public class Shop
     // 화면에 뜬 값과 실제로 빠지는 값이 갈린다 — 이 프로젝트에서 가장 나쁜 종류의 어긋남이다.
     public UnitBrain Haggler { get; set; }
 
+    // **파는 사람(폰)** — 좌판이 폰에 붙어 있으면 그 폰(`Merchant`가 물려 준다). 상단처럼 폰이 없는 가게는 비어 있다.
+    // 거래 사건(`WorldHistory` — `Traded`)에 그 상인을 당사자로 적으려고 둔다 — 그래야 *"자주 오는 손님"*을 그 상인이 안다.
+    public UnitBrain Seller { get; set; }
+
     public readonly List<MerchantStockEntry> Stock = new();
 
     // **이 상인이 지금 가진 돈 — 이만큼만 사 준다.**
@@ -337,6 +341,7 @@ public class Shop
         if (entry != null && entry.FromPlayer) ReturnGold(paid);
         else                                   Trading.GrowFromTrade(Haggler, TeachableGold(paid));
 
+        if (bought > 0) RecordTrade(paid);
         return bought;
     }
 
@@ -409,7 +414,18 @@ public class Shop
 
         // **오간 돈만큼 배운다** — 개수도 건수도 아니다(`Trading.GrowFromTrade` 주석).
         Trading.GrowFromTrade(Haggler, TeachableGold(sold * price));
+        if (sold > 0) RecordTrade(sold * price);
         return sold;
+    }
+
+    // **거래를 사건으로 적는다**(`WorldHistory` — `Traded`). 같은 상대와의 거래는 한 줄로 합쳐진다(횟수 · 오간 돈).
+    // 흥정한 폰이 당사자다. 우호도는 아직 안 움직인다(`RuleOf`).
+    void RecordTrade(int gold)
+    {
+        var at = Haggler != null ? Haggler.transform.position : Vector3.zero;
+        WorldHistory.Record(WorldEventType.Traded, WorldHistory.PlayerActor, Faction, null, at, gold,
+                            WorldHistory.Party(Haggler, EventRole.Subject),
+                            WorldHistory.Party(Seller, EventRole.Beneficiary));
     }
 
     // ── 같은 돈으로 두 번 배우지 않는다 ──────────────────────────────────────

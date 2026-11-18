@@ -177,7 +177,8 @@ public class WildSpawner : MonoBehaviour
                 if (!FarFromEyes(b.transform.position)) { allAway = false; break; }
             if (!allAway) continue;
 
-            foreach (var b in _alive) Destroy(b.gameObject);
+            // 떼는 다시 오면 새로 굴리므로(아래) 거둔 사람은 **떠난 것**이다 — 기록에 `Departed`(`PawnRegistry`).
+            foreach (var b in _alive) b.Despawn(PawnStatus.Departed);
             _plans.Remove(g.Id);         // 다시 오면 새로 굴린다 — 같은 자리에 같은 떼가 서지 않게
             _gone.Add(g.Id);
         }

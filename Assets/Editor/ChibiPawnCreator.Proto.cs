@@ -398,7 +398,10 @@ public static partial class ChibiPawnCreator
         _saved.Add(path);
         var m = AssetDatabase.LoadAssetAtPath<Mesh>(path);
         bool fresh = m == null;
-        if (fresh) m = new Mesh(); else m.Clear();
+        // **정점 구성까지 비운다**(`Clear(false)` — 2026-11-18). 기본 `Clear()`는 구성을 남겨 지난번에 구운 탄젠트 칸(선 법선)이 살아남고,
+        // 새 정점을 넣으면 그 칸에 쓰레기 값(432 · nan)이 찼다 — `w`가 1.5를 넘으니 `HasOutlineNormals`가 "이미 구웠다"로 보고 굽기를
+        // 건너뛰어 바깥 선이 톱니 · 검은 얼룩이 됐다(트롤 팔 · 해골 손). 메시가 매번 같던 동안은 낡은 값이 우연히 맞아 안 보였다.
+        if (fresh) m = new Mesh(); else m.Clear(false);
         m.name = name;
         m.SetVertices(sb.V);
         m.SetUVs(0, new List<Vector2>(new Vector2[sb.V.Count]));

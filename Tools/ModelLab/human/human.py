@@ -109,7 +109,7 @@ def eyes(h, p):
     return on_face(h, p, ell(m, V(h.EX, h.EY - 0.004, h.ZE), V(h.ER * 0.80, h.ER * 0.92, 0.3)), 0.004)
 def glint(h, p):
     m = mirror(p)
-    return on_face(h, p, ell(m, V(h.EX - h.ER * 0.25, h.EY + h.ER * 0.25, h.ZE), V(h.ER * 0.25, h.ER * 0.25, 0.3)), 0.007)
+    return on_face(h, p, ell(m, V(h.EX - h.ER * 0.25, h.EY + h.ER * 0.25, h.ZE), V(h.ER * 0.25, h.ER * 0.25, 0.3)), 0.0048)   # 반짝임은 눈 면에 붙은 얇은 판(11-18 — 튀어나오지 않게 · C#과 같은 값)
 BROWS = {   # 이름: (굵기 안 · 밖, 아치 높이, 기울기)
     'Soft':  (0.010, 0.004, 0.016, -0.004),
     'Thick': (0.016, 0.008, 0.008, -0.002),

@@ -29,6 +29,24 @@ using UnityEngine;
 // 가린 것을 안 본다(`NearestSeen`) — 도주·수적 보너스·도발은 그대로다.
 public static class FactionScan
 {
+    // **그 세력 사람 중 반경 안에 깨어 있는 자**(2026-11-18 — 사건의 목격자, `WorldHistory`). 시야는 아직 안 본다
+    // (설계 5-3 — `Vision`을 묻는 것은 나중에 이 자리에서 조인다). 시체 · 기절한 몸은 못 본다.
+    public static void MembersWithin(Vector3 at, FactionData faction, float range, List<UnitBrain> into)
+    {
+        if (faction == null) return;
+        float rangeSqr = range * range;
+        var all = Faction.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var f = all[i];
+            if (f == null || f.Data != faction) continue;
+            if ((f.transform.position - at).sqrMagnitude > rangeSqr) continue;
+            if (!f.TryGetComponent(out UnitBrain b) || b.IsDead) continue;
+            if (b.Blackboard != null && b.Blackboard.IsKnockedOut) continue;
+            into.Add(b);
+        }
+    }
+
     // 가장 가까운 적대 대상.
     //
     // `theirsToMine` — **관계는 방향별**이라(`FactionData.StanceTo`) 어느 쪽으로 묻는지가

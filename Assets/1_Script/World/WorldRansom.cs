@@ -111,9 +111,12 @@ public static class WorldRansom
         // 반대 방향의 길이 있어야 우호도가 **벌칙이 아니라 선택**이 된다(붙잡은 자를 어떻게
         // 처리하느냐가 곧 그 세력과의 관계다).
         var fd = u.TryGetComponent(out Faction unitFaction) ? unitFaction.Data : null;
+        // 사건으로 적는다 — 우호도(`RansomBonus`)는 그 결과다(`WorldHistory.RuleOf`).
         if (fd != null)
-            FactionRelations.Add(fd, FactionRelations.RansomBonus,
-                                 $"{u.UnitName}을(를) 몸값을 받고 돌려보냈다");
+            WorldHistory.Record(WorldEventType.Ransomed, WorldHistory.PlayerActor, fd,
+                                WorldHistory.HomeOf(u), u.transform.position, paid,
+                                WorldHistory.Party(u, EventRole.Beneficiary),
+                                WorldHistory.Party(negotiator, EventRole.Subject));
 
         // **`Release`가 나머지를 전부 한다.** `reason`은 로그에만 남지만, 손으로 놓아 준 것과
         // 몸값을 받은 것이 로그에서 구별되지 않으면 "왜 없어졌지"를 되짚을 때 가릴 수가 없다.

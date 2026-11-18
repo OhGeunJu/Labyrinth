@@ -131,6 +131,7 @@ public class WorldBand
                                          storyGroup: data != null && data.Faction != null
                                                    ? data.Faction.BackstoryGroup : null);
                 spec.LoadoutOverride = entry.Loadout;
+                spec.HomeId          = homeId;   // 기록의 `HomeSiteId`(`PawnRegistry`) — 그 소굴 사람
                 band.Members.Add(new BandMember { Prefab = entry.Prefab, Unit = unit, Spec = spec });
             }
         }

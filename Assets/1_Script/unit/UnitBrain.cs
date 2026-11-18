@@ -526,8 +526,28 @@ public partial class UnitBrain : MonoBehaviour
         HookUnloadSignals();
     }
 
+    // ── 기록 — 사라져도 남는 신원(`PawnRegistry`) ─────────────────────────────
+
+    // 이 폰의 기록 Id(`PawnSpec.Id`와 같다). 기록하지 않는 몸(짐승 · 이름 없는 몬스터)은 비어 있다.
+    public string PawnId { get; set; }
+
+    PawnStatus? _despawnReason;
+
+    // **폰을 없애는 문 — 왜 없애는지 같이 넘긴다**(청크 내림 `AtSite` · 무리로 거둠 `InBand` · 떠남 `Departed`).
+    // `OnDestroy`는 인자를 못 받으므로 이유를 먼저 적어 두고 파괴한다. 이 문을 안 거친 파괴는 기록에 `Unknown`으로 남고
+    // 경고가 뜬다(`PawnRegistry.Detach`) — 그 경고가 이유를 안 넘긴 경로를 찾는 실마리다.
+    public void Despawn(PawnStatus reason)
+    {
+        _despawnReason = reason;
+        Destroy(gameObject);
+    }
+
     void OnDestroy()
     {
+        // `Awake`가 돈 몸만(`OnDestroy`는 켜진 적 있는 것만 불린다) — 기록에 몸을 적는다.
+        // `OnDisable`에는 걸지 않는다: 원정 · 비활성 정착지는 끄기만 하고, 꺼진 동안에도 그 폰이 진짜다.
+        PawnRegistry.Detach(this, _despawnReason);
+
         UnhookUnloadSignals();
 
         // 파괴 경로가 `Die`만은 아니다(원정 정리·씬 언로드) — 어느 쪽으로 사라지든
@@ -602,13 +622,18 @@ public partial class UnitBrain : MonoBehaviour
 
     void Start()
     {
+        // **기록에 등록한다 — 신원이 실려 오는 문은 여기 하나다**(`PawnRegistry`, 2026-11-18). 세우는 경로가 여럿이어도
+        // (청크 · 무리 · 야생 · 이벤트 · 소환) 전부 여기를 지난다. 기록에 몸이 남아 있으면(청크가 내려갔다 다시 선 사람)
+        // 그 몸을 입혔으므로 장비 · 주머니를 새로 굴리지 않는다 — 굴리면 다녀올 때마다 지닌 것이 불어난다.
+        bool restored = PawnRegistry.Attach(this);
+
         // **알리기 전에 입힌다.** 구독자(로스터·UI·`WorldBattle` 전력 계산)가 장비를 읽으므로,
         // 알린 뒤에 채우면 첫 계산이 맨몸 기준으로 나온다.
-        ApplyLoadout();
+        if (!restored) ApplyLoadout();
 
         // **주머니는 장비 다음이다.** `ApplyLoadout`이 배낭을 거쳐 장비를 차므로(그것이 유일한
         // 장착 경로다) 먼저 채우면 그 왕복에 격자를 빼앗아 **무기를 못 차는** 일이 생긴다.
-        FillPockets();
+        if (!restored) FillPockets();
 
         OnUnitSpawned?.Invoke(this);
     }
@@ -918,10 +943,15 @@ public partial class UnitBrain : MonoBehaviour
         // 저쪽이 이미 나를 적대하면 셈에서 뺀다.
         if (mine.IsHostileTo(player)) return;
 
+        // **사건으로 적는다 — 우호도는 그 결과다**(`WorldHistory`, 2026-11-18). 값은 종류가 정한다(`RuleOf` —
+        // 죽임 `KillPenalty` · 처형 `ExecutePenalty`). 죽인 손이 기록하는 사람이면 당사자로 같이 적는다.
         bool held = _bb != null && _bb.IsPrisoner;
-        FactionRelations.Add(mine.Data,
-            held ? FactionRelations.ExecutePenalty : FactionRelations.KillPenalty,
-            held ? $"{UnitName}을(를) 가둬 두고 죽였다" : $"{UnitName}을(를) 죽였다");
+        UnitBrain killer = null;
+        if (_bb != null && _bb.LastAttacker != null) _bb.LastAttacker.TryGetComponent(out killer);
+        WorldHistory.Record(held ? WorldEventType.PawnExecuted : WorldEventType.PawnKilled,
+                            WorldHistory.PlayerActor, mine.Data, WorldHistory.HomeOf(this), transform.position, 0f,
+                            WorldHistory.Party(this, EventRole.Victim),
+                            WorldHistory.Party(killer, EventRole.Subject));
     }
 
     void BecomeCorpse()
@@ -939,6 +969,9 @@ public partial class UnitBrain : MonoBehaviour
 
         var corpse = gameObject.AddComponent<Corpse>();
         corpse.Init(UnitName, Inventory, corpseFaction != null ? corpseFaction.Data : null);
+
+        // **기록은 지우지 않는다 — 죽었다고 적는다**(`PawnRegistry`). 그래야 그 자리가 이 사람을 다시 세우지 않는다.
+        PawnRegistry.MarkDead(this);
 
         enabled = false;
         if (_mover != null) _mover.enabled = false;

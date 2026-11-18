@@ -290,7 +290,7 @@ public class LeaveMapNode : BTNode
         float d  = Vector3.Distance(new Vector3(pos.x, 0f, pos.z),
                                     new Vector3(bb.LeaveTarget.x, 0f, bb.LeaveTarget.z));
 
-        if (d < ArrivalDist) { Object.Destroy(bb.Self); return BTStatus.Running; }
+        if (d < ArrivalDist) { NpcLeave.Go(bb); return BTStatus.Running; }
 
         // **진행은 경로로 잰다 — 직선거리가 아니다**(2026-09-08).
         //
@@ -334,7 +334,7 @@ public class LeaveMapNode : BTNode
             }
 
             Debug.Log($"[Leave] {bb.Self.name}: 더는 가장자리로 다가갈 수 없어 여기서 떠납니다.");
-            Object.Destroy(bb.Self);
+            NpcLeave.Go(bb);
             return BTStatus.Running;
         }
 
@@ -395,11 +395,21 @@ public class NpcEventMerchantNode : BTNode
 
             case 2: // 홈(맵 가장자리)으로 귀환 후 소멸
                 if (!bb.Mover.IsMoving())
-                    Object.Destroy(bb.Self);
+                    NpcLeave.Go(bb);
                 return BTStatus.Running;
 
             default:
                 return BTStatus.Failure;
         }
+    }
+}
+
+// **맵 밖으로 떠난 폰을 없앤다 — 떠났다고 적고**(`PawnRegistry` — `Departed`). 떠나는 노드 셋이 같은 문을 쓴다.
+static class NpcLeave
+{
+    public static void Go(UnitBlackboard bb)
+    {
+        if (bb.Brain != null) bb.Brain.Despawn(PawnStatus.Departed);
+        else Object.Destroy(bb.Self);
     }
 }

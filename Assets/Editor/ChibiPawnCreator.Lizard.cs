@@ -28,8 +28,8 @@ using UnityEngine;
 //     흰 살 재질(`Chibi_LizSkin`)에 정점 색을 곱한다(`_VertexAO`).
 //   - 이름이 `Chibi_Skin…`이 아니라 개체 살색(`SkinLook`)은 안 탄다.
 //
-// 종류 넷 · **종류마다 프리팹 하나**(보기 몸 — 아직 어디서도 안 가리킨다 · `3_Prefab/Pawn/Lizard/`):
-//   도마뱀 `Chibi_Lizard`(볏은 고르기 축 `Crest` — 가시 테 · 이구아나 볏 · 없음) · 악어 `Chibi_Lizard_Croc`(몸도 굵다) ·
+// 종류 셋 · **종류마다 프리팹 하나**(보기 몸 — 아직 어디서도 안 가리킨다 · `3_Prefab/Pawn/Lizard/`):
+//   도마뱀 `Chibi_Lizard`(볏은 고르기 축 `Crest` — 가시 테 · 이구아나 볏 · 없음) ·
 //   숲살모사 `Chibi_Lizard_Viper`(팔레트 Green · Slate · Coal · Amber) · 매끈한 뱀 `Chibi_Lizard_Snake`(팔레트 Boelen · Kingrat · Indigo · Red).
 //   색은 무리 안에서도 섞여 나온다(엔트와 같다 — 세력을 세울 때 다시 본다). 옛 색 프리팹(`…ViperGreen` · `…SnakeBoelen`)은 새 이름으로 옮겨 guid를 지키고
 //   나머지 색 프리팹은 지운다(`MigrateLizardTones`).
@@ -39,7 +39,6 @@ public static partial class ChibiPawnCreator
     // ── 몸 ──────────────────────────────────────────────────────────────────
     //                                                                        밑     엉덩이  허리   가슴   어깨      깊이   손     팔K    다리K  몸통K  팔굵기 다리굵기 어깨둥글림
     static readonly Shape LizardShape = new("Lizard", "리자드맨", "Male", new[] { 0.23f, 0.26f, 0.27f, 0.33f, 0.35f }, 0.88f, 0.32f, 1.12f, 1.37f, 1.05f, 1.15f, 1.12f, 0.42f);
-    static readonly Shape CrocShape   = new("LizardCroc", "악어 리자드맨", "Male", new[] { 0.29f, 0.33f, 0.36f, 0.44f, 0.47f }, 1.02f, 0.39f, 1.12f, 1.30f, 1.12f, 1.45f, 1.32f, 0.34f);
 
     const float LizHeadFwd = 0.17f, LizHeadDrop = 0.17f;   // 머리가 굽은 어깨보다 앞으로 · 아래로
     const float LizGap = 0.007f;                           // 입선의 반 틈
@@ -681,67 +680,6 @@ public static partial class ChibiPawnCreator
         return h;
     }
 
-    static float CrocSW(float z) => 0.215f + (0.150f - 0.215f) * Mathf.Clamp01((z - 0.05f) / 0.50f);   // 위턱 반폭
-
-    // 덩치 큰 악어 — 넓은 주둥이(가늘면 약해 보인다) · 깊은 아래턱 · 눈 위에서 주둥이로 내려오는 굵은 턱 · 눈은 작고 깊다.
-    static LizHead CrocHead()
-    {
-        var h = new LizHead { Skin = new Color(0.23f, 0.32f, 0.25f), Belly = new Color(0.74f, 0.72f, 0.54f), DefaultEye = "Glare", EyeCol = LzYellow, JawW = 0.225f };
-        h.Cran = p => SMax(Ell(p, V3(0, 0, -0.07f), V3(0.265f, 0.225f, 0.27f)), p.y - 0.190f, 0.05f);   // 윗면이 납작하다
-        h.Upper = p => SMin(Seg(Squash(p, -0.03f, 0.60f), V3(0, -0.01f, 0.05f), V3(0, -0.03f, 0.55f), 0.215f, 0.150f) * 0.60f,
-                            Ell(p, V3(0, 0.022f, 0.590f), V3(0.100f, 0.052f, 0.085f)), 0.035f);        // 콧등 둔덕 — 콧구멍이 이 위에 뚫린다
-        h.Lower = p => Seg(Squash(p, -0.135f, 0.64f), V3(0, -0.135f, 0f), V3(0, -0.13f, 0.545f), 0.205f, 0.140f) * 0.64f;
-        h.MouthY = p => { float c = Mathf.Clamp01(0.10f - p.z); return -0.095f + 0.011f * Mathf.Sin(p.z * 24f) + 0.7f * c * c; };   // 물결치는 입선
-        h.Eye = V3(0.175f, 0.125f, 0.105f); h.EyeR = 0.046f; h.EyeN = V3(0.78f, 0.18f, 0.60f).normalized;
-        Func<Vector3, float> bas = p =>
-        {
-            var m = Mirror(p);
-            float mound = Ell(m, V3(0.130f, 0.118f, 0.050f), V3(0.092f, 0.072f, 0.108f));                // 눈 둔덕 — 머리 윗면보다 솟지 않는다
-            float snout = Seg(m, V3(0.058f, 0.050f, 0.500f), V3(0.070f, 0.095f, 0.290f), 0.020f, 0.030f);   // 주둥이 위 두 줄 능선
-            float hinge = Sph(m, V3(0.190f, -0.090f, -0.04f), 0.112f);                                   // 턱 근육
-            return SMin(mound, SMin(snout, hinge, 0.02f), 0.03f);
-        };
-        h.Extra = bas;
-        h.Pits = new[] { (V3(0.036f, 0.066f, 0.605f), 0.017f) };
-        h.SeatLoose(0.42f);
-        // 눈 위 턱 — 앞(안쪽)이 낮다(노려본다). 살에 붙여 짧게(길면 끝이 귀처럼 솟는다).
-        var t = Vector3.Cross(Vector3.up, h.EyeN).normalized; var e = h.Eye; float r = h.EyeR;
-        var b0 = e + Vector3.up * (r * 0.95f) - t * 0.060f + h.EyeN * 0.012f - Vector3.up * 0.022f;
-        var b1 = e + Vector3.up * (r * 0.95f) + t * 0.050f - h.EyeN * 0.015f + Vector3.up * 0.010f;
-        h.Extra = p => SMin(bas(p), Seg(Mirror(p), b0, b1, 0.026f, 0.032f), 0.03f);
-        return h;
-    }
-    static float CrocPlates(Vector3 p)   // 뒤통수 골판 — 안쪽 줄은 크게, 바깥 줄은 작게
-    {
-        var m = Mirror(p); float d = 9f;
-        foreach (float z in new[] { -0.07f, -0.17f, -0.27f })
-        {
-            float q = (z + 0.07f) / 0.27f, y = Mathf.Min(0.190f, 0.225f * Mathf.Sqrt(Mathf.Max(0f, 1f - q * q)));
-            d = Mathf.Min(d, Seg(m, V3(0.080f, y - 0.02f, z), V3(0.095f, y + 0.075f, z - 0.055f), 0.050f, 0.012f));
-            d = Mathf.Min(d, Seg(m, V3(0.180f, y - 0.05f, z - 0.02f), V3(0.215f, y + 0.025f, z - 0.065f), 0.040f, 0.010f));
-        }
-        return d;
-    }
-    static float CrocTeeth(Vector3 p)   // 굵기와 길이가 들쭉날쭉한 송곳니 — 위는 아래로, 아래 큰 것 둘은 윗입술 밖으로 솟는다
-    {
-        var m = Mirror(p); float d = 9f;
-        foreach (var (z, ln, r) in new[] { (0.16f, 0.070f, 0.022f), (0.25f, 0.118f, 0.031f), (0.34f, 0.072f, 0.022f), (0.43f, 0.108f, 0.029f), (0.52f, 0.078f, 0.023f) })
-        {
-            float w = CrocSW(z) * 0.975f;
-            d = Mathf.Min(d, Seg(m, V3(w, -0.082f, z), V3(w + 0.006f, -0.082f - ln, z + 0.004f), r, 0.003f));
-        }
-        foreach (var (z, ln, r) in new[] { (0.295f, 0.105f, 0.027f), (0.475f, 0.090f, 0.025f) })
-        {
-            float w = CrocSW(z) + 0.004f;
-            d = Mathf.Min(d, Seg(m, V3(w, -0.118f, z), V3(w + 0.010f, -0.118f + ln, z), r, 0.003f));
-        }
-        foreach (float x in new[] { 0.045f, 0.115f })
-        {
-            float z = 0.690f - x * x * 3.2f;
-            d = Mathf.Min(d, Seg(m, V3(x, -0.082f, z), V3(x, -0.160f, z + 0.006f), 0.022f, 0.003f));
-        }
-        return d;
-    }
 
     // ── 눈 — 고르기 축. 날카로운 쪽에서 둥근 쪽으로 ─────────────────────────────
     //   이름       눈동자(없으면 null)  크기   윗꺼풀 높이 · 앞으로 기운 정도   아랫꺼풀(없으면 −1)   색
@@ -773,10 +711,15 @@ public static partial class ChibiPawnCreator
         float shape = kind == "Slit" ? Mathf.Max(Mathf.Abs(a) - r * 0.16f, Mathf.Abs(b) - r * 0.74f) : Mathf.Sqrt(a * a + b * b) - r * (kind == "Ring" ? 0.70f : 0.48f);
         return Mathf.Max(Mathf.Max(ball, fwd), shape);
     }
+    // 반짝임은 눈 면에 붙은 얇은 판(11-18 사용자: *"다른 애들도 눈동자를 그런 식으로"* — 두더지 · 괴물쥐처럼 튀어나오지 않게): 눈동자(눈알 + 4mm) 바로 위(+5mm) 얇은 껍데기의 둥근 자리 — 공(반지름 0.21)이 솟았던 것.
     static float LizGlint(Vector3 p, LizHead h, float k)
     {
         var t = Vector3.Cross(Vector3.up, h.EyeN).normalized; var u = Vector3.Cross(h.EyeN, t); float r = h.EyeR * k;
-        return Sph(Mirror(p), h.Eye + (h.EyeN * 0.80f + u * 0.40f - t * 0.28f) * r, r * 0.21f);
+        var q = Mirror(p) - h.Eye; float len = q.magnitude;
+        var dir = (h.EyeN * 0.80f + u * 0.40f - t * 0.28f).normalized;
+        float shell = Mathf.Max(len - (r + 0.005f), (r - 0.002f) - len);
+        float spot = (Mathf.Cos(0.24f) - Vector3.Dot(q, dir) / Mathf.Max(len, 1e-5f)) * r;
+        return Mathf.Max(shell, spot);
     }
 
     // ── 색마다 얹는 칠 ──────────────────────────────────────────────────────
@@ -837,12 +780,13 @@ public static partial class ChibiPawnCreator
     // · 아니면 밑동이 무늬 색이고 끝이 살 색(누런 구렁이 · 격자 — 밑동의 어두운 테가 그물로 읽힌다).
     static readonly Dictionary<string, bool> LizScaledSnakes = new() { ["Kingrat"] = false, ["Speckle"] = true, ["Checker"] = false };
     static readonly Vector3 LzSheen = new Vector3(-0.5f, 0.8f, 1.4f) * 0.035f;   // 검푸른 살의 옅은 무지갯빛(옛 칠: 살 + 이 방향 × sin)
-    static readonly string[] LizPalKinds = { "Lizard", "Croc", "Viper", "Snake" };
+    static readonly string[] LizPalKinds = { "Lizard", "Viper", "Snake" };
 
     static string LizPalName(string kind) => $"Chibi_LizPal_{kind}";
     static string LizScaleName(string kind) => $"Chibi_LizScale_{kind}";
     static string LizEyeName(string kind) => $"Chibi_LizEye_{kind}";
     static string LizCrestName(string kind) => $"Chibi_LizCrest_{kind}";
+    static string LizFinName(string kind) => $"Chibi_LizFin_{kind}";   // 볏 막 — 칸 0 살 · 칸 1 볏 색(밑동 → 끝)
     static bool LizPalEye(string kind) => kind == "Viper" || kind == "Snake" || kind == "Lizard";   // 기본 눈알 색이 팔레트를 탄다
 
     // **기본 도마뱀의 색**(2026-11-14, 사용자: *"기본 도마뱀도 색이랑 좀 추가해줘"* + 사진 · 피규어 열하나 — 깃 밖 `_refs/2026-11-14_lizard_colors/`).
@@ -861,6 +805,60 @@ public static partial class ChibiPawnCreator
         ("Leopard",  new(0.95f, 0.74f, 0.16f), new(0.98f, 0.94f, 0.84f), new(0.98f, 0.86f, 0.40f), new(0.70f, 0.50f, 0.10f), new(0.20f, 0.16f, 0.14f), new(0.20f, 0.12f, 0.10f, 1f), default, default, default),       // 표범 도마뱀붙이 — 노란 몸에 검은 점
         ("Phelsuma", new(0.40f, 0.75f, 0.18f), new(0.86f, 0.92f, 0.60f), new(0.62f, 0.86f, 0.36f), new(0.26f, 0.56f, 0.12f), new(0.20f, 0.18f, 0.16f), new(0.84f, 0.18f, 0.10f, 1f), default, default, default),       // 낮 도마뱀붙이 — 밝은 초록에 붉은 점
         ("LeafTail", new(0.40f, 0.26f, 0.18f), new(0.62f, 0.50f, 0.40f), new(0.56f, 0.38f, 0.26f), new(0.28f, 0.18f, 0.12f), new(0.82f, 0.22f, 0.10f), default, new(0.28f, 0.17f, 0.11f, 0.6f), default, default),     // 잎꼬리 도마뱀붙이 — 마른 잎 갈색 · 붉은 눈
+    };
+
+    // **턱 뒤 볏**(2026-11-15, 사용자 그림 — 턱 뒤 양옆에 펼친 지느러미: 가시살 사이에 막 · *"일반 도마뱀에도 볏"*) — 미리보기 `lizard.py`의 `fins()`
+    // (공룡 악어의 날카로운 볏과 달리 둥근 판)를 그대로 옮겼다. 고르기 축 `Fins`(On · Off). 막 색은 밑동이 살 · 끝으로 갈수록 볏 색(팔레트마다 —
+    // 사용자: *"볏 색은 팔레트마다"*) · 가시살은 가시 테 색(볏 재질 칸 0).
+    static readonly Vector3 LizFinAt = new(0.205f, 0.010f, -0.060f);
+    const float LizFinK = 1.35f;
+    static readonly float[] LizFinAng = { -35f * Mathf.Deg2Rad, -8f * Mathf.Deg2Rad, 20f * Mathf.Deg2Rad, 48f * Mathf.Deg2Rad, 76f * Mathf.Deg2Rad };
+    static readonly float[] LizFinLen = { 0.15f, 0.20f, 0.24f, 0.25f, 0.19f };
+    static (Vector3 back, Vector3 up, Vector3 n) LizFinFrame()
+    {
+        var back = new Vector3(0.70f, 0.05f, -0.72f).normalized;
+        var up = (Vector3.up - back * Vector3.Dot(Vector3.up, back)).normalized;
+        return (back, up, Vector3.Cross(back, up));
+    }
+    static float LizFinInterp(float a, float[] xs, float[] ys)
+    {
+        if (a <= xs[0]) return ys[0];
+        for (int i = 1; i < xs.Length; i++) if (a <= xs[i]) return Mathf.Lerp(ys[i - 1], ys[i], (a - xs[i - 1]) / (xs[i] - xs[i - 1]));
+        return ys[^1];
+    }
+    static float LizFinMembrane(Vector3 p)   // 머리 좌표 — 부채꼴 판 · 가장자리는 가시살 사이에서 오목하다
+    {
+        var (back, up, n) = LizFinFrame(); var q = Mirror(p) - LizFinAt;
+        float h = Vector3.Dot(q, n), u = Vector3.Dot(q, back), v = Vector3.Dot(q, up);
+        float r = Mathf.Sqrt(u * u + v * v), a = Mathf.Atan2(v, u);
+        float a0 = LizFinAng[0], a1 = LizFinAng[^1];
+        float f = Mathf.Clamp01((a - a0) / (a1 - a0)) * (LizFinAng.Length - 1);
+        float R = LizFinInterp(a, LizFinAng, LizFinLen) * LizFinK * (0.74f + 0.26f * Mathf.Abs(Mathf.Cos(Mathf.PI * f)));
+        float sector = Mathf.Max(a0 - a, a - a1) * Mathf.Max(r, 0.02f);
+        return Mathf.Max(Mathf.Max(Mathf.Abs(h) - 0.005f * LizFinK, r - R), sector);
+    }
+    static float LizFinSpines(Vector3 p)
+    {
+        var (back, up, _) = LizFinFrame(); var m = Mirror(p); float d = 9f;
+        for (int i = 0; i < LizFinAng.Length; i++)
+        {
+            var dr = back * Mathf.Cos(LizFinAng[i]) + up * Mathf.Sin(LizFinAng[i]);
+            d = Mathf.Min(d, Seg(m, LizFinAt - dr * 0.02f, LizFinAt + dr * LizFinLen[i] * LizFinK * 1.04f, 0.016f * LizFinK, 0.003f));
+        }
+        return d;
+    }
+    static float LizFinTip(Vector3 p)   // 볏 색 몫 — 밑동 0 → 끝 1
+    {
+        var (back, up, _) = LizFinFrame(); var q = Mirror(p) - LizFinAt;
+        float u = Vector3.Dot(q, back), v = Vector3.Dot(q, up);
+        return SStep(0.04f * LizFinK, 0.25f * LizFinK * 0.85f, Mathf.Sqrt(u * u + v * v));
+    }
+    // 도마뱀 색마다 볏 막 색 — 그 색의 무늬 · 눈과 어울리게(없으면 볏 · 돌기 색).
+    static readonly Dictionary<string, Color> LizFinColors = new()
+    {
+        ["Leaf"] = new(0.78f, 0.40f, 0.22f), ["Crested"] = new(0.84f, 0.56f, 0.26f), ["Olive"] = new(0.70f, 0.55f, 0.28f), ["Skink"] = new(0.96f, 0.45f, 0.12f),
+        ["Abronia"] = new(0.93f, 0.80f, 0.25f), ["Tokay"] = new(0.95f, 0.45f, 0.15f), ["Leachie"] = new(0.64f, 0.22f, 0.32f), ["FatTail"] = new(0.93f, 0.82f, 0.62f),
+        ["Leopard"] = new(0.85f, 0.45f, 0.12f), ["Phelsuma"] = new(0.84f, 0.18f, 0.10f), ["LeafTail"] = new(0.70f, 0.30f, 0.16f),
     };
 
     // 종류의 팔레트 목록 — 첫 것이 재질 값(씬 뷰 · 프리팹).
@@ -891,10 +889,11 @@ public static partial class ChibiPawnCreator
                     p.Slots.Add(new PaletteLook.Slot { Material = LizCrestName(kind), Property = "_Pal0", Color = t.fringe });
                     p.Slots.Add(new PaletteLook.Slot { Material = LizCrestName(kind), Property = "_Pal1", Color = t.comb });
                     p.Slots.Add(new PaletteLook.Slot { Material = LizEyeName(kind), Property = "_Pal0", Color = t.eye });
+                    p.Slots.Add(new PaletteLook.Slot { Material = LizFinName(kind), Property = "_Pal0", Color = t.skin });
+                    p.Slots.Add(new PaletteLook.Slot { Material = LizFinName(kind), Property = "_Pal1", Color = LizFinColors.TryGetValue(t.name, out var fc) ? fc : t.comb });
                     list.Add(p);
                 }
                 break;
-            case "Croc":   { var h = CrocHead();         list.Add(Pal("Croc", h.Skin, h.Belly, new (int, Color, bool)[0])); break; }
             case "Viper":
                 foreach (var (tone, t) in LizViperTones)
                 {
@@ -972,7 +971,7 @@ public static partial class ChibiPawnCreator
 
     // ── 굽기 ────────────────────────────────────────────────────────────────
 
-    // 프리팹 한 벌 — 종류 하나(색은 팔레트). `Kind`는 Lizard · Croc · Viper · Snake.
+    // 프리팹 한 벌 — 종류 하나(색은 팔레트). `Kind`는 Lizard · Viper · Snake.
     readonly struct LizOutfit
     {
         public readonly string Prefab, Kind;
@@ -980,7 +979,7 @@ public static partial class ChibiPawnCreator
     }
     static readonly LizOutfit[] Lizards =
     {
-        new("Chibi_Lizard", "Lizard"), new("Chibi_Lizard_Croc", "Croc"), new("Chibi_Lizard_Viper", "Viper"), new("Chibi_Lizard_Snake", "Snake"),
+        new("Chibi_Lizard", "Lizard"), new("Chibi_Lizard_Viper", "Viper"), new("Chibi_Lizard_Snake", "Snake"),
     };
     // 옛 색 프리팹(11-12 ~ 11-14) — 첫 것을 새 이름으로 옮겨 guid를 지키고(씬 인스턴스가 이어진다) 나머지는 지운다.
     static readonly Dictionary<string, string[]> LizOldTones = new()
@@ -1007,7 +1006,6 @@ public static partial class ChibiPawnCreator
     //                                                              체형          머리 배수  굽힘    목 굵기  꼬리 굵기
     static LizFrame LizFrameOf(string kind) => kind switch
     {
-        "Croc"  => new LizFrame(CrocShape,   1.16f, 0.34f, 0.215f, 1.38f),
         "Snake" => new LizFrame(LizardShape, 1.00f, 0.30f, 0.160f, 1.10f),
         "Viper" => new LizFrame(LizardShape, 1.00f, 0.30f, 0.122f, 0.95f),
         _       => new LizFrame(LizardShape, 1.00f, 0.30f, 0.150f, 1.00f),
@@ -1049,6 +1047,7 @@ public static partial class ChibiPawnCreator
             Pm($"LizPal_{kind}", mats["SkinOuter"], LizPalName(kind), false);
             if (kind == "Viper" || kind == "Snake") Pm($"LizScale_{kind}", mats["SkinOuter"], LizScaleName(kind), false);
             if (kind == "Lizard") Pm($"LizCrest_{kind}", mats["SkinOuter"], LizCrestName(kind), false);
+            if (kind == "Lizard") Pm($"LizFin_{kind}", mats["SkinOuter"], LizFinName(kind), false);
             if (LizPalEye(kind)) Pm($"LizEye_{kind}", m["LizWhite"], LizEyeName(kind), true);
         }
         return m;
@@ -1073,7 +1072,7 @@ public static partial class ChibiPawnCreator
         // 살모사는 첫 색 · 매끈한 뱀은 비늘(누런 구렁이)까지 지은 머리를 쓴다.
         var heads = new Dictionary<string, LizHead>();
         if (o.Kind == "Lizard") foreach (var c in LizCrests) heads[c] = LizardHead(c == "None" ? "Comb" : c == "Bare" ? "Fringe" : c);
-        else heads[""] = o.Kind == "Croc" ? CrocHead() : o.Kind == "Viper" ? ViperHead("Green") : SnakeHead("Kingrat");
+        else heads[""] = o.Kind == "Viper" ? ViperHead("Green") : SnakeHead("Kingrat");
         LizHead H = null; foreach (var v in heads.Values) { H = v; break; }   // 눈 · 입은 어느 머리나 같다
         string palMat = $"LizPal_{o.Kind}";
 
@@ -1247,7 +1246,7 @@ public static partial class ChibiPawnCreator
         // ── 머리 ──
         // **목 관절 자리** — 안 보이는 `Head`의 밑이 목이다(`DressSkinned`).
         head.Add(new Part("Head", null, F.HO, Vector3.one * 0.30f * F.HK, "HeadSkin", on: false));
-        var skullB = o.Kind == "Croc" ? HB(0.34f, -0.30f, 0.30f, -0.40f, 0.76f) : HB(0.32f, -0.26f, 0.33f, -0.40f, 0.56f);
+        var skullB = HB(0.32f, -0.26f, 0.33f, -0.40f, 0.56f);
         foreach (var (crest, hh) in heads)
         {
             var h1 = hh;
@@ -1263,12 +1262,11 @@ public static partial class ChibiPawnCreator
             string cm = $"LizCrest_{o.Kind}";   // 볏 색은 팔레트(칸 0 가시 테 · 칸 1 이구아나 볏)
             head.Add(FleshW("Head.Pick.Crest.Fringe.Spines", cm, Hd(LizFringeSpines), HB(0.30f, -0.10f, 0.26f, -0.34f, 0.27f), 0.004f, Keep, _ => (new Color(1f, 0f, 0f, 0f), Vector4.zero), relax: false));
             head.Add(FleshW("Head.Pick.Crest.Comb.Spines", cm, Hd(LizComb), HB(0.06f, -0.24f, 0.46f, -0.52f, 0.10f), 0.005f, Keep, _ => (new Color(0f, 1f, 0f, 0f), Vector4.zero), on: false, relax: false));
-        }
-        if (o.Kind == "Croc")
-        {
-            var pc = new Color(0.14f, 0.21f, 0.16f);
-            head.Add(Flesh("Head.Liz.Plates", Hd(CrocPlates), HB(0.28f, 0.0f, 0.32f, -0.40f, 0.0f), 0.006f * F.HK, Keep, _ => pc, relax: false));
-            head.Add(Plain("Head.Liz.Teeth", "LizBone", LizLine, Hd(CrocTeeth), HB(0.26f, -0.24f, 0.02f, 0.10f, 0.74f), 0.004f * F.HK, 0.5f));
+            // 턱 뒤 볏 — 막(살 → 볏 색) · 가시살(가시 테 색). 없는 벌(`Off`)은 조건에만 적어 축에 모은다.
+            var finB = HB(0.52f, -0.22f, 0.48f, -0.42f, 0.06f);
+            head.Add(FleshW("Head.Pick.Fins.On.Membrane@Fins.!Off", $"LizFin_{o.Kind}", Hd(LizFinMembrane), finB, 0.0035f, Keep,
+                            p => { float t = LizFinTip(ToHead(p)); return (new Color(1f - t, t, 0f, 0f), Vector4.zero); }, relax: false));
+            head.Add(FleshW("Head.Pick.Fins.On.Spines@Fins.!Off", cm, Hd(LizFinSpines), finB, 0.004f, Keep, _ => (new Color(1f, 0f, 0f, 0f), Vector4.zero), relax: false));
         }
         // 가는 줄 — 살 위 1cm에 띄운 덧판(머리 살은 줄이고 편 것이라 2~5mm로는 겹쳐 비친다). 색마다 무늬가 달라 넷 다 짓고 그 팔레트일 때만 켠다.
         if (o.Kind == "Snake")
@@ -1334,10 +1332,20 @@ public static partial class ChibiPawnCreator
         look.Apply();
     };
 
-    // 보기 몸 넷(종류마다 하나 · 색은 팔레트) — 종족 데이터가 아직 없어 **어디서도 안 가리키는** 프리팹(`Lizard/Chibi_Lizard…`)에 굽는다(드워프 · 엘프와 같은 길).
+    // **악어 리자드맨은 걷었다**(11-15 사용자: *"리자드에서 악어는 없애야지"*) — 악어는 따로인 큰 종족 공룡 악어(`ChibiPawnCreator.Baked` · `Pawn/18`)가 맡는다.
+    // 옛 프리팹 · 아바타 · 팔레트 재질을 치운다(메시는 `Pawn/16`의 끝 청소가 `Chibi_Lizard_` 이름으로 지운다).
+    static void RetireLizardCroc()
+    {
+        foreach (var path in new[] { PawnPrefabPaths.PathOf("Chibi_Lizard_Croc"), "Assets/Controller/Avatars/Chibi_Lizard_Croc.asset",
+                                     $"{MatDir}/{LizPalName("Croc")}.mat", $"{MatDir}/{LizScaleName("Croc")}.mat", $"{MatDir}/{LizEyeName("Croc")}.mat", $"{MatDir}/{LizCrestName("Croc")}.mat" })
+            if (System.IO.File.Exists(path)) AssetDatabase.DeleteAsset(path);
+    }
+
+    // 보기 몸 셋(종류마다 하나 · 색은 팔레트) — 종족 데이터가 아직 없어 **어디서도 안 가리키는** 프리팹(`Lizard/Chibi_Lizard…`)에 굽는다(드워프 · 엘프와 같은 길).
     static int DressLizards(Dictionary<string, Material> mats, Dictionary<string, ChibiFaceAtlas> atlases)
     {
         _lizShapes.Clear();
+        RetireLizardCroc();
         var lm = LizardMaterials(mats);
         int made = 0;
         foreach (var o in Lizards)
@@ -1348,9 +1356,9 @@ public static partial class ChibiPawnCreator
             if (System.IO.File.Exists(dp)) { System.IO.File.Copy(Source, dp, true); AssetDatabase.ImportAsset(dp, ImportAssetOptions.ForceUpdate); }
             else                           { AssetDatabase.CopyAsset(Source, dp); AssetDatabase.ImportAsset(dp); }
             var (body, head) = LizardFor(o, lm);
-            string eye = o.Kind == "Lizard" ? "BigSlit" : o.Kind == "Croc" ? "Glare" : o.Kind == "Snake" ? "Ring" : "BigSlit";
+            string eye = o.Kind == "Lizard" ? "BigSlit" : o.Kind == "Snake" ? "Ring" : "BigSlit";
             var heads = new Dictionary<string, List<Part>> { ["Male"] = head };
-            if (Dress(dp, o.Kind == "Croc" ? CrocShape : LizardShape, heads, lm, atlases, isSource: false, LizardLook(eye, o.Kind), body)) made++;
+            if (Dress(dp, LizardShape, heads, lm, atlases, isSource: false, LizardLook(eye, o.Kind), body)) made++;
         }
         _lizShapes.Clear();
         return made;

@@ -274,8 +274,13 @@ public static partial class ChibiPawnCreator
 
     static float ElfEyes(Vector3 p, ElfFrame f)    // 드워프 눈 느낌 — 진한 먹 눈 하나 + 반짝임
         => Ell(Mirror(p), V3(f.EXn, f.EY - 0.004f, f.ZE - 0.014f), V3(f.ER * 0.82f, f.ER * 0.92f, 0.02f));
+    // 반짝임은 눈 면에 붙은 얇은 판(11-18 사용자: *"다른 애들도 눈동자를 그런 식으로"* — 두더지 · 괴물쥐처럼 튀어나오지 않게): 눈 면을 0.8mm 부풀린 껍데기 중 반짝임 자리만 — 1cm 솟았던 것.
     static float ElfGlint(Vector3 p, ElfFrame f)
-        => Ell(Mirror(p), V3(f.EXn - f.ER * 0.24f, f.EY + f.ER * 0.22f, f.ZE - 0.004f), V3(f.ER * 0.24f, f.ER * 0.24f, 0.02f));
+    {
+        float e = ElfEyes(p, f);
+        float region = Ell(Mirror(p), V3(f.EXn - f.ER * 0.24f, f.EY + f.ER * 0.22f, f.ZE), V3(f.ER * 0.24f, f.ER * 0.24f, 0.3f));
+        return Mathf.Max(Mathf.Max(e - 0.0008f, -(e + 0.003f)), region);
+    }
 
     static float ElfBrow(Vector3 p, ElfFrame f)    // 살갗에 칠한 눈썹 — 얼굴 곡면을 따라가는 얇은 띠 · 완만한 아치 · 안쪽 굵고 바깥 가늘게
     {

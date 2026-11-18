@@ -14,6 +14,7 @@
 - **움직이는 것은 플레이어와의 관계뿐**이다. 세력끼리의 전쟁은 그것을 움직일 사건이 아직 없어서, 표만 만들면 무엇이 왜 변했는지 아무도 모른다.
 - **무엇이 움직이나**: 죽이면 −12(`UnitBrain.Die`), 가둬 두고 죽이면 −25(손에 넣어 두고 죽인 것은 싸우다 죽인 것과 다르다 — 굶겨 죽인 것도 여기 걸린다), **중립 무리를 먼저 덮치면 −20**(지도 위 전투는 폰을 죽이는 게 아니라 피해를 나눠 주는 것이라 `Die`의 −12가 안 걸린다. 여기 한 번이 먼저 친 값의 전부다), 몸값 받고 돌려보내면 +8, **그냥 놓아 주면 +14**(몸값은 거래지만 이건 베푼 것이다 — "돈이냐 관계냐"가 고르는 일이 된다). **이미 적대인 상대를 죽이는 것은 안 센다** — 그건 사건이 아니라 전쟁이고, 세면 습격 한 번 막을 때마다 관계가 바닥을 친다. **적대인지는 판정보다 먼저 묻는다**(싸움이 끝난 뒤엔 −50을 넘어가 이미 적대로 바뀌어 있다).
 - **한 번 놓아 준 것이 두 번 값을 받지 않게** `Imprisonment.Release`는 `reason == DefaultReleaseReason`일 때만 얹는다(몸값 경로는 제 몫을 이미 더했다).
+- **우호도를 움직이는 문은 사건이다 — `WorldHistory.Record`**(2026-11-18). 죽임 · 처형 · 몸값 · 놓아 주기는 `FactionRelations.Add`를 직접 부르지 않고 사건을 적는다 — 값은 종류의 표(`WorldHistory.RuleOf`)가 얹고, 이유 문장은 사건에서 만든다(`Describe`). **새 자리에서 `FactionRelations.Add`를 직접 부르지 말 것** — 부르면 우호도는 움직이는데 "왜"가 역사에 안 남는다. 세력 창(`L`)이 세력마다 우호도를 움직인 최근 사건 세 줄을 띄운다.
 - **눈에 보인다** — 문턱을 넘으면 알림(`관계 변화`), `InspectPanel`이 `산적  껄끄럽다 (−32)`를 적는다(우호도 0이면 안 적는다 — 늘 떠 있으면 안 읽는다).
 
 **우호도가 무엇을 바꾸나 — 그러나 값은 안 바꾼다.** 태도(적대/중립/아군)만 정하면 우호도는 관리할 것이 못 된다: 올려 봐야 "안 덤빈다" 하나뿐이고, 그건 이미 적대가 아닌 세력에겐 아무 변화도 아니라 **마을 사람(+75)과 변방민(0)이 화면의 숫자만 다르고 하는 일이 똑같았다.**
@@ -62,6 +63,43 @@
 ---
 
 # 용병 계약 — CLAUDE.md에서 내려온 상세 (2026-08-27)
+
+## 세계 역사 — `WorldHistory` (2026-11-18, `docs/design_world_history.md` 4절)
+
+**일어난 일을 사실로 적는다** — 누가(`Actor` — `player` · 비면 세계) · 누구의 일을(`TargetFaction`) · 어디서(`Place` — 그 폰의 고향 사이트 · 없으면 `Position`) · 누가 얽혔나(`Involved` — 폰 기록 Id와 몫) · 몇 번(`Count`) · 숫자(`Amount` — 몸값 · 거래액 · 계약 일수) · 얹은 우호도(`Favor`).
+
+| 종류 | 적는 자리 | 범위 | 우호도 |
+|---|---|---|---|
+| `Ransomed` | `WorldRansom.Sell` | Faction | +8 |
+| `PrisonerReleased` | `Imprisonment.Release`(`PrisonCage.cs` — 그냥 놓아 줄 때만) | Faction | +14 |
+| `PawnKilled` | `UnitBrain.ReportDeathToFaction`(이미 적대면 안 적는다) | Site | −12 |
+| `PawnExecuted` | 같은 자리 — 갇힌 채로 죽었을 때 | Site | −25 |
+| `Traded` | `Shop.TryBuy` · `TrySell` — **같은 상대면 한 줄로 합친다**(횟수 · 금액) | Involved | 0 |
+| `Hired` | `Hireling.Sign`(용병) · `Conversation.Hire`(돈 주고 데려옴 — 세력을 바꾸기 전에) | Site | 0 |
+| `Converted` | `Conversion.Join`(회유 · 길들이기 — 세력을 바꾸기 전에) | Faction | 0 |
+| `LairCleared` | `WorldLairs.Clear` — **지금은 소굴이 병력을 다 내보냈을 때뿐**(누구의 짓도 아니다) | Region | 0 |
+| `SiteClaimed` | `WorldReactions` — 빈 소굴을 가까운 적대 세력이 차지(`Actor` = 그 세력) | Region | 0 |
+
+- **문장을 저장하지 않는다 — 사실만.** 종류 · Id · 숫자로 적고 보이는 문장은 볼 때마다 만든다(언어를 바꿔도 옛 언어가 안 남는다).
+- **오브젝트 참조가 없다** — 세이브는 `Events` + `NextId`를 쓰면 끝나고 색인 셋(폰 · 장소 · 세력)은 `Rebuild`가 다시 짓는다.
+- **범위는 종류가 정한다**(`RuleOf` 표 하나) — 사건마다 따로 적지 않는다. 앎(설계 5절)이 읽을 값이고 지금은 적어만 둔다.
+- **`WorldEventType`은 꼬리에만 붙인다**(정수 직렬화). 처형(`PawnExecuted`)은 설계의 일곱 밖에서 더했다 — 값이 다르므로 종류가 달라야 표 하나로 답한다.
+- 새로 넣은 사건(거래 · 고용 · 전향 · 소굴)은 **우호도를 안 움직인다** — 균형은 따로 정할 일이다.
+- **목격자**(설계 5-3) — 사건을 적을 때 그 자리 25m(`WitnessRadius`) 안의 그 세력 사람을 `Witness`로 넣는다(`FactionScan.MembersWithin` · 시야는 아직 안 본다 · 합치는 거래에는 안 붙인다).
+- **앎 — `WorldHistory.KnowWeight` / `Knows`** — 당사자 1 · 목격 0.6 · 같은 고향(`HomeSiteId == Place`, 범위 Site 이상) 0.4 · 같은 세력(지금 세력 — `PawnRegistry.FactionIdNow`, Faction 이상) 0.25 · 지역 150m(Region 이상) 0.1 · World 0.1. **캐시하지 않는다**(처지가 바뀌면 아는 것도 바뀐다).
+- **개인 호감 — `WorldHistory.Opinion`** — 플레이어가 한 일 중 아는 것마다 *종류의 호감 × 아는 무게 × 흐려짐(반감기)* 의 합. 거래는 횟수의 제곱근으로 쌓인다. **세력 우호도와 다른 값이다** — 적대 판정은 세력 숫자만 보고, 호감은 대화 · 값 · 영입에만 쓴다(지금은 첫마디와 살펴보기 창). 구간은 적의(≤−30) · 못마땅함(≤−10) · 무덤덤 · 호의(≥10) · 신뢰(≥30) — `BandOf`.
+  - 쓰는 곳: `Conversation.Greeting`(상인 · 떠돌이 · 그 밖 · 포로마다 구간별 고정 대사) · 살펴보기 창 `나를 보는 눈`(무덤덤이면 안 적는다) · 디버그 창 `폰 기록`의 호감 칸.
+  - 상인이 *"자주 오는 손님"*을 알도록 가게가 파는 사람을 든다(`Shop.Seller` ← `Merchant`) — 거래 사건에 그 상인이 `Beneficiary`로 든다.
+- **보는 문** — `DungeonColony → Debug → 세계 역사`(최근 것부터 · 종류 · 세력 거르기 · 그 세력의 지금 우호도 · 줄을 누르면 카메라가 그 자리로).
+
+## 장소의 주인 · 세계 반응 — `SiteRegistry` · `WorldReactions` (2026-11-18, 설계 6 · 7절)
+
+- **장소의 주인을 상태로 든다**(`SiteRegistry` — `SiteState`: 주인 세력 Id · 형편 `Intact`/`Ruined`/`Empty`/`Occupied` · 그날). **비어 있으면 저작/계산된 주인 그대로**(저작 < 주입). 마을의 세력은 `TownSite.ResolveFaction`이 **적힌 주인을 먼저** 묻고, 없으면 예전대로 경비병 → 주민 → 바이옴.
+- 소굴이 비면(`WorldLairs.Clear`) 형편이 `Empty`로 적히고 `LairCleared` 사건이 남는다.
+- **사건이 다음 사건을 부른다**(`WorldReactions`) — `WorldHistory.OnRecorded`를 듣고 규칙 표(`Rules` 하나)에 맞으면 며칠 뒤로 예약, 날이 바뀔 때(`GameTimeManager.OnDayChanged`) 푼다. **반응도 사건으로 적힌다.**
+  - 지금 규칙은 하나: `LairCleared` → 3일 뒤 **반경 600m 안에서 원래 주인과 적대인 세력의 소굴 중 가장 가까운 것**의 세력이 차지(`SiteRegistry.Claim` + `SiteClaimed`). 후보가 없으면 빈 채로 남는다.
+  - **눈에 보이는 교체는 아직이다** — 차지한 세력의 폰이 서려면 소굴 내용물(`LairEntry.Band` 하나)이 세력별로 갈려야 한다. 기록만 1차 구조로 된다.
+- 시험 — 디버그 창 `세계 역사`의 "카메라에서 가장 가까운 소굴 비우기"(`WorldLairs.Clear` — 진짜와 같은 문) · "예약된 반응 지금 처리"(`ResolveAllNow` — 사흘 안 기다림) · 장소 상태 목록.
 
 ## 영입은 플래그가 정한다 — `UnitBrain.Recruitable` (2026-10-15)
 

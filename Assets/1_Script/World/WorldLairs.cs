@@ -108,6 +108,15 @@ public static class WorldLairs
 
         _byId.Remove(lair.Id);
         _gone.Add(lair.Id);   // 저작물은 그대로 두고 **신원만 기억한다**
+
+        // 사건으로 적는다(`WorldHistory` — `LairCleared`). **누구의 짓인지는 비운다** — 지금 소굴이 비는 길은
+        // 병력을 다 내보냈을 때 하나뿐이다(플레이어가 쳐서 비우는 길은 아직 없다 — 설계 5단계 `SiteRegistry`).
+        // 장소의 형편도 적는다(`SiteRegistry` — 비었다). 며칠 뒤 이웃이 차지할 수 있다(`WorldReactions`).
+        SiteRegistry.SetCondition(lair.Id, SiteCondition.Empty);
+
+        var band = lair.Band;
+        WorldHistory.Record(WorldEventType.LairCleared, null, band != null ? band.Faction : null,
+                            lair.Id, new Vector3(lair.Position.x, 0f, lair.Position.y));
     }
 
     // 하루가 지나면 조금씩 다시 찬다. **회복은 상한까지만** — 넘어가면 안 친 소굴이 시간이

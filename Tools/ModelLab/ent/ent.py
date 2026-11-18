@@ -303,7 +303,7 @@ def build(kind, season='spring', decor=None, bark='ash', split=False, leaf='A'):
     def ball(du, dv, dw, EW, EH): R = EW * 1.05; return np.sqrt(du * du + dv * dv + (dw + R + 0.004) ** 2) - R
     def iris(du, dv, dw, EW, EH):  r = min(EH * 0.92, EW * 0.48); return (np.sqrt(du * du + (dv + cover * EH * 0.35) ** 2) - r) * 0.9 + 9 * (np.abs(dw + 0.006) > 0.008)
     def pupil(du, dv, dw, EW, EH): r = min(EH * 0.92, EW * 0.48) * 0.42; return (np.sqrt(du * du + (dv + cover * EH * 0.35) ** 2) - r) * 0.9 + 9 * (np.abs(dw + 0.003) > 0.007)
-    def glint(du, dv, dw, EW, EH): r = min(EH * 0.92, EW * 0.48); return np.sqrt((du + r * 0.42) ** 2 + (dv + cover * EH * 0.35 - r * 0.40) ** 2 + (dw + 0.001) ** 2) - r * 0.20
+    def glint(du, dv, dw, EW, EH): r = min(EH * 0.92, EW * 0.48); return (np.sqrt((du + r * 0.42) ** 2 + (dv + cover * EH * 0.35 - r * 0.40) ** 2) - r * 0.20) * 0.9 + 9 * (np.abs(dw + 0.0010) > 0.0090)   # 눈동자 판 앞 납작한 판(11-18 — 공이 솟았던 것 · 엔트는 4mm 칸으로 떠서 눈동자보다 4mm 앞)
 
     # 코 · 입 — 줄기 앞면에서 자리를 잰다.
     kind_n, n_ln, n_drop, n_r = FC['nose']; yn = ey - 0.06 - (0.02 if kind_n == 'knot' else 0.0)

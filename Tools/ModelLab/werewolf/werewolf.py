@@ -139,9 +139,10 @@ def lid(p):         # 아몬드 눈매 — 윗꺼풀은 바깥이 높고(치켜 
     up = np.maximum(length(q) - (EYE_R + 0.007), (EYE_R * 0.42 + 0.40 * a) - b)
     low = np.maximum(length(q) - (EYE_R + 0.006), b - (-EYE_R * 0.58 + 0.30 * a))
     return np.minimum(up, low)
-def glint(p):
-    t = nrm(np.cross(UP, EYE_N)); u = np.cross(EYE_N, t)
-    return sph(mirror(p), EYE_C + (EYE_N * 0.86 + u * 0.10 + t * 0.30) * EYE_R, EYE_R * 0.20)
+def glint(p):   # 반짝임은 눈 면에 붙은 얇은 판(11-18 — 튀어나오지 않게 · C#과 같은 값) — 눈동자(+3mm) 바로 위(+4mm) 껍데기의 둥근 자리
+    t = nrm(np.cross(UP, EYE_N)); u = np.cross(EYE_N, t); q = mirror(p) - EYE_C; ln = np.maximum(length(q), 1e-6)
+    d = nrm(EYE_N * 0.86 + u * 0.10 + t * 0.30)
+    return np.maximum(np.maximum(ln - (EYE_R + 0.004), (EYE_R - 0.002) - ln), (np.cos(0.22) - (q * d).sum(-1) / ln) * EYE_R)
 def liner(p):       # 눈 둘레의 검은 테(눈알 뒤에 깔린 공 — 가장자리만 테로 보인다) · 눈 앞꼬리에서 코 쪽으로 내려가는 검은 줄
     m = mirror(p); t = nrm(np.cross(UP, EYE_N))
     ring = sph(m, EYE_C - EYE_N * 0.014, EYE_R * 1.14)

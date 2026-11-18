@@ -245,9 +245,11 @@ public static class Imprisonment
             //
             // **몸값으로 넘긴 경우는 여기 안 걸린다** — 그쪽은 `WorldRansom.Sell`이 제 몫을
             // 이미 얹었고, 여기서 또 더하면 한 번 놓아 준 것이 두 번 값을 받는다.
+            // 사건으로 적는다 — 우호도(`ReleaseBonus`)는 그 결과다(`WorldHistory.RuleOf`).
             if (faction != null && faction.Data != null && reason == DefaultReleaseReason)
-                FactionRelations.Add(faction.Data, FactionRelations.ReleaseBonus,
-                                     $"{brain.UnitName}을(를) 그냥 놓아 줬다");
+                WorldHistory.Record(WorldEventType.PrisonerReleased, WorldHistory.PlayerActor, faction.Data,
+                                    WorldHistory.HomeOf(brain), brain.transform.position, 0f,
+                                    WorldHistory.Party(brain, EventRole.Beneficiary));
 
             brain.SetStanceOverride(CombatStance.Flee);
             if (EventManager.TryFindExit(brain.transform.position, out var exit))

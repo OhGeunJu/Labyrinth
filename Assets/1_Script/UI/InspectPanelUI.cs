@@ -703,6 +703,20 @@ public class InspectPanelUI : MonoBehaviour
             && !Mathf.Approximately(FactionRelations.Of(factionData), 0f))
             sb.AppendLine($"<color=#9AB>{FactionRelations.Describe(factionData)}</color>");
 
+        // **이 사람이 나를 어떻게 보나** — 개인 호감(`WorldHistory.Opinion`, 2026-11-18). 세력 우호도와 다른 값이다:
+        // 같은 산적이라도 놓아 준 사람은 다르게 본다. 무덤덤 구간(−10 ~ +10)이면 적지 않는다(늘 떠 있으면 안 읽는다).
+        if (corpse == null && factionData != null && !factionData.PlayerControlled
+            && PawnRegistry.TryGet(brain.PawnId, out var rec))
+        {
+            float op = WorldHistory.Opinion(rec);
+            var band = WorldHistory.BandOf(op);
+            if (band != WorldHistory.OpinionBand.Neutral)
+            {
+                string col = op > 0f ? "#8C8" : "#C88";
+                sb.AppendLine($"<color=#888>나를 보는 눈</color>  <color={col}>{WorldHistory.BandLabel(band)} ({op:+0;-0})</color>");
+            }
+        }
+
         sb.AppendLine();
 
         // **혈액 · 욕구 · 부위 · 상태 이상은 상태표로 옮겼다**(`PawnSheetUI`, 2026-09-19 — 켄시의 그 창). 같은 값을

@@ -16,7 +16,7 @@ public class PaletteLookEditor : Editor
         "Leaf" => "잎빛", "Crested" => "크림 볏", "Olive" => "올리브", "Skink" => "악어도마뱀", "Abronia" => "에메랄드", "Tokay" => "토케이",
         "Leachie" => "거인", "FatTail" => "살찐꼬리", "Leopard" => "표범", "Phelsuma" => "낮도마뱀", "LeafTail" => "잎꼬리",
         "Green" => "풀빛", "Slate" => "청회색", "Coal" => "숯빛", "Amber" => "주황", "Boelen" => "보엘렌", "Kingrat" => "누런 구렁이",
-        "Indigo" => "인디고", "Red" => "붉은 뱀", "Croc" => "악어",
+        "Indigo" => "인디고", "Red" => "붉은 뱀",
         "Straw" => "짚빛", "Teal" => "청록", "Crimson" => "진홍", "Speckle" => "점박이", "Checker" => "격자", _ => name,
     };
 

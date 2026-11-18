@@ -60,18 +60,47 @@ public static class Conversation
     static string Title(UnitBrain u) => u.DisplayTitle;
 
     // 첫 마디. **상대가 무엇인지가 말투로 드러나야** 선택지를 읽기 전에 감이 온다.
+    //
+    // **그리고 나를 어떻게 보는지가**(2026-11-18, 설계 `design_world_history.md` 11절 3단계) — 개인 호감
+    // (`WorldHistory.Opinion`)의 구간마다 고정 대사다. 자주 거래한 상인과 처음 보는 상인의 첫마디가 다르고,
+    // 마을 사람을 죽인 것을 아는 이웃은 말투가 굳는다. 대사는 문장이라 사건에 저장하지 않고 여기서 고른다.
     static string Greeting(UnitBrain u)
     {
+        var band = WorldHistory.BandOf(WorldHistory.OpinionOf(u));
+
         if (u.Blackboard != null && u.Blackboard.IsPrisoner)
-            return "…무슨 낯짝으로 말을 거는 거냐.";
+            return band >= WorldHistory.OpinionBand.Warm
+                 ? "…당신이라면 이야기가 통할지도 모르겠군."
+                 : "…무슨 낯짝으로 말을 거는 거냐.";
 
         if (u.GetComponent<Merchant>() != null)
-            return "쓸 만한 물건이 있소. 천천히 보시오.";
+            return band switch
+            {
+                WorldHistory.OpinionBand.Hostile  => "…당신과 거래할 마음은 별로 없소. 볼 거면 빨리 보시오.",
+                WorldHistory.OpinionBand.Wary     => "물건은 있소. 값을 깎아 줄 생각은 마시오.",
+                WorldHistory.OpinionBand.Warm     => "또 왔구려. 쓸 만한 걸 따로 챙겨 뒀소.",
+                WorldHistory.OpinionBand.Trusting => "오, 단골 아니오! 당신이라면 언제든 환영이오.",
+                _                                 => "쓸 만한 물건이 있소. 천천히 보시오.",
+            };
 
         if (u.Npc != null && u.Npc.NpcType == NpcType.Drifter)
-            return "정처 없이 떠도는 중이오. 어디로 가든 상관은 없소만.";
+            return band switch
+            {
+                WorldHistory.OpinionBand.Hostile  => "당신 이름은 들었소. 가까이 오지 마시오.",
+                WorldHistory.OpinionBand.Wary     => "무슨 볼일이오. 짧게 하시오.",
+                WorldHistory.OpinionBand.Warm     => "당신 얘기는 좋게 들었소. 무슨 일이오?",
+                WorldHistory.OpinionBand.Trusting => "반갑소! 당신이라면 믿을 수 있지.",
+                _                                 => "정처 없이 떠도는 중이오. 어디로 가든 상관은 없소만.",
+            };
 
-        return "무슨 일이오?";
+        return band switch
+        {
+            WorldHistory.OpinionBand.Hostile  => "…당신이 한 짓을 다 알고 있소.",
+            WorldHistory.OpinionBand.Wary     => "무슨 일이오. 용건만 말하시오.",
+            WorldHistory.OpinionBand.Warm     => "어서 오시오. 무슨 일이오?",
+            WorldHistory.OpinionBand.Trusting => "반갑소, 친구. 무엇을 도와 드릴까?",
+            _                                 => "무슨 일이오?",
+        };
     }
 
     // ── 상인 ──────────────────────────────────────────────────────────────────
@@ -262,6 +291,12 @@ public static class Conversation
         if (!Wallet.TrySpend(price)) return;   // 전액 아니면 0 — 반쯤 내는 일은 없다
 
         u.Recruitable = false;
+
+        // 사건으로 적는다(`WorldHistory` — `Hired`) — **세력을 바꾸기 전에**: 누구의 사람을 데려왔는지가 사건이다.
+        var from = u.TryGetComponent(out Faction was) ? was.Data : null;
+        WorldHistory.Record(WorldEventType.Hired, WorldHistory.PlayerActor, from,
+                            WorldHistory.HomeOf(u), u.transform.position, price,
+                            WorldHistory.Party(u, EventRole.Subject));
 
         // **역할을 지운다.** 떠돌이 역할이 남으면 `BuildTree`가 NPC 트리를 다시 골라
         // 우리 편인데 명령을 안 듣고 떠돌다 맵을 나간다.

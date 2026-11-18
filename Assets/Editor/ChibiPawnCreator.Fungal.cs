@@ -22,6 +22,9 @@ public static partial class ChibiPawnCreator
     const string FungalPreview = "Chibi_Fungal";   // 보기 몸 프리팹(`3_Prefab/Pawn/Fungal/`)
     const float FungalSiteChance = 0.47f;           // 몸 말굽 자리 하나가 켜질 몫 — 열여덟 중 평균 8.5(미리보기 7~10)
     const float FungalWoundChance = 0.30f;          // 틈 자리 하나가 켜질 몫 — 다섯 중 평균 1.5
+    // **켜지는 개수 상한**(11-18 사용자: *"나올 수 있는 장식을 제한해줘 개수를 — 그러면 정점도 적어질 거 아니야"*) — 굴린 뒤 넘치면 씨앗 차례로
+    // 상한까지만 남긴다(`PawnLook.PickCap`). 말굽은 열여덟 중 평균 8.5 · 운 나쁘면 열셋까지 켜졌다 → 5. 틈은 → 1.
+    const int FungalSiteMax = 5, FungalWoundMax = 1;
     const float FungalStep = 0.006f, FungalFineStep = 0.0035f;
     // 버섯의 제 선(m) — 해골 뼈 사이 선(1.5cm)보다 가늘게. 2.5cm였을 때 작은 버섯 · 겹친 말굽마다 선이 겹쳐 반쯤 검었고 틈 둘레가 검은 톱니가 됐다(11-04 게임 화면).
     const float FungalLine = 0.012f;
@@ -690,6 +693,7 @@ public static partial class ChibiPawnCreator
         foreach (var (opt, c) in new[] { ("Collar", one), ("Ink", one), ("Mouth", one), ("Cordy", one), ("SproutL", one * 0.5f), ("SproutR", one * 0.5f), ("PuffL", one * 0.5f), ("PuffR", one * 0.5f) })
             ch.Add(new PawnLook.PickChance("Special", opt, c));
         look.SetPickChances(ch);
+        look.SetPickCaps(new[] { new PawnLook.PickCap("Site", "On", FungalSiteMax), new PawnLook.PickCap("Wound", "On", FungalWoundMax) });
         EditorUtility.SetDirty(look);
         look.Apply();
         FungalBodyColors(root);

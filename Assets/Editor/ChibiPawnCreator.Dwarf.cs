@@ -144,8 +144,9 @@ public static partial class ChibiPawnCreator
     }
     static float DwarfEyes(Vector3 p, DwarfFrame f)
         => OnFace(p, f, Ell(Mirror(p), V3(f.EX, f.EY - 0.005f, f.ZE), V3(f.ER * 0.72f, f.ER * 0.80f, 0.3f)), 0.004f);
+    // 반짝임은 눈 면에 붙은 얇은 판(11-18 사용자: *"다른 애들도 눈동자를 그런 식으로"* — 두더지 · 괴물쥐처럼 튀어나오지 않게): 눈(얼굴 위 4mm)보다 0.8mm만 위.
     static float DwarfGlint(Vector3 p, DwarfFrame f)
-        => OnFace(p, f, Ell(Mirror(p), V3(f.EX - f.ER * 0.22f, f.EY + f.ER * 0.2f, f.ZE), V3(f.ER * 0.22f, f.ER * 0.22f, 0.3f)), 0.007f);
+        => OnFace(p, f, Ell(Mirror(p), V3(f.EX - f.ER * 0.22f, f.EY + f.ER * 0.2f, f.ZE), V3(f.ER * 0.22f, f.ER * 0.22f, 0.3f)), 0.0048f);
 
     // (x, y)에서 얼굴 앞면의 z — 앞에서 뒤로 걸어 들어가 처음 닿는 곳.
     static float SurfZ(float x, float y, DwarfFrame f)

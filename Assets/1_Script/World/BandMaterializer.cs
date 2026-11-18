@@ -37,6 +37,10 @@ public class BandMaterializer : MonoBehaviour
 
     // 실체가 된 무리 — 토큰 ↔ 그 폰들.
     readonly Dictionary<WorldBand, List<UnitBrain>> _live = new();
+
+    // 세운 폰 ↔ 토큰의 그 사람. **누가 빠졌나는 이 짝으로 센다**(`Dematerialize`) — 개수로 세면 약한 사람부터 지워져
+    // 눈앞에서 죽인 두목이 토큰에 살아 남는다.
+    readonly Dictionary<UnitBrain, BandMember> _memberOf = new();
     readonly List<WorldBand> _stale = new();
 
     float Radius => radius > 0.01f ? radius : SimLocality.Radius;
@@ -133,6 +137,9 @@ public class BandMaterializer : MonoBehaviour
                 // `Awake`가 새로 굴려서 **살펴본 무리와 마주친 무리가 다른 사람**이 된다.
                 if (m.Spec != null) brain.ApplySpec(m.Spec);
                 pawns.Add(brain);
+                _memberOf[brain] = m;
+                // 기록은 `UnitBrain.Start`가 `m.Spec.Id`로 찾는다(`PawnRegistry.Attach`) — 처음이면 `p:<번호>`를 명세에 적어 두므로
+                // 다음에 다시 설 때 같은 기록 · 같은 몸(부상 · 지닌 것)이다.
             }
         }
     }
@@ -145,20 +152,36 @@ public class BandMaterializer : MonoBehaviour
         _live.Remove(band);
         if (band == null) return;
 
-        // **죽은 만큼 토큰에서도 뺀다.** 안 빼면 눈앞에서 몰살한 무리가 지도에서 멀쩡히
-        // 걸어 다니고, 다시 만나면 되살아난다.
-        int alive = 0;
+        // **빠진 사람을 토큰에서도 뺀다 — 개수가 아니라 그 사람을**(2026-11-18, `PawnRegistry`). 안 빼면 눈앞에서
+        // 몰살한 무리가 지도에서 멀쩡히 걸어 다니고, 다시 만나면 되살아난다. 예전엔 개수만 세어 `TakeLosses`가
+        // **약한 사람부터** 지웠다 — 두목을 죽여도 토큰에는 두목이 남았다.
+        //
+        // 누가 빠졌나와 그 처지:
+        //   · 실체가 없다(맵 밖으로 떠남 · 다른 길로 파괴됨) — 기록은 그 길이 적었다
+        //   · 죽었다 — `Dead`(시체는 그 자리에 남는다)
+        //   · 기절했다 — 무리가 버리고 간다: `Departed`(몸은 거둔다 — 예전과 같다)
+        //   · 이제 이 무리 사람이 아니다(내 세력 · 붙잡힘 · 업힘) — 몸은 **안 거둔다**(예전엔 붙잡아 온 포로가 무리를 거두는 순간 사라졌다)
+        // 남은 사람은 `InBand`로 접힌다.
+        var gone = new HashSet<BandMember>();
         foreach (var b in pawns)
         {
-            if (b == null || b.gameObject == null) continue;
+            if (ReferenceEquals(b, null)) continue;
+            _memberOf.TryGetValue(b, out var member);
+            _memberOf.Remove(b);   // 파괴된 폰도 키로는 남아 있다 — 같이 지운다
+
+            if (b == null || b.gameObject == null) { if (member != null) gone.Add(member); continue; }
+
             var bb = b.Blackboard;
-            bool dead = b.GetComponent<Corpse>() != null || (bb != null && bb.IsKnockedOut);
-            if (!dead) alive++;
-            Destroy(b.gameObject);
+            if (b.IsDead || b.GetComponent<Corpse>() != null)            { if (member != null) gone.Add(member); b.Despawn(PawnStatus.Dead); continue; }
+            if (bb != null && (bb.IsPrisoner || bb.CarriedBy != null) ||
+                (b.TryGetComponent(out Faction f) && f.IsPlayer))      { if (member != null) gone.Add(member); continue; }
+            if (bb != null && bb.IsKnockedOut)                          { if (member != null) gone.Add(member); b.Despawn(PawnStatus.Departed); continue; }
+
+            b.Despawn(PawnStatus.InBand);
         }
 
-        int losses = band.Members.Count - alive;
-        if (losses > 0) band.TakeLosses(losses);
+        // 세울 때 건너뛴 사람(프리팹 없음)은 짝이 없다 — 손대지 않는다.
+        if (gone.Count > 0) band.Members.RemoveAll(m => gone.Contains(m));
     }
 
     // 실체인 동안 폰들이 실제로 걸었으므로 토큰이 따라간다 — 살아 있는 것들의 평균 자리.

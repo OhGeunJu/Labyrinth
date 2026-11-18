@@ -109,7 +109,7 @@ public class FactionPanelUI : MonoBehaviour
             sb.AppendLine($"<b><color=#E8C566>{f.FactionName}</color></b>  " +
                           $"<color={StanceColor(f)}>{StanceLabel(f)}</color>");
             sb.AppendLine($"  {Bar(favor)}  <color=#9AB>{favor:+0;-0;0}</color>");
-
+            AppendReasons(sb, f);
 
             sb.AppendLine();
         }
@@ -118,6 +118,22 @@ public class FactionPanelUI : MonoBehaviour
         if (unknown > 0) sb.Append($"<color=#777>아직 못 만난 세력 {unknown}</color>");
 
         infoText.text = sb.ToString();
+    }
+
+    // **왜 이 값인가** — 우호도를 움직인 최근 사건 몇 줄(`WorldHistory` · 2026-11-18). 문장은 사건에서 그때 만든다.
+    const int ReasonLines = 3;
+    static void AppendReasons(StringBuilder sb, FactionData f)
+    {
+        var events = WorldHistory.OfFaction(WorldHistory.FactionId(f));
+        int shown = 0;
+        for (int i = events.Count - 1; i >= 0 && shown < ReasonLines; i--)
+        {
+            var e = events[i];
+            if (Mathf.Approximately(e.Favor, 0f)) continue;
+            string col = e.Favor > 0f ? "#8C8" : "#C88";
+            sb.AppendLine(Josa.Fix($"    <color=#999>{e.Day}일</color> {WorldHistory.Describe(e)} <color={col}>{e.Favor:+0;-0}</color>"));
+            shown++;
+        }
     }
 
     // 만난 세력. **플레이어 세력은 뺀다**(자기 자신과의 관계는 물을 것이 없다). `total`은 남의 세력 전부.

@@ -47,6 +47,11 @@ public class Hireling : MonoBehaviour
 
         h.ExpiresAt   = Mathf.Max(h.ExpiresAt, GameTimeManager.Elapsed) + span;
         h.HomeFaction ??= home;
+
+        // 사건으로 적는다(`WorldHistory` — `Hired`). 숫자는 계약 일수다. 연장도 한 줄이다(다시 맺은 계약).
+        WorldHistory.Record(WorldEventType.Hired, WorldHistory.PlayerActor, h.HomeFaction,
+                            WorldHistory.HomeOf(unit), unit.transform.position, days,
+                            WorldHistory.Party(unit, EventRole.Subject));
     }
 
     void Update()

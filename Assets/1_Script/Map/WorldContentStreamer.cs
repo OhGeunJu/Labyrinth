@@ -140,10 +140,56 @@ public class WorldContentStreamer : MonoBehaviour
         _liveIds.Clear();
         _foot.Clear();
         _underBuilt.Clear();
+        _debugCopies.Clear();
+        _debugSerial = 0;
     }
+
+    static WorldContentStreamer _self;   // 시험 문(`DebugPlace`)만 쓴다
+
+    // **시험용 — 저작된 자리 폰을 판 안에서만 하나 덧붙인다**(2026-11-18, 폰 기록 1단계 확인용 · 디버그 창 `폰 기록`).
+    // 지금 세계에는 저작된 자리에 선 폰이 없다(마을 · 소굴 자리뿐) — 그래서 *"죽인 마을 사람이 다시 서나"*를 볼 길이
+    // 없었다. 진짜와 **같은 길**로 세운다: 청크 목록에 `WorldObject`를 넣고 `PlaceOne`이 세우므로 신원은 `place:<id>`,
+    // 청크가 내려가면 같이 내려가고 다시 서면 `Placed`가 처지를 묻는다.
+    // **에셋을 고치지 않는다** — `Resources`에서 읽은 목록을 판 안의 사본으로 바꿔 거기에만 넣는다(에디터에서 원본
+    // 배열을 고치면 에셋에 남는다). 판이 끝나면 `_content`와 함께 사라진다.
+    public static string DebugPlace(GameObject prefab, Vector3 at, string label)
+    {
+        if (_self == null || prefab == null) return null;
+        var chunk = TerrainGrid.ChunkAt(at);
+        var c = ContentOf(chunk);
+        if (c == null)
+        {
+            c = ScriptableObject.CreateInstance<WorldChunkContent>();
+            c.Chunk = chunk;
+        }
+        else if (!_debugCopies.Contains(c))
+        {
+            c = Instantiate(c);
+        }
+        _debugCopies.Add(c);
+        _content[chunk] = c;
+
+        var o = new WorldObject
+        {
+            Id         = "debug_" + (++_debugSerial) + "_" + Mathf.RoundToInt(at.x) + "_" + Mathf.RoundToInt(at.z),
+            Name       = label,
+            Prefab     = prefab,
+            Position   = new Vector2(at.x, at.z),
+            Persistent = false,
+        };
+        var list = new List<WorldObject>(c.Objects ?? System.Array.Empty<WorldObject>()) { o };
+        c.Objects = list.ToArray();
+
+        // 청크가 서 있으면 지금 세운다 — 아니면 그 청크가 설 때 `Placed`가 세운다.
+        if (_self._live.TryGetValue(chunk, out var into)) _self.PlaceOne(chunk, o, into);
+        return PawnRegistry.PlacePrefix + o.Id;
+    }
+    static readonly HashSet<WorldChunkContent> _debugCopies = new();
+    static int _debugSerial;
 
     void OnEnable()
     {
+        _self = this;
         // **조용히 안 세우는 것이 가장 나쁘다** — 옛 목록이 남아 있으면 마을이 통째로
         // 사라진 것처럼 보이는데, 원인이 "안 옮겼다"라는 것을 알 길이 없다.
         if (sites != null && sites.Length > 0)
@@ -163,6 +209,7 @@ public class WorldContentStreamer : MonoBehaviour
 
     void OnDisable()
     {
+        if (_self == this) _self = null;
         TerrainStreamer.ChunkLoaded   -= Load;
         TerrainStreamer.ChunkUnloaded -= Unload;
         foreach (var c in new List<Vector2Int>(_live.Keys)) Unload(c);
@@ -190,6 +237,16 @@ public class WorldContentStreamer : MonoBehaviour
         {
             if (go == null) continue;
 
+            // **폰은 이유를 넘겨 내린다**(`PawnRegistry` — 제 자리에 있다, `AtSite`). 시체면 기록은 `Dead` 그대로다.
+            //
+            // **이 자리 사람이 아니게 된 폰은 내리지 않는다** — 데려온 마을 사람(내 세력) · 붙잡힌 사람 · 업혀 간 사람은
+            // 이 청크를 떠났다. 예전엔 그대로 파괴돼 **영입한 사람이 마을 청크가 내려가는 순간 사라졌다.** 목록에서만 뺀다.
+            if (go.TryGetComponent(out UnitBrain pawn))
+            {
+                if (!LeftSite(pawn)) pawn.Despawn(PawnStatus.AtSite);
+                continue;
+            }
+
             // **내리는 것은 없어진 것이 아니다.** 표식을 먼저 세워야 `OnDestroy`가 이걸
             // *"캔 것"*으로 기억하지 않는다 — 안 세우면 청크를 한 번 벗어나는 것만으로
             // **세계의 나무가 영영 사라진다.**
@@ -198,6 +255,15 @@ public class WorldContentStreamer : MonoBehaviour
 
             Destroy(go);
         }
+    }
+
+    // 이 자리에 선 폰이 이제 다른 데 속하나 — 내 사람이 됐거나 붙잡혔거나 업혀 있다.
+    static bool LeftSite(UnitBrain pawn)
+    {
+        if (pawn.IsDead) return false;
+        if (pawn.TryGetComponent(out Faction f) && f.IsPlayer) return true;
+        var bb = pawn.Blackboard;
+        return bb != null && (bb.IsPrisoner || bb.CarriedBy != null);
     }
 
     // ── 뿌리기 ──────────────────────────────────────────────────────────────
@@ -634,44 +700,55 @@ public class WorldContentStreamer : MonoBehaviour
         var content = ContentOf(chunk);
         if (content == null || content.Objects == null) return;
 
-        foreach (var o in content.Objects)
-        {
-            if (o == null || o.Prefab == null) continue;
+        foreach (var o in content.Objects) PlaceOne(chunk, o, into);
+    }
 
-            // 신원이 없으면 자리로 대신한다 — **없는 채로 두면 `Persistent` 추적이
-            // 통째로 어긋나** 마을이 청크를 밟을 때마다 하나씩 더 선다.
-            string id = string.IsNullOrEmpty(o.Id)
-                      ? TerrainGrid.KeyOf(chunk) + ":" + o.Position.x + "," + o.Position.y
-                      : o.Id;
+    // 저작된 것 하나를 세운다 — `Placed`가 청크의 것을 하나씩, 시험 문(`DebugPlace`)이 덧붙인 하나를.
+    void PlaceOne(Vector2Int chunk, WorldObject o, List<GameObject> into)
+    {
+        if (o == null || o.Prefab == null) return;
 
-            if (o.Persistent && _placedUp.Contains(id)) continue;
+        // 신원이 없으면 자리로 대신한다 — **없는 채로 두면 `Persistent` 추적이
+        // 통째로 어긋나** 마을이 청크를 밟을 때마다 하나씩 더 선다.
+        string id = string.IsNullOrEmpty(o.Id)
+                  ? TerrainGrid.KeyOf(chunk) + ":" + o.Position.x + "," + o.Position.y
+                  : o.Id;
 
-            float h = TerrainHeight.At(o.Position.x, o.Position.y) + o.YOffset;
+        if (o.Persistent && _placedUp.Contains(id)) return;
 
-            // **폰이면 명세를 세우기 전에 낸다** — 명세의 성별이 **어느 몸을 세울지** 고르므로(`PawnSpawn`)
-            // 세운 뒤에 굴리면 여자 이름에 남자 몸이 선다. 프리팹 에셋에서도 종족·세력은 읽힌다(직렬화된 값).
-            var spec = SpecFor(o, id);
-            var go = PawnSpawn.Instantiate(o.Prefab,
-                                           new Vector3(o.Position.x, h, o.Position.y),
-                                           Quaternion.Euler(0f, o.Yaw, 0f),
-                                           o.Persistent ? null : Root, spec);
-            go.name = o.Prefab.name + " (" + o.Name + ")";
+        // **세우기 전에 그 사람의 처지를 묻는다**(`PawnRegistry`, 2026-11-18). 죽였거나 · 떠났거나 · 데려왔거나 ·
+        // 몸이 이미 어딘가 서 있으면 다시 세우지 않는다 — 전에는 죽인 마을 사람이 청크를 다시 밟으면 다시 섰다.
+        // 제 자리에 있던 사람(`AtSite`)은 다시 서고, `Attach`가 기록의 몸(부상 · 지닌 것)을 입힌다.
+        bool isPawn = o.Prefab.TryGetComponent(out UnitBrain _);
+        string pawnId = PawnRegistry.PlacePrefix + id;
+        if (isPawn && PawnRegistry.BlocksRespawn(pawnId)) return;
 
-            // **없으면 안 건드린다** — 프리팹이 든 크기를 그대로 쓴다(`WorldObject.Scale` 참고).
-            if (o.Scale != Vector3.zero) go.transform.localScale = o.Scale;
+        float h = TerrainHeight.At(o.Position.x, o.Position.y) + o.YOffset;
 
-            // **저작한 명세가 있으면 덮는다**(2026-08-27, 월드 에디터 4단계).
-            //
-            // `Instantiate`가 `Awake`를 그 자리에서 돌리므로 이 시점에는 **프리팹에 적어 둔
-            // 명세가 이미 얹혀 있다**(`UnitBrain.ApplyAuthoredSpec`). 그 위에 덮는 것이
-            // 맞다 — **저작(프리팹) < 주입(그 자리)** 이 이 저장소의 우선순위다(상인 상품과
-            // 같은 규칙). 그래서 *"같은 산적 프리팹인데 이 소굴의 두목만 특정 인물"*이 된다.
-            var pawn = go.GetComponent<UnitBrain>();
-            if (pawn != null && spec != null) pawn.ApplySpec(spec);
+        // **폰이면 명세를 세우기 전에 낸다** — 명세의 성별이 **어느 몸을 세울지** 고르므로(`PawnSpawn`)
+        // 세운 뒤에 굴리면 여자 이름에 남자 몸이 선다. 프리팹 에셋에서도 종족·세력은 읽힌다(직렬화된 값).
+        var spec = SpecFor(o, id);
+        if (spec != null) spec.Id = pawnId;   // 신원은 명세에 실려 간다 — 등록은 `UnitBrain.Start` 한 곳
+        var go = PawnSpawn.Instantiate(o.Prefab,
+                                       new Vector3(o.Position.x, h, o.Position.y),
+                                       Quaternion.Euler(0f, o.Yaw, 0f),
+                                       o.Persistent ? null : Root, spec);
+        go.name = o.Prefab.name + " (" + o.Name + ")";
 
-            if (o.Persistent) _placedUp.Add(id);   // 안 내린다 — 안의 상태가 처음으로 돌아가면 안 된다
-            else into.Add(go);
-        }
+        // **없으면 안 건드린다** — 프리팹이 든 크기를 그대로 쓴다(`WorldObject.Scale` 참고).
+        if (o.Scale != Vector3.zero) go.transform.localScale = o.Scale;
+
+        // **저작한 명세가 있으면 덮는다**(2026-08-27, 월드 에디터 4단계).
+        //
+        // `Instantiate`가 `Awake`를 그 자리에서 돌리므로 이 시점에는 **프리팹에 적어 둔
+        // 명세가 이미 얹혀 있다**(`UnitBrain.ApplyAuthoredSpec`). 그 위에 덮는 것이
+        // 맞다 — **저작(프리팹) < 주입(그 자리)** 이 이 저장소의 우선순위다(상인 상품과
+        // 같은 규칙). 그래서 *"같은 산적 프리팹인데 이 소굴의 두목만 특정 인물"*이 된다.
+        var pawn = go.GetComponent<UnitBrain>();
+        if (pawn != null && spec != null) pawn.ApplySpec(spec);
+
+        if (o.Persistent) _placedUp.Add(id);   // 안 내린다 — 안의 상태가 처음으로 돌아가면 안 된다
+        else into.Add(go);
     }
 
     // 이 자리에 설 폰의 명세 — 저작한 것이 있으면 그것, 없으면 신원에서 굴린다. 폰이 아니면 null.

@@ -67,9 +67,9 @@ ASP = 1.35 ** 0.5   # 눈썹 높이를 잡는 눈 세로 비(`ChibiFaceLayout.De
 def eyes(p):         # 드워프 눈 느낌 — 진한 먹 눈 하나 + 반짝임(흰자 · 홍채는 고양이처럼 읽혔다 · 11-03 사용자)
     m = mirror(p)
     return ell(m, V(EXn, EY - 0.004, ZE - 0.014), V(ER * 0.82, ER * 0.92, 0.02))
-def glint(p):
-    m = mirror(p)
-    return ell(m, V(EXn - ER * 0.24, EY + ER * 0.22, ZE - 0.004), V(ER * 0.24, ER * 0.24, 0.02))
+def glint(p):   # 반짝임은 눈 면에 붙은 얇은 판(11-18 — 튀어나오지 않게 · C#과 같은 값) — 눈 면을 0.8mm 부풀린 껍데기 중 반짝임 자리
+    m = mirror(p); e = eyes(p)
+    return np.maximum(np.maximum(e - 0.0008, -(e + 0.003)), ell(m, V(EXn - ER * 0.24, EY + ER * 0.22, ZE), V(ER * 0.24, ER * 0.24, 0.3)))
 def brows(p):        # 살갗에 칠한 눈썹 — 얼굴 곡면을 따라가는 얇은 띠 · 완만한 아치 · 안쪽 굵고 바깥 가늘게(솟은 가닥이면 붙인 것처럼 보인다)
     m = mirror(p)
     x0, x1 = 0.055, EXn + ER * 1.45

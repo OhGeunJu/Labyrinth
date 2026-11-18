@@ -65,6 +65,11 @@ public class TownSite : MonoBehaviour
 
     FactionData ResolveFaction()
     {
+        // **적힌 주인이 먼저다**(`SiteRegistry`, 2026-11-18 — 설계 6절). 주인이 바뀐 마을은 거기 적혀 있다.
+        // 비어 있으면 예전 계산 그대로(경비병 → 주민 → 바이옴) — 저작 < 주입.
+        var owner = SiteRegistry.OwnerOf(SiteId);
+        if (owner != null) return owner;
+
         FactionData any = null;
         foreach (var b in GetComponentsInChildren<UnitBrain>(true))
         {

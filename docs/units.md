@@ -482,6 +482,25 @@ BT는 `UnitBrain.tickInterval`(기본 0.1초)마다 돈다. **노드 안에서 `
 - **배선은 `UnitBrain`**: `fixedName`(이름만) / `pawnSpec`(전부). 우선순위는 **저작 < 주입** — 마을 고용처럼 밖에서 `ApplySpec`을 주면 그쪽이 이긴다(상인 상품과 같은 규칙).
 - `PriceFrom(basePrice)` — `기준가 × (1 + 평균등급 × 0.12) × 흔들림(±22%)`. **등급이 값을 정하되 같은 등급이라도 값은 다르다** — 흔들림이 없으면 값이 곧 스탯 표가 되어 굳이 볼 이유가 없다. 흔들림도 시드에서 나오므로 메뉴를 여닫아도 안 바뀐다(스탯 추첨과는 **다른 난수열**을 쓴다 — 같은 열이면 "스탯이 좋으면 흔들림도 크다"는 상관이 생긴다).
 
+## 폰 기록 — `PawnRegistry` (`Assets/1_Script/unit/PawnRegistry.cs`, 2026-11-18)
+
+**사라져도 남는 신원.** 폰은 청크가 내려가면 파괴되고 무리는 멀어지면 토큰으로 접힌다 — 그동안 *"그 사람"*이 남는 자리다. 설계는 `docs/design_world_history.md` 3절 · 이번에 한 것은 11절 1단계.
+
+- **신원은 명세가 싣고 온다** — `PawnSpec.Id`. 저작된 자리의 폰은 `place:<저작 Id>`(`WorldContentStreamer.Placed`가 적는다 — 판마다 같다), 굴려서 나온 폰은 비워 두면 `Attach`가 `p:<일련번호>`를 내서 명세에 적는다(무리 멤버의 명세는 토큰과 같은 객체라 다시 설 때 같은 기록을 찾는다).
+- **연결 지점은 셋뿐이다** — 경로마다 고치지 않는다.
+  - `UnitBrain.Start` → `Attach`: 기록이 있으면 몸(`PawnBodyState` — 피 · 부위 체력 · 스탯 · 배낭 · 장비)을 입히고 **장비 · 주머니를 새로 굴리지 않는다**. 없으면 새 기록. 처지 `Live`. 입힌 뒤 기록의 몸은 비운다(몸의 진짜는 실체).
+  - `UnitBrain.OnDestroy` → `Detach`: 몸을 기록에 적고 이유로 처지를 정한다. **`OnDisable`에는 안 건다**(원정 · 비활성 정착지는 끄기만 한다).
+  - `UnitBrain.BecomeCorpse` → `MarkDead`: `Dead`. **`Dead`는 되돌리지 않는다**(시체가 치워져도 · 일으켜져도).
+- **폰을 없애는 문은 `UnitBrain.Despawn(이유)`** — 청크 내림 `AtSite`(`WorldContentStreamer.Unload`) · 무리로 거둠 `InBand`(`BandMaterializer`) · 떠남 `Departed`(떠나기 노드 셋 `NpcLeave` · `WildSpawner.Reap` · 무리가 버린 기절자). 이 문을 안 거친 파괴는 **`Unknown`으로 적고 경고한다** — 경고가 이유를 안 넘긴 경로를 찾는 실마리다. 판을 닫을 때(`Application.quitting`) · 씬이 내려갈 때는 사건이 아니라 안 적는다.
+- **세우는 쪽이 처지를 먼저 묻는다** — `PawnRegistry.BlocksRespawn`: `Dead` · `Departed` · `Colonist` · **`Live`**(몸이 이미 어딘가 서 있다 — 데려온 마을 사람 · 업혀 간 포로)면 그 자리에 다시 안 세운다. `AtSite`면 다시 서고 몸을 입는다(다녀와도 부상 · 지닌 것이 그대로).
+- **이 자리 사람이 아니게 된 폰은 내리지 않는다**(`WorldContentStreamer.LeftSite` — 내 세력 · 갇힘 · 업힘). 예전엔 청크가 내려가는 순간 영입한 마을 사람이 사라졌다.
+- **무리는 누가 빠졌나를 그 사람으로 센다**(`BandMaterializer._memberOf`) — 예전엔 개수만 세어 `TakeLosses`가 약한 사람부터 지웠다(두목을 죽여도 토큰에 두목이 남았다). 죽음 · 기절(버리고 감 → `Departed`) · 우리 편이 됨 · 붙잡힘 · 업힘은 빠지고, 붙잡힌 사람은 **몸을 안 거둔다**.
+- **기록하는 것은 사람뿐**(`UnitData.UsesBackstory`). 기록에는 **오브젝트 참조가 없다** — 종족 · 특성 · 배경 · 소지 · 아이템 · 세력은 `DataId.Resolve`의 Id로만(세이브는 `Records` + `NextSerial`을 `JsonUtility`로 쓰면 끝나게 — `Nullable` · 딕셔너리를 넣지 말 것).
+- **시험 마을 사람** — 지금 세계에는 저작된 자리에 선 폰이 없어서(마을 · 소굴 자리뿐) 디버그 창의 단추가 카메라 앞에 하나 세운다(`WorldContentStreamer.DebugPlace` — 진짜와 같은 길: 청크 목록의 판 안 사본에 `WorldObject`를 넣고 `PlaceOne`이 세운다 · 신원 `place:debug_…` · 에셋은 안 고친다).
+- **떠난 사람이 돌아온다**(설계 9절 · 4단계) — 떠돌이 이벤트(`EventManager.SpawnReinforcement`, `Recruitable`인 것)가 한 명을 세울 때 35%(`ReturnChance`)로 **예전에 만난 사람**을 먼저 뽑는다(`PawnRegistry.PickReturning` — `Departed` · 지금 안 서 있음 · 같은 종족 · 플레이어가 한 일에 당사자나 목격자로 얽힘 `WorldHistory.SharesHistoryWithPlayer`). 명세는 기록에서 다시 짓고(`PawnRegistry.SpecOf` — 굴리지 않는다) 몸은 `Attach`가 입힌다. 알림 `다시 만난 얼굴`. 디버그 창의 `Departed` 줄에 "다시 부르기"(같은 길 · 카메라 앞).
+- **보는 문** — `DungeonColony → Debug → 폰 기록`(기록 수 · 처지별 개수 · 목록 · 줄을 누르면 카메라가 그 자리로 · "콘솔에 요약").
+- **아직 없는 것** — `Colonist` · `Prisoner`를 적는 자리(지금은 `Live`로 남는다 — 다시 세우지 않는 것은 같다) · 정리(`Dead` · `Departed` 기록 지우기) · 추상 전투(`WorldBattle` → `TakeLosses`)로 빠진 무리 멤버의 처지(기록은 `InBand`로 남는다) · 세이브.
+
 ## 특성 — `TraitData` / `TraitPool` (`Assets/1_Script/unit/`)
 
 **"이 폰은 어떤 사람인가"를 숫자 대신 이름으로 답하는 것.** `강인함 62`는 비교해야 뜻이 생기지만 `강인함`이라는 딱지는 그 자체로 읽힌다.

@@ -501,6 +501,12 @@ public class EventManager : MonoBehaviour
 
     // ── 지원군 ───────────────────────────────────────────────────────────────
 
+    // 떠돌이 한 명이 예전에 만난 사람일 확률 — 그런 사람이 있을 때만 굴린다(`PawnRegistry.PickReturning`).
+    const float ReturnChance = 0.35f;
+
+    static PawnRecord PickReturning(GameObject prefab)
+        => prefab != null && prefab.TryGetComponent(out UnitBrain b) ? PawnRegistry.PickReturning(b.Data) : null;
+
     void SpawnReinforcement(GameEventData data, Vector3 edge)
     {
         if (data.ReinforcementPrefabs == null || data.ReinforcementPrefabs.Count == 0) return;
@@ -514,7 +520,17 @@ public class EventManager : MonoBehaviour
             var prefab = data.ReinforcementPrefabs[Random.Range(0, data.ReinforcementPrefabs.Count)];
             if (prefab == null) continue;
 
-            var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used));
+            // **떠돌이면 예전에 만난 사람이 먼저 올 수 있다**(설계 9절 · 4단계) — 풀어 준 포로 · 몸값으로 돌려보낸 사람 ·
+            // 계약이 끝난 용병이 떠돌이로 다시 지나간다. 기록의 명세로 세우면 `Attach`가 그때의 몸을 입힌다.
+            var back = data.Recruitable && Random.value < ReturnChance ? PickReturning(prefab) : null;
+            var spec = back != null ? PawnRegistry.SpecOf(back) : null;
+
+            var go = SpawnPawn(prefab, ScatterNear(edge, 3f, used), spec);
+            if (spec != null && go.TryGetComponent(out UnitBrain again))
+            {
+                again.ApplySpec(spec);
+                EventNotificationUI.Notify("다시 만난 얼굴", $"예전에 만났던 {spec.Name}이(가) 떠돌이가 되어 다시 지나갑니다.");
+            }
             if (data.Recruitable && go.TryGetComponent(out UnitBrain brain)) brain.Recruitable = true;
 
             // 던전 코어 방향으로 초기 이동 (랜덤 오프셋으로 뭉치지 않게)

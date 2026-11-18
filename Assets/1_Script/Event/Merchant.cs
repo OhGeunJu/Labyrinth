@@ -54,6 +54,7 @@ public class Merchant : MonoBehaviour, IWorldClickable, IClickGate
         {
             _shop ??= new Shop(_data, MyFaction);
             _shop.Faction = MyFaction;
+            if (_shop.Seller == null && TryGetComponent(out UnitBrain me)) _shop.Seller = me;
             return _shop;
         }
     }

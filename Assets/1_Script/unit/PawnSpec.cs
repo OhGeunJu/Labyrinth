@@ -21,6 +21,14 @@ public class PawnSpec
     public int    Seed;
     public string Name;
 
+    // **신원 — 사라져도 남는 이름표**(`PawnRegistry`, 2026-11-18). 굴리지 않으므로 씨앗 열과 무관하다.
+    // 저작된 자리에 선 폰은 `place:<저작 Id>`(`WorldContentStreamer.SpecFor` — 판마다 같다), 굴려서 나온 폰은
+    // 비워 두면 `UnitBrain.Start`가 `p:<일련번호>`를 낸다(`PawnRegistry.Attach` — 등록은 그 한 곳).
+    public string Id;
+
+    // 어디 사람인가 — 무리는 소굴(`WorldBand.HomeId`). 기록이 생길 때 `PawnRecord.HomeSiteId`로 옮겨 적는다.
+    public string HomeId;
+
     // 몸 크기 배율. 지금은 이것 하나지만 **외모 축의 첫 칸**이다 —
     // 여기 값이 있다는 것 자체가 "생김새는 명세가 든다"는 규약을 세운다.
     public float BodyScale = 1f;

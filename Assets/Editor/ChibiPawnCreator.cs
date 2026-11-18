@@ -239,6 +239,7 @@ public static partial class ChibiPawnCreator
 
     // 제 선이 가는 재질 — 해골 몸의 뼈 · 방어구 껍데기.
     static bool ThinLine(string mat) => mat == "BoneBody" || mat == "BoneArmor";
+    const float BoneLineBack = 0.02f;   // 제 선 껍데기를 깊이에서 이만큼(m) 뒤로(`ToonOutline._OutlineBack`)
 
     // 제 선을 끄고 바깥 선을 따로 받는 재질 — 이름으로 가른다(`Mats`의 코 둘 · 해골 머리).
     static bool FineOutline(string mat) => mat == "SkinFine" || mat == "SkinShaded" || mat == "NoseDark" || mat == "Bone" || mat == "Ink" || mat == "HairFine" ||
@@ -923,6 +924,10 @@ public static partial class ChibiPawnCreator
         { int liz = DressLizards(mats, atlases); if (liz > 0) made.Add($"리자드맨 {liz}벌"); }
         // **엔트 — 보기 몸 여덟 벌**(`ChibiPawnCreator.Ent` — 파이썬이 뽑은 메시 · 엔트만 다시 굽는 문은 `Pawn/17`). 빼먹으면 아래 청소가 엔트 메시를 지운다.
         { int ents = DressEnts(mats, atlases); if (ents > 0) made.Add($"엔트 {ents}벌"); }
+        // **공룡 악어 · 늑대인간 — 보기 몸 한 벌씩**(`ChibiPawnCreator.Baked` — 파이썬이 뽑은 메시 · 따로 굽는 문은 `Pawn/18` · `Pawn/19`). 빼먹으면 아래 청소가 그 메시를 지운다.
+        { int baked = DressBakedAll(mats, atlases); if (baked > 0) made.Add($"공룡 악어 · 늑대인간 {baked}벌"); }
+        // **두더지 · 괴물쥐 — 네 발 보기 몸 한 벌씩**(`ChibiPawnCreator.Quad` — 파이썬이 뽑은 메시 · 따로 굽는 문은 `Pawn/20` · `Pawn/21`). 빼먹으면 아래 청소가 그 메시를 지운다.
+        { int quads = DressQuadAll(mats); if (quads > 0) made.Add($"두더지 · 괴물쥐 {quads}벌"); }
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
         // 성별에 맞는 몸을 여기서 고른다. 원본 자신의 몸(남성)은 씬에 직접 놓을 때만 쓰인다.
@@ -957,6 +962,7 @@ public static partial class ChibiPawnCreator
         Debug.Log($"[치비] 체형 {made.Count}벌 — {string.Join(" · ", made)} · 머리형 {Heads.Length}(성별마다 {Heads.Length / Genders.Length}) · 머리카락 6 · " +
                   $"눈 {atlases["Eyes"].Names.Length} · 입 {atlases["Mouths"].Names.Length}. " +
                   "관절까지 섰다(몸은 스킨 메시 하나 — `Pawn/2`는 필요 없다).");
+        Debug.Log($"[치비 시간] {NetsTimeReport()}");   // 다시 짜기 몇 개 · 되돌림 몇 개(되돌린 그물은 경고로 따로)
     }
 
     // 방랑자에게 입힐 체형(`Shapes`의 `Suffix`).
@@ -1826,6 +1832,9 @@ public static partial class ChibiPawnCreator
             // **신발·시제품 손도** — 제 선(스텐실을 안 보는 껍데기)이 발목·손목에 검은 띠를 긋고, 땅 이기기를 안 받아 발밑 선이 먹혔다(10-09).
             bool outerOnly = name == "Shirt" || name == "Pants" || name == "Shoe" || name == "SkinOuter" || FineOutline(name);
             mat.SetFloat("_OutlineWidth", outerOnly ? 0f : ThinLine(name) ? BoneLine : OutlineWidth);
+            // **가는 뼈의 제 선은 깊이를 뒤로 민다**(2026-11-18, 사용자: *"해골 손이 옆에서 봤을때 외곽선에 가려지는 버그"*) — 손가락 뼈는
+            // 굵기 1.5~2cm에 붙어 있어 한 뼈의 껍데기가 옆 뼈 앞에 섰다(감염자 테 · 주름과 같은 증상 — `FungalLineBack`).
+            mat.SetFloat("_OutlineBack", ThinLine(name) ? BoneLineBack : 0f);
             mat.SetFloat("_OutlineMin",   outerOnly ? 0f : OutlineMin);
             // 스텐실에 제 자리를 적는 것은 **몸통과 얼굴**뿐이다 — 번호는 폰마다 `PawnOutlineId`가 준다(여기 값은 씬 뷰용 기본값).
             // 얼굴(머리 살·코)은 번호에 **128을 얹어** 적는다: 코 선이 비킬 곳은 제 얼굴뿐이라 손·몸통과 갈라야 한다.

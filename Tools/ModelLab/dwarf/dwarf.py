@@ -65,7 +65,7 @@ def eyes(p):         # 작고 깊은 눈 — 얼굴 면 위 4mm 껍데기(옛 �
     return on_face(p, ell(m, V(EX, EY - 0.005, ZE), V(ER * 0.72, ER * 0.80, 0.3)), 0.004)
 def glint(p):
     m = mirror(p)
-    return on_face(p, ell(m, V(EX - ER * 0.22, EY + ER * 0.2, ZE), V(ER * 0.22, ER * 0.22, 0.3)), 0.007)
+    return on_face(p, ell(m, V(EX - ER * 0.22, EY + ER * 0.2, ZE), V(ER * 0.22, ER * 0.22, 0.3)), 0.0048)   # 반짝임은 눈 면에 붙은 얇은 판(11-18 — 튀어나오지 않게 · C#과 같은 값)
 def fuzz(p, a=0.0025): return a * np.sin(p[..., 0] * 90 + p[..., 1] * 40)   # 털 결
 
 # 눈썹 — 마디(x, y)만 적고 z는 그 자리의 얼굴 면에 얹는다(중심을 반지름의 1/4 묻는다) · 옛 판은 고정 z라 옆에서 이마 앞에 떴다.

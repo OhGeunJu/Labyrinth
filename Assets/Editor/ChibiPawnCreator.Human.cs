@@ -118,8 +118,9 @@ public static partial class ChibiPawnCreator
 
     static float HumanEyes(Vector3 p, HumanFrame f)
         => OnFace(p, f, Ell(Mirror(p), V3(f.EX, f.EY - 0.004f, f.ZE), V3(f.ER * 0.80f, f.ER * 0.92f, 0.3f)), 0.004f);
+    // 반짝임은 눈 면에 붙은 얇은 판(11-18 사용자: *"다른 애들도 눈동자를 그런 식으로"* — 두더지 · 괴물쥐처럼 튀어나오지 않게): 눈(얼굴 위 4mm)보다 0.8mm만 위 — 3mm 솟았던 것.
     static float HumanGlint(Vector3 p, HumanFrame f)
-        => OnFace(p, f, Ell(Mirror(p), V3(f.EX - f.ER * 0.25f, f.EY + f.ER * 0.25f, f.ZE), V3(f.ER * 0.25f, f.ER * 0.25f, 0.3f)), 0.007f);
+        => OnFace(p, f, Ell(Mirror(p), V3(f.EX - f.ER * 0.25f, f.EY + f.ER * 0.25f, f.ZE), V3(f.ER * 0.25f, f.ER * 0.25f, 0.3f)), 0.0048f);
     static float HumanMouth(Vector3 p, HumanFrame f, string kind)   // 얼굴 살에 칠한 띠 — 폭 5.2cm · 굵기 8mm(미리보기 `human.mouth`)
     {
         float x = p.x, y = p.y - (f.MY + 0.004f), th = 0.0040f, w = 0.052f, yc;

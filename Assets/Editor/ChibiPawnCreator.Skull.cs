@@ -418,15 +418,15 @@ public static partial class ChibiPawnCreator
     // `place` — 거리장 좌표를 메시 좌표로(비우면 해골 머리의 틀 — `SkullCenter` · `SkullUnit`) · `aoStep`·`aoGain` — 그늘을 재는 걸음(거리장 단위) ·
     // `keep` — 뽑은 뒤 정점을 이 비율까지 줄인다(`Decimate`).
     // 굽기 시간 진단 — 단계마다 쌓는다(재기 · 표면 뽑기 · 당기기 · 줄이기 · 그늘 · 펴기 · 저장). `NetsTimeReport`가 읽고 비운다.
-    static readonly double[] NetsTime = new double[7];
-    static readonly string[] NetsTimeName = { "재기", "뽑기", "당기기", "줄이기", "그늘", "펴기", "저장" };
+    static readonly double[] NetsTime = new double[8];
+    static readonly string[] NetsTimeName = { "재기", "뽑기", "당기기", "줄이기", "그늘", "펴기", "저장", "다시 짜기" };
     static long _netsMark;
     static void NetsLap(int stage) { long now = System.Diagnostics.Stopwatch.GetTimestamp(); if (stage >= 0) NetsTime[stage] += (now - _netsMark) / (double)System.Diagnostics.Stopwatch.Frequency; _netsMark = now; }
     static string NetsTimeReport()
     {
         var sb = new System.Text.StringBuilder();
         for (int i = 0; i < NetsTime.Length; i++) { sb.Append($"{NetsTimeName[i]} {NetsTime[i]:F1}s · "); NetsTime[i] = 0; }
-        return sb.ToString();
+        return sb.Append(RemeshReport()).ToString();
     }
 
     const int   NetsCoarse = 4;     // 성긴 칸 하나 = 촘촘한 칸 4×4×4
@@ -611,6 +611,9 @@ public static partial class ChibiPawnCreator
         }
 
         NetsLap(3);
+        // **줄인 그물은 다시 짠다**(2026-11-18 — `TryAutoRemesh`) — 계단 띠 · 돌기가 바깥 선을 톱니 · 털 뭉치로 만들었다.
+        if (keep < 1f) TryAutoRemesh(ref pts, ref normals, tris, f, step);
+        NetsLap(7);
         var colors = new Color[pts.Length];
         Parallel.For(0, pts.Length, v => { float ao = AoOf(scene, pts[v], normals[v], aoStep, aoGain); colors[v] = new Color(ao, ao, ao, 1f); });
 
@@ -820,10 +823,13 @@ public static partial class ChibiPawnCreator
     }
 
 
-    static Vector3 Grad(Func<Vector3, float> f, Vector3 p, float e) => new(
+    // 거리장의 기울기(중앙 차분 ÷ 2e). **크기까지 맞아야 한다** — 2026-11-18까지 2e로 안 나눠서, 법선(정규화)은 멀쩡했지만 크기를 쓰는
+    // 자리가 다 틀렸다: 표면으로 당기기(`Settle`)는 한 걸음이 100배 넘게 튀어 "멀리 튀면 제자리"에 걸려 **한 번도 안 당겼고**(계단 띠 · 돌기의
+    // 원인 — 점이 칸 평균 자리에 남았다), 표면에서 뜬 거리(`Off` · `tol`)는 20배 부풀었다(오크 머리 "뜬 점 43,759개").
+    static Vector3 Grad(Func<Vector3, float> f, Vector3 p, float e) => new Vector3(
         f(p + new Vector3(e, 0, 0)) - f(p - new Vector3(e, 0, 0)),
         f(p + new Vector3(0, e, 0)) - f(p - new Vector3(0, e, 0)),
-        f(p + new Vector3(0, 0, e)) - f(p - new Vector3(0, 0, e)));
+        f(p + new Vector3(0, 0, e)) - f(p - new Vector3(0, 0, e))) / (2f * e);
 
     // 그늘 — 법선 쪽으로 나가며 가까운 표면이 얼마나 막나(렌더의 v25 셈 그대로). 깊은 구멍 속이 검어지는 것은 이것 하나다.
     static float AoOf(Func<Vector3, float> scene, Vector3 p, Vector3 n, float step, float gain)
@@ -851,11 +857,15 @@ public static partial class ChibiPawnCreator
     static Mesh SaveSkull(string name, Surface s)
     {
         EnsureDir(MeshDir);
+        if (_remeshPendingWhy != null) { if (_remeshKeptWhy.Count < 60) _remeshKeptWhy.Add($"{name}({_remeshPendingWhy})"); _remeshPendingWhy = null; }
         string path = $"{MeshDir}/{name}.asset";
         _saved.Add(path);
         var m = AssetDatabase.LoadAssetAtPath<Mesh>(path);
         bool fresh = m == null;
-        if (fresh) m = new Mesh(); else m.Clear();
+        // **정점 구성까지 비운다**(`Clear(false)` — 2026-11-18). 기본 `Clear()`는 구성을 남겨 지난번에 구운 탄젠트 칸(선 법선)이 살아남고,
+        // 새 정점을 넣으면 그 칸에 쓰레기 값(432 · nan)이 찼다 — `w`가 1.5를 넘으니 `HasOutlineNormals`가 "이미 구웠다"로 보고 굽기를
+        // 건너뛰어 바깥 선이 톱니 · 검은 얼룩이 됐다(트롤 팔 · 해골 손). 메시가 매번 같던 동안은 낡은 값이 우연히 맞아 안 보였다.
+        if (fresh) m = new Mesh(); else m.Clear(false);
 
         m.name = name;
         m.indexFormat = s.Verts.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;

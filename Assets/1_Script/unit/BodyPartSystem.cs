@@ -347,6 +347,18 @@ public class BodyPartSystem : MonoBehaviour
 
     public bool IsPartDestroyed(BodyPartType type) => _parts[type].IsDestroyed;
     public float PartHP(BodyPartType type)         => _parts[type].CurrentHP;
+    public bool  HasPart(BodyPartType type)        => _parts.ContainsKey(type);
+
+    // **기록에 적어 둔 몸을 도로 입힌다**(`PawnRegistry` — 청크가 내려갔다 다시 선 사람 · 토큰에서 다시 선 무리).
+    // 피와 부위 체력만 — 출혈 · 기절 타이머는 새로 시작한다(내려가 있던 동안 멎었다고 본다). 기절할 몸이면
+    // 다음 `Update`의 판정이 눕힌다.
+    public void RestoreState(float blood, float bloodCap, IReadOnlyList<(BodyPartType part, float hp)> parts)
+    {
+        BloodCap = Mathf.Clamp(bloodCap, 0f, maxBlood);
+        Blood    = Mathf.Min(blood, BloodCap);
+        foreach (var (part, hp) in parts)
+            if (_parts.TryGetValue(part, out var p)) p.CurrentHP = Mathf.Clamp(hp, -100f, p.MaxHP);
+    }
 
     // ── 잃은 팔다리 ─────────────────────────────────────────────────────────
     //

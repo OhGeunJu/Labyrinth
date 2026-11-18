@@ -101,6 +101,18 @@ public class PawnLook : MonoBehaviour
     }
     [SerializeField] List<PickChance> pickChances = new();
 
+    // **묶음 상한**(2026-11-18, 사용자: 감염자 *"나올 수 있는 장식을 제한해줘 개수를 — 그러면 정점도 적어질 거 아니야"*) — 이름이 `Prefix`로
+    // 시작하는 축들 중 `Option`을 고른 것이 `Max`를 넘으면 씨앗이 정한 차례로 `Max`개만 남기고 나머지는 다른 벌(`Off`)로 돌린다.
+    // 축마다 따로 굴리면(`pickChances`) 운에 따라 열 개 넘게 켜졌다. 못 박은 축(`pickOverrides` · 코드가 정한 것)은 세지도 끄지도 않는다.
+    [System.Serializable]
+    public struct PickCap
+    {
+        public string Prefix, Option;
+        public int Max;
+        public PickCap(string prefix, string option, int max) { Prefix = prefix; Option = option; Max = max; }
+    }
+    [SerializeField] List<PickCap> pickCaps = new();
+
     // 코드가 부른 표정 — 인스펙터보다 앞선다. 비면 안 부른 것이다.
     readonly Dictionary<string, string> _expression = new();
     readonly List<ChibiFacePart> _faceParts = new();
@@ -204,6 +216,33 @@ public class PawnLook : MonoBehaviour
     {
         pickChances.Clear();
         if (chances != null) pickChances.AddRange(chances);
+    }
+
+    // 생성 도구가 묶음 상한을 적는다(프리팹에 저장된다).
+    public void SetPickCaps(IEnumerable<PickCap> caps)
+    {
+        pickCaps.Clear();
+        if (caps != null) pickCaps.AddRange(caps);
+    }
+
+    void CapPicks(PickCap cap, int seed)
+    {
+        if (string.IsNullOrEmpty(cap.Prefix) || cap.Max < 0) return;
+        List<string> on = null;
+        foreach (var kv in _pickAxes)
+        {
+            if (!kv.Key.StartsWith(cap.Prefix) || !_picked.TryGetValue(kv.Key, out var got) || got != cap.Option) continue;
+            if (kv.Value.Contains(PickOverride(kv.Key)) || _forced.ContainsKey(kv.Key)) continue;   // 못 박은 축은 그대로
+            (on ??= new List<string>()).Add(kv.Key);
+        }
+        if (on == null || on.Count <= cap.Max) return;
+        on.Sort((a, b) => Mix(seed, a + "!cap").CompareTo(Mix(seed, b + "!cap")));
+        for (int i = cap.Max; i < on.Count; i++)
+        {
+            string other = null;
+            foreach (var o in _pickAxes[on[i]]) if (o != cap.Option) { other = o; break; }
+            if (other != null) _picked[on[i]] = other;
+        }
     }
 
     // 씨앗 — 같은 사람은 늘 같은 얼굴(`SeedOf`). 칠하는 쪽도 이것으로 고른다.
@@ -362,6 +401,7 @@ public class PawnLook : MonoBehaviour
                             : _forced.TryGetValue(kv.Key, out var forced) && kv.Value.Contains(forced) ? forced
                             : SeedChoice(kv.Value, seed, kv.Key);
         }
+        foreach (var cap in pickCaps) CapPicks(cap, seed);
         foreach (var (r, axis, option, when) in _pickParts)
         {
             if (r == null) continue;

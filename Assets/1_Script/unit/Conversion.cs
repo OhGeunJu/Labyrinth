@@ -295,6 +295,12 @@ public static class Conversion
         Bed.ReleaseFrom(brain);
         Imprisonment.Unbind(brain);
 
+        // 사건으로 적는다(`WorldHistory` — `Converted`) — **세력을 바꾸기 전에**: 어느 세력에서 넘어왔나가 사건이다.
+        var from = brain.TryGetComponent(out Faction was) ? was.Data : null;
+        WorldHistory.Record(WorldEventType.Converted, WorldHistory.PlayerActor, from,
+                            WorldHistory.HomeOf(brain), brain.transform.position, 0f,
+                            WorldHistory.Party(brain, EventRole.Subject));
+
         brain.ChangeFaction(player.Data);
 
         bool minion = brain.Data is MinionData;

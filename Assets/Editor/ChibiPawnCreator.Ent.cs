@@ -156,8 +156,19 @@ public static partial class ChibiPawnCreator
     // 팔레트 재질의 정점 색은 색이 아니라 **몫**이다 — 선형 공간으로 안 바꾼다.
     static Mesh ImportEntMesh(EntItem it, Matrix4x4[] bind)
     {
-        string path = Path.Combine(EntBakedDir, it.file);
-        if (!File.Exists(path)) { Debug.LogWarning($"[엔트] 파일이 없다 — {path}"); return null; }
+        int cap = it.line == "Fine" ? int.MaxValue
+                : it.part.Contains(".Pick.Leaf.") ? EntLeafVerts
+                : it.part.Contains(".Pick.") ? EntDecorVerts
+                : it.mat == "Bark" ? EntBarkVerts : EntPaintVerts;
+        return ImportBakedMesh(Path.Combine(EntBakedDir, it.file), it.mesh, bind, cap, linear: !EntPalMats.ContainsKey(it.mat));
+    }
+
+    // **파이썬이 뽑은 메시 파일 하나 → 메시 에셋**(엔트 · 공룡 악어 · 늑대인간 — `bake_ent.py` · `common/bake_sdf.py`가 같은 꼴로 낸다).
+    // 점이 `cap`보다 많으면 줄이고(`Decimate`) 색 · 가중치 · 법선은 남은 점의 원래 번호에서 옮겨 온다.
+    // `linear` — 정점 색이 sRGB 색이면 선형 공간으로 바꾼다(팔레트 몫은 색이 아니라 안 바꾼다).
+    static Mesh ImportBakedMesh(string path, string meshName, Matrix4x4[] bind, int cap, bool linear)
+    {
+        if (!File.Exists(path)) { Debug.LogWarning($"[구운 메시] 파일이 없다 — {path}"); return null; }
         Vector3[] pts, nrm; Color[] col; BoneWeight[] bw; var tris = new List<int>();
         using (var gz = new GZipStream(File.OpenRead(path), CompressionMode.Decompress))
         using (var br = new BinaryReader(gz))
@@ -181,22 +192,23 @@ public static partial class ChibiPawnCreator
             }
         }
 
-        int cap = it.line == "Fine" ? int.MaxValue
-                : it.part.Contains(".Pick.Leaf.") ? EntLeafVerts
-                : it.part.Contains(".Pick.") ? EntDecorVerts
-                : it.mat == "Bark" ? EntBarkVerts : EntPaintVerts;
         var outPts = pts; var outCol = col; var outBw = bw; var outN = nrm;
-        if (pts.Length > cap)
+        // **덩어리마다 다시 짠다**(2026-11-18 — `TryRemeshBaked`) — 줄이기(`Decimate`)가 잔물결을 세 배로 키웠다. 도구가 없으면 옛 길.
+        if (pts.Length > cap && TryRemeshBaked(meshName, pts, nrm, col, bw, tris, cap, out var rp, out var rn, out var rc, out var rw, out var rt))
+        {
+            outPts = rp; outN = rn; outCol = rc; outBw = rw; tris = rt;
+        }
+        else if (pts.Length > cap)
         {
             var kept = new List<int>(cap);
             outPts = Decimate(pts, tris, cap, kept: kept);
             outCol = new Color[outPts.Length]; outBw = new BoneWeight[outPts.Length]; outN = new Vector3[outPts.Length];
             for (int i = 0; i < outPts.Length; i++) { int j = kept[i]; outCol[i] = col[j]; outBw[i] = bw[j]; outN[i] = nrm[j]; }
         }
-        bool lin = PlayerSettings.colorSpace == ColorSpace.Linear && !EntPalMats.ContainsKey(it.mat);
+        bool lin = PlayerSettings.colorSpace == ColorSpace.Linear && linear;
         var colors = new List<Color>(outCol.Length);
         foreach (var c in outCol) { var rgb = lin ? new Color(c.r, c.g, c.b).linear : c; colors.Add(new Color(rgb.r, rgb.g, rgb.b, c.a)); }
-        var m = SaveSkull(it.mesh, new Surface(new List<Vector3>(outPts), new List<Vector3>(outN), colors, tris));
+        var m = SaveSkull(meshName, new Surface(new List<Vector3>(outPts), new List<Vector3>(outN), colors, tris));
         m.boneWeights = outBw;
         m.bindposes = bind;
         EditorUtility.SetDirty(m);
