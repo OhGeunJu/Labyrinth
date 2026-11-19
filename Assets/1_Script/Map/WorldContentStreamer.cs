@@ -218,8 +218,11 @@ public class WorldContentStreamer : MonoBehaviour
 
     // ── 청크 하나 ───────────────────────────────────────────────────────────
 
+    static readonly Unity.Profiling.ProfilerMarker MLoad = new("WorldContentStreamer.Load");
+
     void Load(Vector2Int chunk)
     {
+        using var _m = MLoad.Auto();
         if (_live.ContainsKey(chunk)) return;
         var spawned = new List<GameObject>();
         _live[chunk] = spawned;

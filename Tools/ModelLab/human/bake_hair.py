@@ -17,6 +17,25 @@ sys.path.append(os.path.join(_here, '..', 'common'))
 from surface_nets import surface_nets
 import port
 
+# **뱀파이어 로드 머리도 사람 머리카락으로**(11-19 사용자: *"뱀파이어 머리카락만 일반 휴먼에 추가해 줘"*) — 확인받은 원본(`vampire/lord_hair.py` · 미리보기 v49)을
+# 이 머리에 그대로 다시 읽는다(수식을 옮기지 않는다). 기존 이름(`Slick` · `LowTail` · `Long` · `Curtain`)과 겹치지 않게 `Vamp`를 붙인다.
+# 더듬이 앞머리는 앞머리 축의 새 벌 `Antenna` — 뱀파이어 머리 셋(장발 빼고)에만 얹는다. 뱀파이어 머리는 앞머리 조건이 없다(다른 앞머리가 뽑혀도 머리는 선다).
+VAMP = {'VampSwept': 'curtain_plain', 'VampSlick': 'slick', 'VampLong': 'long', 'VampLowTail': 'lowtail'}
+VAMP_BANGABLE = ('VampSwept', 'VampSlick', 'VampLowTail')
+def vamp_family(head):
+    vd = os.path.join(_here, '..', 'vampire')
+    if vd not in sys.path: sys.path.append(vd)
+    import human as HU, lord_hair as LH
+    h = HU.Head(head); fam = {}
+    for name, style in VAMP.items():
+        f, deco, _ = LH.build(h, style)
+        fam[name] = (lambda f, deco: lambda p: [(f(p), 'hair')] + ([(deco(p), 'hair')] if deco is not None else []))(f, deco)   # 끈은 `.Tie`(머리색)
+    locks = LH.face_locks(h, LH.lift_of(h, 'curtain'))
+    fam['VampBangs'] = lambda p: [(np.minimum(locks[0].sdf(p), locks[1].sdf(p)), 'hair')]
+    return fam
+def family_of(kind, head):
+    return vamp_family(head) if kind == 'vamp' else port.family(kind, head)[1]
+
 OUT = os.path.join(_here, 'baked')
 FITS = {'Round': 'BroadSoft', 'Box': 'BroadSquare'}
 GENDERS = ('Male', 'Female')
@@ -32,7 +51,7 @@ HAIRS = [('Pomp', 'human', 'Pomp'), ('Slick', 'human', 'Slick'), ('BangsMShort',
          ('HalfUp', 'elf', 'HalfUp'), ('CrestTail', 'orcF', 'CrestTail'), ('TwinTails', 'human', 'TwinTails'), ('TwinTailsV', 'human', 'TwinTailsV'),
          ('TwinBraids', 'human', 'TwinBraids'), ('LongBraids', 'human', 'LongBraids'),
          ('Long', 'human', 'Long'), ('Mane', 'human', 'Mane'), ('Shoulder', 'human', 'Shoulder'), ('Curtain', 'human', 'Curtain'), ('SlickMullet', 'human', 'SlickMullet'),
-         ('Straight', 'elf', 'Straight'), ('BangsM', 'elf', 'BangsM'), ('BangsArch', 'elf', 'BangsArch'), ('SpikyBob', 'orcF', 'SpikyBob'), ('Mohawk', 'orcF', 'Mohawk')]
+         ('Straight', 'elf', 'Straight'), ('BangsM', 'elf', 'BangsM'), ('BangsArch', 'elf', 'BangsArch'), ('SpikyBob', 'orcF', 'SpikyBob'), ('Mohawk', 'orcF', 'Mohawk')] +         [(n, 'vamp', n) for n in VAMP]
 MALE_ONLY = port.MALE_ONLY
 # 성별마다 못 고르는 머리(11-08 사용자: *"너무 여자 머리 같은 것은 남캐가, 너무 남자 머리 같은 것은 여캐가 못 고르게"*).
 # 목록에서 빠지면 `Pawn/3`이 그 성별 몸에 안 붙인다(캐릭터 창 · 씨앗 둘 다 못 고른다). 굽지 않고 목록만 다시 쓴다: `python bake_hair.py`.
@@ -53,7 +72,7 @@ def jobs():
             head = f'{g}_{shape}'
             for name, kind, src in HAIRS:
                 if name in NOT_FOR[g]: continue
-                if (kind, head) not in fams: fams[(kind, head)] = port.family(kind, head)[1]
+                if (kind, head) not in fams: fams[(kind, head)] = family_of(kind, head)
                 fam = fams[(kind, head)]
                 tags = [t for _, t in fam[src](np.zeros((1, 3), np.float32))]
                 for i, tag in enumerate(tags):
@@ -74,6 +93,10 @@ def jobs():
                 on = [b for b in BANGABLE if not (k == 'Open' and b in NO_OPEN) and b not in NOT_FOR[g]]
                 out.append(dict(gender=g, fit=fit, head=head, kind='human', src=f'Bangs:{k}', piece=0, tag='hair',
                                 part=f'Head.Pick.Bangs.{k}@Fit.{fit}@Hair.' + '|'.join(on), mesh=f'Chibi_HumanHair_{g}_{fit}_Bangs_{k}', mat='HairFine'))
+            on = [b for b in VAMP_BANGABLE if b not in NOT_FOR[g]]                                  # 더듬이 앞머리(뱀파이어 머리에만)
+            if on:
+                out.append(dict(gender=g, fit=fit, head=head, kind='vamp', src='VampBangs', piece=0, tag='hair',
+                                part=f'Head.Pick.Bangs.Antenna@Fit.{fit}@Hair.' + '|'.join(on), mesh=f'Chibi_HumanHair_{g}_{fit}_Bangs_Antenna', mat='HairFine'))
     for j in out:
         j['file'] = j['mesh'] + '.bin.gz'
         j['relax'] = j['tag'] in ('hair', 'buzz', 'plait')
@@ -82,7 +105,7 @@ def jobs():
 
 def bake(j):
     t0 = time.time()
-    _, fam = port.family(j['kind'], j['head'])
+    fam = family_of(j['kind'], j['head'])
     fn = fam[j['src']]; i = j['piece']
     f = lambda p: fn(p)[i][0]
     v, n, t = surface_nets(f, LO, HI, STEP[j['tag']])

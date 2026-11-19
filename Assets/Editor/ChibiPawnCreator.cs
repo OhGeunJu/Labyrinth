@@ -928,6 +928,8 @@ public static partial class ChibiPawnCreator
         { int baked = DressBakedAll(mats, atlases); if (baked > 0) made.Add($"공룡 악어 · 늑대인간 {baked}벌"); }
         // **두더지 · 괴물쥐 — 네 발 보기 몸 한 벌씩**(`ChibiPawnCreator.Quad` — 파이썬이 뽑은 메시 · 따로 굽는 문은 `Pawn/20` · `Pawn/21`). 빼먹으면 아래 청소가 그 메시를 지운다.
         { int quads = DressQuadAll(mats); if (quads > 0) made.Add($"두더지 · 괴물쥐 {quads}벌"); }
+        // **뱀파이어 — 로드 · 노예 남녀 넷**(`ChibiPawnCreator.Vampire` — 파이썬이 뽑은 메시 · 따로 굽는 문은 `Pawn/22`). 빼먹으면 아래 청소가 그 메시를 지운다.
+        { int vamps = DressVampireAll(mats, atlases); if (vamps > 0) made.Add($"뱀파이어 {vamps}벌"); }
 
         // **방랑자가 태어날 몸 목록** — 이벤트·바이옴·모집은 `Wanderer_Human`만 가리키고, 세울 때 `PawnSpawn`이
         // 성별에 맞는 몸을 여기서 고른다. 원본 자신의 몸(남성)은 씬에 직접 놓을 때만 쓰인다.

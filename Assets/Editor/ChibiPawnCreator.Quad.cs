@@ -10,6 +10,7 @@ using UnityEngine;
 // `PawnRig` 네발(`Model/Body/{Head, Tail, LegFL, LegFR, LegBL, LegBR}`) + 꼬리 마디 사슬(`Tail/Tail1/…` — `TailSway`가 흔든다).
 //   - 두더지 — `Tools/ModelLab/mole/bake_mole.py` → `mole/baked/`(깃 밖) → `Pawn/20`.
 //   - 괴물쥐 — `Tools/ModelLab/rat/bake_rat.py` → `rat/baked/`(깃 밖) → `Pawn/21`.
+//   - 포자두꺼비 — `Tools/ModelLab/toad/bake_toad.py` → `toad/baked/`(깃 밖) → `Pawn/23`(11-19 · 균사림의 푸른 두꺼비 · 꼬리 없음 — 꼬리 관절만 엉덩이 뒤에).
 // **모양을 고치면 미리보기를 고치고 → 뽑기 → 그 굽는 문.** 넣기 전에 `common/baked_view.py`로 뼈 나눔 · 굽힌 자세를 본다.
 //
 // - **몸 틀은 늑대 프리팹을 복사한다**(`Enemy_Wolf` — 이동 · 뇌 · 콜라이더 · 네발 애니메이터). `Model` 아래만 비우고 관절 · 스킨 메시를 새로 세운다.
@@ -32,7 +33,9 @@ public static partial class ChibiPawnCreator
         new() { Tag = "두더지", Dir = "Tools/ModelLab/mole/baked", Prefab = "Chibi_Mole", Script = "Tools/ModelLab/mole/bake_mole.py",
                 BodyVerts = 24000, HeadVerts = 12000, FineVerts = 6000, NoneVerts = 28000, ThinVerts = 12000 },
         new() { Tag = "괴물쥐", Dir = "Tools/ModelLab/rat/baked", Prefab = "Chibi_Rat", Script = "Tools/ModelLab/rat/bake_rat.py",
-                BodyVerts = 20000, HeadVerts = 14000, FineVerts = 6000, NoneVerts = 26000, ThinVerts = 16000 },
+                BodyVerts = 28000, HeadVerts = 14000, FineVerts = 6000, NoneVerts = 26000, ThinVerts = 16000 },   // 몸 28000 — 이빨 자국 구멍 · 흉터 홈이 남게(11-19)
+        new() { Tag = "포자두꺼비", Dir = "Tools/ModelLab/toad/baked", Prefab = "Chibi_Toad", Script = "Tools/ModelLab/toad/bake_toad.py",
+                BodyVerts = 30000, HeadVerts = 14000, FineVerts = 4000, NoneVerts = 24000, ThinVerts = 8000 },   // 몸 30000 — 포자 주머니 숨구멍 · 사마귀가 남게
     };
 
     [Serializable] class QuadParent { public string bone, parent; }
@@ -129,6 +132,22 @@ public static partial class ChibiPawnCreator
             }
             else if (sway != null) UnityEngine.Object.DestroyImmediate(sway);
 
+            // **생김새 벌**(11-19 괴물쥐 — 사용자: *"쥐도 개체마다 다르게 · 3종류"*) — 고르기 조각(`Spine.Pick.{축}.{벌}`)이 있으면 `PawnLook`이 개체마다
+            // 씨앗으로 한 벌만 켠다(비율은 고르게). 모양 변형은 프리팹을 나누지 않는다(엔트 · 공룡 악어와 같은 길).
+            bool picks = man.items.Exists(i => i.part.Contains(".Pick."));
+            if (picks)
+            {
+                if (!root.TryGetComponent(out PawnLook look)) look = root.AddComponent<PawnLook>();
+                look.SetPickChances(new List<PawnLook.PickChance>());
+                EditorUtility.SetDirty(look);
+                look.Apply();
+            }
+            else if (root.TryGetComponent(out PawnLook stale)) UnityEngine.Object.DestroyImmediate(stale);
+
+            // **폰마다 스텐실 번호**(`PawnOutlineId`) — 늑대 틀(옛 블록 몸)에는 없어 두더지 · 괴물쥐가 같은 번호(1)를 써, 겹치면 서로의 몸 위에서
+            // 몸 선이 지워졌다(11-18 사용자: *"두더지랑 겹치면 외곽선이 없어지는 게 신경 쓰여"*). 치비 몸은 다 단다(`ChibiPawnCreator` `Dress`).
+            if (!root.TryGetComponent(out PawnOutlineId _)) root.AddComponent<PawnOutlineId>();
+
             PrefabUtility.SaveAsPrefabAsset(root, dp);
         }
         finally { PrefabUtility.UnloadPrefabContents(root); }
@@ -154,7 +173,8 @@ public static partial class ChibiPawnCreator
     // **얇은 판의 선**(쥐 귀 — 11-18 사용자: *"쥐 귀가 외곽선이 이상하게 나와"*). 몸 선 껍데기(둘째 재질 `OutlineOuter`)가 몇 mm짜리 귀 판을
     // 뚫고 앞면 위에 빗금처럼 그어졌다. 몸 선 셰이더(`ToonOutlineOuter`)에는 깊이를 미는 값이 없어, **살 재질 제 선 패스**(`ToonOutline` `Outline`)를
     // 켜서 가늘게 긋고 깊이를 살 뒤로 민다(`_OutlineBack` — 해골의 가는 뼈 · 감염자 테와 같은 셈). 재질은 하나(`PaintThin`)만 건다.
-    const float QuadThinWidth = 0.008f, QuadThinBack = 0.03f;
+    // 굵기 — 8mm는 몸 선(6cm) 옆에서 너무 가늘었다(11-18 사용자: *"쥐 귀는 외곽선이 작게 떠서 애매"*) → 3cm · 깊이는 굵기보다 더 뒤로.
+    const float QuadThinWidth = 0.03f, QuadThinBack = 0.05f;
     static Dictionary<string, Material> WithThinLine(Dictionary<string, Material> m)
     {
         var o = Variant(m["Paint"], "Chibi_BakedPaintThin", "_BaseColor", Color.white);
@@ -193,4 +213,7 @@ public static partial class ChibiPawnCreator
 
     [MenuItem("DungeonColony/Pawn/21. Create Rat Only (괴물쥐만 — 파이썬이 뽑은 네 발 메시를 들인다 · 다른 폰은 안 건드린다)")]
     public static void CreateRatOnly() => CreateQuadOnly(QuadKinds[1]);
+
+    [MenuItem("DungeonColony/Pawn/23. Create Spore Toad Only (포자두꺼비만 — 파이썬이 뽑은 네 발 메시를 들인다 · 다른 폰은 안 건드린다)")]
+    public static void CreateSporeToadOnly() => CreateQuadOnly(QuadKinds[2]);
 }

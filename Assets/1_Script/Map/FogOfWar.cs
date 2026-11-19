@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
@@ -116,11 +117,15 @@ public class FogOfWar : MonoBehaviour
     }
 
     // 세계 칸 → (층, 층 안 색인). 세계 밖이면 거짓.
-    bool Index(int x, int z, bool create, out Layer layer, out int i)
+    bool Index(int x, int z, bool create, out Layer layer, out int i) =>
+        Index(x, z, create, out layer, out i, out _);
+
+    bool Index(int x, int z, bool create, out Layer layer, out int i, out int floor)
     {
-        layer = null; i = 0;
+        layer = null; i = 0; floor = 0;
         if ((uint)x >= TerrainGrid.WorldSize || (uint)z >= TerrainGrid.WorldSize) return false;
-        layer = LayerOf(Floors.At(new Vector2Int(x, z)), create);
+        floor = Mathf.Clamp(Floors.At(new Vector2Int(x, z)), 1, Floors.Count);
+        layer = LayerOf(floor, create);
         if (layer == null) return false;
         int lx = x - layer.OX, lz = z - layer.OZ;
         if ((uint)lx >= _world || (uint)lz >= _world) return false;
@@ -129,6 +134,7 @@ public class FogOfWar : MonoBehaviour
     }
 
     Texture2D _tex;
+    byte[] _texBuf;                      // 창을 여기 채워 한 번에 올린다 — `GetPixelData` 인덱서는 에디터에서 칸마다 안전 검사를 탄다
     Layer _lastUploaded;
     Vector2Int _origin = new(int.MinValue, int.MinValue);
     bool _texDirty = true;
@@ -140,6 +146,48 @@ public class FogOfWar : MonoBehaviour
     readonly HashSet<UnitBrain> _hidden = new();
     readonly List<UnitBrain> _unhide = new();
     static readonly List<Renderer> _renderers = new();
+    int _hideTick;
+
+    // ── 시야는 **선 칸마다 기억한다**(2026-11-19, 프로파일러 — `FogOfWar.Update` 자기 시간 10.5ms) ──
+    //
+    // 0.1초마다 내 폰 전원의 그림자 던지기(반경 44m = 칸 6천 개 · 칸마다 `IsRock`)를 처음부터 다시 했다.
+    // 서 있는 폰도, 한 칸에 몰린 폰도 매번 따로 쟀다. 이제 **칸 → 그 칸에서 보이는 칸들**을 들고,
+    // 새 칸에 선 폰만 잰다. 모인 칸이 지난번과 같으면 목표를 다시 쓰지도 않는다.
+    // 바위·절벽·천장·반경이 바뀌면 통째로 버린다(`_rockVer` ← `RockMap.OnChanged`).
+    sealed class SightRecord
+    {
+        public readonly List<int>  Cells = new();   // (층 안 색인 << 3) | 층
+        public readonly List<byte> Vals  = new();
+        public int Used;
+    }
+
+    readonly Dictionary<Vector2Int, SightRecord> _sightCache = new();
+    readonly Stack<SightRecord> _sightPool = new();
+    readonly List<Vector2Int> _evict = new();
+    SightRecord _rec;                    // `Light`가 적는 곳
+    int _measureId, _rockVer;
+    int _keyRock = -1, _keyChasm = -1, _keyCeil = -1;
+    float _keyRadius = -1f, _keySoft = -1f;
+    bool _fadeIdle;                      // 지난 흐리기가 아무것도 안 바꿨다 — 시야가 다시 써질 때까지 쉰다
+
+    static readonly ProfilerMarker MSight  = new("FogOfWar.Sight");
+    static readonly ProfilerMarker MHide   = new("FogOfWar.Hide");
+    static readonly ProfilerMarker MFade   = new("FogOfWar.Fade");
+    static readonly ProfilerMarker MUpload = new("FogOfWar.Upload");
+
+    void OnRockChanged(Vector2Int _) => _rockVer++;
+
+    void ForgetSight()
+    {
+        foreach (var r in _sightCache.Values) Recycle(r);
+        _sightCache.Clear();
+    }
+
+    void Recycle(SightRecord r)
+    {
+        r.Cells.Clear(); r.Vals.Clear(); r.Used = 0;
+        _sightPool.Push(r);
+    }
 
     static readonly int IdTex  = Shader.PropertyToID("_FogVisTex");
     static readonly int IdRect = Shader.PropertyToID("_FogVisRect");
@@ -240,12 +288,17 @@ public class FogOfWar : MonoBehaviour
         _mat  = new Material(shader) { name = "FogOfWar (runtime)" };
         _pass = new FogPass(_mat);
 
+        ForgetSight();
+        _fadeIdle = false;
         RenderPipelineManager.beginCameraRendering += OnBeginCamera;
+        RockMap.OnChanged += OnRockChanged;
     }
 
     void OnDisable()
     {
         RenderPipelineManager.beginCameraRendering -= OnBeginCamera;
+        RockMap.OnChanged -= OnRockChanged;
+        ForgetSight();
 
         foreach (var b in _hidden) SetShown(b, true);
         _hidden.Clear();
@@ -267,30 +320,35 @@ public class FogOfWar : MonoBehaviour
         if (_sightAt >= sightInterval)
         {
             _sightAt = 0f;
-            MeasureSight();
-            ApplyPawnHiding();
+            using (MSight.Auto()) MeasureSight();
+            using (MHide.Auto())  ApplyPawnHiding();
         }
 
         // **흐리기는 초당 스무 번** — 매 프레임 올리면 창(256KB)을 프레임마다 버스에 싣는다.
         _fadeAcc += dt;
         if (_fadeAcc >= 0.05f)
         {
-            Fade(_fadeAcc);
+            if (!_fadeIdle)
+                using (MFade.Auto()) _fadeIdle = !Fade(_fadeAcc);
             _fadeAcc = 0f;
         }
 
-        UploadWindow();
+        using (MUpload.Auto()) UploadWindow();
     }
 
-    // 지난번에 켠 칸의 목표를 끄고, 내 폰마다 다시 켠다.
+    // 내 폰이 선 칸마다 기억해 둔 시야를 모은다. 새 칸만 재고, 모인 칸이 지난번과 같으면 목표를 안 건드린다.
     void MeasureSight()
     {
-        foreach (var l in _layers)
+        if (_keyRock != _rockVer || _keyChasm != Chasm.Version || _keyCeil != TerrainCeiling.Version
+            || _keyRadius != sightRadius || _keySoft != edgeSoftness)
         {
-            if (l == null || l.Target == null) continue;
-            foreach (int i in l.LitNow) l.Target[i] = 0;
-            l.LitNow.Clear();
+            _keyRock = _rockVer; _keyChasm = Chasm.Version; _keyCeil = TerrainCeiling.Version;
+            _keyRadius = sightRadius; _keySoft = edgeSoftness;
+            ForgetSight();
         }
+
+        _measureId++;
+        bool changed = false;
 
         var map = MapManager.Instance;
         var all = UnitBrain.All;
@@ -303,8 +361,58 @@ public class FogOfWar : MonoBehaviour
             var p = brain.transform.position;
             var c = map != null ? map.WorldToTile(p)
                                 : new Vector2Int(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.z));
-            Sight(c);
+
+            if (!_sightCache.TryGetValue(c, out var rec))
+            {
+                rec = _sightPool.Count > 0 ? _sightPool.Pop() : new SightRecord();
+                _rec = rec;
+                Sight(c);
+                _rec = null;
+                _sightCache[c] = rec;
+                changed = true;
+            }
+            rec.Used = _measureId;
         }
+
+        // 이번에 아무도 안 선 칸은 버린다 — 남겨 두면 떠난 자리의 시야가 계속 켜져 있다.
+        _evict.Clear();
+        foreach (var kv in _sightCache)
+            if (kv.Value.Used != _measureId) _evict.Add(kv.Key);
+        foreach (var t in _evict)
+        {
+            Recycle(_sightCache[t]);
+            _sightCache.Remove(t);
+            changed = true;
+        }
+
+        if (!changed) return;   // 같은 칸들 그대로 — 목표도 그대로다
+
+        foreach (var l in _layers)
+        {
+            if (l == null || l.Target == null) continue;
+            foreach (int i in l.LitNow) l.Target[i] = 0;
+            l.LitNow.Clear();
+        }
+
+        int n = _world * _world;
+        foreach (var rec in _sightCache.Values)
+        {
+            var cells = rec.Cells; var vals = rec.Vals;
+            for (int k = 0; k < cells.Count; k++)
+            {
+                int packed = cells[k];
+                var l = _layers[packed & 7];
+                if (l == null) continue;
+                EnsureSight(l, n);
+
+                int i = packed >> 3;
+                byte b = vals[k];
+                if (l.Target[i] == 0) l.LitNow.Add(i);
+                if (b > l.Target[i]) l.Target[i] = b;
+                if (!l.Active[i]) { l.Active[i] = true; l.ActiveList.Add(i); }
+            }
+        }
+        _fadeIdle = false;
     }
 
     // ── 시야 — 그림자 던지기(recursive shadowcasting) ──────────────────────
@@ -369,18 +477,15 @@ public class FogOfWar : MonoBehaviour
         byte b = (byte)(v * 255f);
         if (b == 0) return;
 
-        if (!Index(x, y, true, out var l, out int i)) return;
-        EnsureSight(l, _world * _world);
-
-        if (l.Target[i] == 0) l.LitNow.Add(i);
-        if (b > l.Target[i]) l.Target[i] = b;
-
-        if (!l.Active[i]) { l.Active[i] = true; l.ActiveList.Add(i); }
+        if (!Index(x, y, true, out _, out int i, out int floor)) return;
+        _rec.Cells.Add((i << 3) | floor);
+        _rec.Vals.Add(b);
     }
 
-    // 켜진 칸들이 목표를 따라간다. 둘 다 0이 된 칸은 목록에서 뺀다.
-    void Fade(float dt)
+    // 켜진 칸들이 목표를 따라간다. 둘 다 0이 된 칸은 목록에서 뺀다. 무엇이든 바뀌었으면 참.
+    bool Fade(float dt)
     {
+        bool any = false;
         int step = Mathf.Max(1, Mathf.RoundToInt(255f * dt / Mathf.Max(0.01f, fadeSeconds)));
         int viewing = Floors.Current;
 
@@ -398,11 +503,12 @@ public class FogOfWar : MonoBehaviour
                 if (cur < tgt)      cur = Mathf.Min(tgt, cur + step);
                 else if (cur > tgt) cur = Mathf.Max(tgt, cur - step);
 
-                if (cur != l.Current[i]) { l.Current[i] = (byte)cur; if (f == viewing) _texDirty = true; }
+                if (cur != l.Current[i]) { l.Current[i] = (byte)cur; any = true; if (f == viewing) _texDirty = true; }
                 if (cur > l.Explored[i]) { l.Explored[i] = (byte)cur; GrowExploredDirty(l, i); }
 
                 if (cur == 0 && tgt == 0)
                 {
+                    any = true;
                     l.Active[i] = false;
                     int last = list.Count - 1;
                     list[k] = list[last];
@@ -410,6 +516,7 @@ public class FogOfWar : MonoBehaviour
                 }
             }
         }
+        return any;
     }
 
     // 카메라 둘레 창만 텍스처로 옮긴다.
@@ -431,25 +538,33 @@ public class FogOfWar : MonoBehaviour
         if (!_texDirty) return;
         _texDirty = false;
 
-        var data = _tex.GetPixelData<byte>(0);   // RG16 = 칸마다 두 바이트(R, G)
+        _texBuf ??= new byte[Window * Window * 2];   // RG16 = 칸마다 두 바이트(R, G)
+        var data = _texBuf;
+        var ex  = layer.Explored;
+        var cur = layer.Current;
         for (int ty = 0; ty < Window; ty++)
         {
             int ly = _origin.y + ty - layer.OZ;
             int row = ty * Window * 2;
             if ((uint)ly >= _world)
             {
-                for (int tx = 0; tx < Window * 2; tx++) data[row + tx] = 0;
+                System.Array.Clear(data, row, Window * 2);
                 continue;
             }
             int src = ly * _world;
             for (int tx = 0; tx < Window; tx++)
             {
                 int lx = _origin.x + tx - layer.OX;
-                bool inFloor = (uint)lx < _world;
-                data[row + tx * 2]     = inFloor ? layer.Explored[src + lx] : (byte)0;
-                data[row + tx * 2 + 1] = inFloor && layer.Current != null ? layer.Current[src + lx] : (byte)0;
+                int o = row + tx * 2;
+                if ((uint)lx < _world)
+                {
+                    data[o]     = ex[src + lx];
+                    data[o + 1] = cur != null ? cur[src + lx] : (byte)0;
+                }
+                else { data[o] = 0; data[o + 1] = 0; }
             }
         }
+        _tex.SetPixelData(data, 0);
         _tex.Apply(false, false);
 
         Shader.SetGlobalTexture(IdTex, _tex);
@@ -460,6 +575,9 @@ public class FogOfWar : MonoBehaviour
 
     void ApplyPawnHiding()
     {
+        // **이미 가린 폰은 1초마다만 다시 건다**(2026-11-19) — 0.1초마다 가린 폰 전원(야생 · 다른 층)의
+        // 렌더러를 `GetComponentsInChildren`으로 훑던 것이 프로파일러에 걸렸다. 새로 가릴 때는 바로 건다.
+        bool refresh = (++_hideTick % 10) == 0;
         int viewing = Floors.Current;
         var all = UnitBrain.All;
         for (int k = 0; k < all.Count; k++)
@@ -479,8 +597,8 @@ public class FogOfWar : MonoBehaviour
 
             if (hide)
             {
-                _hidden.Add(brain);
-                SetShown(brain, false);   // 매번 다시 건다 — 그사이 손에 든 도구가 생겼을 수 있다
+                // 가끔 다시 건다 — 그사이 손에 든 도구가 생겼을 수 있다
+                if (_hidden.Add(brain) || refresh) SetShown(brain, false);
             }
             else
             {

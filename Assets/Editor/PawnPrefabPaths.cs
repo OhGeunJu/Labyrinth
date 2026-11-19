@@ -15,6 +15,8 @@ public static class PawnPrefabPaths
         if (name.StartsWith("Chibi_Ent")) return "Ent";
         if (name.StartsWith("Chibi_DinoCroc")) return "Lizard";     // 리자드맨과 따로인 큰 종족(`ChibiPawnCreator.Baked`)이지만 폴더는 리자드맨과 같이(11-15 사용자)
         if (name.StartsWith("Chibi_Werewolf")) return "Werewolf";
+        if (name.StartsWith("Chibi_Vampire")) return "Vampire";     // 로드 · 노예 남녀(`ChibiPawnCreator.Vampire`)
+        if (name.StartsWith("Chibi_Kobold")) return "Kobold";       // 하이에나 몬스터(`ChibiPawnCreator.Baked` · 11-19)
         if (name.Contains("Lizard"))   return "Lizard";
         if (name.Contains("Goblin"))   return "Goblin";
         if (name.Contains("Orc"))      return "Orc";
@@ -25,7 +27,7 @@ public static class PawnPrefabPaths
         if (name.Contains("Fungal"))   return "Fungal";
         if (name.Contains("Skeleton")) return "Skeleton";
         if (name.Contains("Golem"))    return "Golem";
-        if (name.StartsWith("Chibi_Mole") || name.StartsWith("Chibi_Rat")) return "Beast";   // 네 발 짐승(`ChibiPawnCreator.Quad`)
+        if (name.StartsWith("Chibi_Mole") || name.StartsWith("Chibi_Rat") || name.StartsWith("Chibi_Toad")) return "Beast";   // 네 발 짐승(`ChibiPawnCreator.Quad`)
         if (name.EndsWith("_Wolf") || name.EndsWith("_Bear") || name.EndsWith("_Ant")) return "Beast";
         return "Human";
     }

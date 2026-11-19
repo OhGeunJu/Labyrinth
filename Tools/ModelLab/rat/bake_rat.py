@@ -33,12 +33,23 @@ def skeleton():
     return sk, joints
 
 def build():
-    P = r.pieces()
+    """생김새 세 벌(11-19 사용자: *"쥐도 개체마다 다르게 · 3종류"*) — 벌마다 갈리는 조각(`rat.VARIANT` — 머리 · 귀 · 몸통 · 다리)은 벌마다 뽑아
+    고르기 조각(`Spine.Pick.Look.{A|B|C}` — 게임 `PawnLook`이 개체마다 하나만 켠다)으로 · 나머지는 한 벌을 같이 쓴다."""
+    P = r.pieces(look_name='A')
     assert len(P) == len(NAMES), '조각 %d · 이름 %d — 미리보기 `pieces()`가 바뀌었다' % (len(P), len(NAMES))
-    specs = specs_for(P, NAMES, TAILS, fine=('teeth', 'whiskers', 'front_claws', 'back_claws'), none=('mouth', 'eyes'),
-                      blend=('head',), legs_only=('front_hands', 'front_claws', 'back_feet', 'back_claws'), steps={'eyes': 0.0015, 'teeth': 0.002, 'whiskers': 0.002, 'mouth': 0.0018, 'ears': 0.0018}, thin=('ears',))
+    pieces, names, looks = [], [], []
+    for pc, nm in zip(P, NAMES):
+        if nm not in r.VARIANT: pieces.append(pc); names.append(nm); looks.append(None)
+    for L in r.LOOK_NAMES:
+        for pc, nm in zip(r.pieces(look_name=L), NAMES):
+            if nm in r.VARIANT: pieces.append(pc); names.append(nm); looks.append(L)
+    specs = specs_for(pieces, names, TAILS, fine=('teeth', 'whiskers', 'front_claws', 'back_claws'), none=('mouth', 'eyes'),
+                      blend=('head',), legs_only=('front_hands', 'front_claws', 'back_feet', 'back_claws'),
+                      steps={'eyes': 0.0015, 'teeth': 0.002, 'whiskers': 0.002, 'mouth': 0.0018, 'ears': 0.0018}, thin=('ears',))
+    for sp, L in zip(specs, looks):
+        if L: sp.part = 'Spine.Pick.Look.' + L; sp.name = '%s %s' % (sp.name, L)
     sk, joints = skeleton()
-    return [(f, c) for f, c, _ in P], specs, sk, joints
+    return [(f, c) for f, c, _ in pieces], specs, sk, joints
 
 if __name__ == '__main__':
     bake(build, OUT, 'Chibi_Rat', lo=(-0.45, -0.05, -1.75), hi=(0.45, 0.95, 1.0), tail_links=len(TAILS))

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 
 // **보는 곳 둘레의 청크만 세워 둔다**(2026-08-26).
@@ -279,20 +280,46 @@ public class TerrainStreamer : MonoBehaviour
         }
         foreach (var c in _stale) Unload(c);
 
-        // ③ 없는 것 세우기 — **한 프레임에 몇 개만.** 가운데부터.
+        // ③ 없는 것 세우기 — **한 프레임에 한 단계씩.** 가운데부터.
+        //
+        // **청크 하나를 세 프레임에 나눠 세운다**(2026-11-19, 프로파일러 — 경계를 넘는 프레임에
+        // `TerrainStreamer.Update` 자기 시간 4.6ms). 높이 · 텍스처 · 알림(나무·바위 뿌리기)을 한 프레임에
+        // 몰아 하던 것을 단계마다 한 프레임으로 편다. 새로 서는 청크는 반경 가장자리라 몇 프레임 늦게
+        // 완성돼도 화면에는 안 보인다. 한 번에 한 청크만 세우는 중이다(`_inflight`).
         int budget = buildsPerFrame;
+        bool connected = false;
         _sortCenter = center;
         _byDistance ??= (a, b) => Sqr(a - _sortCenter).CompareTo(Sqr(b - _sortCenter));
         _wanted.Sort(_byDistance);
-        foreach (var c in _wanted)
+        while (budget > 0)
         {
-            if (budget <= 0) break;
-            if (_live.ContainsKey(c)) continue;
-            Build(c);
+            if (_inflightStage == Stage.None)
+            {
+                bool started = false;
+                foreach (var c in _wanted)
+                {
+                    if (_live.ContainsKey(c)) continue;
+                    BeginBuild(c);
+                    started = true;
+                    break;
+                }
+                if (!started) break;
+            }
+            else if (_inflightStage == Stage.Heights)
+            {
+                // 세우는 사이에 벗어났으면 그릇만 돌려준다 — 아직 아무에게도 안 알렸다.
+                if (!_wanted.Contains(_inflightChunk)) { AbandonInflight(); continue; }
+                ShowInflight();
+                connected = true;
+            }
+            else
+            {
+                AnnounceInflight();
+            }
             budget--;
         }
 
-        if (_stale.Count > 0 || budget < buildsPerFrame) Reconnect();
+        if (_stale.Count > 0 || connected) Reconnect();
     }
 
     static int Sqr(Vector2Int v) => v.x * v.x + v.y * v.y;
@@ -373,19 +400,34 @@ public class TerrainStreamer : MonoBehaviour
     int PoolCap => (2 * radius + 1) * (2 * radius + 1);
 
     // 높이 배열도 다시 쓴다 — 129×129 = 66KB짜리 쓰레기가 청크마다 나온다.
+    // **세우는 중인 청크는 제 배열을 든다**(`_inflightHeights`) — 높이를 채운 프레임과 텍스처를 까는 프레임
+    // 사이에 `Refill`이 공용 배열을 덮어쓰면 다른 청크의 경사로 텍스처가 깔린다.
     float[,] _heights;
+    float[,] _inflightHeights;
 
     bool _loggedFirst;
 
+    // ── 세우는 중인 청크 하나 ────────────────────────────────────────────────
+    enum Stage { None, Heights, Shown }
+    Stage      _inflightStage;
+    Vector2Int _inflightChunk;
+    Terrain    _inflightTerrain;
+
+    static readonly ProfilerMarker MHeights  = new("TerrainStreamer.Heights");
+    static readonly ProfilerMarker MSplat    = new("TerrainStreamer.Splat");
+    static readonly ProfilerMarker MAnnounce = new("TerrainStreamer.ChunkLoaded");
+
     // 청크 하나의 높이를 지금 함수 값으로 채운다 — **`Build`와 `Refill`이 같은 식을 쓴다.**
     // 갈라 두면 런타임에 고친 땅이 새로 서는 청크와 이미 선 청크에서 다르게 나온다.
-    float[,] FillHeights(Vector2Int chunk)
+    float[,] FillHeights(Vector2Int chunk) => FillHeights(chunk, ref _heights);
+
+    float[,] FillHeights(Vector2Int chunk, ref float[,] buffer)
     {
         int res = TerrainGrid.VertsPerAxis;   // 129 = 2^7 + 1 — 유니티가 요구하는 형태
 
         // **[z, x] 순서다** — 뒤집으면 지형이 전치되어 이웃과 안 맞는다.
-        if (_heights == null || _heights.GetLength(0) != res) _heights = new float[res, res];
-        var h = _heights;
+        if (buffer == null || buffer.GetLength(0) != res) buffer = new float[res, res];
+        var h = buffer;
 
         for (int vz = 0; vz < res; vz++)
         for (int vx = 0; vx < res; vx++)
@@ -413,6 +455,16 @@ public class TerrainStreamer : MonoBehaviour
 
     void RefillChunk(Vector2Int chunk)
     {
+        // **세우는 중인 청크도 갈아 끼운다** — 높이를 채운 뒤 켜기 전에 땅을 고르면 옛 높이로 선다.
+        // 텍스처는 켤 때(`ShowInflight`) 이 배열로 깔린다.
+        if (_inflightStage == Stage.Heights && _inflightChunk == chunk && _inflightTerrain != null)
+        {
+            var d = _inflightTerrain.terrainData;
+            d.SetHeights(0, 0, FillHeights(chunk, ref _inflightHeights));
+            Chasm.ApplyHoles(d, chunk);
+            return;
+        }
+
         if (!_live.TryGetValue(chunk, out var terrain) || terrain == null) return;
 
         var data = terrain.terrainData;
@@ -427,10 +479,12 @@ public class TerrainStreamer : MonoBehaviour
         TerrainSplat.Apply(data, chunk, h);
     }
 
-    void Build(Vector2Int chunk)
+    // ① 높이 · 구멍 — 꺼진 채로 채운다.
+    void BeginBuild(Vector2Int chunk)
     {
+        using var _ = MHeights.Auto();
         int res = TerrainGrid.VertsPerAxis;
-        var h = FillHeights(chunk);
+        var h = FillHeights(chunk, ref _inflightHeights);
 
         Terrain terrain = null;
         while (_pool.Count > 0 && terrain == null) terrain = _pool.Pop();   // 파괴된 것은 버린다
@@ -468,12 +522,45 @@ public class TerrainStreamer : MonoBehaviour
             go.AddComponent<TerrainCollider>().terrainData = data;
         }
 
+        // 새로 만든 그릇은 켜진 채로 나온다 — 텍스처를 깔 때까지 끈다(빈 땅이 한 프레임 보이지 않게).
+        if (terrain.gameObject.activeSelf) terrain.gameObject.SetActive(false);
+
         data.SetHeights(0, 0, h);
         Chasm.ApplyHoles(data, chunk);   // 절벽 — 그릇을 돌려 쓰므로 없는 청크도 한 번 묻는다
         Chasm.PrepareMaterial(terrain.materialTemplate);
 
+        _inflightChunk   = chunk;
+        _inflightTerrain = terrain;
+        _inflightStage   = Stage.Heights;
+    }
+
+    // 세우다 만 청크의 그릇을 풀로 돌려준다(아직 아무에게도 안 알렸다).
+    void AbandonInflight()
+    {
+        var t = _inflightTerrain;
+        _inflightTerrain = null;
+        _inflightStage   = Stage.None;
+        if (t == null) return;
+        if (_pool.Count < PoolCap) _pool.Push(t);
+        else
+        {
+            var data = t.terrainData;
+            Destroy(t.gameObject);
+            if (data != null) Destroy(data);
+        }
+    }
+
+    // ② 텍스처 · 자리 · 켜기 — 여기서부터 땅이 선다(`HasGroundAt`).
+    void ShowInflight()
+    {
+        using var _ = MSplat.Auto();
+        var chunk   = _inflightChunk;
+        var terrain = _inflightTerrain;
+        if (terrain == null) { _inflightStage = Stage.None; return; }
+        var data = terrain.terrainData;
+
         // **텍스처를 깐다** — 높이·경사·바이옴에서 결정적으로. 저장되는 것은 없다.
-        TerrainSplat.Apply(data, chunk, h);
+        TerrainSplat.Apply(data, chunk, _inflightHeights);
 
         var t = terrain.transform;
         t.position = TerrainGrid.OriginOf(chunk) + Vector3.up * MinHeight;
@@ -497,6 +584,16 @@ public class TerrainStreamer : MonoBehaviour
         }
 
         _live[chunk] = terrain;
+        _inflightStage = Stage.Shown;
+    }
+
+    // ③ 알린다 — 나무·바위·벽이 따라 선다. 듣는 쪽 몫은 각자의 마커로 갈린다.
+    void AnnounceInflight()
+    {
+        var chunk = _inflightChunk;
+        _inflightStage   = Stage.None;
+        _inflightTerrain = null;
+        using var _ = MAnnounce.Auto();
         ChunkLoaded?.Invoke(chunk);
     }
 
@@ -504,6 +601,11 @@ public class TerrainStreamer : MonoBehaviour
     {
         if (!_live.TryGetValue(chunk, out var t)) return;
         _live.Remove(chunk);
+
+        // **켰지만 아직 안 알린 청크**는 *사라졌다*도 알리지 않는다 — 듣는 쪽은 선 적이 없는 청크다.
+        bool announced = !(_inflightStage == Stage.Shown && _inflightChunk == chunk);
+        if (!announced) { _inflightStage = Stage.None; _inflightTerrain = null; }
+
         if (t == null) return;
 
         if (_pool.Count < PoolCap)
@@ -520,7 +622,7 @@ public class TerrainStreamer : MonoBehaviour
             if (data != null) Destroy(data);
         }
 
-        ChunkUnloaded?.Invoke(chunk);
+        if (announced) ChunkUnloaded?.Invoke(chunk);
     }
 
     // `allowAutoConnect`가 자리로 이웃을 찾지만, **붙이고 뗀 직후에는 다시 알려 줘야 한다** —
@@ -556,6 +658,8 @@ public class TerrainStreamer : MonoBehaviour
     void OnDisable()
     {
         foreach (var c in new List<Vector2Int>(_live.Keys)) Unload(c);
+        if (_inflightStage == Stage.Heights) AbandonInflight();   // 세우다 만 그릇도 풀로 — 아래에서 같이 거둔다
+        _inflightStage = Stage.None;
 
         // **넣어 둔 것도 거둔다.** `_root`를 지우면 오브젝트는 같이 사라지지만 런타임에 만든
         // `TerrainData`는 **아무도 안 거둔다**(에셋이 아니다). 위 `Unload`가 살아 있는 것에

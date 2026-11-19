@@ -41,7 +41,7 @@ public class UnderworldLighting : MonoBehaviour
     // 불 없는 밤은 정말로 덜 보이고, **불빛 안은 그대로 낮처럼 본다** — 그 차이가 불을 세우는 이유다.
     //
     // **2026-10-11에 화면만 더 내렸다**(사용자: *"폰의 시야를 줄일필요는 없고 전체 기본 밝기를 내리라는 말이야"*) —
-    // 이 값들은 그대로고 `gloom`가 주변광을 한 번 더 누른다. 길을 읽는 것은 불빛과 채광 구멍(`Skylight`)이다.
+    // 이 값들은 그대로고 주변광 배율(지금은 `NightAmbient`·`DayAmbient`)이 한 번 더 누른다. 길을 읽는 것은 불빛과 채광 구멍(`Skylight`)이다.
     public const float LowTide  = 0.62f;   // 낮·아침 — 가장 밝을 때
     public const float Slack    = 0.40f;   // 저녁
     public const float Rising   = 0.32f;   // 새벽
@@ -74,19 +74,20 @@ public class UnderworldLighting : MonoBehaviour
     // 씬에 이 컴포넌트를 안 붙였다고 시야만 지상 규칙으로 돌면 그게 가장 나쁘다.
     public static bool Active => RockMap.Enabled;
 
-    [Header("주변광 — 밀물이 가장 깊을 때")]
-    // **이름을 `darkest`에서 바꿨다**(2026-10-01) — 씬이 든 옛 값(0.45)이 코드 기본값을 이겨서,
-    // 기본값만 내리면 아무 일도 안 일어난다. 이름이 바뀌면 씬 값이 버려지고 아래 값으로 선다.
-    [Tooltip("배율 1(썰물)일 때의 색에 이 배율이 곱해진다. 0에 가까울수록 밤이 깊다.")]
-    [SerializeField, Range(0.05f, 1f)] float deepest = 0.2f;
-
-    // 씬이 든 주변광(`WorldStreamingSetup`)은 *"무엇이 어디 있는지 보인다"*에 맞춘 값이다. 그 위에 한 번 더
-    // 곱한다 — 씬 값을 고치면 지하를 다시 세울 때마다 되돌아간다.
-    [Header("주변광 — 썰물일 때")]
-    // **이름을 `brightest`에서 바꿨다**(같은 날) — 처음 값 0.6이 씬에 저장돼 있으면 기본값을 내려도 안 바뀐다.
-    // 사용자: *"빛이 안비추는 곳은 엄청 새카맣게 어두웠으면 … 진짜 잘봐야지 실루엣이 보일정도"*.
-    [Tooltip("가장 밝을 때의 주변광에 곱하는 배율. 1이면 씬에 적힌 색 그대로, 0에 가까울수록 불빛 밖이 새카맣다.")]
-    [SerializeField, Range(0.01f, 1f)] float gloom = 0.06f;
+    // **2026-11-19에 낮과 밤을 따로 쥐었다**(사용자: *"지금 밝기가 너무 낮은 거 같아 그냥 밤이 되면 지금 밝기로
+    // 하고 낮에는 좀 밝게 가자"*). 그전에는 `gloom`(0.06) 하나에 `deepest`(0.2)를 곱해 밤이 0.012였다 —
+    // 게임이 아침에 시작하니 보던 밝기는 낮 값 0.06이고, 그것이 이제 밤이다. 저녁·새벽은 둘 사이를 따라간다.
+    // **낮은 1보다 크다** — 처음엔 0.15로 올렸는데 사용자: *"씬을 봐도 어둡고 아침 7시도 어두운데?"*. 씬 뷰가
+    // 바로 배율 1(이 컴포넌트는 에디터에서 안 돈다)이고 그것도 어둡다는 말이라, 낮은 씬 뷰보다 밝아야 한다.
+    // 이어서 *"씬뷰에서도 밝게"* — 씬의 바탕 주변광을 1.5배 올리고(`WorldStreamingSetup`) 배율을 그만큼 나눴다:
+    // **씬 뷰 = 낮(1.0)**, 밤 0.04(화면 밝기는 전과 같다).
+    // **시야(`Tide` → `Vision`)는 그대로다** — 화면만 밝힌다.
+    //
+    // **직렬화하지 않는다 — 코드 상수다**(같은 날). 처음 만든 판(밤 0.06 · 낮 0.15)이 씬에 저장돼, 기본값을
+    // 1로 올린 뒤에도 Play 로그가 `낮 ×0.15`였다(사용자: *"낮이어도 별로 안밝아"*). 이 컴포넌트에서만 세 번째다
+    // (`darkest`·`brightest`도 같은 일로 이름을 갈았다) — 이름을 또 바꾸지 말고, 값은 여기서만 고친다.
+    public const float NightAmbient = 0.04f;   // 밤(밀물이 가장 깊을 때) — 0에 가까울수록 불빛 밖이 새카맣다
+    public const float DayAmbient   = 1f;      // 낮(썰물) — 1이면 씬에 적힌 색 그대로(= 씬 뷰)
 
     [Tooltip("색이 옮겨 가는 속도. 때가 바뀌는 순간 뚝 끊기면 화면이 튄다.")]
     [SerializeField] float lerpSpeed = 0.6f;
@@ -109,6 +110,7 @@ public class UnderworldLighting : MonoBehaviour
         _fog = RenderSettings.fogDensity;
         _cur = Norm(Tide);
         Apply(_cur);
+        Debug.Log($"[굴 밝기] 바탕 주변광 {_sky}/{_equator}/{_ground} · 밤 ×{NightAmbient} · 낮 ×{DayAmbient} · 지금 {GameTimeManager.Phase}");
     }
 
     // **떠날 때 되돌린다** — 안 되돌리면 저작한 값이 *마지막으로 어두웠던 값*으로 굳어,
@@ -137,7 +139,7 @@ public class UnderworldLighting : MonoBehaviour
     void Apply(float t)
     {
         Darkness = 1f - t;
-        float k = Mathf.Lerp(deepest, 1f, t) * gloom;
+        float k = Mathf.Lerp(NightAmbient, DayAmbient, t);
 
         // **폰도 같이 어두워진다** — 폰 셰이더(`ToonOutline`·`ChibiFace`)는 최저 밝기를 따로 든다. 그것이
         // 상수였을 때는 굴만 검어지고 폰은 그대로 떠서, 어두운 것이 아니라 *바닥만 검게 칠한 낮*으로 보였다.

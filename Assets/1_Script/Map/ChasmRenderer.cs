@@ -94,8 +94,11 @@ public class ChasmRenderer : MonoBehaviour
     readonly List<Vector3> _n = new();
     readonly List<int>     _iWall = new(), _iFog = new(), _iFloor = new();
 
+    static readonly Unity.Profiling.ProfilerMarker MChunk = new("ChasmRenderer.OnChunk");
+
     void OnChunk(Vector2Int chunk)
     {
+        using var _m = MChunk.Auto();
         OnGone(chunk);
 
         int s = TerrainGrid.VertexSpacing;

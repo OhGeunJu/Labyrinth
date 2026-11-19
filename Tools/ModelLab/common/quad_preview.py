@@ -84,11 +84,13 @@ def mouth_cut(p, path, r):
     """입 홈 — 살에서 빼는 거리장(거울)."""
     ph, br = path; m = mirror(p)
     return np.minimum(polyline(p, ph, r), polyline(m, br, r))
-def mouth_inner(p, path, r, sink):
-    """입 홈 바닥의 어두운 줄 — 홈 안으로 `sink`만큼 들어간 가는 관(살 위로 안 나온다)."""
+def mouth_inner(p, path, r, sink, philtrum=True):
+    """입 홈 바닥의 어두운 줄 — 홈 안으로 `sink`만큼 들어간 가는 관(살 위로 안 나온다).
+    `philtrum=False` — 인중(코 밑 세로 줄)에는 안 깐다(홈만 남는다 — 11-19 괴물쥐: *"코 밑에 검은 선은 왜 있는 거야"*)."""
     ph, br = path; m = mirror(p)
     ph = [a + V(0, sink, -sink * 0.5) for a in ph]; br = [a + V(-sink * 0.6, sink, 0) for a in br]
-    return np.minimum(polyline(p, ph, r), polyline(m, br, r))
+    d = polyline(m, br, r)
+    return np.minimum(polyline(p, ph, r), d) if philtrum else d
 def eye_paint(base, center, n, R, spots=((0.80, 0.38, -0.30, 0.34), (0.90, -0.30, 0.25, 0.16))):
     """눈 색 — 반짝임을 **칠한다**(튀어나온 공이 아니다). spots — (앞 · 위 · 옆 몫, 각 반지름 라디안)."""
     n = nrm(n); t = nrm(np.cross(UP, n)); u = np.cross(n, t)

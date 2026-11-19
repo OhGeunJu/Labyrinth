@@ -446,15 +446,21 @@ public static class WorldStreamingSetup
     // 도드라진다. 색이 하나뿐이면 밝고 어두운 것만 있고 **따뜻하고 차가운 것**이 없다.
     //
     // **`RenderSettings`는 씬이 든다** — 여기서 써 두면 저장과 함께 남는다.
+    internal static readonly Color AmbientSky     = new Color(0.45f, 0.57f, 0.675f);
+    internal static readonly Color AmbientEquator = new Color(0.30f, 0.39f, 0.48f);
+    internal static readonly Color AmbientGround  = new Color(0.15f, 0.18f, 0.21f);
+
     static void ApplyUnderworldLighting()
     {
         RenderSettings.ambientMode         = UnityEngine.Rendering.AmbientMode.Trilight;
         // **2026-08-29에 한 단계 올렸다**(사용자: 너무 어둡다). 처음 값은 *분위기*로는 맞았는데
         // **무엇이 어디 있는지가 안 보였다** — 밤 조명에서 이미 못 박은 규칙이다:
         // **어두운 것과 안 보이는 것은 다르다**(분위기가 아니라 조작 불능이 된다). 대략 두 배.
-        RenderSettings.ambientSkyColor     = new Color(0.30f, 0.38f, 0.45f);   // 위에서 오는 푸른빛
-        RenderSettings.ambientEquatorColor = new Color(0.20f, 0.26f, 0.32f);
-        RenderSettings.ambientGroundColor  = new Color(0.10f, 0.12f, 0.14f);
+        // **2026-11-19에 1.5배로 올렸다**(사용자: *"씬뷰에서도 밝게 보고 싶다"*) — 씬 뷰는 이 값 그대로라,
+        // 게임의 낮(`UnderworldLighting.DayAmbient` 1.0)과 같은 밝기가 되게. 밤 배율은 같은 만큼 나눴다.
+        RenderSettings.ambientSkyColor     = AmbientSky;   // 위에서 오는 푸른빛
+        RenderSettings.ambientEquatorColor = AmbientEquator;
+        RenderSettings.ambientGroundColor  = AmbientGround;
 
         // **하늘을 없앤다.** 안개는 먼 것을 흐릴 뿐 **스카이박스를 안 가린다** — 지하인데
         // 화면 위쪽에 **파란 하늘**이 그대로 보인다. 카메라가 지우는 색까지 같이 바꿔야

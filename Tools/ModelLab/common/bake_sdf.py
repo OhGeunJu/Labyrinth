@@ -64,8 +64,9 @@ def weights(V, skel, bone, allow=None, bones=None, adjm=None):
 
 def color_at(col, V):
     if not callable(col): rgb = np.tile(np.asarray(col, np.float32), (len(V), 1))
-    else: rgb = np.asarray(col(V.astype(np.float32)), np.float32).reshape(len(V), -1)[:, :3]
-    return np.concatenate([rgb, np.zeros((len(V), 1), np.float32)], 1)
+    else: rgb = np.asarray(col(V.astype(np.float32)), np.float32).reshape(len(V), -1)
+    if rgb.shape[1] == 4: return rgb   # 칸 몫 넷(rgba — 팔레트 재질 · 코볼트 털 11-19)은 그대로
+    return np.concatenate([rgb[:, :3], np.zeros((len(V), 1), np.float32)], 1)
 
 class Spec:
     """조각 하나의 메타 — 이름(로그용) · 선 · 뼈 · 고를 뼈 · 칸.

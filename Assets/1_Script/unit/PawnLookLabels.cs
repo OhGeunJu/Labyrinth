@@ -118,12 +118,14 @@ public static class PawnLookLabels
                 "Spiky" => "삐죽 머리", "SpikyBob" => "삐죽 단발", "Straight" => "생머리", "Tail" => "꽁지머리",
                 "TopBun" => "정수리 똥머리", "Topknot" => "상투", "TwinBraids" => "양갈래 땋은 머리", "TwinTails" => "양갈래",
                 "TwinTailsV" => "낮은 양갈래", "Undercut" => "투블럭", "WarKnot" => "전사 매듭",
+                // 뱀파이어 로드에서 온 머리(11-19 — 사람도 고른다 · `human/bake_hair.py` `VAMP`)
+                "VampSwept" => "귀족 넘긴 머리", "VampSlick" => "귀족 올백", "VampLong" => "귀족 장발", "VampLowTail" => "귀족 묶음 머리",
                 _ => null,
             },
             "Bangs" => o switch
             {
                 "Clumps" => "덩어리 앞머리", "Open" => "깐 앞머리", "Parted" => "가르마 앞머리", "SideOpen" => "옆으로 깐 앞머리",
-                "Sweep" => "쓸어 넘긴 앞머리", "Wispy" => "숱 적은 앞머리", _ => null,
+                "Sweep" => "쓸어 넘긴 앞머리", "Wispy" => "숱 적은 앞머리", "Antenna" => "더듬이 앞머리", _ => null,
             },
             "Beard" => o switch
             {

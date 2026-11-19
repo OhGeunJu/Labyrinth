@@ -123,17 +123,18 @@ def hair_pieces(v, HO, hd):
 def own_hair_pieces(v, hd):
     """가닥이 흐르는 로드 머리(`lord_hair.py`) — 원본 머리카락(껍데기 + 결)은 방향이 안 보여 짧은 머리 같았다(v17 사용자)."""
     import lord_hair
-    f, deco = lord_hair.build(v.h, v.hair)
-    gc = lord_hair.groove_col(lord_hair.strands_of(v.h, v.hair)[0], v.hair_col, v.h.EY + lord_hair.TOP_Y[v.hair])   # 결 그늘(가닥 사이 골이 짙다 · 앞머리는 매끈)
+    f, deco, parts = lord_hair.build(v.h, v.hair)
+    gc = lord_hair.hair_col(v.hair_col, None if v.hair == 'long' else lord_hair.strands_of(v.h, v.hair)[0], folds=v.hair == 'long')   # 다발 명암 · 장발은 주름 골(v39)
     out = [(hd(lambda p: safe_crown(f(p), p), 1.2), (lambda p: gc(p - v.HO)))]
     if deco is not None: out.append((hd(deco, 1.2), DECO))
+    for g in parts: out.append((hd(g, 1.2), (lambda p: gc(p - v.HO))))                      # 따로 된 조각(더듬이) — 머리와 경계선이 생긴다
     return out
 def lord_head(v):
     h, HO = v.h, v.HO
     def hd(f, r=0.62): return lambda p: bounded(lambda q: f(q - HO), p, HO, r)
     return [(hd(hm.face(h, 'Straight' if not v.female else 'Button')), PALE), (hd(lambda p: hm.eyes(h, p)), EYE_RED), (hd(lambda p: hm.glint(h, p)), WHITE),
             (hd(lambda p: hm.brows(h, 'Arch' if v.female else 'Soft', p)), tuple(c * 0.85 for c in v.hair_col)), (hd(lambda p: hm.mouth(h, p, 'Line')), LIP_P),
-            (hd(lambda p: fangs(h, p)), FANG)] + (own_hair_pieces(v, hd) if v.hair in ('slick', 'lowtail', 'long', 'curtain') else hair_pieces(v, HO, hd))
+            (hd(lambda p: fangs(h, p)), FANG)] + (own_hair_pieces(v, hd) if v.hair.split('_')[0] in ('slick', 'lowtail', 'long', 'curtain') else hair_pieces(v, HO, hd))
 
 # ── 노예 — 보낸 그림의 얼굴 ────────────────────────────────────────────────
 # 주름은 얼굴 면을 안으로 미는 골(`wrinkles` — 앞면 (x, y)에 그린 선 · 거리장에 더한다)이고 같은 값으로 색도 짙게 칠한다(골이 그늘로 읽힌다).
@@ -360,10 +361,13 @@ FULL = ((0, 400), (35, 420), (90, 440), (160, 420)); CLOSE = ((0, 420, 0), (35, 
 VIEW = (0.98, 2.20)
 # 로드 머리 넷(v16 사용자가 보낸 그림 넷 — 깃 밖 `_refs/2026-11-15_vampire/lord_hair_*.png`) — 확인받은 사람 머리카락(`port.family('human')`)에서 가장 가까운 것 ·
 # 색은 그림 쪽(게임에서는 머리색 축이 따로 고른다)
-LORD_HAIRS = [('curtain', 'lord_hair_curtain.png', INK),                 # 얼굴로 흘러내린 어깨 기장
-              ('slick', 'lord_hair_slick.png', (0.70, 0.70, 0.73)),      # 깔끔한 올백 · 은빛
-              ('long', 'lord_hair_long.png', (0.36, 0.25, 0.16)),        # 장발 · 갈색
-              ('lowtail', 'lord_hair_lowtail.png', (0.30, 0.17, 0.11))]  # 뒤로 넘겨 낮게 묶은 장발 · 적갈색
+LORD_HAIRS = [('curtain', 'lord_hair_curtain.png', INK),                       # 1 더듬이 머리
+              ('curtain_plain', 'lord_hair_curtain.png', INK),                 # 1 더듬이 없음(v44)
+              ('slick', 'lord_hair_slick.png', (0.70, 0.70, 0.73)),            # 2 깔끔한 올백 · 은빛
+              ('slick_bangs', 'lord_hair_slick.png', (0.70, 0.70, 0.73)),      # 2 + 더듬이(v44)
+              ('long', 'lord_hair_long.png', (0.36, 0.25, 0.16)),              # 3 장발 · 갈색
+              ('lowtail', 'lord_hair_lowtail.png', (0.30, 0.17, 0.11)),        # 4 뒤로 넘겨 낮게 묶은 장발 · 적갈색
+              ('lowtail_bangs', 'lord_hair_lowtail.png', (0.30, 0.17, 0.11))]  # 4 + 더듬이(v44)
 # v17 — 확인받은 원본(`port`)이 아니라 가닥이 흐르는 머리(`lord_hair.py`)로 다시 지었다
 HAIR_VIEWS = (('lord', 0), ('lord', 40), ('lord', 160), ('lordF', 0), ('lordF', 40))
 def close(v, yaw, w, pitch, hpx=460, span=1.05):

@@ -10,6 +10,8 @@ using UnityEngine;
 // 떠서(`Tools/ModelLab/common/bake_sdf.py`) 정점마다 뼈 둘 · 가중치 · 색을 적어 낸다. 여기서는 읽어 줄이고 붙이기만 한다. **여기 수식은 없다.**
 //   - 공룡 악어 — `Tools/ModelLab/lizard/bake_croc.py` → `lizard/baked_croc/`(깃 밖) → `Pawn/18`. 리자드맨(`Pawn/16`)과 따로인 큰 종족.
 //   - 늑대인간 — `Tools/ModelLab/werewolf/bake_werewolf.py` → `werewolf/baked/`(깃 밖) → `Pawn/19`. 몸은 치비 몸 그대로 + 역관절 다리 + 늑대 머리.
+//   - 코볼트 — `Tools/ModelLab/kobold/bake_kobold.py` → `kobold/baked/`(깃 밖) → `Pawn/24`(11-19 · 하이에나 몬스터 · 늑대인간 몸 틀).
+//     옷은 고르기 축 넷(`Top` · `Bottom` · `WrapArm` · `WrapShin`) · 털 색은 팔레트 여섯(무늬 셋은 털 메시가 `@Palette.`로 갈린다). 넣기 전 확인 `common/baked_pick_view.py`.
 // **모양을 고치면 미리보기를 고치고 → 뽑기 → 그 굽는 문.** 넣기 전에 `common/baked_view.py`로 색 · 뼈 나눔 · 굽힌 자세를 본다.
 //
 // - **색은 정점 색 그대로**(`Chibi_BakedPaint` — 흰 살에 정점 색을 곱한다). 털 · 비늘 색 변형을 넣을 때는 팔레트로(프리팹을 나누지 않는다 — 엔트 · 리자드맨).
@@ -23,6 +25,7 @@ public static partial class ChibiPawnCreator
     {
         public string Tag, Dir, Prefab, Script;
         public string MatPrefix;   // 팔레트 재질 이름 앞머리(`{앞머리}{재질}` — `PaletteLook`이 이 이름으로 찾는다)
+        public string[] BodyAxes;  // 장식이 아니라 몸을 덮는 고르기 축(털 · 옷 — 코볼트) — 몸 · 머리 상한을 받는다(장식 상한이면 몸판이 뭉개진다)
         public Shape Shape;
         public int BodyVerts, HeadVerts, FineVerts, NoneVerts, DecorVerts;
     }
@@ -31,6 +34,7 @@ public static partial class ChibiPawnCreator
     //                                                                                밑     엉덩이  허리   가슴   어깨      깊이   손     팔K    다리K  몸통K  팔굵기 다리굵기 어깨둥글림
     static readonly Shape DinoCrocShape = new("DinoCroc", "공룡 악어", "Male", new[] { 0.30f, 0.33f, 0.33f, 0.50f, 0.58f }, 0.90f, 0.42f, 1.15f, 1.95f, 1.10f, 1.40f, 1.05f, 0.30f);
     static readonly Shape WerewolfShape = new("Werewolf", "늑대인간",  "Male", new[] { 0.21f, 0.23f, 0.24f, 0.33f, 0.35f }, 0.84f, 0.32f, 1.12f, 1.22f, 1.02f, 1.15f, 1.10f, 0.42f);
+    static readonly Shape KoboldShape   = new("Kobold",   "코볼트",    "Male", new[] { 0.21f, 0.23f, 0.24f, 0.33f, 0.35f }, 0.84f, 0.32f, 1.12f, 1.22f, 1.02f, 1.15f, 1.10f, 0.42f);   // 늑대인간 몸 틀 그대로
 
     static readonly BakedKind[] BakedKinds =
     {
@@ -38,6 +42,9 @@ public static partial class ChibiPawnCreator
                 Shape = DinoCrocShape, BodyVerts = 26000, HeadVerts = 14000, FineVerts = 8000, NoneVerts = 10000, DecorVerts = 5000 },
         new() { Tag = "늑대인간", Dir = "Tools/ModelLab/werewolf/baked", Prefab = "Chibi_Werewolf", Script = "Tools/ModelLab/werewolf/bake_werewolf.py", MatPrefix = "Chibi_Wolf",
                 Shape = WerewolfShape, BodyVerts = 22000, HeadVerts = 14000, FineVerts = 8000, NoneVerts = 10000, DecorVerts = 5000 },
+        new() { Tag = "코볼트", Dir = "Tools/ModelLab/kobold/baked", Prefab = "Chibi_Kobold", Script = "Tools/ModelLab/kobold/bake_kobold.py", MatPrefix = "Chibi_Kobold",
+                Shape = KoboldShape, BodyVerts = 22000, HeadVerts = 14000, FineVerts = 6000, NoneVerts = 10000, DecorVerts = 4000,
+                BodyAxes = new[] { "Fur", "FurHead", "Top", "Bottom", "WrapArm", "WrapShin" } },
     };
 
     const float BakedFineWidth = 0.012f;
@@ -101,6 +108,7 @@ public static partial class ChibiPawnCreator
             bool head = string.IsNullOrEmpty(it.region) ? it.mesh.Contains("_Head") : it.region == "Head";
             // 고르기 조각 중 장식(뿔 · 볏 · 골판 · 꼬리 끝)은 작게 — 머리 모양 축(`Pick.Head.`)은 머리 살이라 머리 몫.
             bool decor = it.part.Contains(".Pick.") && !it.part.Contains(".Pick.Head.");
+            foreach (var ax in k.BodyAxes ?? Array.Empty<string>()) if (it.part.Contains(".Pick." + ax + ".")) decor = false;
             int cap = it.line == "Fine" ? k.FineVerts : it.line == "None" ? k.NoneVerts : decor ? k.DecorVerts : head ? k.HeadVerts : k.BodyVerts;
             bool paint = string.IsNullOrEmpty(it.mat) || it.mat == "Paint";
             if (!mats.TryGetValue(paint ? "Paint" : it.mat, out var skin)) { Debug.LogWarning($"[{k.Tag}] 모르는 재질 `{it.mat}` — {it.mesh}"); continue; }
@@ -224,4 +232,7 @@ public static partial class ChibiPawnCreator
 
     [MenuItem("DungeonColony/Pawn/19. Create Werewolf Only (늑대인간만 — 파이썬이 뽑은 메시를 들인다 · 다른 폰은 안 건드린다)")]
     public static void CreateWerewolfOnly() => CreateBakedOnly(BakedKinds[1]);
+
+    [MenuItem("DungeonColony/Pawn/24. Create Kobold Only (코볼트만 — 하이에나 몬스터 · 옷 축 넷 · 털 팔레트 여섯 · 파이썬이 뽑은 메시를 들인다 · 다른 폰은 안 건드린다)")]
+    public static void CreateKoboldOnly() => CreateBakedOnly(BakedKinds[2]);
 }
